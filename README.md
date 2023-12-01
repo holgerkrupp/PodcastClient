@@ -21,3 +21,4 @@ Nice to have:
 - Chapter Images
 fyyd.de as search engine
 - avoid accidentally skipping forward or backwards
+- auto-skipper skipping chapters with specific keywords
