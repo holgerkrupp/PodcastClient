@@ -20,3 +20,4 @@ Nice to have:
 - skip intro/outro per feed (n seconds)
 - Chapter Images
 fyyd.de as search engine
+- avoid accidentally skipping forward or backwards
