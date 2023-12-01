@@ -6,3 +6,10 @@
 //
 
 import Foundation
+
+class PodcastSettings {
+    
+    var autoDownload:Bool = false
+    
+    
+}
