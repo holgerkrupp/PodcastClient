@@ -6,3 +6,21 @@
 //
 
 import Foundation
+
+
+class Podcast{
+    
+    var feed: URL?
+    
+    var title: String?
+    
+    var description: String?
+    
+    var link: URL?
+    
+    var settings: PodcastSettings?
+    
+    
+    var episodes: [Episode]?
+    
+}

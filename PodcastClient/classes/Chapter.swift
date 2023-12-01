@@ -1,4 +1,3 @@
-//
 //  chapter.swift
 //  PodcastClient
 //
@@ -6,3 +5,11 @@
 //
 
 import Foundation
+class Chapter{
+    
+    var name: String?
+    var description: String?
+    
+    var skip:Bool = false
+    
+}

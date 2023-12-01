@@ -1,4 +1,4 @@
-//
+
 //  Asset.swift
 //  PodcastClient
 //
@@ -6,3 +6,14 @@
 //
 
 import Foundation
+class Asset{
+    
+    enum AssetType{
+        case chapter, audio, video, image
+    }
+    
+    
+    var name: String?
+    var description: String?
+    
+}
