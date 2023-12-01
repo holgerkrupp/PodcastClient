@@ -10,6 +10,6 @@ import Foundation
 class PodcastSettings {
     
     var autoDownload:Bool = false
-    
+    var playbackSpeed:Float = 1.0
     
 }
