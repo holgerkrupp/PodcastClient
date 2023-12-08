@@ -13,10 +13,30 @@ class Player: NSObject{
     
     
     var currentlyPlaying:Episode?
+    var activePlaylist:Playlist?
     
     
     
     private override init() {
         super.init()
     }
+    
+    func playPause(){
+        
+        print("playpause")
+        
+    }
+    
+    func skipback(){
+        
+        print("skipback")
+        
+    }
+    
+    func skipforward(){
+        
+        print("skipforward")
+        
+    }
+    
 }

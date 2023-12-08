@@ -17,25 +17,45 @@ struct TabBarView: View {
     }
     @State var selectedTab = Tab.upnext
     
+    @State private var miniplayerHeight:CGFloat = 20.0
     
     var body: some View {
-        TabView(selection: $selectedTab){
-            
-            Text("UpNext")
-                .tag(Tab.upnext)
-                .tabItem {
-                    Label("UpNext", systemImage: "play.square.stack")
-                    
-                }
-            
-             PodcastList()
-                .tag(Tab.podcastlist)
-                .tabItem {
-                    Label("UpNext", systemImage: "list.bullet")
-                    
-                }
 
-        }
+            VStack{
+         
+                TabView(selection: $selectedTab){
+                    
+                    PlaylistView()
+                        .tag(Tab.upnext)
+                        .tabItem {
+                            Label("UpNext", systemImage: "play.square.stack")
+                            
+                        }
+                    
+                    PodcastListView()
+                        .tag(Tab.podcastlist)
+                        .tabItem {
+                            Label("Podcasts", systemImage: "list.bullet")
+                            
+                        }
+                    
+                    
+                    Text("Settings")
+                        .tag(Tab.settings)
+                        .tabItem {
+                            Label("Settings", systemImage: "gear")
+                            
+                        }
+                
+            }
+               
+            }.offset(y:-miniplayerHeight)
+       
+    Text("Here be Mini Player")
+            .font(.caption)
+        PlayerControlsView(miniplayerHeight: $miniplayerHeight)
+        .frame(height: miniplayerHeight)
+        .padding()
     }
 }
 

@@ -6,17 +6,18 @@
 //
 
 import Foundation
+import SwiftData
+
+
+enum EpisodeType: Codable{
+    case full, trailer, bonus
+}
+
+@Model
 class Episode{
     
-    enum EpisodeType{
-        case full, trailer, bonus
-    }
-    
-    
-    
-    
     var title: String?
-    var description: String?
+    var desc: String?
     
     var guid: String?
     
@@ -29,6 +30,21 @@ class Episode{
     var type: EpisodeType?
     
     var assets: [Asset]?
-    var chapters: [Chapter]?
+    var chapters: [Chapter] = []
+    var skipps: [Skip] = [] // the idea is that if a part of the episode is skipped over accidentally (phone in pocket, kid slides the progress,…) this is recorded and can be undone.
+    
+    init(){}
+
+}
+
+enum Direction:Codable{
+    case backward, forward
+}
+
+struct Skip:Codable{
+    var start:Float?
+    var end:Float?
+    var direction: Direction? // maybe not needeed as the start and end of the skip should already give the direction
+    var eventDate: Date? // the time when the skip happened
     
 }

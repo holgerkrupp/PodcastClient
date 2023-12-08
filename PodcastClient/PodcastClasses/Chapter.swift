@@ -5,11 +5,19 @@
 //
 
 import Foundation
+import SwiftData
+
+
+@Model
 class Chapter{
     
     var name: String?
-    var description: String?
+    var desc: String?
+    var link: URL?
+    var image:Asset?
     
     var skip:Bool = false
     
+    init(){}
+
 }
