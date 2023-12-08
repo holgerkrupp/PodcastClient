@@ -7,28 +7,21 @@
 
 import SwiftUI
 
-struct PodcastView: View {
+struct EpisodeView: View {
     
     @Environment(\.modelContext) var modelContext
-    @State var podcast:Podcast
+    @State var episode:Episode
     
     var body: some View {
         List{
             Section {
-                Text(podcast.title)
-                Text(podcast.desc ?? "")
+                Text(episode.title ?? "")
+                Text(episode.desc ?? "")
                     
                     }
-            Section{
-                ForEach(podcast.episodes ?? []){ episode in
-                    Text(episode.title ?? "")
-                }
+
             }
-            }
-        .onAppear(){
-            dump(podcast)
-        
-        }
+       
     }
 }
 /*

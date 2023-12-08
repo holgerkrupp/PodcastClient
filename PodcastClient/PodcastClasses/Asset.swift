@@ -6,14 +6,26 @@
 //
 
 import Foundation
+import SwiftData
+
+
+enum AssetType:Codable{
+    case chapter, audio, video, image
+}
+
+@Model
 class Asset{
     
-    enum AssetType{
-        case chapter, audio, video, image
-    }
+
     
     
     var name: String?
-    var description: String?
+    var desc: String?
+    var type: AssetType?
+    var link: URL? // the original URL of the asset
+    var file: URL? // the local URL of the file if downloaded
+ 
+    init(){}
+
     
 }

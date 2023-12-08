@@ -6,13 +6,48 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct PodcastView: View {
+    
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        List{
+            Section {
+                Text(podcast.title)
+                Text(podcast.desc ?? "")
+                    
+                    }
+            
+            
+            Section{
+                ForEach(podcast.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()})){ episode in
+                    NavigationLink {
+                        EpisodeView(episode: episode)
+                        
+                    }label:{
+                        Text(episode.title ?? "")
+                    }
+                }
+            }
+            
+            }
     }
 }
 
-#Preview {
-    PodcastView()
+
+
+struct PodcastMiniView: View {
+    
+    @Environment(\.modelContext) var modelContext
+    var podcastID:PersistentIdentifier
+    private var podcast: Podcast?
+    
+    var body: some View {
+        Text(podcast?.title ?? "no title")
+    }
+    
+    init(podcastID: PersistentIdentifier) {
+        self.podcastID = podcastID
+      //  self.podcast = modelContext.registeredModel(for: podcastID)
+    }
 }
