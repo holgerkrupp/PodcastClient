@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct EpisodeView: View {
     
@@ -15,17 +16,61 @@ struct EpisodeView: View {
     var body: some View {
         List{
             Section {
-                Text(episode.title ?? "")
-                Text(episode.desc ?? "")
+                VStack{
+                    HStack{
+                        if let imageULR = episode.image{
+                            ImageWithURL(imageULR)
+                                .scaledToFit()
+                                .frame(width: 200, height: 200)
+                        }else{
+                            Image(systemName: "mic.fill")
+                                .scaledToFit()
+                                .frame(width: 200, height: 200)
+                        }
+                        VStack{
+                            Text(episode.title ?? "")
+                            Text(episode.subtitle ?? "")
+                        }
+                    }
+                    Button {
+                        Player.shared.currentEpisode = episode
+                        Player.shared.playPause()
+                    } label: {
+                        Text("Play Now")
+                    }
+
+                }
+                
                     
                     }
 
             }
+        .listStyle(.plain)
        
     }
 }
-/*
-#Preview {
-    PodcastView()
+
+struct EpisodeMiniView: View {
+    
+
+    var episode:Episode
+    
+    var body: some View {
+        HStack{
+            if let imageULR = episode.image{
+                ImageWithURL(imageULR)
+                    .scaledToFit()
+                    .frame(width: 50, height: 50)
+
+            }else{
+                Image(systemName: "mic.fill")
+                    .scaledToFit()
+                    .frame(width: 50, height: 50)
+            }
+            VStack{
+                Text(episode.title ?? "")
+            }
+        }
+    }
+
 }
-*/

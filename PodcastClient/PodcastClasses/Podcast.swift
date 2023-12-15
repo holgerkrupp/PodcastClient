@@ -13,16 +13,21 @@ class Podcast{
     
     var feed: URL?
     
-    var title: String = "podcast without title"
+    var title: String = "..loading"
+    var subtitle: String?
+    var author: String?
     var link: URL?
     var desc: String?
-
+    var summary: String?
+    var coverURL: URL?
+    
+    
+    
     var lastBuildDate:Date?
     var language:String?
     
-    
     var settings: PodcastSettings?
-    @Relationship(deleteRule: .cascade) var episodes: [Episode] = []
+    var episodes: [Episode] = []
     
     
     var lastModified:Date?
@@ -104,6 +109,34 @@ class Podcast{
     
 
     // MARK: init
+    init(details: [String: Any]) {
+        dump(details)
+        
+        title = details["title"] as? String ?? ""
+        subtitle = details["itunes:subtitle"] as? String
+        author = details["itunes:author"] as? String
+        summary = details["itunes:summary"] as? String
+        desc = details["description"] as? String
+        
+        language = details["language"] as? String
+        
+        lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
+        lastRefresh = Date()
+        
+        link = URL(string: details["link"] as? String ?? "")
+        coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
+        
+        var tempE:[Episode] = []
+        for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
+           let episode = Episode(details: episodeDetails)
+            tempE.append(episode)
+        }
+        episodes = tempE
+        
+        
+         }
+    
+    init(){}
     
     init?(with feed:URL) async{
             let session = URLSession.shared       
@@ -141,15 +174,20 @@ class Podcast{
         do{
             if let data = try await feedData{
                 
-                isUpdating = false
+              
                 
                 //podcast.feedData loads new data
                 
                     let parser = XMLParser(data: data)
-                    let podcastParser = PodcastParser(with: self.persistentModelID)
+                    let podcastParser = PodcastParser()
                     parser.delegate = podcastParser
                   
-                    parser.parse()
+                if parser.parse() {
+                    // parser finished
+                    print("parser finished")
+                    isUpdating = false
+                }
+                
                 
             }else{
                 print("could not load feedData")
@@ -174,26 +212,3 @@ class Podcast{
 }
 
 
-extension Podcast {
-    @Observable
-    class PodcastModel {
-        var modelContext: ModelContext
-        var podcasts = [Podcast]()
-        
-        init(modelContext: ModelContext) {
-            self.modelContext = modelContext
-            fetchData()
-        }
-        
-
-        
-        func fetchData() {
-            do {
-                let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
-                podcasts = try modelContext.fetch(descriptor)
-            } catch {
-                print("Fetch failed")
-            }
-        }
-    }
-}

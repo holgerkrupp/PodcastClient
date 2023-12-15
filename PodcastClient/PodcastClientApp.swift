@@ -36,6 +36,8 @@ struct PodcastClientApp: App {
         }
         .modelContainer(sharedModelContainer)
     }
+    
+    
 }
 
 extension Bundle {

@@ -6,13 +6,23 @@
 //
 
 import Foundation
+import AVFoundation
 
 class Player: NSObject{
     
     static let shared = Player()
     
+    var avplayer = AVPlayer()
     
-    var currentlyPlaying:Episode?
+    var currentEpisode:Episode?{
+        didSet{
+            if let asset = currentEpisode?.asset?.avAsset{
+                let playerItem = AVPlayerItem(asset: asset)
+                avplayer.replaceCurrentItem(with: playerItem)
+            }
+            
+        }
+    }
     var activePlaylist:Playlist?
     
     
@@ -22,7 +32,9 @@ class Player: NSObject{
     }
     
     func playPause(){
-        
+        if avplayer.currentItem?.status == .readyToPlay{
+            avplayer.play()
+        }
         print("playpause")
         
     }

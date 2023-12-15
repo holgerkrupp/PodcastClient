@@ -12,13 +12,13 @@
 					<key>EndingColumnNumber</key>
 					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>158</string>
+					<string>176</string>
 					<key>StartingColumnNumber</key>
 					<string>0</string>
 					<key>StartingLineNumber</key>
-					<string>157</string>
+					<string>175</string>
 					<key>Timestamp</key>
-					<string>723670824.573745</string>
+					<string>724316704.810235</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -34,16 +34,16 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>                 
+				<string>    
 </string>
 				<key>leading</key>
-				<string>         if elementName == "item" {
-             if let episode{
+				<string>    }
+    
 </string>
 				<key>trailing</key>
-				<string>                 podcast?.episodes.append(episode)
-                 podcast?.save()
-             }
+				<string>    func parserDidEndDocument(_ parser: XMLParser) {
+        podcastDictArr.updateValue(episodesArray, forKey: "episodes")
+       print("parser finished")
 </string>
 			</dict>
 			<key>title</key>
