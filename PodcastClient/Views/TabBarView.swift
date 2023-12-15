@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct TabBarView: View {
     
@@ -32,7 +33,7 @@ struct TabBarView: View {
                             
                         }
                     
-                    PodcastListView()
+                    PodcastListView(modelContext: modelContext)
                         .tag(Tab.podcastlist)
                         .tabItem {
                             Label("Podcasts", systemImage: "list.bullet")
@@ -50,15 +51,31 @@ struct TabBarView: View {
             }
                
             }.offset(y:-miniplayerHeight)
+           
        
-    Text("Here be Mini Player")
-            .font(.caption)
+    
         PlayerControlsView(miniplayerHeight: $miniplayerHeight)
         .frame(height: miniplayerHeight)
         .padding()
     }
 }
-
-#Preview {
-    TabBarView()
-}
+/*
+ #Preview {
+ let schema = Schema([
+ Item.self,
+ Podcast.self,
+ Episode.self,
+ Chapter.self,
+ Asset.self,
+ PodcastSettings.self,
+ Playlist.self
+ 
+ ])
+ let config = ModelConfiguration(isStoredInMemoryOnly: true)
+ let container = try! ModelContainer(for: schema, configurations: config)
+ 
+ TabBarView()
+ .modelContainer(container)
+ 
+ }
+ */

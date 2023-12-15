@@ -14,10 +14,17 @@ struct PodcastListView: View {
     
     @Environment(\.modelContext) var modelContext
     @Query var podcasts: [Podcast]
+    
+    @State private var podcastModel: PodcastModel
 
     @State private var searchText = ""
     
-    @State var newFeed:String = "https://hierisauch.net/feed/test/"
+
+    
+    init(modelContext: ModelContext) {
+        let podcastModel = PodcastModel(modelContext: modelContext)
+        _podcastModel = State(initialValue: podcastModel)
+    }
     
     
     var body: some View {
@@ -34,11 +41,13 @@ struct PodcastListView: View {
                             
                         }) { podcast in
                             NavigationLink {
-                                PodcastView(podcast: podcast)
+                                
+                  
+                                PodcastView(for: podcast.persistentModelID)
                                     .modelContext(modelContext)
-                                    
+                    
                             }label:{
-                                Text(podcast.title)
+                                PodcastMiniView(podcast: podcast)
                               //  PodcastMiniView(podcastID: podcast.persistentModelID)
                                 //    .modelContext(modelContext)
                                     .swipeActions(edge: .trailing){
@@ -67,49 +76,48 @@ struct PodcastListView: View {
                 } header: {
                     Text("Subscribed podcasts")
                 } footer: {
-                    Text("\(podcasts.count.description) Podcasts")
+                    Text("\(podcastModel.podcasts.count.description) Podcasts")
                 }
 
     
                 Section{
-                    TextField(text: $newFeed) {
-                        Text("paste URL to feed")
-                    }
-                    Button {
+                    AddPodcastView()
+                        .modelContext(modelContext)
                         
-                        if newFeed != "", let feed = URL(string: newFeed.trimmingCharacters(in: .whitespacesAndNewlines)){
-                                
-                                Task{
-                                    if let podcast = await Podcast(with: feed){
-                                        print(podcast.feed?.description ?? "feed missing")
-                                        
-                                        print(podcast.lastModified ?? "last Mod missing")
-                                        print(podcast.lastRefresh ?? "last refresh missing")
-                                        
-                                        modelContext.insert(podcast)
-                                        try? modelContext.save()
-                                        await podcast.refresh()
-                                       
-                                        
-                                    }
-
-                                }
-                            
-                        }
-                    } label: {
-                        Text("Subscribe")
-                    }
-                    .disabled(URL(string: newFeed) == nil)
-                    
-
                 }
                 
             }
             .searchable(text: $searchText)
         }
     }
+    
+    
+
+    
+    
 }
 
-#Preview {
-    PodcastListView()
+
+extension PodcastListView {
+    @Observable
+    class PodcastModel {
+        var modelContext: ModelContext
+        var podcasts = [Podcast]()
+        
+        init(modelContext: ModelContext) {
+            self.modelContext = modelContext
+            fetchData()
+        }
+        
+        
+        
+        func fetchData() {
+            do {
+                let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
+                podcasts = try modelContext.fetch(descriptor)
+            } catch {
+                print("Fetch failed")
+            }
+        }
+    }
 }

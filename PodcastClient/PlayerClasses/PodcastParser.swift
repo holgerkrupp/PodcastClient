@@ -15,176 +15,170 @@ enum elements:String, CaseIterable{
 
 class PodcastParser:NSObject, XMLParserDelegate{
 
-    var context:ModelContext?
-    
     var podcast: Podcast?
-    var episode:Episode?
-
-    var currentElement:elements?
-    var currentValue:String?
-    var isHeader = true
-
+    private var episode: Episode?
+    private var chapter: Chapter?
     
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-            Podcast.self,
-            Episode.self,
-            Chapter.self,
-            Asset.self,
-            PodcastSettings.self,
-            Playlist.self
-            
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-        
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+    var episodeDict = [String: Any]()
+    var chapterArray = [Any]()
+    var enclosureArray = [Any]()
+    var episodesArray = [Any]()
+    
+    var attributes = [String:Any]()
+    var podcastDictArr = [String: Any]()
+    var tempDict = [String:Any]()
+    
+    var currentElements:[String] = []
+    
+    
+    var currentElement:String {
+        set {
+            currentElements.append(newValue)
         }
-    }()
-    
-    
-    
-    init(with modelID:PersistentIdentifier){
-        super.init()
-        print(modelID.id)
-        if context == nil{
-            context = ModelContext(sharedModelContainer)
+        get{
+            if let element = currentElements.last{
+                return element
+            }else{
+                return ""
+            }
+           
         }
-        if let context{
-            podcast = context.model(for: modelID) as? Podcast
-            
-            print(podcast?.persistentModelID.id)
-            
+    }
+    private var currentDepth:Int{
+       return  currentElements.count
+    }
+    var currentValue = ""
+    var isHeader:Bool {
+        if currentDepth >= 3, currentElements[2] == "item"{
+            return false
+        }else{
+            return true
         }
     }
     
     
+    
+    
+    
     func parserDidStartDocument(_ parser: XMLParser) {
-        podcast?.isUpdating = true
+        
+        if podcast == nil{
+            podcast = Podcast()
+        }
+     
     }
     
     
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
-       print(elementName)
+       // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
+        currentValue = ""
+        currentElement = qName ?? elementName
         
-        if elementName == "item" {
-            podcast?.save()
-            isHeader = false
-        }
-        if let eCase = elements.init(rawValue: elementName) {
-            currentElement = eCase
-            currentValue = ""
+        attributes.removeAll()
+        
+        if qName ?? elementName == "item" {
+            // new PodcastEpisode found
+         //   isHeader = false
+            episodeDict = [:]
         }
         
-        if elementName == "item"{
-            
-            episode = Episode()
+        if qName ?? elementName == "psc:chapters"{
+            chapterArray.removeAll()
+        }
+        
+        if currentDepth > 3, currentElements[2] == "image"{
+            tempDict.updateValue(currentValue, forKey: currentElement)
+        }
+        
+        if !attributeDict.isEmpty{
+            if isHeader{
+                attributes = [elementName: attributeDict]
+                podcastDictArr.updateValue(attributes, forKey: currentElement)
 
+            }else{
+                
+                    
+                    
+                    switch qName ?? elementName{
+                    case "psc:chapter": chapterArray.append(attributeDict)
+                    case "enclosure": enclosureArray.append(attributeDict)
+                    case "itunes:image": currentValue = attributeDict["href"] ?? ""
+                    default:
+                        break
+                    }
+                
+            }
         }
     }
     
     
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-
-        currentValue?.append(string)
+        
+        if !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            currentValue += string
+        }
     }
-    
     
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-
-
         
-        if isHeader{
-            switch currentElement{
-            case .title:
-                podcast?.title = currentValue ?? ""
-            case .link:
-                podcast?.link = URL(string: currentValue ?? "")
-            case .description:
-                podcast?.desc = currentValue
-            case .lastBuildDate:
-                podcast?.lastBuildDate = Date.dateFromRFC1123(dateString: currentValue ?? "")
-            case .language:
-                podcast?.language = currentValue
-            case .trash:
-                break
-            case .none:
-                break
-            case .some(.pubDate):
-                break
-            }
-        }else{
-            if let episode{
-                switch currentElement{
-                case .title:
+        
+        switch isHeader{
+        case true:
 
-                    episode.title = currentValue ?? ""
-                case .link:
-                    episode.link = URL(string: currentValue ?? "")
-                case .description:
-                    episode.desc = currentValue
-                case .pubDate:
-                    episode.pubDate = Date.dateFromRFC1123(dateString: currentValue ?? "")
-                case .lastBuildDate:
-                    break
-                case .language:
-                    break
-                case .trash:
-                    break
-                case .none:
-                    break
+            
+            if currentDepth > 3, currentElements[2] == "image"{
+                tempDict.updateValue(currentValue, forKey: elementName)
+                
+            }else if currentDepth == 3, elementName == "image"{
+                podcastDictArr.updateValue(tempDict, forKey: currentElement)
+          //      podcastDictArr.append([currentElement:tempDict])
+                    tempDict.removeAll()
+                
+            }else{
+            //    attributes.updateValue(currentValue, forKey: currentElement)
+                podcastDictArr.updateValue(currentValue, forKey: currentElement)
+         //       podcastDictArr.append([currentElement:currentValue])
+            }
+            
+        case false:
+            // we are not in the header but somewhere deep in the elements belonging to an episode
+            
+
+                
+                
+                switch qName ?? elementName{
+              
+                    
+                case "item":
+                    //PodcastEpisode finished
+                    //   isHeader = true // go back to header Level
+                    episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
+                    enclosureArray.removeAll()
+                case "psc:chapters":
+                    // list of chapters is finished
+                    episodeDict.updateValue(chapterArray, forKey: currentElement) // add all chapters to the Episode
+                    chapterArray.removeAll() // remove all chapters from the chapter Array
+                case "encoded", "content:encoded":
+                    // the content of the blogpost is in the item "content:encoded" to make it better readable, I'm using a dedicated case
+                    episodeDict.updateValue(currentValue, forKey: "content")
+                case "enclosure":
+                    episodeDict.updateValue(enclosureArray, forKey: currentElement)
+                default:
+                    // add the value of the current Element to the Episode
+                    episodeDict.updateValue(currentValue, forKey: currentElement)
+                    
                 }
-             
-            }
-       
+            
         }
-        
-        if elements.allCases.contains(where: { $0.rawValue == elementName }) {
-            currentElement = nil
-            // print(temp[currentElement ?? .trash] ?? "")
-        }
-        
-        
-        /* 
-        
-         switch back to header if the ended element is an "item"
-        
-         */
-         if elementName == "item" {
-             if let episode{
-                 
-                 podcast?.episodes.append(episode)
-                 podcast?.save()
-             }
-            episode = nil
-            isHeader = true
-        }
-        
-        
-        
-        
-        
-
+        currentElements.removeLast()
     }
+    
+    
     func parserDidEndDocument(_ parser: XMLParser) {
-        print("parser finished")
-
-        print(podcast?.episodes.count)
-        podcast?.isUpdating = false
-        podcast?.save()
+        podcastDictArr.updateValue(episodesArray, forKey: "episodes")
+       print("parser finished")
     }
+
     
 }
 
-
-
-class BackgroundDataHander {
-    private var context: ModelContext
-    
-    init(with container: ModelContainer) {
-        context = ModelContext(container)
-    }
-}
