@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct AddPodcastView: View {
+<<<<<<< HEAD
     @Environment(\.modelContext) var modelContext
 
     @State var newFeed:String = "https://hierisauch.net/feed/test/"
@@ -110,6 +111,11 @@ struct AddPodcastView: View {
     }
     
     
+=======
+    var body: some View {
+        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+    }
+>>>>>>> main
 }
 
 #Preview {

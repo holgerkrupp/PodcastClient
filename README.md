@@ -1,7 +1,34 @@
 # PodcastClient
 An Open Source Podcast client.
 
-Creating a new Podcast client with
+Alpha min Requiremets
+- [x] add podcast via URL
+- [x] refresh podcast content via Button
+- [ ] download episodes
+- [x] play / pause
+- [ ] skip forward / backward
+- [ ] jump to chapter
+
+Beta min Requirement
+- [ ] auto download/refresh feeds
+- [ ] skip manually selected chapters
+- [ ] sleep timer
+- [ ] play next queue
+- [ ] set playbackspeed (per podcast)
+- [ ] OPML import
+- [ ] podcast directory search
+
+1.0 min requirements
+- [ ] nice UI
+- [ ] nice Logo
+- [ ] nice name
+- [ ] skip detection
+- [ ] OPML export
+
+1.1 min requirements 
+- [ ] Sideloads via iCloud Drive
+
+loose Requirementlist
 
 - [ ] no backend for refreshing feeds (for cost & reliability reasons)
 - [ ] inbox/queue system
