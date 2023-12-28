@@ -23,9 +23,10 @@ Beta min Requirement
 - [ ] nice Logo
 - [ ] nice name
 - [ ] skip detection
+- [ ] OPML export
 
 1.1 min requirements 
-
+- [ ] Sideloads via iCloud Drive
 
 loose Requirementlist
 
