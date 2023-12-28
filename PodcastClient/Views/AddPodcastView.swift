@@ -51,6 +51,7 @@ struct AddPodcastView: View {
      
             if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
                 let podcast = Podcast(details: feedDetail)
+                podcast.feed = URL(string: newFeed)
                 modelContext.insert(podcast)
                 
             }

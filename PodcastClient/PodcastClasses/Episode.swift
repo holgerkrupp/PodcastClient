@@ -7,14 +7,39 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 
 enum EpisodeType: String, Codable{
     case full, trailer, bonus, unknown
 }
 
+enum Direction:Codable{
+    case backward, forward
+}
+
+struct Skip:Codable{
+    var start:Float?
+    var end:Float?
+    var direction: Direction? // maybe not needeed as the start and end of the skip should already give the direction
+    var eventDate: Date? // the time when the skip happened
+    
+}
+
 @Model
-class Episode{
+class PlayStatus{
+    var skipps: [Skip]? // the idea is that if a part of the episode is skipped over accidentally (phone in pocket, kid slides the progress,…) this is recorded and can be undone.
+    var playpostion: Int?
+    
+    var episode: Episode?
+    init(){}
+}
+
+
+
+
+@Model
+class Episode: Equatable{
     
     var title: String?
     var desc: String?
@@ -32,20 +57,44 @@ class Episode{
     
     var type: EpisodeType?
     
-    var assets: [Asset]?
+    
     var chapters: [Chapter] = []
     
+    var podcast: Podcast?
+    
+    
+    private var assets: [Asset]?
     var asset:Asset?{
         return assets?.first(where: {$0.type == .audio})
     }
+    var length:Int?{
+        return asset?.length
+    }
+    
+    var duration:String?
+ 
+    
+    var isAvailableLocally:Bool{
+        return asset?.isAvailableLocally ?? false
+    }
+    
+        
+    var coverImage: some View{
+        if let imageURL = image{
+            return AnyView(ImageWithURL(imageURL))
+        }else if let podcastcover = podcast?.coverURL{
+            return AnyView(ImageWithURL(podcastcover))
+        }else{
+            return AnyView(Image(systemName: "mic.fill"))
+        }
+    }
+
     
     
-    var skipps: [Skip] = [] // the idea is that if a part of the episode is skipped over accidentally (phone in pocket, kid slides the progress,…) this is recorded and can be undone.
-    var playpostion: Int?
     
     
-    
-    init(){}
+    @Relationship(deleteRule: .cascade, inverse: \PlayStatus.episode) var playStatus: PlayStatus?
+
 
     init(details: [String: Any]) {
         title = details["itunes:title"] as? String ?? details["title"] as? String
@@ -53,6 +102,8 @@ class Episode{
 
         desc = details["description"] as? String
         guid = details["guid"] as? String
+        
+        duration = details["itunes:duration"] as? String
 
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")
@@ -80,17 +131,23 @@ class Episode{
         
     }
     
+    func download(){
+        asset?.download()
+    }
+    
+    static func ==(lhs: Episode, rhs: Episode) -> Bool {
+        
+        if lhs.link == rhs.link, lhs.link != nil{
+            return true
+        }else if lhs.number == rhs.number, lhs.number != nil, lhs.season == rhs.season{
+            return true
+        }else{
+            return false
+        }
+    }
+    
+  
+    
     
 }
 
-enum Direction:Codable{
-    case backward, forward
-}
-
-struct Skip:Codable{
-    var start:Float?
-    var end:Float?
-    var direction: Direction? // maybe not needeed as the start and end of the skip should already give the direction
-    var eventDate: Date? // the time when the skip happened
-    
-}

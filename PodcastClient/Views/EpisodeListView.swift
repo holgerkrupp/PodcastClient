@@ -10,20 +10,20 @@ import SwiftData
 
 
 
-struct PodcastListView: View {
+struct EpisodeListView: View {
     
     @Environment(\.modelContext) var modelContext
-    @Query var podcasts: [Podcast]
+    @Query var episodes: [Episode]
     
-    @State private var podcastModel: PodcastModel
+    @State private var episodeModel: EpisodeModel
 
     @State private var searchText = ""
     
 
     
     init(modelContext: ModelContext) {
-        let podcastModel = PodcastModel(modelContext: modelContext)
-        _podcastModel = State(initialValue: podcastModel)
+        let episodeModel = EpisodeModel(modelContext: modelContext)
+        _episodeModel = State(initialValue: episodeModel)
     }
     
     
@@ -31,42 +31,23 @@ struct PodcastListView: View {
         NavigationStack {
             List{
                 Section {
-                    ForEach(podcasts.filter {
+                    ForEach(episodeModel.episodes.filter {
                       
                             searchText != "" ?
                             
-                            $0.title.uppercased().contains(searchText.uppercased()) :
+                        $0.title?.uppercased().contains(searchText.uppercased()) ?? false :
                             
                             true
                             
-                        }) { podcast in
+                        }) { episode in
                             NavigationLink {
+                                EpisodeView(episode: episode)
                                 
-                  
-                                PodcastView(for: podcast.persistentModelID)
-                                    .modelContext(modelContext)
-                    
                             }label:{
-                                PodcastMiniView(podcast: podcast)
-                              //  PodcastMiniView(podcastID: podcast.persistentModelID)
-                                //    .modelContext(modelContext)
-                                    .swipeActions(edge: .trailing){
-                                        Button(role: .destructive) {
-                                            modelContext.delete(podcast)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash.fill")
-                                        }
-                                    }
-                                    .swipeActions(edge: .leading){
-                                        Button {
-                                            
-                                            Task{
-                                                await podcast.refresh()
-                                            }
-                                        } label: {
-                                            Label("refresh", systemImage: "arrow.clockwise")
-                                        }
-                                    }
+                                VStack{
+                                    EpisodeMiniView(episode: episode)
+                                    
+                                }
                             }
                         }
                             
@@ -74,17 +55,11 @@ struct PodcastListView: View {
                     
                     
                 } header: {
-                    Text("Subscribed podcasts")
+                    Text("New Episodes")
                 } footer: {
-                    Text("\(podcastModel.podcasts.count.description) Podcasts")
+                    Text("")
                 }
 
-    
-                Section{
-                    AddPodcastView()
-                        .modelContext(modelContext)
-                        
-                }
                 
             }
             .searchable(text: $searchText)
@@ -98,11 +73,11 @@ struct PodcastListView: View {
 }
 
 
-extension PodcastListView {
+extension EpisodeListView {
     @Observable
-    class PodcastModel {
+    class EpisodeModel {
         var modelContext: ModelContext
-        var podcasts = [Podcast]()
+        var episodes = [Episode]()
         
         init(modelContext: ModelContext) {
             self.modelContext = modelContext
@@ -113,10 +88,11 @@ extension PodcastListView {
         
         func fetchData() {
             do {
-                let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
-                podcasts = try modelContext.fetch(descriptor)
+                print("fetch Episodes for EpisodeListView")
+                let descriptor = FetchDescriptor<Episode>(sortBy: [SortDescriptor(\.pubDate, order: .reverse)])
+                episodes = try modelContext.fetch(descriptor)
             } catch {
-                print("Fetch failed")
+                print("Fetch failed for EpisodeListView")
             }
         }
     }

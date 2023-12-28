@@ -7,10 +7,27 @@
 
 import Foundation
 import AVFoundation
+import SwiftUI
 
 class Player: NSObject{
     
     static let shared = Player()
+    
+    var isPlaying:Bool{
+        return avplayer.isPlaying
+    }
+    
+    var playPauseButton: some View{
+        if currentEpisode != nil{
+            if isPlaying == false{
+                return AnyView(Image(systemName:  "play.fill").resizable())
+            }else{
+                return AnyView(Image(systemName:  "pause.fill").resizable())
+            }
+        }else{
+            return AnyView(Image(systemName:  "playpause").resizable())
+        }
+    }
     
     var avplayer = AVPlayer()
     
@@ -23,6 +40,18 @@ class Player: NSObject{
             
         }
     }
+    
+    var coverImage: some View{
+        if let playing = currentEpisode{
+            return AnyView(playing.coverImage)
+        }else{
+            return AnyView(Image(systemName: "mic.fill").resizable())
+        }
+    }
+    
+    
+    
+    
     var activePlaylist:Playlist?
     
     
@@ -34,9 +63,9 @@ class Player: NSObject{
     func playPause(){
         if avplayer.currentItem?.status == .readyToPlay{
             avplayer.play()
+        }else if avplayer.isPlaying{
+            avplayer.pause()
         }
-        print("playpause")
-        
     }
     
     func skipback(){
@@ -51,4 +80,10 @@ class Player: NSObject{
         
     }
     
+}
+
+extension AVPlayer {
+    var isPlaying: Bool {
+        return rate != 0 && error == nil
+    }
 }

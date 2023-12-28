@@ -17,9 +17,6 @@ enum AssetType:String, Codable{
 @Model
 class Asset{
     
-
-    
-    
     var title: String?
     var desc: String?
     var type: AssetType?
@@ -32,6 +29,15 @@ class Asset{
            return AVAsset(url: url)
         }else{
             return nil
+        }
+    }
+    
+    var isAvailableLocally:Bool{
+        if let localFile = file?.absoluteString {
+            let manager = FileManager()
+             return  manager.fileExists(atPath: localFile)
+        }else{
+            return false
         }
     }
     
@@ -56,9 +62,10 @@ class Asset{
             type = AssetType.unknown
         }
         
-        
-        
-        
+    }
+    
+    func download(){
+        print("download asset from \(link?.description ?? "no LINK given")")
         
     }
     

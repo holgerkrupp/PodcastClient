@@ -26,7 +26,7 @@ struct TabBarView: View {
          
                 TabView(selection: $selectedTab){
                     
-                    PlaylistView()
+                    EpisodeListView(modelContext: modelContext)
                         .tag(Tab.upnext)
                         .tabItem {
                             Label("UpNext", systemImage: "play.square.stack")
@@ -41,7 +41,7 @@ struct TabBarView: View {
                         }
                     
                     
-                    Text("Settings")
+                    SettingsView(modelContext: _modelContext)
                         .tag(Tab.settings)
                         .tabItem {
                             Label("Settings", systemImage: "gear")
@@ -50,11 +50,13 @@ struct TabBarView: View {
                 
             }
                
-            }.offset(y:-miniplayerHeight)
+            }
+            
+            //.offset(y:-miniplayerHeight)
            
        
     
-        PlayerControlsView(miniplayerHeight: $miniplayerHeight)
+        PlayerControlsView(miniPlayerHeight: $miniplayerHeight)
         .frame(height: miniplayerHeight)
         .padding()
     }

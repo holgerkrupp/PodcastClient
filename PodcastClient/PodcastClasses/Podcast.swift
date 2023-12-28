@@ -27,19 +27,13 @@ class Podcast{
     var language:String?
     
     var settings: PodcastSettings?
-    var episodes: [Episode] = []
+    @Relationship(deleteRule: .cascade, inverse: \Episode.podcast) var episodes: [Episode] = []
     
     
     var lastModified:Date?
     var lastRefresh:Date?
     
-    var isUpdating:Bool = false{
-        didSet {
-            if isUpdating == false{
-                save()
-            }
-        }
-    }
+    var isUpdating:Bool = false
     
     // MARK: computed properties
 
@@ -168,9 +162,40 @@ class Podcast{
     
     // MARK: functions
     
+    
+    func update(details: [String: Any]) {
+  
+        title = details["title"] as? String ?? ""
+        subtitle = details["itunes:subtitle"] as? String
+        author = details["itunes:author"] as? String
+        summary = details["itunes:summary"] as? String
+        desc = details["description"] as? String
+        
+        language = details["language"] as? String
+        
+        lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
+        lastRefresh = Date()
+        
+        link = URL(string: details["link"] as? String ?? "")
+        coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
+        
+        for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
+            let episode = Episode(details: episodeDetails)
+            if episodes.contains(episode){
+                print("episode existing - do nothing")
+            }else{
+                episodes.append(episode)
+            }
+        }
+        
+        
+    }
+    
+    
+    
     func refresh() async{
         isUpdating = true
-        print("refresh \(self.persistentModelID.id)")
+        print("refresh \(self.feed)")
         do{
             if let data = try await feedData{
                 
@@ -183,14 +208,18 @@ class Podcast{
                     parser.delegate = podcastParser
                   
                 if parser.parse() {
-                    // parser finished
-                    print("parser finished")
+                 
+                    if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
+                        update(details: feedDetail)
+                    }
+                    
                     isUpdating = false
                 }
                 
                 
             }else{
                 print("could not load feedData")
+                isUpdating = false
             }
         }catch{
             print(error)

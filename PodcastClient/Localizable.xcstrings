@@ -1,0 +1,93 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "%@ Episodes" : {
+
+    },
+    "%@ Podcasts" : {
+
+    },
+    "About this app" : {
+
+    },
+    "Chapters" : {
+
+    },
+    "Delete" : {
+
+    },
+    "developed by Holger Krupp" : {
+
+    },
+    "Download" : {
+
+    },
+    "Episodes" : {
+
+    },
+    "Maximize" : {
+
+    },
+    "Minimize" : {
+
+    },
+    "New Episodes" : {
+
+    },
+    "NO DEPENDENCIES" : {
+
+    },
+    "paste URL to feed" : {
+
+    },
+    "Play" : {
+
+    },
+    "Play Now" : {
+
+    },
+    "PlaylistView" : {
+
+    },
+    "Podcasts" : {
+
+    },
+    "refresh" : {
+
+    },
+    "Refresh Content" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Show Details" : {
+
+    },
+    "Skip Back" : {
+
+    },
+    "Skip Forward" : {
+
+    },
+    "Stream Now" : {
+
+    },
+    "Subscribe" : {
+
+    },
+    "Subscribed podcasts" : {
+
+    },
+    "Unsubscribe" : {
+
+    },
+    "UpNext" : {
+
+    }
+  },
+  "version" : "1.0"
+}

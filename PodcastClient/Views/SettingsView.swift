@@ -8,11 +8,35 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(\.modelContext) var modelContext
+
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        List{
+            Section {
+                Text("developed by Holger Krupp")
+            } header: {
+                Text("About this app")
+            }
+            VersionNumberView()
+        }
     }
 }
 
 #Preview {
     SettingsView()
+}
+
+
+struct VersionNumberView: View {
+    //First get the nsObject by defining as an optional anyObject
+    
+    let
+    VersionNumber = "Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "0") - (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0000"))"
+    
+    
+    var body: some View {
+        
+        Text(VersionNumber).font(.footnote)
+        
+    }
 }

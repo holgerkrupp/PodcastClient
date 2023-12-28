@@ -11,17 +11,18 @@ import SwiftData
 @Model
 class Chapter{
     
-    var title: String?
+    var title: String = ""
     var link: URL?
     var image: URL?
     var start: String?
-    
-    var skip:Bool = false
+    var duration: TimeInterval?
+    var episode: Episode?
+    var shouldPlay:Bool = true
     
     init(){}
     
     init(details: [String: Any]) {
-        title = details["title"] as? String
+        title = details["title"] as? String ?? ""
         start = details["start"] as? String
 
         

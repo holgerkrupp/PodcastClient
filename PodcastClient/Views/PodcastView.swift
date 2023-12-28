@@ -13,6 +13,9 @@ struct PodcastView: View {
     @Environment(\.modelContext) var modelContext
     @Query var podcasts: [Podcast]
     var podcast: Podcast? { podcasts.first}
+    var subscriptionManager = SubscriptionManager.shared
+    
+    
     
     init(for podcastID: PersistentIdentifier) {
         
@@ -25,7 +28,8 @@ struct PodcastView: View {
     
     var body: some View {
         List{
-            Text(podcast?.author ?? "").font(.caption)
+            Text(podcast?.title ?? "").font(.title)
+            
                     HStack{
                         if let imageULR = podcast?.coverURL{
                             ImageWithURL(imageULR)
@@ -38,21 +42,35 @@ struct PodcastView: View {
                         }
                         VStack{
                             
-                            Text(podcast?.title ?? "").font(.title)
+                            Text(podcast?.author ?? "").font(.caption)
+                            Spacer()
                             Text(podcast?.subtitle ?? "").font(.subheadline)
                             Spacer()
                             if let weblink = podcast?.link{
                                 Link(destination: weblink, label: {
                                     HStack{
                                         Image(systemName: "safari")
-                                        Text("Website")
+                                        Text(weblink.host() ?? "Website")
                                     }
                                 })
+                                .buttonStyle(.bordered)
                             }
                             
                         }
                     }.listRowSeparator(.hidden)
             Text(podcast?.summary ?? "")
+            Button {
+                if let podcast{
+                    subscriptionManager.refresh(podcast: podcast)
+                }
+            } label: {
+                if podcast?.isUpdating == true{
+                    ProgressView()
+                }else{
+                    Text("Refresh Content")
+                }
+            }
+            .buttonStyle(.bordered)
            
                     HStack{
                         Spacer()

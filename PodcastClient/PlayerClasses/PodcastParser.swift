@@ -127,6 +127,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
 
             
             if currentDepth > 3, currentElements[2] == "image"{
+                
                 tempDict.updateValue(currentValue, forKey: elementName)
                 
             }else if currentDepth == 3, elementName == "image"{
@@ -152,6 +153,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 case "item":
                     //PodcastEpisode finished
                     //   isHeader = true // go back to header Level
+                    
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
                 case "psc:chapters":

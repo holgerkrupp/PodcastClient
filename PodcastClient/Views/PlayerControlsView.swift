@@ -9,9 +9,9 @@ import SwiftUI
 
 struct PlayerControlsView: View {
     
-    @Binding var miniplayerHeight:CGFloat
+    @Binding var miniPlayerHeight:CGFloat
     
-    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 500
+    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 200
     var minPlayerHeight:CGFloat = 20.0
     
     @State var player = Player.shared
@@ -19,17 +19,14 @@ struct PlayerControlsView: View {
     
     
     var body: some View {
-        
-        Text(player.currentEpisode?.title ?? "Here be Mini Player")
-            .font(.caption)
-        
+                
         HStack(alignment: .bottom){
            
-            if miniplayerHeight == maxPlayerHeight{
-               
+            if miniPlayerHeight == maxPlayerHeight{
+      
                     Button {
                         withAnimation {
-                            miniplayerHeight = minPlayerHeight
+                            miniPlayerHeight = minPlayerHeight
                         }
                     } label: {
                         Label {
@@ -42,14 +39,14 @@ struct PlayerControlsView: View {
                         .labelStyle(.iconOnly)
                         .frame(maxWidth: .infinity)
                     }
-                
+             
                 }else{
                     
                     
                     
                     Button {
                         withAnimation {
-                            miniplayerHeight = maxPlayerHeight
+                            miniPlayerHeight = maxPlayerHeight
                         }
                     } label: {
                         Label {
@@ -67,7 +64,8 @@ struct PlayerControlsView: View {
             
             
             
-            
+            Spacer()
+
             
             Button(action:player.skipback){
                 Label {
@@ -82,21 +80,22 @@ struct PlayerControlsView: View {
             }
             
             
-            
+            Spacer()
+
             
             Button(action:player.playPause){
                 Label {
                     Text("Play")
                 } icon: {
-                    Image(systemName:  "play.fill")
-                        .resizable()
+                    player.playPauseButton
                         .scaledToFit()
                 }
                 .labelStyle(.iconOnly)
                 .frame(maxWidth: .infinity)
             }
             
-            
+            Spacer()
+
             
             Button(action:player.skipforward){
                 Label {
@@ -109,18 +108,26 @@ struct PlayerControlsView: View {
                 .labelStyle(.iconOnly)
                 .frame(maxWidth: .infinity)
             }
-            Label {
-                Text("Show Details")
-            } icon: {
-                Image(systemName: "opticaldisc")
-                    .resizable()
-                    .scaledToFit()
+            
+            Spacer()
+            
+            Button {
+                withAnimation {
+                    miniPlayerHeight = maxPlayerHeight
+                }
+            } label: {
+                Label {
+                    Text("Show Details")
+                } icon: {
+                    player.coverImage
+                        .scaledToFit()
+                }
+                .labelStyle(.iconOnly)
+                .frame(maxWidth: .infinity)
             }
-            .labelStyle(.iconOnly)
             
             
-            
-        }.frame(maxWidth: .infinity, maxHeight: minPlayerHeight)
+        }.frame(maxWidth: .infinity, maxHeight: 30)
     }
     
 

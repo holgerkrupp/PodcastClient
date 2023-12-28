@@ -12,13 +12,18 @@ import SwiftData
 struct PodcastClientApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
             Podcast.self,
             Episode.self,
             Chapter.self,
+
             Asset.self,
             PodcastSettings.self,
-            Playlist.self
+            PlayStatus.self,
+
+            Playlist.self,
+            PlaylistEntry.self
+            
+            
         
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)

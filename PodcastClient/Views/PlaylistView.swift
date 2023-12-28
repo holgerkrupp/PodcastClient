@@ -9,8 +9,7 @@ import SwiftUI
 
 struct PlaylistView: View {
     var body: some View {
-        Text("UpNext")
-            .font(.title)
+        Text("PlaylistView")
     }
 }
 

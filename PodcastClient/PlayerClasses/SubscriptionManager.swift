@@ -6,3 +6,18 @@
 //
 
 import Foundation
+
+class SubscriptionManager:NSObject{
+    
+    static let shared = SubscriptionManager()
+    
+    private override init() {
+        super.init()
+    }
+    
+    func refresh(podcast: Podcast){
+        Task{
+            await podcast.refresh()
+        }
+    }
+}
