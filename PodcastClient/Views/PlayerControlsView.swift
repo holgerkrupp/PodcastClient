@@ -14,16 +14,23 @@ struct PlayerControlsView: View {
     var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 200
     var minPlayerHeight:CGFloat = 20.0
     
-    @State var player = Player.shared
-    
+  //  @State var player = Player.shared
+    @Environment(Player.self) private var player
+    @State var playProgress:Double = 0.0
     
     
     var body: some View {
+        ZStack{
+            ProgressView(value: player.progress, total: 1.0)
+                .progressViewStyle(.linear)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .tint(.teal)
+                .scaleEffect(x: 1, y: 10, anchor: .center)
+              
+            HStack(alignment: .bottom){
                 
-        HStack(alignment: .bottom){
-           
-            if miniPlayerHeight == maxPlayerHeight{
-      
+                if miniPlayerHeight == maxPlayerHeight{
+                    
                     Button {
                         withAnimation {
                             miniPlayerHeight = minPlayerHeight
@@ -39,7 +46,7 @@ struct PlayerControlsView: View {
                         .labelStyle(.iconOnly)
                         .frame(maxWidth: .infinity)
                     }
-             
+                    
                 }else{
                     
                     
@@ -60,74 +67,78 @@ struct PlayerControlsView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-            
-            
-            
-            
-            Spacer()
+                
+                
+                
+                
+                Spacer()
+                
+                
+                Button(action:player.skipback){
+                    Label {
+                        Text("Skip Back 45 seconds")
+                    } icon: {
+                        Image(systemName: "gobackward.45")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity)
+                }
+                
+                
+                Spacer()
+                
+                
+                Button(action:player.playPause){
+                    Label {
+                        Text("Play")
+                    } icon: {
+                        player.playPauseButton
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity)
+                }
+                
+                Spacer()
+                
+                
+                Button(action:player.skipforward){
+                    Label {
+                        Text("Skip Forward 45 seconds")
+                    } icon: {
+                        Image(systemName: "goforward.45")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity)
+                }
+                
+                Spacer()
+                
+                Button {
+                    withAnimation {
+                        miniPlayerHeight = maxPlayerHeight
+                    }
+                } label: {
+                    Label {
+                        Text("Show Details")
+                    } icon: {
+                        player.coverImage
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity)
+                }
+                
+                
+            }.frame(maxWidth: .infinity, maxHeight: 30)
+        }
 
-            
-            Button(action:player.skipback){
-                Label {
-                    Text("Skip Back")
-                } icon: {
-                    Image(systemName: "gobackward.45")
-                        .resizable()
-                        .scaledToFit()
-                }
-                .labelStyle(.iconOnly)
-                .frame(maxWidth: .infinity)
-            }
-            
-            
-            Spacer()
 
-            
-            Button(action:player.playPause){
-                Label {
-                    Text("Play")
-                } icon: {
-                    player.playPauseButton
-                        .scaledToFit()
-                }
-                .labelStyle(.iconOnly)
-                .frame(maxWidth: .infinity)
-            }
-            
-            Spacer()
-
-            
-            Button(action:player.skipforward){
-                Label {
-                    Text("Skip Forward")
-                } icon: {
-                    Image(systemName: "goforward.45")
-                        .resizable()
-                        .scaledToFit()
-                }
-                .labelStyle(.iconOnly)
-                .frame(maxWidth: .infinity)
-            }
-            
-            Spacer()
-            
-            Button {
-                withAnimation {
-                    miniPlayerHeight = maxPlayerHeight
-                }
-            } label: {
-                Label {
-                    Text("Show Details")
-                } icon: {
-                    player.coverImage
-                        .scaledToFit()
-                }
-                .labelStyle(.iconOnly)
-                .frame(maxWidth: .infinity)
-            }
-            
-            
-        }.frame(maxWidth: .infinity, maxHeight: 30)
+        
     }
     
 

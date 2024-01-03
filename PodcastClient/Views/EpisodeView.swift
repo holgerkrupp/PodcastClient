@@ -11,9 +11,9 @@ import SwiftData
 struct EpisodeView: View {
     
     @Environment(\.modelContext) var modelContext
-    @State var episode:Episode
-    
-    private let coverSize:CGFloat = 200
+   // @State var episode:Episode
+    @Environment(Episode.self) private var episode
+    private let coverSize:CGFloat = 100
 
     
     var body: some View {
@@ -42,6 +42,14 @@ struct EpisodeView: View {
                         }
                     }
                     Spacer()
+                    EpisodeControlView()
+                        .environment(episode)
+                    
+                    EpisodeStatusIcon()
+                        .environment(episode)
+                    
+                    
+                    
                     HStack{
                         Button {
                             
@@ -65,6 +73,15 @@ struct EpisodeView: View {
                                 
                             }
                             .buttonStyle(.bordered)
+                        }else{
+                            Button {
+                                episode.removeFile()
+                            } label: {
+                                Text("Delete")
+                                
+                                
+                            }
+                            .buttonStyle(.bordered)
                         }
                     }
 
@@ -75,7 +92,7 @@ struct EpisodeView: View {
                     }
             
             Text(episode.desc?.toDetectedAttributedString() ?? "")
-            
+            /*
             Section {
                                 ForEach($episode.chapters){ chapter in
                     HStack{
@@ -91,7 +108,7 @@ struct EpisodeView: View {
             } header: {
                 Text("Chapters")
             }
-
+*/
             
 
             }
@@ -103,43 +120,79 @@ struct EpisodeView: View {
 struct EpisodeMiniView: View {
     
 
-    var episode:Episode
-    
+  //  var episode:Episode
+    @Environment(Episode.self) private var episode
+
     var formatStyle = Date.RelativeFormatStyle()
     
     
     
     var body: some View {
-        HStack{
-            if let imageULR = episode.image{
-                ImageWithURL(imageULR)
-                    .scaledToFit()
-                    .frame(width: 50, height: 50)
-
-            }else if let imageULR = episode.podcast?.coverURL{
-                ImageWithURL(imageULR)
-                    .scaledToFit()
-                    .frame(width: 50, height: 50)
-            }else{
-                Image(systemName: "mic.fill")
-                    .scaledToFit()
-                    .frame(width: 50, height: 50)
-            }
-            VStack(alignment: .leading){
-                Spacer()
-                Text(episode.title ?? "")
-                Spacer()
-                HStack{
-                 //   Text(episode.pubDate?.formatted(date: .numeric, time: .omitted) ?? "--")
-                    Text(episode.pubDate?.formatted(formatStyle) ?? "--")
-                    Spacer()
-                    Text(episode.duration ?? "")
+        VStack{
+            HStack{
+                if let imageULR = episode.image{
+                    ImageWithURL(imageULR)
+                        .scaledToFit()
+                        .frame(width: 50, height: 50)
+                    
+                }else if let imageULR = episode.podcast?.coverURL{
+                    ImageWithURL(imageULR)
+                        .scaledToFit()
+                        .frame(width: 50, height: 50)
+                }else{
+                    Image(systemName: "mic.fill")
+                        .scaledToFit()
+                        .frame(width: 50, height: 50)
                 }
-                .font(.caption)
-                .foregroundColor(.secondary)
+                VStack(alignment: .leading){
+                    Spacer()
+                    Text(episode.title ?? "")
+                    Spacer()
+                    HStack{
+                        //   Text(episode.pubDate?.formatted(date: .numeric, time: .omitted) ?? "--")
+                        Text(episode.pubDate?.formatted(formatStyle) ?? "--")
+                        Spacer()
+                        Text(episode.duration ?? "")
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+            HStack{
+                EpisodeStatusIcon()
+                    .environment(episode)
                 Spacer()
+              
+                ProgressView(value: episode.progress, total: 1.0)
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: .infinity, maxHeight: 30)
+                    
             }
         }
     }
 
+}
+
+struct EpisodeStatusIcon:View{
+    @Environment(Episode.self) private var episode
+    
+    
+    
+    
+    var body: some View {
+        if episode.isAvailableLocally{
+            Image(systemName: "externaldrive.badge.checkmark")
+                .scaledToFit()
+                .frame(width: 10, height: 10)
+        }else if episode.isDownloading{
+            ProgressView(value: episode.downloadProgress)
+                .progressViewStyle(.circular)
+                .frame(width: 10, height: 10)
+        }else{
+            Image(systemName: "cloud")
+                .scaledToFit()
+                .frame(width: 10, height: 10)
+        }
+    }
 }

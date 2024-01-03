@@ -8,8 +8,14 @@
 import SwiftUI
 
 struct EpisodeControlView: View {
+    @Environment(Episode.self) private var episode
+
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        if episode.isAvailableLocally{
+            Text("Play")
+        }else{
+            Text("download")
+        }
     }
 }
 

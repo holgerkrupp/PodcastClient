@@ -21,27 +21,8 @@ class Asset{
     var desc: String?
     var type: AssetType?
     var link: URL? // the original URL of the asset
-    var file: URL? // the local URL of the file if downloaded
     var length: Int?
-    
-    var avAsset:AVAsset? {
-        if let url = file ?? link{
-           return AVAsset(url: url)
-        }else{
-            return nil
-        }
-    }
-    
-    var isAvailableLocally:Bool{
-        if let localFile = file?.absoluteString {
-            let manager = FileManager()
-             return  manager.fileExists(atPath: localFile)
-        }else{
-            return false
-        }
-    }
-    
- 
+
     init(){}
 
     init(details: [String: Any]) {
@@ -63,10 +44,4 @@ class Asset{
         }
         
     }
-    
-    func download(){
-        print("download asset from \(link?.description ?? "no LINK given")")
-        
-    }
-    
 }

@@ -57,8 +57,9 @@ struct TabBarView: View {
        
     
         PlayerControlsView(miniPlayerHeight: $miniplayerHeight)
+            .environment(Player.shared)
         .frame(height: miniplayerHeight)
-        .padding()
+      
     }
 }
 /*

@@ -41,11 +41,13 @@ struct EpisodeListView: View {
                             
                         }) { episode in
                             NavigationLink {
-                                EpisodeView(episode: episode)
+                                EpisodeView()
+                                    .environment(episode)
                                 
                             }label:{
                                 VStack{
-                                    EpisodeMiniView(episode: episode)
+                                    EpisodeMiniView()
+                                        .environment(episode)
                                     
                                 }
                             }
