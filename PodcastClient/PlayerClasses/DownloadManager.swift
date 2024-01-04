@@ -83,14 +83,14 @@ class DownloadManager: NSObject, ObservableObject {
     
     
     @MainActor
-    func download(_ episode: Episode) async throws {
+    func download(_ episode: EpisodeModel) async throws {
         
         guard episode.asset?.link != nil else { return }
         if let fileURL = episode.asset?.link{
             guard downloads[fileURL] == nil else { return }
             let download = Download(url: fileURL, downloadSession: downloadSession)
             downloads[fileURL] = download
-            episode.isDownloading = true
+            episode.downloadStatus.isDownloading = true
             for await event in download.events {
                 process(event, for: episode)
             }
@@ -101,32 +101,32 @@ class DownloadManager: NSObject, ObservableObject {
 
     }
     
-    func pauseDownload(for episode: Episode) {
+    func pauseDownload(for episode: EpisodeModel) {
         if let fileURL = episode.asset?.link{
             downloads[fileURL]?.pause()
-            episode.isDownloading = false
+            episode.downloadStatus.isDownloading = false
         }
     }
     
-    func resumeDownload(for episode: Episode) {
+    func resumeDownload(for episode: EpisodeModel) {
         if let fileURL = episode.asset?.link{
             downloads[fileURL]?.resume()
-            episode.isDownloading = true
+            episode.downloadStatus.isDownloading = true
         }
     }
 }
 
 private extension DownloadManager {
-    func process(_ event: Download.Event, for episode: Episode) {
+    func process(_ event: Download.Event, for episode: EpisodeModel) {
         switch event {
         case let .progress(current, total):
-            episode.update(currentBytes: current, totalBytes: total)
+            episode.downloadStatus.update(currentBytes: current, totalBytes: total)
         case let .success(url):
             saveFile(for: episode, at: url)
         }
     }
     
-    func saveFile(for episode: Episode, at url: URL) {
+    func saveFile(for episode: EpisodeModel, at url: URL) {
 
         if let newlocation = episode.localFile{
             print("saving File to \(newlocation)")

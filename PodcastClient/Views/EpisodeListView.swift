@@ -15,14 +15,14 @@ struct EpisodeListView: View {
     @Environment(\.modelContext) var modelContext
     @Query var episodes: [Episode]
     
-    @State private var episodeModel: EpisodeModel
+    @State private var episodeModel: EpisodesModel
 
     @State private var searchText = ""
     
 
     
     init(modelContext: ModelContext) {
-        let episodeModel = EpisodeModel(modelContext: modelContext)
+        let episodeModel = EpisodesModel(modelContext: modelContext)
         _episodeModel = State(initialValue: episodeModel)
     }
     
@@ -42,12 +42,12 @@ struct EpisodeListView: View {
                         }) { episode in
                             NavigationLink {
                                 EpisodeView()
-                                    .environment(episode)
+                                    .environment(EpisodeModel(episode: episode))
                                 
                             }label:{
                                 VStack{
                                     EpisodeMiniView()
-                                        .environment(episode)
+                                        .environment(EpisodeModel(episode: episode))
                                     
                                 }
                             }
@@ -77,7 +77,7 @@ struct EpisodeListView: View {
 
 extension EpisodeListView {
     @Observable
-    class EpisodeModel {
+    class EpisodesModel {
         var modelContext: ModelContext
         var episodes = [Episode]()
         

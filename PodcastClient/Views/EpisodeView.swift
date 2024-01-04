@@ -12,7 +12,7 @@ struct EpisodeView: View {
     
     @Environment(\.modelContext) var modelContext
    // @State var episode:Episode
-    @Environment(Episode.self) private var episode
+    @Environment(EpisodeModel.self) private var episode
     private let coverSize:CGFloat = 100
 
     
@@ -54,7 +54,6 @@ struct EpisodeView: View {
                         Button {
                             
                             Player.shared.currentEpisode = episode
-                            Player.shared.playPause()
                         } label: {
                             if episode.isAvailableLocally {
                                 Text("Play Now")
@@ -121,7 +120,7 @@ struct EpisodeMiniView: View {
     
 
   //  var episode:Episode
-    @Environment(Episode.self) private var episode
+    @Environment(EpisodeModel.self) private var episode
 
     var formatStyle = Date.RelativeFormatStyle()
     
@@ -163,7 +162,7 @@ struct EpisodeMiniView: View {
                 EpisodeStatusIcon()
                     .environment(episode)
                 Spacer()
-              
+              //    ProgressView(value: (episode.playStatus?.playpostion ?? 0.0)/(episode.durationAsDouble ?? 300), total: 1.0)
                 ProgressView(value: episode.progress, total: 1.0)
                     .progressViewStyle(.linear)
                     .frame(maxWidth: .infinity, maxHeight: 30)
@@ -175,7 +174,7 @@ struct EpisodeMiniView: View {
 }
 
 struct EpisodeStatusIcon:View{
-    @Environment(Episode.self) private var episode
+    @Environment(EpisodeModel.self) private var episode
     
     
     
@@ -185,8 +184,8 @@ struct EpisodeStatusIcon:View{
             Image(systemName: "externaldrive.badge.checkmark")
                 .scaledToFit()
                 .frame(width: 10, height: 10)
-        }else if episode.isDownloading{
-            ProgressView(value: episode.downloadProgress)
+        }else if episode.downloadStatus.isDownloading{
+            ProgressView(value: episode.downloadStatus.downloadProgress)
                 .progressViewStyle(.circular)
                 .frame(width: 10, height: 10)
         }else{
@@ -196,3 +195,5 @@ struct EpisodeStatusIcon:View{
         }
     }
 }
+
+

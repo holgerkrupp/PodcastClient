@@ -32,26 +32,33 @@ import Combine
     
     private var avplayer = AVPlayer()
     private let session = AVAudioSession.sharedInstance()
-        
-   var currentEpisode:Episode?{
+    var observer: NSKeyValueObservation?
+   var currentEpisode:EpisodeModel?{
         didSet{
             if let asset = currentEpisode?.avAsset{
                 let playerItem = AVPlayerItem(asset: asset)
                 avplayer.replaceCurrentItem(with: playerItem)
+                Task{
+                    await self.currentEpisode?.updateDuration()
+                }
                 
+
+                    self.observer = playerItem.observe(\.status, options:  [.new, .old], changeHandler: { (playerItem, change) in
+                    if playerItem.status == .readyToPlay {
+                        
+                        
+                        if playerItem.duration.isValid{
+                            self.currentEpisode?.setDuration(playerItem.duration)
+                        }
+                         
+
+                    }
+                })
                 let tolerance = CMTime(seconds: 5, preferredTimescale: 1)
                 let zero = CMTime(seconds: 0, preferredTimescale: 0)
                 avplayer.seek(to: currentEpisode?.playPosition.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
-                
-            
-                if playerItem.duration.isValid{
-                    currentEpisode?.setDuration(playerItem.duration)
-                }
-                
-                
-                
                 avplayer.play()
-                print("set new Playeritem to \(asset.description) - duration:\(playerItem.duration.seconds.formatted())")
+
             }else{
                 print("could not read current Episode")
             }
@@ -109,7 +116,7 @@ import Combine
             avplayer.play()
            
         }
-        print("Player playPause status after pressing: \(avplayer.currentItem?.status.rawValue) - isPlaying: \(avplayer.isPlaying)")
+
     }
     
     func skipback(){
