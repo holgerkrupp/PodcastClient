@@ -39,7 +39,7 @@ struct EpisodeListView: View {
                             
                             true
                             
-                        }) { episode in
+                    }, id:\.self) { episode in
                             NavigationLink {
                                 EpisodeView()
                                     .environment(EpisodeModel(episode: episode))
@@ -65,6 +65,11 @@ struct EpisodeListView: View {
                 
             }
             .searchable(text: $searchText)
+            .refreshable {
+                Task{
+                    await SubscriptionManager.shared.refreshall()
+                }
+            }
         }
     }
     

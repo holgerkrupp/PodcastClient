@@ -13,6 +13,9 @@
     "About this app" : {
 
     },
+    "already subscribed" : {
+
+    },
     "Delete" : {
 
     },
@@ -28,6 +31,12 @@
     "Episodes" : {
 
     },
+    "Import" : {
+
+    },
+    "Import & Export" : {
+
+    },
     "Maximize" : {
 
     },
@@ -35,6 +44,9 @@
 
     },
     "New Episodes" : {
+
+    },
+    "new Podcasts" : {
 
     },
     "NO DEPENDENCIES" : {
@@ -61,6 +73,9 @@
     "Refresh Content" : {
 
     },
+    "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
+
+    },
     "Settings" : {
 
     },
@@ -76,7 +91,13 @@
     "Stream Now" : {
 
     },
+    "subscribe" : {
+
+    },
     "Subscribe" : {
+
+    },
+    "Subscribe to all %lld podcasts" : {
 
     },
     "Subscribed podcasts" : {

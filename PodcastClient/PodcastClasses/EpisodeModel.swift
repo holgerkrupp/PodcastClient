@@ -10,7 +10,7 @@ import AVFoundation
 import SwiftUI
 
 @Observable
-class EpisodeModel{
+class EpisodeModel:Equatable{
     // This class is an extention to the Episode class. I did it this way to keep the SwiftData Class separated from the extended and computed variables that don't need to be stored in the database. There might be better solutions to do it, but this is my current approach. Feel free to suggest different ways
     
     
@@ -20,6 +20,19 @@ class EpisodeModel{
     }
     
     var downloadStatus = EpisodeDownloadStatus()
+    
+    
+    
+    //
+    
+    static func ==(lhs: EpisodeModel, rhs: EpisodeModel) -> Bool {
+        
+        if lhs.episode == rhs.episode{
+            return true
+        }else{
+            return false
+        }
+    }
     
     // MARK: to access the relevant data from the original episode class, I reference them here
     
@@ -225,6 +238,7 @@ class EpisodeModel{
     
     func removeFile(){
         print("removing localFile")
+        downloadStatus.update(currentBytes: 0, totalBytes: 0)
         if let file = localFile{
             try? FileManager.default.removeItem(at: file)
         }

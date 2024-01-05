@@ -16,7 +16,6 @@ struct PlayerControlsView: View {
     
   //  @State var player = Player.shared
     @Environment(Player.self) private var player
-    @State var playProgress:Double = 0.0
     
     
     var body: some View {

@@ -19,6 +19,7 @@ Beta min Requirement
 - [ ] skip manually selected chapters
 - [ ] sleep timer
 - [ ] play next queue
+- [ ] custom playlists
 - [ ] set playbackspeed (per podcast)
 - [ ] OPML import
 - [ ] podcast directory search
@@ -28,10 +29,18 @@ Beta min Requirement
 - [ ] nice Logo
 - [ ] nice name
 - [ ] skip detection
-- [ ] OPML export
+- [x] OPML export
+- [ ] Automatic deletion of files
+- - [ ] Based on last x files
+- - [ ] Based on time passed since release 
 
 1.1 min requirements 
 - [ ] Sideloads via iCloud Drive
+- [ ] CarPlay
+
+1.x requirements
+- [ ] Transkripts
+
 
 loose Requirementlist
 
@@ -45,7 +54,7 @@ loose Requirementlist
 - [ ] OPML Import/Export
 - [ ] some users really want a good sleep timer. No idea why.
 - [ ] skip forward/back 15/30s buttons in Player UI
-- [ ] Shownotes with clickable links
+- [x] Shownotes with clickable links
 - [ ] configurable automatic download  behavior (download all new, only keep last n episodes, no auto-download) per feed
 
 Nice to have:

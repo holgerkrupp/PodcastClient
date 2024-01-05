@@ -70,18 +70,6 @@ class Episode: Equatable{
     
 
  
-    
-
-    
-
-    
- 
-
-    
-
-    
-
-
 
     init(details: [String: Any]) {
         title = details["itunes:title"] as? String ?? details["title"] as? String

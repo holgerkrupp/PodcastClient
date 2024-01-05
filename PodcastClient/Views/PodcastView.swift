@@ -97,11 +97,11 @@ struct PodcastView: View {
                 ForEach(podcast?.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? []){ episode in
                     NavigationLink {
                         EpisodeView()
-                            .environment(episode)
+                            .environment(EpisodeModel(episode: episode))
                         
                     }label:{
                         EpisodeMiniView()
-                            .environment(episode)
+                            .environment(EpisodeModel(episode: episode))
                     }
                 }
             } header: {

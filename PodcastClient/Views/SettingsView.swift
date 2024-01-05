@@ -11,13 +11,28 @@ struct SettingsView: View {
     @Environment(\.modelContext) var modelContext
 
     var body: some View {
-        List{
-            Section {
-                Text("developed by Holger Krupp")
-            } header: {
-                Text("About this app")
+        NavigationStack {
+            List{
+                Section {
+                    Text("developed by Holger Krupp")
+                } header: {
+                    Text("About this app")
+                }
+                
+                NavigationLink {
+                    
+                    
+                    ImportExportView()
+                        .environment(SubscriptionManager.shared)
+                    
+                }label:{
+                    Text("Import & Export")
+                }
+                
+                
+                
+                VersionNumberView()
             }
-            VersionNumberView()
         }
     }
 }

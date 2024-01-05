@@ -55,21 +55,7 @@ struct AddPodcastView: View {
                 modelContext.insert(podcast)
                 
             }
-            /*
-            for feedDetail in (parser.delegate as? PodcastParser)?.podcastDictArr ?? [] {
-                Podcast(details: feedDetail)
-                
-                
-            }
-            */
-            
-            //  Podcast(details: (parser.delegate as? PodcastParser)?.xmlDictArr as [String:Any])
-         /*
-            if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr.first{
-                Podcast(details: feedDetail)
-            }
-           */
-            //   dump((parser.delegate as? PodcastParser)?.xmlDictArr)
+
         }
     }
     

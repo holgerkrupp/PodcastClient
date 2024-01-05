@@ -163,8 +163,9 @@ struct EpisodeMiniView: View {
                     .environment(episode)
                 Spacer()
               //    ProgressView(value: (episode.playStatus?.playpostion ?? 0.0)/(episode.durationAsDouble ?? 300), total: 1.0)
-                ProgressView(value: episode.progress, total: 1.0)
-                    .progressViewStyle(.linear)
+                EpisodePlayProgressView()
+                    .environment(episode)
+                    .environment(Player.shared)
                     .frame(maxWidth: .infinity, maxHeight: 30)
                     
             }
@@ -188,6 +189,7 @@ struct EpisodeStatusIcon:View{
             ProgressView(value: episode.downloadStatus.downloadProgress)
                 .progressViewStyle(.circular)
                 .frame(width: 10, height: 10)
+            Text(episode.downloadStatus.downloadProgress.rounded().formatted())
         }else{
             Image(systemName: "cloud")
                 .scaledToFit()
@@ -197,3 +199,21 @@ struct EpisodeStatusIcon:View{
 }
 
 
+struct EpisodePlayProgressView:View{
+    @Environment(Player.self) private var player
+    @Environment(EpisodeModel.self) private var episode
+    var body: some View {
+        if player.currentEpisode == episode{
+            ProgressView(value: player.progress, total: 1.0)
+                .progressViewStyle(.linear)
+             
+        }else{
+            ProgressView(value: episode.progress, total: 1.0)
+                .progressViewStyle(.linear)
+                
+        }
+
+        
+    }
+    
+}
