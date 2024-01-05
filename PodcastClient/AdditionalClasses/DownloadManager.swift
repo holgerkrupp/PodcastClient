@@ -131,7 +131,7 @@ private extension DownloadManager {
         if let newlocation = episode.localFile{
             print("saving File to \(newlocation)")
             let filemanager = FileManager.default
-            
+            episode.downloadStatus.isDownloading = false
             try? filemanager.moveItem(at: url, to: newlocation)
             Task{
                 await episode.updateDuration()
