@@ -23,8 +23,6 @@ struct PodcastClientApp: App {
             Playlist.self,
             PlaylistEntry.self
             
-            
-        
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

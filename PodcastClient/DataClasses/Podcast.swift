@@ -29,6 +29,7 @@ class Podcast{
     var settings: PodcastSettings?
     @Relationship(deleteRule: .cascade, inverse: \Episode.podcast) var episodes: [Episode] = []
     
+    var lastHTTPcode: Int?
     
     var lastModified:Date?
     var lastRefresh:Date?
@@ -49,6 +50,8 @@ class Podcast{
                     }
                     do{
                         let (data, response) = try await session.data(for: request)
+                        lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
+
                         switch (response as? HTTPURLResponse)?.statusCode {
                         case 200:
                             return data
@@ -73,6 +76,27 @@ class Podcast{
     var feedUpdated:Bool?{
         get async throws{
             if let lastModified{
+                if let serverLastModified = try? await feed?.status?.lastModified {
+                    if serverLastModified > lastModified{
+                        // feed on server is new
+                        return true
+                    }else{
+                        // feed on server is old
+                        return false
+                    }
+                }else{
+                    // server is not answering with a lastmodified Date
+                    return nil
+                }
+            }else{
+                // feed has never been fetched before, no last modified date is set.
+                return true
+            }
+
+            
+    /*
+            
+            if let lastModified{
                 if let feed{
                     let session = URLSession.shared
                     var request = URLRequest(url: feed)
@@ -82,7 +106,8 @@ class Podcast{
                     }
                     do{
                         let (_, response) = try await session.data(for: request)
-                        
+                        lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
+
                         if let feedLastModified = Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? ""), feedLastModified > lastModified{
                             return true
                         }else{
@@ -96,8 +121,9 @@ class Podcast{
             }else{
                 return true // feed has never been fetched before therefore it's always new
             }
-
-            return nil
+     return nil
+*/
+          
         }
     }
     
@@ -116,7 +142,8 @@ class Podcast{
         
         lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
         lastRefresh = Date()
-        
+        lastModified = lastBuildDate
+
         link = URL(string: details["link"] as? String ?? "")
         coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
         
@@ -131,7 +158,7 @@ class Podcast{
          }
     
     init(){}
-    
+    /*
     init?(with feed:URL) async{
             let session = URLSession.shared       
             var request = URLRequest(url: feed)
@@ -142,6 +169,7 @@ class Podcast{
             
         do{
             let (_, response) = try await session.data(for: request)
+            lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
             switch (response as? HTTPURLResponse)?.statusCode {
             case 200:
                 self.lastModified = Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? "")
@@ -159,7 +187,7 @@ class Podcast{
             return nil
         }
     }
-    
+    */
     // MARK: functions
     
     
@@ -174,6 +202,8 @@ class Podcast{
         language = details["language"] as? String
         
         lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
+        lastModified = lastBuildDate
+
         lastRefresh = Date()
         
         link = URL(string: details["link"] as? String ?? "")
@@ -184,6 +214,7 @@ class Podcast{
             if episodes.contains(episode){
                 print("episode existing - do nothing")
             }else{
+                modelContext?.insert(episode)
                 episodes.append(episode)
             }
         }
@@ -196,34 +227,46 @@ class Podcast{
     func refresh() async{
         isUpdating = true
         print("refresh \(self.feed)")
-        do{
-            if let data = try await feedData{
+        
+        let updated = try? await feedUpdated
                 
-              
-                
-                //podcast.feedData loads new data
-                
+        if updated == true{
+            do{
+                if let data = try await feedData{
+                    
+                    
+                    
+                    //podcast.feedData loads new data
+                    
                     let parser = XMLParser(data: data)
                     let podcastParser = PodcastParser()
                     parser.delegate = podcastParser
-                  
-                if parser.parse() {
-                 
-                    if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
-                        update(details: feedDetail)
+                    
+                    if parser.parse() {
+                        
+                        if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
+                            update(details: feedDetail)
+                            
+                        }
+                        
+                        isUpdating = false
                     }
                     
+                    
+                }else{
+                    print("could not load feedData")
                     isUpdating = false
                 }
-                
-                
-            }else{
-                print("could not load feedData")
-                isUpdating = false
+            }catch{
+                print(error)
             }
-        }catch{
-            print(error)
+        }else{
+            isUpdating = false
+            print("no update in feed header - skip refresh")
         }
+        
+        
+
     }
     
     func save(){

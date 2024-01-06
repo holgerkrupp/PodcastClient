@@ -135,9 +135,11 @@ struct PodcastMiniView: View {
                     .frame(width: 50, height: 50)
                 
             }
-            VStack{
+            VStack(alignment: .leading){
                 Text(podcast.title)
-                
+                Text(podcast.lastHTTPcode?.description ?? "")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 
             }
         }

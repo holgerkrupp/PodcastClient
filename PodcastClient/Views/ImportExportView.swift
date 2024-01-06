@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-<<<<<<< HEAD
 import UniformTypeIdentifiers
 
 struct ImportExportView: View {
@@ -98,19 +97,15 @@ struct ImportExportView: View {
 
         }
         .listStyle(SidebarListStyle())
-=======
 
-struct ImportExportView: View {
-    var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
->>>>>>> origin/main
+
     }
 }
 
 #Preview {
     ImportExportView()
 }
-<<<<<<< HEAD
+
 
 
 struct SubscribeToView: View{
@@ -166,5 +161,4 @@ public extension UTType {
         UTType("public.opml")!
     }
 }
-=======
->>>>>>> origin/main
+

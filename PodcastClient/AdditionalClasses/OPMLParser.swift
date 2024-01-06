@@ -6,7 +6,6 @@
 //
 
 import Foundation
-<<<<<<< HEAD
 
 @Observable
 class PodcastFeed{
@@ -69,5 +68,4 @@ class OPMLParser: NSObject, XMLParserDelegate{
     
     
 }
-=======
->>>>>>> origin/main
+

@@ -4,6 +4,7 @@ An Open Source Podcast client.
 Alpha min Requiremets
 - [x] add podcast via URL
 - [x] refresh podcast content via Button
+- [x] refresh all with pull to refresh
 - [x] download episodes
 - - [ ] show download progress
 - - [x] delete files
@@ -21,7 +22,7 @@ Beta min Requirement
 - [ ] play next queue
 - [ ] custom playlists
 - [ ] set playbackspeed (per podcast)
-- [ ] OPML import
+- [x] OPML import
 - [ ] podcast directory search
 
 1.0 min requirements
@@ -29,7 +30,7 @@ Beta min Requirement
 - [ ] nice Logo
 - [ ] nice name
 - [ ] skip detection
-- [x] OPML export
+- [ ] OPML export
 - [ ] Automatic deletion of files
 - - [ ] Based on last x files
 - - [ ] Based on time passed since release 

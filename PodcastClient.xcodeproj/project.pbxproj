@@ -40,6 +40,7 @@
 		48E091942B1A70F700DFE83A /* PlayerControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48E091932B1A70F700DFE83A /* PlayerControlsView.swift */; };
 		48E091962B1A743B00DFE83A /* PlaylistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48E091952B1A743B00DFE83A /* PlaylistView.swift */; };
 		48E091982B1B12DC00DFE83A /* PodcastParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48E091972B1B12DC00DFE83A /* PodcastParser.swift */; };
+		48FBE9D12B49360800B278C5 /* URLextension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48FBE9D02B49360800B278C5 /* URLextension.swift */; };
 		48FFCCF42B3DC4850086F0F5 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48FFCCF32B3DC4850086F0F5 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
@@ -81,6 +82,7 @@
 		48E091932B1A70F700DFE83A /* PlayerControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerControlsView.swift; sourceTree = "<group>"; };
 		48E091952B1A743B00DFE83A /* PlaylistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistView.swift; sourceTree = "<group>"; };
 		48E091972B1B12DC00DFE83A /* PodcastParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastParser.swift; sourceTree = "<group>"; };
+		48FBE9D02B49360800B278C5 /* URLextension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLextension.swift; sourceTree = "<group>"; };
 		48FFCCF32B3DC4850086F0F5 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; name = Localizable.xcstrings; path = PodcastClient/Localizable.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -121,6 +123,7 @@
 			children = (
 				48AA18962B2C59B8007558FC /* ImageLoader.swift */,
 				48C0438F2B2F27690006C352 /* attributedString.swift */,
+				48FBE9D02B49360800B278C5 /* URLextension.swift */,
 			);
 			path = SupportClasses;
 			sourceTree = "<group>";
@@ -321,6 +324,7 @@
 				480D434B2B2347F900BBB1CD /* AddPodcastView.swift in Sources */,
 				480D43212B219D8200BBB1CD /* EpisodeView.swift in Sources */,
 				484F93A02B47FA7000C3E309 /* OPMLParser.swift in Sources */,
+				48FBE9D12B49360800B278C5 /* URLextension.swift in Sources */,
 				48E091962B1A743B00DFE83A /* PlaylistView.swift in Sources */,
 				48E091872B1A250100DFE83A /* Podcast.swift in Sources */,
 				480D431F2B21082700BBB1CD /* PodcastView.swift in Sources */,

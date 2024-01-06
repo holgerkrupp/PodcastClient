@@ -8,15 +8,13 @@
 import Foundation
 import SwiftData
 
-<<<<<<< HEAD
+
 @Observable
-=======
->>>>>>> origin/main
 class SubscriptionManager:NSObject{
     
     static let shared = SubscriptionManager()
     var modelContext: ModelContext?
-<<<<<<< HEAD
+
     var podcasts : [Podcast] = []
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     var opmlParser = OPMLParser()
@@ -24,15 +22,7 @@ class SubscriptionManager:NSObject{
 
     var newPodcasts: [PodcastFeed] = []
     
-    
-=======
-    var podcasts : [Podcast]?
-    let configuration = ModelConfiguration(isStoredInMemoryOnly: true, allowsSave: false)
-    
-    
 
-    
->>>>>>> origin/main
     private override init() {
         super.init()
         if let container = try? ModelContainer(
@@ -51,24 +41,16 @@ class SubscriptionManager:NSObject{
     }
     
     func refreshall() async{
-<<<<<<< HEAD
-        
+            fetchData()
             for podcast in podcasts{
                 await podcast.refresh()
             }
         
-=======
-        if let podcasts{
-            for podcast in podcasts{
-                await podcast.refresh()
-            }
-        }
->>>>>>> origin/main
+
 
     }
 
     func fetchData() {
-<<<<<<< HEAD
       
             let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
             if let fetchresult = try? modelContext?.fetch(descriptor){
@@ -163,14 +145,5 @@ class SubscriptionManager:NSObject{
     
 
     
-=======
-        do {
-            let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
-            podcasts = try modelContext?.fetch(descriptor)
-        } catch {
-            print("Fetch failed")
-        }
-    }
-    
->>>>>>> origin/main
+
 }

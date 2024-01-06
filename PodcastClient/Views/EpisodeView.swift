@@ -155,20 +155,21 @@ struct EpisodeMiniView: View {
                     }
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    Spacer()
+                    
+                    HStack{
+                        EpisodeStatusIcon()
+                            .environment(episode)
+                        Spacer()
+                        //    ProgressView(value: (episode.playStatus?.playpostion ?? 0.0)/(episode.durationAsDouble ?? 300), total: 1.0)
+                        EpisodePlayProgressView()
+                            .environment(episode)
+                            .environment(Player.shared)
+                            .frame(maxWidth: .infinity, maxHeight: 30)
+                        
+                    }
                 }
             }
-            HStack{
-                EpisodeStatusIcon()
-                    .environment(episode)
-                Spacer()
-              //    ProgressView(value: (episode.playStatus?.playpostion ?? 0.0)/(episode.durationAsDouble ?? 300), total: 1.0)
-                EpisodePlayProgressView()
-                    .environment(episode)
-                    .environment(Player.shared)
-                    .frame(maxWidth: .infinity, maxHeight: 30)
-                    
-            }
+
         }
     }
 
@@ -203,16 +204,19 @@ struct EpisodePlayProgressView:View{
     @Environment(Player.self) private var player
     @Environment(EpisodeModel.self) private var episode
     var body: some View {
-        if player.currentEpisode == episode{
-            ProgressView(value: player.progress, total: 1.0)
-                .progressViewStyle(.linear)
-             
-        }else{
-            ProgressView(value: episode.progress, total: 1.0)
-                .progressViewStyle(.linear)
+       
+            if player.currentEpisode == episode{
                 
-        }
-
+                ProgressView(value: player.progress, total: 1.0)
+                    .progressViewStyle(.linear)
+                
+            }else{
+                ProgressView(value: episode.progress, total: 1.0)
+                    .progressViewStyle(.linear)
+                
+            }
+            
+        
         
     }
     

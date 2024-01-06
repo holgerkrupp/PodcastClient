@@ -64,6 +64,7 @@ class Episode: Equatable{
 
     var assets: [Asset]?
     
+    
     @Relationship(deleteRule: .cascade, inverse: \PlayStatus.episode) var playStatus: PlayStatus?
     
     var duration:String?
