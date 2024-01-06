@@ -23,6 +23,8 @@ Beta min Requirement
 - [ ] custom playlists
 - [ ] set playbackspeed (per podcast)
 - [x] OPML import
+- - [ ] to be validated with big file
+- - [ ] Show import progress
 - [ ] podcast directory search
 
 1.0 min requirements

@@ -24,12 +24,16 @@ class OPMLParser: NSObject, XMLParserDelegate{
         qualifiedName qName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
+        
+        print("OPML Parser started: \(elementName)")
+        
         let currentElement = elementName.lowercased()
 
         switch currentElement {
         case "opml":
             return
         case "outline":
+            print("outline attributes: \(attributeDict)")
             if attributeDict["type"] == "rss"{
                 var newPodcast = PodcastFeed()
                 
@@ -54,6 +58,8 @@ class OPMLParser: NSObject, XMLParserDelegate{
         namespaceURI: String?,
         qualifiedName qName: String?
     ) {
+        
+        print("OPML Parser ended: \(elementName)")
         switch elementName.lowercased() {
         case "outline":
             return

@@ -178,7 +178,6 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     func parserDidEndDocument(_ parser: XMLParser) {
         podcastDictArr.updateValue(episodesArray, forKey: "episodes")
-       print("parser finished")
     }
 
     

@@ -83,7 +83,7 @@ class DownloadManager: NSObject, ObservableObject {
     
     
     @MainActor
-    func download(_ episode: EpisodeModel) async throws {
+    func download(_ episode: Episode) async throws {
         
         guard episode.asset?.link != nil else { return }
         if let fileURL = episode.asset?.link{
@@ -101,14 +101,14 @@ class DownloadManager: NSObject, ObservableObject {
 
     }
     
-    func pauseDownload(for episode: EpisodeModel) {
+    func pauseDownload(for episode: Episode) {
         if let fileURL = episode.asset?.link{
             downloads[fileURL]?.pause()
             episode.downloadStatus.isDownloading = false
         }
     }
     
-    func resumeDownload(for episode: EpisodeModel) {
+    func resumeDownload(for episode: Episode) {
         if let fileURL = episode.asset?.link{
             downloads[fileURL]?.resume()
             episode.downloadStatus.isDownloading = true
@@ -117,7 +117,7 @@ class DownloadManager: NSObject, ObservableObject {
 }
 
 private extension DownloadManager {
-    func process(_ event: Download.Event, for episode: EpisodeModel) {
+    func process(_ event: Download.Event, for episode: Episode) {
         switch event {
         case let .progress(current, total):
             episode.downloadStatus.update(currentBytes: current, totalBytes: total)
@@ -126,7 +126,7 @@ private extension DownloadManager {
         }
     }
     
-    func saveFile(for episode: EpisodeModel, at url: URL) {
+    func saveFile(for episode: Episode, at url: URL) {
 
         if let newlocation = episode.localFile{
             print("saving File to \(newlocation)")

@@ -60,8 +60,20 @@ class SubscriptionManager:NSObject{
     }
     
     func read(file url: URL){
+        print("subscriptionmanager: read \(url.absoluteString)")
+        guard url.startAccessingSecurityScopedResource() else { // Notice this line right here
+            return
+        }
+        do{
+            let data = try Data(contentsOf: url)
+        }catch{
+            print(error)
+        }
+        
         if let data = try? Data(contentsOf: url){
             addPodcastsfrom(OPMLfile: data)
+        }else{
+            print("could not read data from OPML file")
         }
     }
     
@@ -108,6 +120,8 @@ class SubscriptionManager:NSObject{
     }
     
     func subscribe(all urls:[URL?]) async{
+        
+        
         for url in urls {
             if let url{
                 await subscribe(to: url)

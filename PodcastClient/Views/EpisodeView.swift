@@ -12,7 +12,7 @@ struct EpisodeView: View {
     
     @Environment(\.modelContext) var modelContext
    // @State var episode:Episode
-    @Environment(EpisodeModel.self) private var episode
+    @Environment(Episode.self) private var episode
     private let coverSize:CGFloat = 100
 
     
@@ -21,6 +21,14 @@ struct EpisodeView: View {
             Section {
                 VStack{
                     HStack{
+                        
+                        if episode.playStatus?.finishedPlaying == true{
+                            Image(systemName: "circle.fill")
+                        }else{
+                            Image(systemName: "circle")
+                        }
+                        
+                        
                         if let imageULR = episode.image{
                             ImageWithURL(imageULR)
                                 .scaledToFit()
@@ -93,7 +101,7 @@ struct EpisodeView: View {
             Text(episode.desc?.toDetectedAttributedString() ?? "")
             /*
             Section {
-                                ForEach($episode.chapters){ chapter in
+                                ForEach(episode.chapters){ chapter in
                     HStack{
                         
           
@@ -120,7 +128,7 @@ struct EpisodeMiniView: View {
     
 
   //  var episode:Episode
-    @Environment(EpisodeModel.self) private var episode
+    @Environment(Episode.self) private var episode
 
     var formatStyle = Date.RelativeFormatStyle()
     
@@ -129,6 +137,13 @@ struct EpisodeMiniView: View {
     var body: some View {
         VStack{
             HStack{
+                
+                if episode.playStatus?.finishedPlaying == true{
+                    Image(systemName: "circle.fill")
+                }else{
+                    Image(systemName: "circle")
+                }
+                
                 if let imageULR = episode.image{
                     ImageWithURL(imageULR)
                         .scaledToFit()
@@ -176,7 +191,7 @@ struct EpisodeMiniView: View {
 }
 
 struct EpisodeStatusIcon:View{
-    @Environment(EpisodeModel.self) private var episode
+    @Environment(Episode.self) private var episode
     
     
     
@@ -202,7 +217,7 @@ struct EpisodeStatusIcon:View{
 
 struct EpisodePlayProgressView:View{
     @Environment(Player.self) private var player
-    @Environment(EpisodeModel.self) private var episode
+    @Environment(Episode.self) private var episode
     var body: some View {
        
             if player.currentEpisode == episode{

@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct EpisodeControlView: View {
-    @Environment(EpisodeModel.self) private var episode
+    @Environment(Episode.self) private var episode
 
     var body: some View {
         if episode.isAvailableLocally{

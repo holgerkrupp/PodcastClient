@@ -33,7 +33,7 @@ import Combine
     private var avplayer = AVPlayer()
     private let session = AVAudioSession.sharedInstance()
     var observer: NSKeyValueObservation?
-   var currentEpisode:EpisodeModel?{
+   var currentEpisode:Episode?{
         didSet{
             if let asset = currentEpisode?.avAsset{
                 let playerItem = AVPlayerItem(asset: asset)
@@ -97,7 +97,7 @@ import Combine
     private override init() {
         super.init()
         try? session.setCategory(.playback, mode: .spokenAudio)
-        try? session.setActive(true)
+        
         avplayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: nil) { [weak self] time in
             guard let self = self else { return }
             
@@ -108,7 +108,7 @@ import Combine
     }
     
     func playPause(){
-
+        try? session.setActive(true)
         if avplayer.isPlaying{
             avplayer.pause()
          

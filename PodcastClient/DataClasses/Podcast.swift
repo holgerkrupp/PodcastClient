@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-class Podcast{
+class Podcast: Equatable{
     
     var feed: URL?
     
@@ -33,6 +33,7 @@ class Podcast{
     
     var lastModified:Date?
     var lastRefresh:Date?
+    var lastAttempt:Date?
     
     var isUpdating:Bool = false
     
@@ -77,6 +78,7 @@ class Podcast{
         get async throws{
             if let lastModified{
                 if let serverLastModified = try? await feed?.status?.lastModified {
+                    lastAttempt = Date()
                     if serverLastModified > lastModified{
                         // feed on server is new
                         return true
@@ -130,7 +132,6 @@ class Podcast{
 
     // MARK: init
     init(details: [String: Any]) {
-        dump(details)
         
         title = details["title"] as? String ?? ""
         subtitle = details["itunes:subtitle"] as? String
@@ -158,37 +159,14 @@ class Podcast{
          }
     
     init(){}
-    /*
-    init?(with feed:URL) async{
-            let session = URLSession.shared       
-            var request = URLRequest(url: feed)
-            request.httpMethod = "HEAD"
-            if let appName = Bundle.main.applicationName{
-                request.setValue(appName, forHTTPHeaderField: "User-Agent")
-            }
-            
-        do{
-            let (_, response) = try await session.data(for: request)
-            lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
-            switch (response as? HTTPURLResponse)?.statusCode {
-            case 200:
-                self.lastModified = Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? "")
-                self.lastRefresh = Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Date") ?? "") ?? Date()
-                self.feed = feed
-            case .none:
-                return nil
-                
-            case .some(_):
-                return nil
-                
-            }
-        }catch{
-            print(error)
-            return nil
+
+    // MARK: functions
+    
+    func markAllAsPlayed(){
+        for episode in episodes {
+            episode.markAsPlayed()
         }
     }
-    */
-    // MARK: functions
     
     
     func update(details: [String: Any]) {
@@ -226,7 +204,6 @@ class Podcast{
     
     func refresh() async{
         isUpdating = true
-        print("refresh \(self.feed)")
         
         let updated = try? await feedUpdated
                 
@@ -273,14 +250,25 @@ class Podcast{
         if let moc = self.modelContext {
             do{
                 try moc.save()
-                print("saving \(title)")
             }catch{
-                print("could not save")
                 print(error)
             }
         }
     }
-
+    
+    static func ==(lhs: Podcast, rhs: Podcast) -> Bool {
+        
+        
+        if lhs.feed == rhs.feed, lhs.feed != nil{
+            return true
+        }else{
+            return false
+        }
+        
+        
+        
+    }
 }
+
 
 

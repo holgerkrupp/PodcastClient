@@ -59,19 +59,30 @@ struct PodcastView: View {
                         }
                     }.listRowSeparator(.hidden)
             Text(podcast?.summary ?? "")
-            Button {
-                if let podcast{
-                    subscriptionManager.refresh(podcast: podcast)
+            HStack{
+                Button {
+                    if let podcast{
+                        subscriptionManager.refresh(podcast: podcast)
+                    }
+                } label: {
+                    if podcast?.isUpdating == true{
+                        ProgressView()
+                    }else{
+                        Text("Refresh Content")
+                    }
                 }
-            } label: {
-                if podcast?.isUpdating == true{
-                    ProgressView()
-                }else{
-                    Text("Refresh Content")
+                .buttonStyle(.bordered)
+                Button {
+                    if let podcast{
+                        podcast.markAllAsPlayed()
+                    }
+                } label: {
+                   
+                        Text("Mark All As Played")
+                    
                 }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
-           
                     HStack{
                         Spacer()
                         Button {
@@ -97,11 +108,11 @@ struct PodcastView: View {
                 ForEach(podcast?.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? []){ episode in
                     NavigationLink {
                         EpisodeView()
-                            .environment(EpisodeModel(episode: episode))
+                            .environment(episode)
                         
                     }label:{
                         EpisodeMiniView()
-                            .environment(EpisodeModel(episode: episode))
+                            .environment(episode)
                     }
                 }
             } header: {
