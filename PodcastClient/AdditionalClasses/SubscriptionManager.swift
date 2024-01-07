@@ -25,8 +25,24 @@ class SubscriptionManager:NSObject{
 
     private override init() {
         super.init()
+        
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            Chapter.self,
+            
+            Asset.self,
+            PodcastSettings.self,
+            PlayStatus.self,
+            
+            Playlist.self,
+            PlaylistEntry.self
+            
+        ])
+        
+        
         if let container = try? ModelContainer(
-            for: Podcast.self,
+            for: schema,
             configurations: configuration
         ){
             modelContext = ModelContext(container)
@@ -42,7 +58,10 @@ class SubscriptionManager:NSObject{
     
     func refreshall() async{
             fetchData()
-            for podcast in podcasts{
+        for podcast in podcasts.sorted(by: { lhs, rhs in
+            lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
+        }){
+            
                 await podcast.refresh()
             }
         
@@ -60,15 +79,14 @@ class SubscriptionManager:NSObject{
     }
     
     func read(file url: URL){
+        
+        newPodcasts.removeAll()
+        
         print("subscriptionmanager: read \(url.absoluteString)")
         guard url.startAccessingSecurityScopedResource() else { // Notice this line right here
             return
         }
-        do{
-            let data = try Data(contentsOf: url)
-        }catch{
-            print(error)
-        }
+
         
         if let data = try? Data(contentsOf: url){
             addPodcastsfrom(OPMLfile: data)
@@ -100,14 +118,19 @@ class SubscriptionManager:NSObject{
     
     func subscribe(to url: URL) async -> Bool{
         if let data = await feedData(for: url){
+            print("got Data for \(url.absoluteString)")
+
             let parser = XMLParser(data: data)
             parser.shouldProcessNamespaces = true
             parser.shouldResolveExternalEntities = true
             parser.delegate = podcastParser
             if parser.parse(){
-                
+                print("parsed for \(url.absoluteString)")
+
                 if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
                     let podcast = Podcast(details: feedDetail)
+                    print("created Podcast \(podcast.title) for \(url.absoluteString)")
+
                     podcast.feed = url
                     modelContext?.insert(podcast)
                     try? modelContext?.save()
@@ -124,7 +147,10 @@ class SubscriptionManager:NSObject{
         
         for url in urls {
             if let url{
+                print("start subscribe for \(url.absoluteString)")
                 await subscribe(to: url)
+                print("end subscribe for \(url.absoluteString)")
+
             }
             
         }
@@ -134,6 +160,7 @@ class SubscriptionManager:NSObject{
     func feedData(for url: URL) async -> Data?{
       
             let session = URLSession.shared
+        
             var request = URLRequest(url: url)
             if let appName = Bundle.main.applicationName{
                 request.setValue(appName, forHTTPHeaderField: "User-Agent")

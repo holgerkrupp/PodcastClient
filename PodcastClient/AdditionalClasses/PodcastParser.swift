@@ -15,7 +15,7 @@ enum elements:String, CaseIterable{
 
 class PodcastParser:NSObject, XMLParserDelegate{
 
-    var podcast: Podcast?
+
     private var episode: Episode?
     private var chapter: Chapter?
     
@@ -62,9 +62,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     func parserDidStartDocument(_ parser: XMLParser) {
         
-        if podcast == nil{
-            podcast = Podcast()
-        }
+
      
     }
     

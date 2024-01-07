@@ -16,25 +16,46 @@
     "already subscribed" : {
 
     },
+    "Counter" : {
+
+    },
     "Delete" : {
+
+    },
+    "Desc" : {
 
     },
     "developed by Holger Krupp" : {
 
     },
-    "download" : {
-
-    },
     "Download" : {
 
     },
-    "Episodes" : {
+    "error loading episode" : {
 
     },
     "Import" : {
 
     },
     "Import & Export" : {
+
+    },
+    "Last Attempt" : {
+
+    },
+    "Last Build Date" : {
+
+    },
+    "Last HTTP StatusCode" : {
+
+    },
+    "Last Modified" : {
+
+    },
+    "Last Refresh" : {
+
+    },
+    "Link" : {
 
     },
     "Mark All As Played" : {
@@ -76,7 +97,13 @@
     "Refresh Content" : {
 
     },
+    "Search" : {
+
+    },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
+
+    },
+    "Select file to import" : {
 
     },
     "Settings" : {
@@ -104,6 +131,12 @@
 
     },
     "Subscribed podcasts" : {
+
+    },
+    "Title" : {
+
+    },
+    "Type" : {
 
     },
     "Unsubscribe" : {

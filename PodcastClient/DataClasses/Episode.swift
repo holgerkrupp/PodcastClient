@@ -72,7 +72,8 @@ class Episode: Equatable{
     
     var duration:String?
     
-
+    var isAvailableLocally:Bool = false
+  
  
     //MARK: values that don't need to be stored
     
@@ -81,17 +82,7 @@ class Episode: Equatable{
     
     //MARK: calculated properties that a generated on the fly
     
-    var isAvailableLocally:Bool{
-        
-        if let localFile = localFile?.path() {
-            let manager = FileManager()
-            print("existing")
-            return  manager.fileExists(atPath: localFile)
-        }else{
-            print("not existing")
-            return false
-        }
-    }
+  
     
     var localFile: URL?{
         let fileName = asset?.link?.lastPathComponent ?? title?.appending(pubDate?.ISO8601Format() ?? Date().ISO8601Format())  ?? Date().ISO8601Format()
@@ -101,15 +92,30 @@ class Episode: Equatable{
         return documentsDirectoryUrl?.appendingPathComponent(fileName)
     }
     
+    func UpdateisAvailableLocally() -> Bool?{
+        
+        if let localFile = localFile?.path() {
+            let manager = FileManager()
+            isAvailableLocally = true
+            return  manager.fileExists(atPath: localFile)
+        }else{
+            isAvailableLocally = false
+            return false
+        }
+    }
     
     
     var asset:Asset?{
         return assets?.first(where: {$0.type == .audio})
     }
+    
     var avAsset:AVAsset?{
+        print("avAsset read - \(localFile?.absoluteString) - \(isAvailableLocally)")
         if let url = localFile, isAvailableLocally{
             return AVAsset(url: url)
         }else{
+            print("avAsset remote - \(asset?.link?.absoluteString)")
+
             if let remoteURL = asset?.link{
                 return AVAsset(url: remoteURL)
             }
@@ -121,6 +127,7 @@ class Episode: Equatable{
     
     
     var coverImage: some View{
+        
         if let imageURL = image{
             return AnyView(ImageWithURL(imageURL))
         }else if let podcastcover = podcast?.coverURL{
@@ -128,6 +135,7 @@ class Episode: Equatable{
         }else{
             return AnyView(Image(systemName: "mic.fill"))
         }
+         
     }
     
     
@@ -225,8 +233,13 @@ class Episode: Equatable{
     
     
     func download(){
+        print("episode download")
         Task{
-            try? await DownloadManager.shared.download(self)
+            do{
+                try await DownloadManager.shared.download(self)
+            }catch{
+                print(error)
+            }
         }
         
     }
@@ -234,8 +247,10 @@ class Episode: Equatable{
     func removeFile(){
         print("removing localFile")
         downloadStatus.update(currentBytes: 0, totalBytes: 0)
+        
         if let file = localFile{
             try? FileManager.default.removeItem(at: file)
+            isAvailableLocally = false
         }
     }
     

@@ -10,189 +10,202 @@ import SwiftData
 
 struct EpisodeView: View {
     
-    @Environment(\.modelContext) var modelContext
-   // @State var episode:Episode
-    @Environment(Episode.self) private var episode
+
     private let coverSize:CGFloat = 100
 
+    @Environment(\.modelContext) var modelContext
+    @Query var episodes: [Episode]
+    var episode: Episode? { episodes.first}
+    
+    
+    
+    init(for episodeID: PersistentIdentifier) {
+        
+        
+        self._episodes = Query(filter: #Predicate<Episode> {
+            $0.persistentModelID == episodeID
+        })
+        
+    }
+    
     
     var body: some View {
-        List{
-            Section {
-                VStack{
+        if let episode{
+            List{
+                Section {
+                    if let assets = episode.assets {
                     HStack{
-                        
-                        if episode.playStatus?.finishedPlaying == true{
-                            Image(systemName: "circle.fill")
-                        }else{
-                            Image(systemName: "circle")
-                        }
-                        
-                        
-                        if let imageULR = episode.image{
-                            ImageWithURL(imageULR)
-                                .scaledToFit()
-                                .frame(width: coverSize, height: coverSize)
+                        ForEach(assets){ asset in
+                            Menu{
+                                AssetMetaDataView(asset: asset)
+                            }label:{
+                                Image(systemName: "line.3.horizontal")
+                            }
                             
-                        }else if let imageULR = episode.podcast?.coverURL{
-                            ImageWithURL(imageULR)
-                                .scaledToFit()
-                                .frame(width: coverSize, height: coverSize)
-                        }else{
-                            Image(systemName: "mic.fill")
-                                .scaledToFit()
-                                .frame(width: coverSize, height: coverSize)
                         }
-                    
-                        VStack{
-                            Text(episode.title ?? "")
-                            Text(episode.subtitle ?? "")
-                        }
-                    }
-                    Spacer()
-                    EpisodeControlView()
-                        .environment(episode)
-                    
-                    EpisodeStatusIcon()
-                        .environment(episode)
-                    
-                    
-                    
-                    HStack{
-                        Button {
+                                }
+                                }
+                    VStack{
+                        HStack{
                             
-                            Player.shared.currentEpisode = episode
-                        } label: {
-                            if episode.isAvailableLocally {
-                                Text("Play Now")
+                            if episode.playStatus?.finishedPlaying == true{
+                                Image(systemName: "circle.fill")
                             }else{
-                                Text("Stream Now")
+                                Image(systemName: "circle")
+                            }
+                            
+                            
+                            if let imageULR = episode.image{
+                                ImageWithURL(imageULR)
+                                    .scaledToFit()
+                                    .frame(width: coverSize, height: coverSize)
+                                
+                            }else if let imageULR = episode.podcast?.coverURL{
+                                ImageWithURL(imageULR)
+                                    .scaledToFit()
+                                    .frame(width: coverSize, height: coverSize)
+                            }else{
+                                Image(systemName: "mic.fill")
+                                    .scaledToFit()
+                                    .frame(width: coverSize, height: coverSize)
+                            }
+                            
+                            VStack{
+                                //         Text(episode.title ?? "")
+                                Text(episode.subtitle ?? "")
+                                Text(episode.pubDate?.formatted() ?? "").font(.caption)
                             }
                         }
-                        .buttonStyle(.bordered)
                         Spacer()
-                        if !episode.isAvailableLocally {
-                            Button {
-                                episode.download()
-                            } label: {
-                                Text("Download")
-                                
-                                
-                            }
-                            .buttonStyle(.bordered)
-                        }else{
-                            Button {
-                                episode.removeFile()
-                            } label: {
-                                Text("Delete")
-                                
-                                
-                            }
-                            .buttonStyle(.bordered)
-                        }
+                        EpisodeControlView(episode: episode)
+                        
+                    //    EpisodeStatusIcon(episode: episode)
+                        
+                        
+                        
+     
+                        
+                        
                     }
-
-
+                    
+                    
                 }
                 
-                    
-                    }
-            
-            Text(episode.desc?.toDetectedAttributedString() ?? "")
-            /*
-            Section {
-                                ForEach(episode.chapters){ chapter in
-                    HStack{
-                        
-          
-                        Toggle(isOn: chapter.shouldPlay, label: {
-                            Text(chapter.title.wrappedValue)
-                        })
-                        .padding()
-                        .toggleStyle(.switch)
-                    }
-                }
-            } header: {
-                Text("Chapters")
+                Text(episode.desc?.toDetectedAttributedString() ?? "")
+                /*
+                 Section {
+                 ForEach(episode.chapters){ chapter in
+                 HStack{
+                 
+                 
+                 Toggle(isOn: chapter.shouldPlay, label: {
+                 Text(chapter.title.wrappedValue)
+                 })
+                 .padding()
+                 .toggleStyle(.switch)
+                 }
+                 }
+                 } header: {
+                 Text("Chapters")
+                 }
+                 */
+                
+                
             }
-*/
+            .listStyle(.plain)
+            .navigationTitle(Text(episode.title ?? ""))
             
-
-            }
-        .listStyle(.plain)
-       
+        }else{
+            Text("error loading episode")
+    }
+        
     }
 }
 
 struct EpisodeMiniView: View {
     
-
-  //  var episode:Episode
-    @Environment(Episode.self) private var episode
-
+    
+    // @Environment(Episode.self) private var episode
+    
     var formatStyle = Date.RelativeFormatStyle()
+ 
+    var model: EpisodeListItemModel
     
     
     
     var body: some View {
-        VStack{
-            HStack{
-                
-                if episode.playStatus?.finishedPlaying == true{
-                    Image(systemName: "circle.fill")
-                }else{
-                    Image(systemName: "circle")
-                }
-                
-                if let imageULR = episode.image{
-                    ImageWithURL(imageULR)
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
-                    
-                }else if let imageULR = episode.podcast?.coverURL{
-                    ImageWithURL(imageULR)
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
-                }else{
-                    Image(systemName: "mic.fill")
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
-                }
-                VStack(alignment: .leading){
-                    Spacer()
-                    Text(episode.title ?? "")
-                    Spacer()
-                    HStack{
-                        //   Text(episode.pubDate?.formatted(date: .numeric, time: .omitted) ?? "--")
-                        Text(episode.pubDate?.formatted(formatStyle) ?? "--")
-                        Spacer()
-                        Text(episode.duration ?? "")
+        
+            VStack{
+                HStack{
+                    if model.episode.playStatus?.finishedPlaying == true{
+                        Image(systemName: "circle.fill")
+                    }else{
+                        Image(systemName: "circle")
                     }
-                    .font(.caption)
-                    .foregroundColor(.secondary)
                     
-                    HStack{
-                        EpisodeStatusIcon()
-                            .environment(episode)
-                        Spacer()
-                        //    ProgressView(value: (episode.playStatus?.playpostion ?? 0.0)/(episode.durationAsDouble ?? 300), total: 1.0)
-                        EpisodePlayProgressView()
-                            .environment(episode)
-                            .environment(Player.shared)
-                            .frame(maxWidth: .infinity, maxHeight: 30)
+                    if let imageULR = model.episode.image{
+                        ImageWithURL(imageULR)
+                            .scaledToFit()
+                            .frame(width: 50, height: 50)
                         
+                    }else if let imageULR = model.episode.podcast?.coverURL{
+                        ImageWithURL(imageULR)
+                            .scaledToFit()
+                            .frame(width: 50, height: 50)
+                    }else{
+                        Image(systemName: "mic.fill")
+                            .scaledToFit()
+                            .frame(width: 50, height: 50)
+                    }
+                     
+                    VStack(alignment: .leading){
+                        Spacer()
+                        Text(model.episode.title ?? "")
+                        Spacer()
+                        HStack{
+                            //   Text(episode.pubDate?.formatted(date: .numeric, time: .omitted) ?? "--")
+                            Text(model.episode.pubDate?.formatted(formatStyle) ?? "--")
+                            Spacer()
+                            Text(model.episode.duration ?? "")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        
+                        HStack{
+                            EpisodeStatusIcon(episode: model.episode)
+                            Spacer()
+
+                    
+                            EpisodePlayProgressView(episode: model.episode)
+                            
+                                .environment(Player.shared)
+                                .frame(maxWidth: .infinity, maxHeight: 30)
+                      
+                        }
                     }
                 }
+                
             }
+            
 
-        }
+        
     }
-
 }
 
-struct EpisodeStatusIcon:View{
-    @Environment(Episode.self) private var episode
+@Observable
+class EpisodeListItemModel {
+    var episode: Episode
     
+    init(episode: Episode) {
+        self.episode = episode
+    }
+}
+
+
+
+struct EpisodeStatusIcon:View{
+    @State var episode:Episode
+
     
     
     
@@ -217,22 +230,72 @@ struct EpisodeStatusIcon:View{
 
 struct EpisodePlayProgressView:View{
     @Environment(Player.self) private var player
-    @Environment(Episode.self) private var episode
+    @Environment(\.modelContext) var modelContext
+
+    @State var episode:Episode
+
     var body: some View {
-       
-            if player.currentEpisode == episode{
+        
+        
+        
+        NavigationLink {
+            EpisodeView(for: episode.persistentModelID)
+                .modelContext(modelContext)
+            
+        }label:{
+            VStack{
+                HStack{
+                    if player.currentEpisode == episode{
+                        
+                        ProgressView(value: player.progress, total: 1.0)
+                            .progressViewStyle(.linear)
+                        
+                    }else{
+                        
+                        ProgressView(value: episode.progress, total: 1.0)
+                            .progressViewStyle(.linear)
+                        
+                    }
+                    
+                }
                 
-                ProgressView(value: player.progress, total: 1.0)
-                    .progressViewStyle(.linear)
-                
-            }else{
-                ProgressView(value: episode.progress, total: 1.0)
-                    .progressViewStyle(.linear)
                 
             }
-            
+        }
         
         
+
     }
     
+}
+
+
+struct AssetMetaDataView: View{
+    
+    var asset: Asset
+    
+    var body: some View {
+        VStack{
+            HStack{
+                Text("Title")
+                Text(asset.title ?? "")
+            }
+            HStack{
+                Text("Link")
+                Text(asset.link?.absoluteString ?? "")
+            }
+            HStack{
+                Text("Desc")
+                Text(asset.desc ?? "")
+            }
+            HStack{
+                Text("Desc")
+                Text(asset.length?.formatted() ?? "")
+            }
+            HStack{
+                Text("Type")
+                Text(asset.type.debugDescription)
+            }
+        }
+    }
 }

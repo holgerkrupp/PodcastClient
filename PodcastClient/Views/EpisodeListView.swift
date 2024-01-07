@@ -40,17 +40,11 @@ struct EpisodeListView: View {
                             true
                             
                     }, id:\.self) { episode in
-                            NavigationLink {
-                                EpisodeView()
-                                    .environment(episode)
+                           
+                                EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
+                                    .modelContext(modelContext)
                                 
-                            }label:{
-                                VStack{
-                                    EpisodeMiniView()
-                                        .environment(episode)
-                                    
-                                }
-                            }
+                            
                         }
                             
                     

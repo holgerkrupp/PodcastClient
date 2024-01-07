@@ -16,13 +16,13 @@ struct AddPodcastView: View {
     
     
     var body: some View {
-       
+        List{
             TextField(text: $newFeed) {
                 Text("paste URL to feed")
             }
             Button {
                 
-                if let feed {
+                if feed != nil {
                     Task{
                         if let data = try? await feedData{
                             loadPodcast(data: data)
@@ -30,16 +30,16 @@ struct AddPodcastView: View {
                         
                     }
                     
-                    
                 }
                 
             } label: {
                 Text("Subscribe")
             }
             .disabled(URL(string: newFeed) == nil)
+            .buttonStyle(.bordered)
             
             
-        
+        }
     }
     
     func loadPodcast(data: Data){

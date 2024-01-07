@@ -19,7 +19,7 @@ struct ImportExportView: View {
     var body: some View {
         List{
             Section{
-                Button("Import") {
+                Button("Select file to import") {
                     importing = true
                 }
                 .fileImporter(
@@ -65,9 +65,7 @@ struct ImportExportView: View {
                     ForEach(subscriptionManager.newPodcasts.filter({ newPod in
                         return newPod.existing == false
                     }), id: \.url) { newPodcastFeed in
-                        SubscribeToView()
-                            .environment(subscriptionManager)
-                            .environment(newPodcastFeed)
+                        SubscribeToView(newPodcastFeed: newPodcastFeed)
                         
                     }
                 }header: {
@@ -82,9 +80,8 @@ struct ImportExportView: View {
                     ForEach(subscriptionManager.newPodcasts.filter({ newPod in
                         return newPod.existing == true
                     }), id: \.url) { newPodcastFeed in
-                        SubscribeToView()
-                            .environment(subscriptionManager)
-                            .environment(newPodcastFeed)
+                        SubscribeToView(newPodcastFeed: newPodcastFeed)
+                            
                         
                     }
                 }header: {
@@ -111,9 +108,9 @@ struct ImportExportView: View {
 struct SubscribeToView: View{
     
     
-    @Environment(SubscriptionManager.self) private var subscriptionManager
+    var subscriptionManager = SubscriptionManager.shared
     
-    @Environment(PodcastFeed.self) private var newPodcastFeed
+    var newPodcastFeed: PodcastFeed
     
     @State private var subscribing = false
     

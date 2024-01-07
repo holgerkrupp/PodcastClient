@@ -35,12 +35,12 @@ class Asset{
         length = Int(details["length"] as? String ?? "")
         
         switch details["type"] as? String{
-        case "audio/mpeg":
+        case "audio/mpeg", "audio/mp4":
             type = AssetType.audio
         case .none:
-            type = AssetType.unknown
+            type = AssetType.audio
         case .some(_):
-            type = AssetType.unknown
+            type = AssetType.audio
         }
         
     }

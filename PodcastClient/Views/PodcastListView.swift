@@ -79,12 +79,7 @@ struct PodcastListView: View {
                     Text("\(podcastModel.podcasts.count.description) Podcasts")
                 }
 
-    
-                Section{
-                    AddPodcastView()
-                        .modelContext(modelContext)
-                        
-                }
+
                 
             }
             .searchable(text: $searchText)

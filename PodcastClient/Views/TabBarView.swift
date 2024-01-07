@@ -14,7 +14,7 @@ struct TabBarView: View {
 
     
     enum Tab: Int {
-        case upnext, podcastlist, settings
+        case upnext, podcastlist, search, settings
     }
     @State var selectedTab = Tab.upnext
     
@@ -37,6 +37,13 @@ struct TabBarView: View {
                         .tag(Tab.podcastlist)
                         .tabItem {
                             Label("Podcasts", systemImage: "list.bullet")
+                            
+                        }
+                    
+                    AddPodcastView(modelContext: _modelContext)
+                        .tag(Tab.search)
+                        .tabItem {
+                            Label("Search", systemImage: "magnifyingglass")
                             
                         }
                     

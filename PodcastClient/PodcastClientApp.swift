@@ -7,9 +7,15 @@
 
 import SwiftUI
 import SwiftData
+import BackgroundTasks
+
 
 @main
 struct PodcastClientApp: App {
+    @Environment(\.scenePhase) private var phase
+
+    
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Podcast.self,
@@ -38,6 +44,24 @@ struct PodcastClientApp: App {
             TabBarView()
         }
         .modelContainer(sharedModelContainer)
+        .onChange(of: phase, {
+            switch phase {
+            case .background: scheduleAppRefresh()
+            default: break
+            }
+        })
+        .backgroundTask(.appRefresh("feedRefresh")) {
+            await SubscriptionManager.shared.refreshall()
+        }
+     
+    }
+    
+    
+    
+    func scheduleAppRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: "feedRefresh")
+        request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
+        try? BGTaskScheduler.shared.submit(request)
     }
     
     

@@ -28,9 +28,19 @@ struct PodcastView: View {
     
     var body: some View {
         List{
-            Text(podcast?.title ?? "").font(.title)
+            if let podcast{
+                Menu{
+                    PodcastMetaDataView(podcast: podcast)
+                }label:{
+                    Image(systemName: "line.3.horizontal")
+                }
+                
+            }
+            
+         //   Text(podcast?.title ?? "").font(.title)
             
                     HStack{
+                        
                         if let imageULR = podcast?.coverURL{
                             ImageWithURL(imageULR)
                                 .scaledToFit()
@@ -40,6 +50,7 @@ struct PodcastView: View {
                                 .scaledToFit()
                                 .frame(width: 100, height: 100)
                         }
+                         
                         VStack{
                             
                             Text(podcast?.author ?? "").font(.caption)
@@ -107,28 +118,65 @@ struct PodcastView: View {
             Section {
                 ForEach(podcast?.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? []){ episode in
                     NavigationLink {
-                        EpisodeView()
-                            .environment(episode)
+                        EpisodeView(for: episode.persistentModelID)
+                            .modelContext(modelContext)
                         
                     }label:{
-                        EpisodeMiniView()
-                            .environment(episode)
+                        EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
                     }
                 }
             } header: {
-                Text("Episodes")
-            } footer: {
-                Text("\(podcast?.episodes.count.description ?? "") Episodes").listRowSeparator(.hidden).font(.footnote)
+                Text("\(podcast?.episodes.count.description ?? "") Episodes")
             }
+
+ 
 
 
         }.listStyle(.plain)
+            .navigationTitle(Text(podcast?.title ?? ""))
                 
                 
             
         
     }
 
+}
+
+struct PodcastMetaDataView: View{
+    
+    var podcast: Podcast
+    
+    var body: some View {
+        VStack{
+            HStack{
+                Text("Last Build Date")
+                Text(podcast.lastBuildDate?.formatted() ?? "-")
+            }
+            
+            
+            HStack{
+                Text("Last Modified")
+                Text(podcast.lastModified?.formatted() ?? "-")
+            }
+            HStack{
+                Text("Last Refresh")
+                Text(podcast.lastRefresh?.formatted() ?? "-")
+            }
+            HStack{
+                Text("Last Attempt")
+                Text(podcast.lastAttempt?.formatted() ?? "-")
+            }
+            HStack{
+                Text("Counter")
+                Text(podcast.DEBUGAttemptCount.formatted())
+            }
+            
+            HStack{
+                Text("Last HTTP StatusCode")
+                Text(podcast.lastHTTPcode?.formatted() ?? "-")
+            }
+        }
+    }
 }
 
 
@@ -140,12 +188,14 @@ struct PodcastMiniView: View {
     
     var body: some View {
         HStack{
+            
             if let imageULR = podcast.coverURL{
                 ImageWithURL(imageULR)
                     .scaledToFit()
                     .frame(width: 50, height: 50)
                 
             }
+             
             VStack(alignment: .leading){
                 Text(podcast.title)
                 Text(podcast.lastHTTPcode?.description ?? "")

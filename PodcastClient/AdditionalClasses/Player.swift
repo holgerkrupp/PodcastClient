@@ -12,8 +12,10 @@ import Combine
 
 @Observable class Player: NSObject{
     
-    static let shared = Player()
+    private var avplayer = AVPlayer()
+    private let session = AVAudioSession.sharedInstance()
     
+    static let shared = Player()
     var isPlaying:Bool{
         return avplayer.isPlaying
     }
@@ -30,8 +32,7 @@ import Combine
         }
     }
     
-    private var avplayer = AVPlayer()
-    private let session = AVAudioSession.sharedInstance()
+
     var observer: NSKeyValueObservation?
    var currentEpisode:Episode?{
         didSet{

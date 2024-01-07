@@ -1,49 +1,82 @@
 # PodcastClient
 An Open Source Podcast client.
 
-Alpha min Requiremets
+## Alpha min Requiremets
+
+### Subscription Management
 - [x] add podcast via URL
+
+### Refresh and Downloads
 - [x] refresh podcast content via Button
 - [x] refresh all with pull to refresh
 - [x] download episodes
-- - [ ] show download progress
+- - [x] show download progress
 - - [x] delete files
-- - [ ] update UI after file deleted
+- - [x] update UI after file deleted
+- - [ ] implement background downloads
+
+### Player
 - [x] play / pause
 - [x] skip forward / backward
 - - [ ] make time adjustable
 - [ ] jump to chapter
 - [ ] save last played episode and reload when opening the app
 
-Beta min Requirement
-- [ ] auto download/refresh feeds
-- [ ] skip manually selected chapters
-- [ ] sleep timer
-- [ ] play next queue
-- [ ] custom playlists
-- [ ] set playbackspeed (per podcast)
+## Beta min Requirement
+
+### Subscription Management
 - [x] OPML import
 - - [ ] to be validated with big file
 - - [ ] Show import progress
 - [ ] podcast directory search
 
-1.0 min requirements
+### Refresh and Downloads
+- [ ] auto download/refresh feeds
+
+### Player
+- [ ] skip manually selected chapters
+- [ ] sleep timer
+- [ ] play next queue
+- [ ] custom playlists
+- [ ] set playbackspeed (per podcast)
+
+
+
+## 1.0 min requirements
+
+### Miscellaneous
 - [ ] nice UI
 - [ ] nice Logo
 - [ ] nice name
-- [ ] skip detection
+
+### Subscription Management
 - [ ] OPML export
+
+### Refresh and Downloads
 - [ ] Automatic deletion of files
 - - [ ] Based on last x files
 - - [ ] Based on time passed since release 
+- [ ] Notification after refresh
 
-1.1 min requirements 
+### Player
+- [ ] skip detection
+
+
+
+##1.1 min requirements 
+
+### Subscription Management
 - [ ] Sideloads via iCloud Drive
+
+### Refresh and Downloads
+
+### Player
 - [ ] CarPlay
+
 
 1.x requirements
 - [ ] Transkripts
-
+- [ ] Apple Watch App
 
 loose Requirementlist
 

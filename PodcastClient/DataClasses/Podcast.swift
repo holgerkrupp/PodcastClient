@@ -27,6 +27,7 @@ class Podcast: Equatable{
     var language:String?
     
     var settings: PodcastSettings?
+    
     @Relationship(deleteRule: .cascade, inverse: \Episode.podcast) var episodes: [Episode] = []
     
     var lastHTTPcode: Int?
@@ -35,7 +36,17 @@ class Podcast: Equatable{
     var lastRefresh:Date?
     var lastAttempt:Date?
     
+    var DEBUGAttemptCount: Int = 0
+    
+    
+    
+    
+    
     var isUpdating:Bool = false
+    
+    
+    
+    
     
     // MARK: computed properties
 
@@ -94,38 +105,7 @@ class Podcast: Equatable{
                 // feed has never been fetched before, no last modified date is set.
                 return true
             }
-
-            
-    /*
-            
-            if let lastModified{
-                if let feed{
-                    let session = URLSession.shared
-                    var request = URLRequest(url: feed)
-                    request.httpMethod = "HEAD"
-                    if let appName = Bundle.main.applicationName{
-                        request.setValue(appName, forHTTPHeaderField: "User-Agent")
-                    }
-                    do{
-                        let (_, response) = try await session.data(for: request)
-                        lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
-
-                        if let feedLastModified = Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? ""), feedLastModified > lastModified{
-                            return true
-                        }else{
-                            return false
-                        }
-                    }catch{
-                        print(error)
-                        return nil
-                    }
-                }
-            }else{
-                return true // feed has never been fetched before therefore it's always new
-            }
-     return nil
-*/
-          
+        
         }
     }
     
@@ -204,7 +184,7 @@ class Podcast: Equatable{
     
     func refresh() async{
         isUpdating = true
-        
+        DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = try? await feedUpdated
                 
         if updated == true{
