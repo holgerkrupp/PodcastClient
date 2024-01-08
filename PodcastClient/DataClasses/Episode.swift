@@ -50,7 +50,7 @@ class Episode: Equatable{
     var playpostion: Double = 0.0
     var lastPlayed: Date?
     var finishedPlaying: Bool? = false
-    var duration:String?
+    var duration:Double?
     
     
     var isAvailableLocally:Bool = false
@@ -131,8 +131,8 @@ class Episode: Equatable{
     }
     
     var progress:Double {
-        if let double = durationAsDouble{
-            return ((playPosition) / double)
+        if let duration{
+            return ((playPosition) / duration)
         }
         return 0.0
     }
@@ -156,32 +156,12 @@ class Episode: Equatable{
         let seconds = CMTimeGetSeconds(duration)
         print("updating to \(seconds.description)")
         if !seconds.isNaN{
-            self.duration = secondsToHoursMinutesSeconds(seconds)
+            self.duration = seconds
         }
     }
-    private func secondsToHoursMinutesSeconds (_ seconds : Double) -> (String) {
-        let (hr,  minf) = modf (seconds / 3600)
-        let (min, secf) = modf (60 * minf)
-        let rh = hr
-        let rm = min
-        let rs = 60 * secf
-        
-        var returnstring = String()
-        if rh != 0 {
-            returnstring = NSString(format: "%02.0f:%02.0f:%02.0f", rh,rm,rs) as String
-        }else {
-            returnstring = NSString(format: "%02.0f:%02.0f", rm,rs) as String
-        }
-        return returnstring
-    }
-    
-    
 
-    var durationAsDouble:Double?{
-        
-        duration?.durationAsSeconds
-        
-    }
+    
+    
     
     
     func download(){
@@ -216,7 +196,7 @@ class Episode: Equatable{
         desc = details["description"] as? String
         guid = details["guid"] as? String
         
-        duration = details["itunes:duration"] as? String
+        duration = (details["itunes:duration"] as? String)?.durationAsSeconds
 
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")

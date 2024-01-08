@@ -66,6 +66,8 @@ struct EpisodeView: View {
                                 Text(episode.pubDate?.formatted() ?? "").font(.caption)
                             }
                         }
+                        EpisodePlayProgressView(episode: episode)
+                            .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
                         
@@ -132,13 +134,17 @@ struct EpisodeMiniView: View {
         }label:{
             VStack{
                 HStack{
-                    
-                    if model.episode.finishedPlaying == true{
-                        Image(systemName: "circle.fill")
-                    }else{
-                        Image(systemName: "circle")
+                    VStack{
+                        Spacer()
+                        if model.episode.finishedPlaying == true{
+                            Image(systemName: "circle.fill")
+                        }else{
+                            Image(systemName: "circle")
+                        }
+                        Spacer()
+                        EpisodeStatusIcon(episode: model.episode)
+                        Spacer()
                     }
-                    
                     
                     if let imageULR = model.episode.image{
                         ImageWithURL(imageULR)
@@ -163,21 +169,18 @@ struct EpisodeMiniView: View {
                             //   Text(episode.pubDate?.formatted(date: .numeric, time: .omitted) ?? "--")
                             Text(model.episode.pubDate?.formatted(formatStyle) ?? "--")
                             Spacer()
-                            Text(model.episode.duration ?? "")
+                            Text(model.episode.duration?.secondsToHoursMinutesSeconds ?? "")
                         }
                         .font(.caption)
                         .foregroundColor(.secondary)
                         
-                        HStack{
-                            EpisodeStatusIcon(episode: model.episode)
-                            Spacer()
-                            
-                            
+                        
+                        
+                        if model.episode.playPosition > 0.0{
                             EpisodePlayProgressView(episode: model.episode)
-
                                 .frame(maxWidth: .infinity, maxHeight: 30)
-                            
                         }
+                        
                     }
                 }
                 
@@ -226,30 +229,27 @@ struct EpisodeStatusIcon:View{
 
 struct EpisodePlayProgressView:View{
    
-    @Environment(\.modelContext) var modelContext
-
     @State var episode:Episode
 
     var body: some View {
-        
-        
-        
-        VStack{
             HStack{
-
-                    
-                    ProgressView(value: episode.progress, total: 1.0)
+                ProgressView(value: episode.progress, total: 1.0)
                         .progressViewStyle(.linear)
+                if let duration = episode.duration, episode.playPosition > 0.0{
                     
-                
-                
-            }
-            
-            
+                    if (duration - episode.playPosition) > 0.9{
+                        
+                        Text("\((duration - episode.playPosition).secondsToHoursMinutesSeconds ?? "")")
+                            .monospaced()
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                    }else{
+                        Image(systemName: "checkmark.circle")
+                            .foregroundColor(.secondary)
+                    }
+                }
         }
-        
-        
-
     }
     
 }
