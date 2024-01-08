@@ -85,8 +85,8 @@ class DownloadManager: NSObject, ObservableObject {
     @MainActor
     func download(_ episode: Episode) async throws {
         
-        guard episode.asset?.link != nil else { return }
-        if let fileURL = episode.asset?.link{
+        guard episode.assetLink != nil else { return }
+        if let fileURL = episode.assetLink{
             guard downloads[fileURL] == nil else { return }
             let download = Download(url: fileURL, downloadSession: downloadSession)
             downloads[fileURL] = download
@@ -102,14 +102,14 @@ class DownloadManager: NSObject, ObservableObject {
     }
     
     func pauseDownload(for episode: Episode) {
-        if let fileURL = episode.asset?.link{
+        if let fileURL = episode.assetLink{
             downloads[fileURL]?.pause()
             episode.downloadStatus.isDownloading = false
         }
     }
     
     func resumeDownload(for episode: Episode) {
-        if let fileURL = episode.asset?.link{
+        if let fileURL = episode.assetLink{
             downloads[fileURL]?.resume()
             episode.downloadStatus.isDownloading = true
         }

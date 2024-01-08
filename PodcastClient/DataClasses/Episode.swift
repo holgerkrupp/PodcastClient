@@ -15,36 +15,11 @@ enum EpisodeType: String, Codable{
     case full, trailer, bonus, unknown
 }
 
-enum Direction:Codable{
-    case backward, forward
-}
-
-struct Skip:Codable{
-    var start:Float?
-    var end:Float?
-    var direction: Direction? // maybe not needeed as the start and end of the skip should already give the direction
-    var eventDate: Date? // the time when the skip happened
-    
-}
-
-@Model
-class PlayStatus{
-    var skipps: [Skip]? // the idea is that if a part of the episode is skipped over accidentally (phone in pocket, kid slides the progress,…) this is recorded and can be undone.
-    var playpostion: Double = 0.0
-    var lastPlayed: Date?
-    var episode: Episode?
-    var finishedPlaying: Bool = false
-    init(){}
-}
-
-
-
-
 @Model
 class Episode: Equatable{
     
     //MARK: Values to be storred in the database
-    
+    var id = UUID()
     var title: String?
     var desc: String?
     var subtitle: String?
@@ -59,18 +34,24 @@ class Episode: Equatable{
     var number: String?
     var season: String?
     
-    var type: EpisodeType?
+    var type: EpisodeType = EpisodeType.unknown
+    
+
+    var assetType: String?
+    var assetLink: URL? // the original URL of the asset
+    var length: Int?
     
     var chapters: [Chapter] = []
     
     var podcast: Podcast?
-
-    var assets: [Asset]?
     
     
-    @Relationship(deleteRule: .cascade, inverse: \PlayStatus.episode) var playStatus: PlayStatus?
     
+    var playpostion: Double = 0.0
+    var lastPlayed: Date?
+    var finishedPlaying: Bool? = false
     var duration:String?
+    
     
     var isAvailableLocally:Bool = false
   
@@ -84,8 +65,8 @@ class Episode: Equatable{
     
   
     
-    var localFile: URL?{
-        let fileName = asset?.link?.lastPathComponent ?? title?.appending(pubDate?.ISO8601Format() ?? Date().ISO8601Format())  ?? Date().ISO8601Format()
+    @Transient var localFile: URL?{
+        let fileName = assetLink?.lastPathComponent ?? title?.appending(pubDate?.ISO8601Format() ?? Date().ISO8601Format())  ?? Date().ISO8601Format()
         let documentsDirectoryUrl =  FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         
         
@@ -104,19 +85,16 @@ class Episode: Equatable{
         }
     }
     
+ 
     
-    var asset:Asset?{
-        return assets?.first(where: {$0.type == .audio})
-    }
-    
-    var avAsset:AVAsset?{
+    @Transient var avAsset:AVAsset?{
         print("avAsset read - \(localFile?.absoluteString) - \(isAvailableLocally)")
         if let url = localFile, isAvailableLocally{
             return AVAsset(url: url)
         }else{
-            print("avAsset remote - \(asset?.link?.absoluteString)")
+            print("avAsset remote - \(assetLink?.absoluteString)")
 
-            if let remoteURL = asset?.link{
+            if let remoteURL = assetLink{
                 return AVAsset(url: remoteURL)
             }
         }
@@ -126,7 +104,7 @@ class Episode: Equatable{
     
     
     
-    var coverImage: some View{
+    @Transient var coverImage: some View{
         
         if let imageURL = image{
             return AnyView(ImageWithURL(imageURL))
@@ -138,19 +116,17 @@ class Episode: Equatable{
          
     }
     
-    
-    var playPosition:Double{
+  
+    @Transient var playPosition:Double{
         get{
-            if let playpostion = playStatus?.playpostion{
-                return playpostion
-            }else{
-                playStatus = PlayStatus()
-                return 0.0
-            }
+            return playpostion
         }
         set{
-            self.playStatus?.playpostion = newValue
-            updateLastPlayed()
+           
+                playpostion = newValue
+                updateLastPlayed()
+            
+            
         }
     }
     
@@ -160,20 +136,7 @@ class Episode: Equatable{
         }
         return 0.0
     }
-    
-    
-    var lastPlayed:Date?{
-        get{
-            if let lastPlayed = playStatus?.lastPlayed{
-                return lastPlayed
-            }else{
-                return nil
-            }
-        }
-        set{
-            self.playStatus?.lastPlayed = newValue
-        }
-    }
+
     func updateLastPlayed(){
         self.lastPlayed = Date()
     }
@@ -216,18 +179,7 @@ class Episode: Equatable{
 
     var durationAsDouble:Double?{
         
-        if let timeArray = duration?.components(separatedBy: ":"){
-            var seconds = 0.0
-            
-            for element in timeArray{
-                if let double = Double(element){
-                    seconds = (seconds + double) * 60
-                }
-            }
-            seconds = seconds / 60
-            return seconds
-        }
-        return nil
+        duration?.durationAsSeconds
         
     }
     
@@ -273,18 +225,17 @@ class Episode: Equatable{
     
         number = details["itunes:episode"] as? String
         
-        type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown")
+        type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
         
         
-        var tempA:[Asset] = []
+      
         for assetDetails in details["enclosure"] as? [[String:Any]] ?? []{
-            let asset = Asset(details: assetDetails)
-            if asset.title == nil{
-                asset.title = self.title
-            }
-            tempA.append(asset)
+            
+            assetLink = URL(string: assetDetails["url"] as? String ?? "")// the original URL of the asset
+            length = Int(assetDetails["length"] as? String ?? "")
+            assetType = assetDetails["type"] as? String
+ 
         }
-        assets = tempA
         
         var tempC:[Chapter] = []
         for chapterDetails in details["psc:chapters"] as? [[String:Any]] ?? []{
@@ -315,11 +266,11 @@ class Episode: Equatable{
     }
     
     func markAsPlayed(){
-        playStatus?.finishedPlaying = true
+      finishedPlaying = true
     }
     
     func markAsNotPlayed(){
-        playStatus?.finishedPlaying = false
+        finishedPlaying = false
     }
     
   

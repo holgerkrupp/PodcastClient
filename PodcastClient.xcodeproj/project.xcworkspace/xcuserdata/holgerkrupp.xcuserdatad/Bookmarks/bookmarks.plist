@@ -51,6 +51,53 @@
 			<key>type</key>
 			<string>bookmark</string>
 		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>53</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>52</string>
+					<key>Timestamp</key>
+					<string>726420248.772211</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>PodcastClient/DataClasses/Episode.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>    var duration:String?
+</string>
+				<key>leading</key>
+				<string>    var lastPlayed: Date?
+    var finishedPlaying: Bool? = false
+</string>
+				<key>trailing</key>
+				<string>    
+    
+    var isAvailableLocally:Bool = false
+</string>
+			</dict>
+			<key>title</key>
+			<string>replace directly with Seconds as Double</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
 	</array>
 </dict>
 </plist>

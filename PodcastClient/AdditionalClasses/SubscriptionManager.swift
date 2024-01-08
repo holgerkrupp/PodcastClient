@@ -31,9 +31,9 @@ class SubscriptionManager:NSObject{
             Episode.self,
             Chapter.self,
             
-            Asset.self,
+    //        Asset.self,
             PodcastSettings.self,
-            PlayStatus.self,
+       //     PlayStatus.self,
             
             Playlist.self,
             PlaylistEntry.self
@@ -133,7 +133,7 @@ class SubscriptionManager:NSObject{
 
                     podcast.feed = url
                     modelContext?.insert(podcast)
-                    try? modelContext?.save()
+                   print("podcast inserted")
                     return true
                 }
                 

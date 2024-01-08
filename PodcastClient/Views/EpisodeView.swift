@@ -33,22 +33,12 @@ struct EpisodeView: View {
         if let episode{
             List{
                 Section {
-                    if let assets = episode.assets {
-                    HStack{
-                        ForEach(assets){ asset in
-                            Menu{
-                                AssetMetaDataView(asset: asset)
-                            }label:{
-                                Image(systemName: "line.3.horizontal")
-                            }
-                            
-                        }
-                                }
-                                }
+
+                                
                     VStack{
                         HStack{
-                            
-                            if episode.playStatus?.finishedPlaying == true{
+                          
+                            if episode.finishedPlaying == true{
                                 Image(systemName: "circle.fill")
                             }else{
                                 Image(systemName: "circle")
@@ -124,7 +114,8 @@ struct EpisodeView: View {
 
 struct EpisodeMiniView: View {
     
-    
+    @Environment(\.modelContext) var modelContext
+
     // @Environment(Episode.self) private var episode
     
     var formatStyle = Date.RelativeFormatStyle()
@@ -134,14 +125,20 @@ struct EpisodeMiniView: View {
     
     
     var body: some View {
-        
+        NavigationLink {
+            EpisodeView(for: model.episode.persistentModelID)
+                .modelContext(modelContext)
+            
+        }label:{
             VStack{
                 HStack{
-                    if model.episode.playStatus?.finishedPlaying == true{
+                    
+                    if model.episode.finishedPlaying == true{
                         Image(systemName: "circle.fill")
                     }else{
                         Image(systemName: "circle")
                     }
+                    
                     
                     if let imageULR = model.episode.image{
                         ImageWithURL(imageULR)
@@ -157,7 +154,7 @@ struct EpisodeMiniView: View {
                             .scaledToFit()
                             .frame(width: 50, height: 50)
                     }
-                     
+                    
                     VStack(alignment: .leading){
                         Spacer()
                         Text(model.episode.title ?? "")
@@ -174,21 +171,20 @@ struct EpisodeMiniView: View {
                         HStack{
                             EpisodeStatusIcon(episode: model.episode)
                             Spacer()
-
-                    
-                            EpisodePlayProgressView(episode: model.episode)
                             
-                                .environment(Player.shared)
+                            
+                            EpisodePlayProgressView(episode: model.episode)
+
                                 .frame(maxWidth: .infinity, maxHeight: 30)
-                      
+                            
                         }
                     }
                 }
                 
             }
             
-
-        
+            
+        }
     }
 }
 
@@ -229,7 +225,7 @@ struct EpisodeStatusIcon:View{
 
 
 struct EpisodePlayProgressView:View{
-    @Environment(Player.self) private var player
+   
     @Environment(\.modelContext) var modelContext
 
     @State var episode:Episode
@@ -238,64 +234,24 @@ struct EpisodePlayProgressView:View{
         
         
         
-        NavigationLink {
-            EpisodeView(for: episode.persistentModelID)
-                .modelContext(modelContext)
-            
-        }label:{
-            VStack{
-                HStack{
-                    if player.currentEpisode == episode{
-                        
-                        ProgressView(value: player.progress, total: 1.0)
-                            .progressViewStyle(.linear)
-                        
-                    }else{
-                        
-                        ProgressView(value: episode.progress, total: 1.0)
-                            .progressViewStyle(.linear)
-                        
-                    }
-                    
-                }
-                
-                
-            }
-        }
-        
-        
-
-    }
-    
-}
-
-
-struct AssetMetaDataView: View{
-    
-    var asset: Asset
-    
-    var body: some View {
         VStack{
             HStack{
-                Text("Title")
-                Text(asset.title ?? "")
+
+                    
+                    ProgressView(value: episode.progress, total: 1.0)
+                        .progressViewStyle(.linear)
+                    
+                
+                
             }
-            HStack{
-                Text("Link")
-                Text(asset.link?.absoluteString ?? "")
-            }
-            HStack{
-                Text("Desc")
-                Text(asset.desc ?? "")
-            }
-            HStack{
-                Text("Desc")
-                Text(asset.length?.formatted() ?? "")
-            }
-            HStack{
-                Text("Type")
-                Text(asset.type.debugDescription)
-            }
+            
+            
         }
+        
+        
+
     }
+    
 }
+
+

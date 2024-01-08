@@ -16,8 +16,6 @@ enum elements:String, CaseIterable{
 class PodcastParser:NSObject, XMLParserDelegate{
 
 
-    private var episode: Episode?
-    private var chapter: Chapter?
     
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
@@ -170,7 +168,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 }
             
         }
-        currentElements.removeLast()
+        if currentElements.count > 0{
+            currentElements.removeLast()
+
+        }
     }
     
     

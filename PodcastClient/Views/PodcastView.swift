@@ -116,15 +116,10 @@ struct PodcastView: View {
  
               
             Section {
-                ForEach(podcast?.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? []){ episode in
-                    NavigationLink {
-                        EpisodeView(for: episode.persistentModelID)
-                            .modelContext(modelContext)
-                        
-                    }label:{
-                        EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
-                    }
-                }
+                
+                ListofEpisodesView(episodes: podcast?.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? [])
+                .modelContext(modelContext)
+
             } header: {
                 Text("\(podcast?.episodes.count.description ?? "") Episodes")
             }

@@ -13,8 +13,6 @@ import SwiftData
 struct EpisodeListView: View {
     
     @Environment(\.modelContext) var modelContext
-    @Query var episodes: [Episode]
-    
     @State private var episodeModel: EpisodesModel
 
     @State private var searchText = ""
@@ -31,24 +29,18 @@ struct EpisodeListView: View {
         NavigationStack {
             List{
                 Section {
-                    ForEach(episodeModel.episodes.filter {
-                      
-                            searchText != "" ?
-                            
+                    
+                    ListofEpisodesView(episodes: episodeModel.episodes.filter {
+                        
+                        searchText != "" ?
+                        
                         $0.title?.uppercased().contains(searchText.uppercased()) ?? false :
-                            
-                            true
-                            
-                    }, id:\.self) { episode in
-                           
-                                EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
-                                    .modelContext(modelContext)
-                                
-                            
-                        }
-                            
-                    
-                    
+                        
+                        true
+                        
+                    })
+                    .modelContext(modelContext)
+                
                     
                 } header: {
                     Text("New Episodes")
@@ -56,7 +48,6 @@ struct EpisodeListView: View {
                     Text("")
                 }
 
-                
             }
             .searchable(text: $searchText)
             .refreshable {
@@ -68,9 +59,6 @@ struct EpisodeListView: View {
     }
     
     
-
-    
-    
 }
 
 
@@ -79,13 +67,11 @@ extension EpisodeListView {
     class EpisodesModel {
         var modelContext: ModelContext
         var episodes = [Episode]()
-        
+       
         init(modelContext: ModelContext) {
             self.modelContext = modelContext
             fetchData()
         }
-        
-        
         
         func fetchData() {
             do {

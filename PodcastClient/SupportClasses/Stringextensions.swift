@@ -52,3 +52,31 @@ extension String {
         }
     }
 }
+
+extension String{
+    var durationAsSeconds:Double?{
+        
+         let timeArray = self.components(separatedBy: ":")
+            var seconds = 0.0
+            for element in timeArray{
+                if let double = Double(element){
+                    seconds = (seconds + double) * 60
+                }
+            }
+            seconds = seconds / 60
+        
+        
+        
+        
+        if seconds.isNaN{
+            return nil
+        }else{
+            return seconds
+
+        }
+        
+
+        
+    }
+    
+}

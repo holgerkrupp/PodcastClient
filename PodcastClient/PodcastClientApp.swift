@@ -22,9 +22,7 @@ struct PodcastClientApp: App {
             Episode.self,
             Chapter.self,
 
-            Asset.self,
             PodcastSettings.self,
-            PlayStatus.self,
 
             Playlist.self,
             PlaylistEntry.self
