@@ -11,91 +11,49 @@ struct AddPodcastView: View {
     @Environment(\.modelContext) var modelContext
 
     @State var newFeed:String = "https://hierisauch.net/feed/test/"
+    @State private var updateing = false
+    
     
     var parserDelegate = PodcastParser()
-    
-    
-    var body: some View {
-        List{
-            TextField(text: $newFeed) {
-                Text("paste URL to feed")
-            }
-            Button {
-                
-                if feed != nil {
-                    Task{
-                        if let data = try? await feedData{
-                            loadPodcast(data: data)
-                        }
-                        
-                    }
-                    
-                }
-                
-            } label: {
-                Text("Subscribe")
-            }
-            .disabled(URL(string: newFeed) == nil)
-            .buttonStyle(.bordered)
-            
-            
-        }
-    }
-    
-    func loadPodcast(data: Data){
-        let parser = XMLParser(data: data)
-        parser.shouldProcessNamespaces = true
-        parser.shouldResolveExternalEntities = true
-        parser.delegate = parserDelegate
-        if parser.parse(){
-     
-            if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
-                let podcast = Podcast(details: feedDetail)
-                podcast.feed = URL(string: newFeed)
-                modelContext.insert(podcast)
-                
-            }
-
-        }
-    }
-    
+    var subscriptionManager = SubscriptionManager.shared
     
     var feed:URL?{
         URL(string: newFeed.trimmingCharacters(in: .whitespacesAndNewlines))
     }
     
-    var feedData:Data?{
-        get async throws{
+    var body: some View {
+        List{
+            TextField(text: $newFeed) {
+                Text("paste URL to feed")
+            }.disabled(updateing)
             
-            
-            if let feed{
-                let session = URLSession.shared
-                var request = URLRequest(url: feed)
-                if let appName = Bundle.main.applicationName{
-                    request.setValue(appName, forHTTPHeaderField: "User-Agent")
-                }
-                do{
-                    let (data, response) = try await session.data(for: request)
-                    switch (response as? HTTPURLResponse)?.statusCode {
-                    case 200:
-                        return data
-                    case .none:
-                        return nil
-                        
-                    case .some(_):
-                        return nil
-                        
+            Button {
+                updateing = true
+                if let feed {
+                    Task{
+                        let finished = await subscriptionManager.subscribe(to: feed)
+                        if finished == true{
+                            newFeed = ""
+                        }
+                        updateing = false
                     }
-                }catch{
-                    print(error)
-                    return nil
+                    
                 }
+                
+            } label: {
+                if updateing{
+                    ProgressView()
+                }else{
+                    Text("Subscribe")
+                }
+                
             }
-            return nil
+            .disabled(!newFeed.isValidURL || updateing)
+            .buttonStyle(.bordered)
+            
+            
         }
-        
     }
-    
     
 }
 
