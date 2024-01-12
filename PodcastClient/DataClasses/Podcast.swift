@@ -42,7 +42,7 @@ class Podcast: Equatable{
     
     
     
-    var isUpdating:Bool = false
+    @Transient var isUpdating:Bool = false
     
     
     
@@ -50,7 +50,7 @@ class Podcast: Equatable{
     
     // MARK: computed properties
 
-    var feedData:Data?{
+    @Transient var feedData:Data?{
         get async throws{
       
             
@@ -85,24 +85,30 @@ class Podcast: Equatable{
     }
     
     
-    var feedUpdated:Bool?{
+    @Transient var feedUpdated:Bool?{
         get async throws{
             if let lastModified{
-                if let serverLastModified = try? await feed?.status?.lastModified {
+                if let serverLastModified = try? await feed?.status()?.lastModified {
+                    print("Server: \(serverLastModified.formatted()) vs Database: \(lastModified.formatted())")
+                    
                     lastAttempt = Date()
                     if serverLastModified > lastModified{
+                        print("feed is new")
                         // feed on server is new
                         return true
                     }else{
                         // feed on server is old
+                        print("feed is old")
                         return false
                     }
                 }else{
                     // server is not answering with a lastmodified Date
+                    print("no last modified date")
                     return nil
                 }
             }else{
                 // feed has never been fetched before, no last modified date is set.
+                print("feed is very new")
                 return true
             }
         

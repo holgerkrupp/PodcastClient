@@ -42,14 +42,23 @@ struct ImportExportView: View {
             
             
             if subscriptionManager.newPodcasts.filter({ newPod in
-                return newPod.existing == false
+                if newPod.existing == false && newPod.added == false {
+                    return true
+                }else{
+                    return false
+                }
             }).count > 0{
                 
                 let urls = subscriptionManager.newPodcasts.filter({ newPod in
-                    return newPod.existing == false
+                    if newPod.existing == false && newPod.added == false {
+                        return true
+                    }else{
+                        return false
+                    }
                 }).map { $0.url }
             
                     Button {
+                       
                         Task{
                             await subscriptionManager.subscribe(all: urls)
                         }
@@ -63,7 +72,12 @@ struct ImportExportView: View {
                 
                 Section{
                     ForEach(subscriptionManager.newPodcasts.filter({ newPod in
-                        return newPod.existing == false
+                        if newPod.existing == false && newPod.added == false {
+                            return true
+                        }else{
+                            return false
+                        }
+                       
                     }), id: \.url) { newPodcastFeed in
                         SubscribeToView(newPodcastFeed: newPodcastFeed)
                         
@@ -119,32 +133,30 @@ struct SubscribeToView: View{
             VStack(alignment: .leading){
                 Text(newPodcastFeed.title ?? "").font(.title3)
                 Text(newPodcastFeed.url?.absoluteString ?? "").font(.caption)
+                if newPodcastFeed.status != nil {
+                    Text(newPodcastFeed.status?.statusCode?.formatted() ?? "")
+                }
             }
             Spacer()
             if newPodcastFeed.existing == false{
-                if let url = newPodcastFeed.url{
-                    if subscribing == false{
+                if newPodcastFeed.added == true{
+                    Image(systemName: "checkmark.circle")
+                }else{
+                    if newPodcastFeed.subscribing == true{
+                        ProgressView()
+                    }else{
                         Button {
-                            subscribing = true
+                            
                             Task{
-                                if  await subscriptionManager.subscribe(to: url) == true{
-                                    newPodcastFeed.existing = true
-                                    subscribing = false
-                                }else{
-                                    subscribing = false
-                                }
-                               
+                                await newPodcastFeed.subscribe()
                             }
                         } label: {
+
                             Text("subscribe")
                         }
                         .buttonStyle(.bordered)
-                    }else{
-                        ProgressView()
                     }
                 }
-                
-                
             }
         }
     }

@@ -16,8 +16,8 @@ struct URLstatus{
 
 
 extension URL{
-    var status:URLstatus?{
-        get async throws{
+    func status() async throws -> URLstatus?{
+        
         var status = URLstatus(lastRequest: Date())
         
 
@@ -38,9 +38,8 @@ extension URL{
                         print(error)
                         return nil
                     }
-
-            
-            return nil
+        dump(status)
+        return status
         }
-    }
+    
 }

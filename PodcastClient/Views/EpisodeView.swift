@@ -188,6 +188,24 @@ struct EpisodeMiniView: View {
             
             
         }
+        .contextMenu {
+            Button {
+                //    model.episode.playNow()
+            } label: {
+                Label("Play now", systemImage: "play")
+            }
+            Button {
+                Player.shared.playNextQueue.add(episode: model.episode, to: .front)
+            } label: {
+                Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            Button {
+                Player.shared.playNextQueue.add(episode: model.episode, to: .end)
+                
+            } label: {
+                Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
+            }
+        }
     }
 }
 

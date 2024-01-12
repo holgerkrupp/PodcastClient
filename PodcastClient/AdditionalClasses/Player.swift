@@ -20,6 +20,9 @@ import Combine
         return avplayer.isPlaying
     }
     
+    var playNextQueue: Playlist = PlaylistManager.shared.playnext
+
+    
     var playPauseButton: some View{
         if currentEpisode != nil{
             if isPlaying == false{
