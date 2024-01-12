@@ -19,6 +19,9 @@
     "already subscribed" : {
 
     },
+    "contains: %@ Chapters" : {
+
+    },
     "Counter" : {
 
     },
@@ -79,7 +82,13 @@
     "Play" : {
 
     },
-    "Play Now" : {
+    "Play last" : {
+
+    },
+    "Play next" : {
+
+    },
+    "Play now" : {
 
     },
     "PlaylistView" : {

@@ -23,7 +23,7 @@ struct SettingsView: View {
                     
                     
                     ImportExportView()
-                        .environment(SubscriptionManager.shared)
+                       
                     
                 }label:{
                     Text("Import & Export")

@@ -11,13 +11,15 @@ import UniformTypeIdentifiers
 struct ImportExportView: View {
     
     @State private var importing = false
+    @State private var subscribing = false
 
 //    var subscriptionManager = SubscriptionManager.shared
-    @Environment(SubscriptionManager.self) private var subscriptionManager
-
+    @State var subscriptionManager = SubscriptionManager.shared
+    
     
     var body: some View {
         List{
+            
             Section{
                 Button("Select file to import") {
                     importing = true
@@ -28,8 +30,9 @@ struct ImportExportView: View {
                 ) { result in
                     switch result {
                     case .success(let file):
-                        subscriptionManager.read(file: file.absoluteURL)
-                        
+                        Task{
+                            await subscriptionManager.read(file: file.absoluteURL)
+                        }
                     case .failure(let error):
                         print(error.localizedDescription)
                     }
@@ -49,18 +52,26 @@ struct ImportExportView: View {
                     return newPod.existing == false
                 }).map { $0.url }
             
+                
+                if subscribing == false{
                     Button {
+                        subscribing = true
                         Task{
                             await subscriptionManager.subscribe(all: urls)
+
+                                subscribing = false
+                            
+                            
                         }
                     } label: {
                         Text("Subscribe to all \(urls.count) podcasts")
                     }
+                    .buttonStyle(.bordered)
+                }else{
+                    ProgressView()
+                }
                 
 
-
-                
-                
                 Section{
                     ForEach(subscriptionManager.newPodcasts.filter({ newPod in
                         return newPod.existing == false
@@ -97,6 +108,8 @@ struct ImportExportView: View {
 
 
     }
+    
+    
 }
 
 #Preview {

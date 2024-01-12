@@ -12,8 +12,6 @@ import SwiftData
 @Model
 class PodcastSettings {
     
-
-    
     var autoDownload:Bool = false
     var playbackSpeed:Float = 1.0
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords

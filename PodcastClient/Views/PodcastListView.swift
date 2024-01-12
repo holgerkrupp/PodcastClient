@@ -13,7 +13,6 @@ import SwiftData
 struct PodcastListView: View {
     
     @Environment(\.modelContext) var modelContext
-    @Query var podcasts: [Podcast]
     
     @State private var podcastModel: PodcastModel
 
@@ -31,7 +30,7 @@ struct PodcastListView: View {
         NavigationStack {
             List{
                 Section {
-                    ForEach(podcasts.filter {
+                    ForEach(podcastModel.podcasts.filter {
                       
                             searchText != "" ?
                             
@@ -39,7 +38,7 @@ struct PodcastListView: View {
                             
                             true
                             
-                        }) { podcast in
+                    }.sorted(by: { $0.title < $1.title})) { podcast in
                             NavigationLink {
                                 
                   

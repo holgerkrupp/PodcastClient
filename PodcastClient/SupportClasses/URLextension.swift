@@ -16,11 +16,9 @@ struct URLstatus{
 
 
 extension URL{
-    var status:URLstatus?{
-        get async throws{
-        var status = URLstatus(lastRequest: Date())
+    func status() async throws -> URLstatus?{
         
-
+        
                     let session = URLSession.shared
                     var request = URLRequest(url: self)
                     request.httpMethod = "HEAD"
@@ -29,11 +27,13 @@ extension URL{
                     }
                     do{
                         let (_, response) = try await session.data(for: request)
-                        
+                     
+                        var status = URLstatus(lastRequest: Date())
                         status.statusCode = (response as? HTTPURLResponse)?.statusCode
                         status.lastModified =  Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? "")
                         status.newURL = URL(string: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location") ?? "")
-                        
+                        print("LM: \(status.lastModified?.formatted()) - \((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified"))")
+                       
                     }catch{
                         print(error)
                         return nil
@@ -42,5 +42,5 @@ extension URL{
             
             return nil
         }
-    }
+    
 }

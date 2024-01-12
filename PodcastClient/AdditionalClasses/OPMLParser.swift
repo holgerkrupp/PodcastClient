@@ -11,7 +11,9 @@ import Foundation
 class PodcastFeed{
     var title: String?
     var url: URL?
-   var existing: Bool = false
+    var existing: Bool = false
+    var added: Bool = false
+    var status: URLstatus?
 }
 
 class OPMLParser: NSObject, XMLParserDelegate{
@@ -25,7 +27,6 @@ class OPMLParser: NSObject, XMLParserDelegate{
         attributes attributeDict: [String: String] = [:]
     ) {
         
-        print("OPML Parser started: \(elementName)")
         
         let currentElement = elementName.lowercased()
 
@@ -33,10 +34,8 @@ class OPMLParser: NSObject, XMLParserDelegate{
         case "opml":
             return
         case "outline":
-            print("outline attributes: \(attributeDict)")
             if attributeDict["type"] == "rss"{
                 var newPodcast = PodcastFeed()
-                
                 newPodcast.title = attributeDict["text"]
                 
                 if let feedURL = URL(string: attributeDict["xmlUrl"] ?? ""){
@@ -59,7 +58,6 @@ class OPMLParser: NSObject, XMLParserDelegate{
         qualifiedName qName: String?
     ) {
         
-        print("OPML Parser ended: \(elementName)")
         switch elementName.lowercased() {
         case "outline":
             return

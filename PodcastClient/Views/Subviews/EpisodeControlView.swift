@@ -11,14 +11,23 @@ struct EpisodeControlView: View {
     @State var episode:Episode
 
 
+    
+
     var body: some View {
         HStack{
             Button {
-                
-                Player.shared.currentEpisode = episode
+              //  episode.playNow()
+               // Player.shared.currentEpisode = episode
             } label: {
                 if episode.isAvailableLocally {
-                    Text("Play Now")
+                    Label {
+                        Text("Play now")
+                    } icon: {
+                        Image(systemName: "play")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
                 }else{
                     Text("Stream Now")
                 }
@@ -30,7 +39,14 @@ struct EpisodeControlView: View {
                 Button {
                     episode.removeFile()
                 } label: {
-                    Text("Delete")
+                    Label {
+                        Text("Delete")
+                    } icon: {
+                        Image(systemName: "trash")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
                     
                     
                 }
@@ -43,7 +59,14 @@ struct EpisodeControlView: View {
                 Button {
                     episode.download()
                 } label: {
-                    Text("Download")
+                    Label {
+                        Text("Download")
+                    } icon: {
+                        Image(systemName: "icloud.and.arrow.down")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
                     
                     
                 }
@@ -52,5 +75,6 @@ struct EpisodeControlView: View {
             
 
         }
+        .frame(maxWidth: .infinity, maxHeight: 40)
     }
 }

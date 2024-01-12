@@ -15,6 +15,9 @@ import Combine
     private var avplayer = AVPlayer()
     private let session = AVAudioSession.sharedInstance()
     
+    var playNextQueue: Playlist = PlaylistManager.shared.playnext
+    
+
     static let shared = Player()
     var isPlaying:Bool{
         return avplayer.isPlaying
@@ -31,6 +34,11 @@ import Combine
             return AnyView(Image(systemName:  "playpause").resizable())
         }
     }
+    
+   
+    
+
+    
     
 
     var observer: NSKeyValueObservation?

@@ -22,6 +22,13 @@ class SubscriptionManager:NSObject{
 
     var newPodcasts: [PodcastFeed] = []
     
+    private var backgroundSession: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: "BackgroundSession")
+        config.isDiscretionary = true
+        config.sessionSendsLaunchEvents = true
+        return URLSession(configuration: config, delegate: nil, delegateQueue: nil)
+    }()
+    
 
     private override init() {
         super.init()
@@ -64,10 +71,7 @@ class SubscriptionManager:NSObject{
             
                 await podcast.refresh()
             }
-        
-
-
-    }
+        }
 
     func fetchData() {
       
@@ -78,7 +82,7 @@ class SubscriptionManager:NSObject{
 
     }
     
-    func read(file url: URL){
+    func read(file url: URL) async{
         
         newPodcasts.removeAll()
         
@@ -89,14 +93,14 @@ class SubscriptionManager:NSObject{
 
         
         if let data = try? Data(contentsOf: url){
-            addPodcastsfrom(OPMLfile: data)
+            await addPodcastsfrom(OPMLfile: data)
         }else{
             print("could not read data from OPML file")
         }
     }
     
     
-    func addPodcastsfrom(OPMLfile data: Data){
+    func addPodcastsfrom(OPMLfile data: Data) async{
         let parser = XMLParser(data: data)
         parser.shouldProcessNamespaces = true
         parser.shouldResolveExternalEntities = true
@@ -109,31 +113,47 @@ class SubscriptionManager:NSObject{
                 
                 for index in newPodcasts.indices {
                     newPodcasts[index].existing = podcastURLs.contains(newPodcasts[index].url) ? true : false
+                    if newPodcasts[index].existing == false {
+                        if let url = newPodcasts[index].url{
+                            newPodcasts[index].added = await subscribe(to: url)
+                            if newPodcasts[index].added == false{
+                                
+                                newPodcasts[index].status = try? await url.status()
+                                dump(newPodcasts[index].status)
+                                
+                            }else{
+                                newPodcasts[index].existing = newPodcasts[index].added
+                                
+                            }
+                            
+                        }
+                    }else{
+                        print("podcast is already existing")
+                    }
+                    
+                    
+                    
                 }
                 
             }
-            
         }
     }
     
     func subscribe(to url: URL) async -> Bool{
         if let data = await feedData(for: url){
-            print("got Data for \(url.absoluteString)")
+          
 
             let parser = XMLParser(data: data)
             parser.shouldProcessNamespaces = true
             parser.shouldResolveExternalEntities = true
             parser.delegate = podcastParser
             if parser.parse(){
-                print("parsed for \(url.absoluteString)")
-
+            
                 if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
                     let podcast = Podcast(details: feedDetail)
                     print("created Podcast \(podcast.title) for \(url.absoluteString)")
-
                     podcast.feed = url
                     modelContext?.insert(podcast)
-                   print("podcast inserted")
                     return true
                 }
                 
@@ -148,8 +168,14 @@ class SubscriptionManager:NSObject{
         for url in urls {
             if let url{
                 print("start subscribe for \(url.absoluteString)")
-                await subscribe(to: url)
-                print("end subscribe for \(url.absoluteString)")
+                let success = await subscribe(to: url)
+                if success{
+                    print("end subscribe for \(url.absoluteString)")
+
+                }else{
+                    print("error subscribing to \(url.absoluteString)")
+                    
+                }
 
             }
             
@@ -169,6 +195,7 @@ class SubscriptionManager:NSObject{
                 let (data, response) = try await session.data(for: request)
                 switch (response as? HTTPURLResponse)?.statusCode {
                 case 200:
+                    
                     return data
                 case .none:
                     return nil

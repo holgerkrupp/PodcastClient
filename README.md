@@ -1,5 +1,5 @@
 # PodcastClient
-An Open Source Podcast client.
+As my favorite podcast client stopped working and other players I've used (and am using at the moment) don't meet some functions I got used to (pre selecting chapters to skip for example), I'm starting my own player. The goal is to create an open source podcast player
 
 ## Alpha min Requiremets
 
@@ -8,7 +8,9 @@ An Open Source Podcast client.
 
 ### Refresh and Downloads
 - [x] refresh podcast content via Button
-- [x] refresh all with pull to refresh
+- [ ] refresh all with pull to refresh
+- [ ] refresh all using background scheduler
+
 - [x] download episodes
 - - [x] show download progress
 - - [x] delete files
@@ -26,7 +28,7 @@ An Open Source Podcast client.
 
 ### Subscription Management
 - [x] OPML import
-- - [ ] to be validated with big file
+- - [x] to be validated with big file
 - - [ ] Show import progress
 - [ ] podcast directory search
 
@@ -77,6 +79,7 @@ An Open Source Podcast client.
 1.x requirements
 - [ ] Transkripts
 - [ ] Apple Watch App
+- [ ] Statistics about played episodes/podcasts
 
 loose Requirementlist
 

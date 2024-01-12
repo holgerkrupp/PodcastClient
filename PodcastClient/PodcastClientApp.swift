@@ -49,7 +49,10 @@ struct PodcastClientApp: App {
             }
         })
         .backgroundTask(.appRefresh("feedRefresh")) {
+            print("startig Background refresh at \(Date().formatted())")
             await SubscriptionManager.shared.refreshall()
+            print("Ending Background refresh at \(Date().formatted())")
+
         }
      
     }
@@ -57,9 +60,15 @@ struct PodcastClientApp: App {
     
     
     func scheduleAppRefresh() {
+        print("requesting Background Refresh")
         let request = BGAppRefreshTaskRequest(identifier: "feedRefresh")
-        request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
-        try? BGTaskScheduler.shared.submit(request)
+        request.earliestBeginDate = .now.addingTimeInterval(1 * 30)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            
+        }catch{
+            print(error)
+        }
     }
     
     

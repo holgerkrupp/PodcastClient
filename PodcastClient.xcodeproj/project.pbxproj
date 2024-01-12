@@ -19,6 +19,7 @@
 		484F93A62B4810BE00C3E309 /* Opml-icon.svg.png in Resources */ = {isa = PBXBuildFile; fileRef = 484F93A52B4810BE00C3E309 /* Opml-icon.svg.png */; };
 		489346EF2B4C316700DF4D82 /* ListofEpisodesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */; };
 		489346F22B4C4D8700DF4D82 /* DoubleExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */; };
+		489346F42B50242000DF4D82 /* PlaylistManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346F32B50242000DF4D82 /* PlaylistManager.swift */; };
 		48AA18972B2C59B8007558FC /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AA18962B2C59B8007558FC /* ImageLoader.swift */; };
 		48C043902B2F27690006C352 /* Stringextensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C0438F2B2F27690006C352 /* Stringextensions.swift */; };
 		48C043922B2F2E160006C352 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C043912B2F2E160006C352 /* SettingsView.swift */; };
@@ -57,6 +58,7 @@
 		484F93A52B4810BE00C3E309 /* Opml-icon.svg.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Opml-icon.svg.png"; sourceTree = "<group>"; };
 		489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListofEpisodesView.swift; sourceTree = "<group>"; };
 		489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleExtensions.swift; sourceTree = "<group>"; };
+		489346F32B50242000DF4D82 /* PlaylistManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistManager.swift; sourceTree = "<group>"; };
 		48AA18962B2C59B8007558FC /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
 		48C0438F2B2F27690006C352 /* Stringextensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stringextensions.swift; sourceTree = "<group>"; };
 		48C043912B2F2E160006C352 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -209,6 +211,7 @@
 				48C043952B34C4C10006C352 /* DownloadManager.swift */,
 				48C043992B3C28280006C352 /* SubscriptionManager.swift */,
 				484F939F2B47FA7000C3E309 /* OPMLParser.swift */,
+				489346F32B50242000DF4D82 /* PlaylistManager.swift */,
 			);
 			path = AdditionalClasses;
 			sourceTree = "<group>";
@@ -341,6 +344,7 @@
 				484F93A22B48082100C3E309 /* ImportExportView.swift in Sources */,
 				480D431C2B20B5FD00BBB1CD /* DateRFC1123.swift in Sources */,
 				48E091892B1A29D000DFE83A /* Player.swift in Sources */,
+				489346F42B50242000DF4D82 /* PlaylistManager.swift in Sources */,
 				48E091982B1B12DC00DFE83A /* PodcastParser.swift in Sources */,
 				48E091832B1A250100DFE83A /* PodcastSettings.swift in Sources */,
 				48E091922B1A693800DFE83A /* TabBarView.swift in Sources */,
@@ -484,6 +488,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PodcastClient/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = PodBay;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -516,6 +521,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PodcastClient/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = PodBay;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

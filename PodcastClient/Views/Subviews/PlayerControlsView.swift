@@ -14,8 +14,8 @@ struct PlayerControlsView: View {
     var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 200
     var minPlayerHeight:CGFloat = 20.0
     
-  //  @State var player = Player.shared
-    @Environment(Player.self) private var player
+    @State var player = Player.shared
+  //  @Environment(Player.self) private var player
     
     
     var body: some View {
@@ -43,7 +43,6 @@ struct PlayerControlsView: View {
                                 .scaledToFit()
                         }
                         .labelStyle(.iconOnly)
-                        .frame(maxWidth: .infinity)
                     }
                     
                 }else{
@@ -63,7 +62,6 @@ struct PlayerControlsView: View {
                                 .scaledToFit()
                         }
                         .labelStyle(.iconOnly)
-                        .frame(maxWidth: .infinity)
                     }
                 }
                 
@@ -82,7 +80,7 @@ struct PlayerControlsView: View {
                             .scaledToFit()
                     }
                     .labelStyle(.iconOnly)
-                    .frame(maxWidth: .infinity)
+        
                 }
                 
                 
@@ -97,7 +95,7 @@ struct PlayerControlsView: View {
                             .scaledToFit()
                     }
                     .labelStyle(.iconOnly)
-                    .frame(maxWidth: .infinity)
+                 
                 }
                 
                 Spacer()
@@ -112,7 +110,7 @@ struct PlayerControlsView: View {
                             .scaledToFit()
                     }
                     .labelStyle(.iconOnly)
-                    .frame(maxWidth: .infinity)
+              
                 }
                 
                 Spacer()
@@ -129,7 +127,6 @@ struct PlayerControlsView: View {
                             .scaledToFit()
                     }
                     .labelStyle(.iconOnly)
-                    .frame(maxWidth: .infinity)
                 }
                 
                 

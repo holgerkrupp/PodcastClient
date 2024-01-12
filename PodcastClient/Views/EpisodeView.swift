@@ -84,6 +84,7 @@ struct EpisodeView: View {
                 }
                 
                 Text(episode.desc?.toDetectedAttributedString() ?? "")
+                Text("contains: \(episode.chapters.count.formatted()) Chapters")
                 /*
                  Section {
                  ForEach(episode.chapters){ chapter in
@@ -117,11 +118,11 @@ struct EpisodeView: View {
 struct EpisodeMiniView: View {
     
     @Environment(\.modelContext) var modelContext
-
+    
     // @Environment(Episode.self) private var episode
     
     var formatStyle = Date.RelativeFormatStyle()
- 
+    
     var model: EpisodeListItemModel
     
     
@@ -188,6 +189,24 @@ struct EpisodeMiniView: View {
             
             
         }
+        .contextMenu {
+            Button {
+            //    model.episode.playNow()
+            } label: {
+                Label("Play now", systemImage: "play")
+            }
+            Button {
+                Player.shared.playNextQueue.add(episode: model.episode, to: .front)
+            } label: {
+                Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            Button {
+                Player.shared.playNextQueue.add(episode: model.episode, to: .end)
+
+            } label: {
+                Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
+            }
+        }
     }
 }
 
@@ -214,14 +233,41 @@ struct EpisodeStatusIcon:View{
                 .scaledToFit()
                 .frame(width: 10, height: 10)
         }else if episode.downloadStatus.isDownloading{
-            ProgressView(value: episode.downloadStatus.downloadProgress)
-                .progressViewStyle(.circular)
-                .frame(width: 10, height: 10)
-            Text(episode.downloadStatus.downloadProgress.rounded().formatted())
-        }else{
-            Image(systemName: "cloud")
+            CircularProgressView(progress: episode.downloadStatus.downloadProgress)
                 .scaledToFit()
                 .frame(width: 10, height: 10)
+
+           
+        }else{
+            Image(systemName: "icloud")
+                .scaledToFit()
+                .frame(width: 10, height: 10)
+            /*
+            Button {
+                episode.download()
+            } label: {
+                Image(systemName: "icloud.and.arrow.down")
+                    .scaledToFit()
+                    .frame(width: 10, height: 10)
+            }
+*/
+        }
+    }
+}
+
+struct CircularProgressView: View {
+    let progress: Double
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke()
+            Circle()
+                .trim(from: 0, to: progress)
+                .foregroundColor(.accentColor)
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut, value: progress)
+            
         }
     }
 }

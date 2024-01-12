@@ -75,6 +75,8 @@ class DownloadManager: NSObject, ObservableObject {
         return URLSession(configuration: configuration, delegate: nil, delegateQueue: .main)
     }()
     
+
+    
     static let shared = DownloadManager()
 
     private override init() {

@@ -88,7 +88,7 @@ class Podcast: Equatable{
     var feedUpdated:Bool?{
         get async throws{
             if let lastModified{
-                if let serverLastModified = try? await feed?.status?.lastModified {
+                if let serverLastModified = try? await feed?.status()?.lastModified {
                     lastAttempt = Date()
                     if serverLastModified > lastModified{
                         // feed on server is new
