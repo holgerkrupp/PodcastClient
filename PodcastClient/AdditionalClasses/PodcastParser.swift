@@ -59,7 +59,14 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     func parserDidStartDocument(_ parser: XMLParser) {
-        
+        episodeDict.removeAll()
+        enclosureArray.removeAll()
+        episodesArray.removeAll()
+        attributes.removeAll()
+        podcastDictArr.removeAll()
+        tempDict.removeAll()
+        currentElements.removeAll()
+        currentValue = ""
 
      
     }

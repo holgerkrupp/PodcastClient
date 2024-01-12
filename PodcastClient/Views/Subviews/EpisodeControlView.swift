@@ -14,8 +14,8 @@ struct EpisodeControlView: View {
     var body: some View {
         HStack{
             Button {
+                episode.playNow()
                 
-                Player.shared.currentEpisode = episode
             } label: {
                 if episode.isAvailableLocally {
                     Text("Play Now")

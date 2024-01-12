@@ -7,35 +7,7 @@
 
 import Foundation
 
-@Observable
-class PodcastFeed{
-    var title: String?
-    var url: URL?
-    var existing: Bool = false
-    var added: Bool = false
-    var subscribing: Bool = false
-    var status: URLstatus?
-    
-    private var subscribtionManager = SubscriptionManager.shared
-    
-    func subscribe() async -> Bool?{
-        print("subscribing")
-        subscribing = true
-        if let url{
-            subscribing = false
-            status = try? await url.status()
-            added = await subscribtionManager.subscribe(to: url)
-            dump(status)
-            return added
-        }else{
-            
-            subscribing = false
-            return nil
-        }
-        
-    }
-    
-}
+
 
 class OPMLParser: NSObject, XMLParserDelegate{
     var podcastFeeds: [PodcastFeed] = []

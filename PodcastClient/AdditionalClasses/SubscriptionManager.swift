@@ -10,6 +10,34 @@ import SwiftData
 
 
 @Observable
+class PodcastFeed{
+    var title: String?
+    var url: URL?
+    var existing: Bool = false
+    var added: Bool = false
+    var subscribing: Bool = false
+    var status: URLstatus?
+    
+    private var subscriptionManager = SubscriptionManager.shared
+    
+    func subscribe() async -> Bool?{
+        if let url{
+            subscribing = true
+            status = try? await url.status()
+            added = await subscriptionManager.subscribe(to: url)
+            dump(status)
+            return added
+        }else{
+            
+            subscribing = false
+            return nil
+        }
+        
+    }
+    
+}
+
+@Observable
 class SubscriptionManager:NSObject{
     
     static let shared = SubscriptionManager()
@@ -50,6 +78,19 @@ class SubscriptionManager:NSObject{
         }
     }
     
+    func fetchData() {
+        
+        let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
+        if let fetchresult = try? modelContext?.fetch(descriptor){
+            podcasts = fetchresult
+        }
+        
+    }
+    
+    
+    
+    
+    
     func refresh(podcast: Podcast){
         Task{
             await podcast.refresh()
@@ -69,14 +110,7 @@ class SubscriptionManager:NSObject{
 
     }
 
-    func fetchData() {
-      
-            let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
-            if let fetchresult = try? modelContext?.fetch(descriptor){
-                podcasts = fetchresult
-            }
 
-    }
     
     func read(file url: URL){
         
@@ -128,18 +162,52 @@ class SubscriptionManager:NSObject{
                 print("parsed for \(url.absoluteString)")
 
                 if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
-                    let podcast = Podcast(details: feedDetail)
-                    print("created Podcast \(podcast.title) for \(url.absoluteString)")
+                    if let container = try? ModelContainer(for: Podcast.self){
+                        let context = ModelContext(container)
+                        let podcast = Podcast(details: feedDetail, modelContext: context)
+                        print("created Podcast \(podcast.title) for \(url.absoluteString)")
+                        
+                        podcast.feed = url
+                        context.insert(podcast)
+                        do{
+                            try context.save()
+                            print("podcast inserted")
+                        }catch{
+                            print(error)
+                        }
+                    }else{
+                        print("could not create ModelContainer")
+                    }
 
-                    podcast.feed = url
-                    modelContext?.insert(podcast)
-                   print("podcast inserted")
+                   
                     return true
                 }
                 
             }
         }
         return false
+    }
+    
+    func deleteAll(){
+   
+            
+            if let container = try? ModelContainer(for: Podcast.self){
+                let context = ModelContext(container)
+                
+                do {
+                    try context.delete(model: Podcast.self)
+                } catch {
+                    fatalError(error.localizedDescription)
+                }
+                
+                
+                
+            }else{
+                print("could not create ModelContainer")
+            }
+            
+
+        
     }
     
     func subscribe(all urls:[URL?]) async{
@@ -155,6 +223,18 @@ class SubscriptionManager:NSObject{
             
         }
     }
+    
+    
+    func subscribe(all newPodcasts:[PodcastFeed]) async{
+        
+        newPodcasts.forEach { $0.subscribing = true }
+        for podcast in newPodcasts {
+            
+            await podcast.subscribe()
+            
+        }
+    }
+    
     
     
     func feedData(for url: URL) async -> Data?{

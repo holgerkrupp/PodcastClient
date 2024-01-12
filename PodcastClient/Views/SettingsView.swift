@@ -29,7 +29,16 @@ struct SettingsView: View {
                     Text("Import & Export")
                 }
                 
-                
+                Section {
+                    Button {
+                        SubscriptionManager.shared.deleteAll()
+                    } label: {
+                        Text("Delete all Database entries")
+                    }
+
+                } header: {
+                    Text("Danger Zone")
+                }
                 
                 VersionNumberView()
             }

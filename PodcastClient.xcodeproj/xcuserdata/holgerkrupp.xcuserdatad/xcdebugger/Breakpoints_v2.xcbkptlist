@@ -14,9 +14,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "193"
-            endingLineNumber = "193"
-            landmarkName = "init(details:)"
+            startingLineNumber = "196"
+            endingLineNumber = "196"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -30,9 +30,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "198"
-            endingLineNumber = "198"
-            landmarkName = "init(details:)"
+            startingLineNumber = "202"
+            endingLineNumber = "202"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -46,9 +46,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "199"
-            endingLineNumber = "199"
-            landmarkName = "init(details:)"
+            startingLineNumber = "203"
+            endingLineNumber = "203"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -62,9 +62,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "200"
-            endingLineNumber = "200"
-            landmarkName = "init(details:)"
+            startingLineNumber = "204"
+            endingLineNumber = "204"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -78,9 +78,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "201"
-            endingLineNumber = "201"
-            landmarkName = "init(details:)"
+            startingLineNumber = "205"
+            endingLineNumber = "205"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -94,9 +94,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "202"
-            endingLineNumber = "202"
-            landmarkName = "init(details:)"
+            startingLineNumber = "206"
+            endingLineNumber = "206"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -110,9 +110,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "203"
-            endingLineNumber = "203"
-            landmarkName = "init(details:)"
+            startingLineNumber = "207"
+            endingLineNumber = "207"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -126,9 +126,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "208"
-            endingLineNumber = "208"
-            landmarkName = "init(details:)"
+            startingLineNumber = "212"
+            endingLineNumber = "212"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -142,9 +142,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "212"
-            endingLineNumber = "212"
-            landmarkName = "init(details:)"
+            startingLineNumber = "216"
+            endingLineNumber = "216"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -158,9 +158,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "214"
-            endingLineNumber = "214"
-            landmarkName = "init(details:)"
+            startingLineNumber = "218"
+            endingLineNumber = "218"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -174,9 +174,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "215"
-            endingLineNumber = "215"
-            landmarkName = "init(details:)"
+            startingLineNumber = "219"
+            endingLineNumber = "219"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -190,9 +190,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "216"
-            endingLineNumber = "216"
-            landmarkName = "init(details:)"
+            startingLineNumber = "220"
+            endingLineNumber = "220"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -206,9 +206,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "220"
-            endingLineNumber = "220"
-            landmarkName = "init(details:)"
+            startingLineNumber = "224"
+            endingLineNumber = "224"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -222,9 +222,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "222"
-            endingLineNumber = "222"
-            landmarkName = "init(details:)"
+            startingLineNumber = "226"
+            endingLineNumber = "226"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -238,9 +238,9 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "223"
-            endingLineNumber = "223"
-            landmarkName = "init(details:)"
+            startingLineNumber = "227"
+            endingLineNumber = "227"
+            landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -254,9 +254,9 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "142"
-            endingLineNumber = "142"
-            landmarkName = "init(details:)"
+            startingLineNumber = "144"
+            endingLineNumber = "144"
+            landmarkName = "init(details:modelContext:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

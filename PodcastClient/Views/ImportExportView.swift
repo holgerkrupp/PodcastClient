@@ -49,21 +49,22 @@ struct ImportExportView: View {
                 }
             }).count > 0{
                 
-                let urls = subscriptionManager.newPodcasts.filter({ newPod in
+                let notExisting = subscriptionManager.newPodcasts.filter({ newPod in
                     if newPod.existing == false && newPod.added == false {
                         return true
                     }else{
                         return false
                     }
-                }).map { $0.url }
+                })
             
                     Button {
                        
                         Task{
-                            await subscriptionManager.subscribe(all: urls)
+                        
+                            await subscriptionManager.subscribe(all: notExisting)
                         }
                     } label: {
-                        Text("Subscribe to all \(urls.count) podcasts")
+                        Text("Subscribe to all \(notExisting.count) podcasts")
                     }
                 
 

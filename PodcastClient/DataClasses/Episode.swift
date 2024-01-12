@@ -41,7 +41,7 @@ class Episode: Equatable{
     var assetLink: URL? // the original URL of the asset
     var length: Int?
     
-    var chapters: [Chapter] = []
+    @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter] = []
     
     var podcast: Podcast?
     
@@ -161,7 +161,9 @@ class Episode: Equatable{
     }
 
     
-    
+    func playNow(){
+        Player.shared.currentEpisode = self
+    }
     
     
     func download(){
@@ -189,8 +191,10 @@ class Episode: Equatable{
     
 
     //MARK: INIT
-    init(details: [String: Any]) {
+    init(details: [String: Any], podcast:Podcast?) {
+        
         title = details["itunes:title"] as? String ?? details["title"] as? String
+        print("new Episode \(title ?? "") for \(podcast?.title ?? "")")
         subtitle = details["itunes:subtitle"] as? String
 
         desc = details["description"] as? String
@@ -207,7 +211,7 @@ class Episode: Equatable{
         
         type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
         
-        
+        //self.podcast = podcast
       
         for assetDetails in details["enclosure"] as? [[String:Any]] ?? []{
             

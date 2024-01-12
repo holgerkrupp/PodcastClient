@@ -43,7 +43,7 @@ class Podcast: Equatable{
     
     
     @Transient var isUpdating:Bool = false
-    
+    @Transient var modelContext:ModelContext?
     
     
     
@@ -87,12 +87,12 @@ class Podcast: Equatable{
     
     @Transient var feedUpdated:Bool?{
         get async throws{
-            if let lastModified{
+            if let lastRefresh{
                 if let serverLastModified = try? await feed?.status()?.lastModified {
-                    print("Server: \(serverLastModified.formatted()) vs Database: \(lastModified.formatted())")
+                    print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
                     
                     lastAttempt = Date()
-                    if serverLastModified > lastModified{
+                    if serverLastModified > lastRefresh{
                         print("feed is new")
                         // feed on server is new
                         return true
@@ -117,7 +117,9 @@ class Podcast: Equatable{
     
 
     // MARK: init
-    init(details: [String: Any]) {
+    init(details: [String: Any],  modelContext: ModelContext?) {
+        
+        //update(details: details)
         
         title = details["title"] as? String ?? ""
         subtitle = details["itunes:subtitle"] as? String
@@ -136,7 +138,7 @@ class Podcast: Equatable{
         
         var tempE:[Episode] = []
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-           let episode = Episode(details: episodeDetails)
+            let episode = Episode(details: episodeDetails, podcast: self)
             tempE.append(episode)
         }
         episodes = tempE
@@ -174,18 +176,27 @@ class Podcast: Equatable{
         coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
         
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-            let episode = Episode(details: episodeDetails)
-            if episodes.contains(episode){
-                print("episode existing - do nothing")
-            }else{
+            if contains(episodeDetails: episodeDetails){
+                print("episode: \(episodeDetails["title"] ?? "") not yet added")
+                let episode = Episode(details: episodeDetails, podcast: self)
+                print("modelcontext existing: \(modelContext != nil)")
                 modelContext?.insert(episode)
-                episodes.append(episode)
+            }else{
+                print("podcast contains \(episodeDetails["title"] ?? "")")
             }
+           
         }
         
         
     }
     
+    func contains(episodeDetails: [String: Any]) -> Bool{
+        return (episodes.first(where: { episode in
+            
+            return episode.link == URL(string: episodeDetails["link"] as? String ?? "")
+        }) != nil)
+        
+    }
     
     
     func refresh() async{

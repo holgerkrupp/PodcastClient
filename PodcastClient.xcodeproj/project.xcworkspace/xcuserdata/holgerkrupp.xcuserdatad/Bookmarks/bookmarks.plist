@@ -59,13 +59,13 @@
 					<key>EndingColumnNumber</key>
 					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>94</string>
+					<string>128</string>
 					<key>StartingColumnNumber</key>
 					<string>0</string>
 					<key>StartingLineNumber</key>
-					<string>93</string>
+					<string>127</string>
 					<key>Timestamp</key>
-					<string>726583808.708988</string>
+					<string>726754788.957044</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -103,16 +103,12 @@
 			<dict>
 				<key>location-parameters</key>
 				<dict>
-					<key>EndingColumnNumber</key>
-					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>190</string>
-					<key>StartingColumnNumber</key>
-					<string>0</string>
+					<string>270</string>
 					<key>StartingLineNumber</key>
-					<string>190</string>
+					<string>270</string>
 					<key>Timestamp</key>
-					<string>726736781.267023</string>
+					<string>726754788.941945</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -138,53 +134,6 @@
 			</dict>
 			<key>title</key>
 			<string>Check if response header is valid XML/RSS/ATOM</string>
-			<key>type</key>
-			<string>bookmark</string>
-		</dict>
-		<dict>
-			<key>destination</key>
-			<dict>
-				<key>location-parameters</key>
-				<dict>
-					<key>EndingColumnNumber</key>
-					<string>0</string>
-					<key>EndingLineNumber</key>
-					<string>109</string>
-					<key>StartingColumnNumber</key>
-					<string>0</string>
-					<key>StartingLineNumber</key>
-					<string>108</string>
-					<key>Timestamp</key>
-					<string>726740791.803864</string>
-				</dict>
-				<key>rebasable-url</key>
-				<dict>
-					<key>base</key>
-					<string>workspace</string>
-					<key>payload</key>
-					<dict>
-						<key>relative-path</key>
-						<string>PodcastClient/DataClasses/Podcast.swift</string>
-					</dict>
-				</dict>
-			</dict>
-			<key>text-context</key>
-			<dict>
-				<key>focused</key>
-				<string>            }else{
-</string>
-				<key>leading</key>
-				<string>                    return nil
-                }
-</string>
-				<key>trailing</key>
-				<string>                // feed has never been fetched before, no last modified date is set.
-                print("feed is very new")
-                return true
-</string>
-			</dict>
-			<key>title</key>
-			<string>Somehow the lastModified date get's lost and this else is always called</string>
 			<key>type</key>
 			<string>bookmark</string>
 		</dict>

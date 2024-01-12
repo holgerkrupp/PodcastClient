@@ -190,7 +190,7 @@ struct EpisodeMiniView: View {
         }
         .contextMenu {
             Button {
-                //    model.episode.playNow()
+                    model.episode.playNow()
             } label: {
                 Label("Play now", systemImage: "play")
             }
