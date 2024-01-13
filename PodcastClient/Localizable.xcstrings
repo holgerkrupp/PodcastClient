@@ -19,7 +19,28 @@
     "already subscribed" : {
 
     },
+    "at the beginning" : {
+
+    },
+    "at the end" : {
+
+    },
+    "Auto download new Episodes" : {
+
+    },
+    "Chapter Management" : {
+
+    },
+    "Contact" : {
+      "comment" : "My Mastodon"
+    },
     "Counter" : {
+
+    },
+    "Cut from End" : {
+
+    },
+    "Cut from Front" : {
 
     },
     "Danger Zone" : {
@@ -34,7 +55,13 @@
     "developed by Holger Krupp" : {
 
     },
+    "do nothing" : {
+
+    },
     "Download" : {
+
+    },
+    "Episode Management" : {
 
     },
     "error loading episode" : {
@@ -67,9 +94,6 @@
     "Maximize" : {
 
     },
-    "Minimize" : {
-
-    },
     "New Episodes" : {
 
     },
@@ -97,10 +121,22 @@
     "Play Now" : {
 
     },
+    "Playback Management" : {
+
+    },
     "PlaylistView" : {
 
     },
+    "PlaySpeed" : {
+
+    },
+    "Podcast Settings" : {
+
+    },
     "Podcasts" : {
+
+    },
+    "Put new Elements to Play Next Queue" : {
 
     },
     "refresh" : {
@@ -120,6 +156,15 @@
     },
     "Settings" : {
 
+    },
+    "Settings for skipping Chapters by keyword" : {
+
+    },
+    "Settings.MoreApps" : {
+      "comment" : "MoreApps"
+    },
+    "Settings.MyWebsite" : {
+      "comment" : "My Website"
     },
     "Show Details" : {
 
@@ -143,6 +188,15 @@
 
     },
     "Subscribed podcasts" : {
+
+    },
+    "These Settings are applied when a new episode is loaded into the player and change the playback behaviour" : {
+
+    },
+    "These Settings are applied when chapters are detected in an episode" : {
+
+    },
+    "These Settings change how new Episodes of Podcasts are managed." : {
 
     },
     "Unsubscribe" : {

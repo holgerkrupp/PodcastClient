@@ -13,12 +13,18 @@ import SwiftData
 class PodcastSettings {
     
 
+    var title:String?
     
     var autoDownload:Bool = false
+    var playnextPosition:Playlist.Position = Playlist.Position.none
     var playbackSpeed:Float = 1.0
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
     var cutFront:Float? // how much to cut from the front / Intro
     var cutEnd:Float? // how much to cut from the end / Outro
+    
+    var skipForward:Float = 15.0
+    var skipBack: Float = 15.0
+    
     
     init(){}
 }

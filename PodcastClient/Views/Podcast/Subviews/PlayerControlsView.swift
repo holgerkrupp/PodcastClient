@@ -11,7 +11,7 @@ struct PlayerControlsView: View {
     
     @Binding var miniPlayerHeight:CGFloat
     
-    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 200
+    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 150
     var minPlayerHeight:CGFloat = 20.0
     
   //  @State var player = Player.shared
@@ -19,35 +19,21 @@ struct PlayerControlsView: View {
     
     
     var body: some View {
-        ZStack{
-            ProgressView(value: player.progress, total: 1.0)
-                .progressViewStyle(.linear)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .tint(.teal)
-                .scaleEffect(x: 1, y: 10, anchor: .center)
-              
-            HStack(alignment: .bottom){
+
                 
                 if miniPlayerHeight == maxPlayerHeight{
                     
-                    Button {
-                        withAnimation {
-                            miniPlayerHeight = minPlayerHeight
-                        }
-                    } label: {
-                        Label {
-                            Text("Minimize")
-                        } icon: {
-                            Image(systemName: "chevron.down")
-                                .resizable()
-                                .scaledToFit()
-                        }
-                        .labelStyle(.iconOnly)
-                        .frame(maxWidth: .infinity)
-                    }
+                    PlayerView()
                     
                 }else{
-                    
+                    ZStack{
+                        ProgressView(value: player.progress, total: 1.0)
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            .tint(.teal)
+                            .scaleEffect(x: 1, y: 10, anchor: .center)
+                        
+                        HStack(alignment: .bottom){
                     
                     
                     Button {
@@ -65,8 +51,7 @@ struct PlayerControlsView: View {
                         .labelStyle(.iconOnly)
                         .frame(maxWidth: .infinity)
                     }
-                }
-                
+             
                 
                 
                 
@@ -131,7 +116,8 @@ struct PlayerControlsView: View {
                     .labelStyle(.iconOnly)
                     .frame(maxWidth: .infinity)
                 }
-                
+                        }
+                        
                 
             }.frame(maxWidth: .infinity, maxHeight: 30)
         }

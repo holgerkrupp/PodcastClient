@@ -12,13 +12,13 @@
 					<key>EndingColumnNumber</key>
 					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>178</string>
+					<string>234</string>
 					<key>StartingColumnNumber</key>
 					<string>0</string>
 					<key>StartingLineNumber</key>
-					<string>177</string>
+					<string>233</string>
 					<key>Timestamp</key>
-					<string>725286681.69787</string>
+					<string>726823502.892599</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -27,113 +27,27 @@
 					<key>payload</key>
 					<dict>
 						<key>relative-path</key>
-						<string>PodcastClient/PlayerClasses/PodcastParser.swift</string>
+						<string>PodcastClient/DataClasses/Podcast.swift</string>
 					</dict>
 				</dict>
 			</dict>
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>    
+				<string>        if true == true{
 </string>
 				<key>leading</key>
-				<string>    }
-    
+				<string>        let updated = try? await feedUpdated
+                
 </string>
 				<key>trailing</key>
-				<string>    func parserDidEndDocument(_ parser: XMLParser) {
-        podcastDictArr.updateValue(episodesArray, forKey: "episodes")
-       print("parser finished")
+				<string>            do{
+                if let data = try await feedData{
+                    print("got data for \(feed?.absoluteString ?? "")")
 </string>
 			</dict>
 			<key>title</key>
-			<string>Check if the episode is already linked to the Podcast</string>
-			<key>type</key>
-			<string>bookmark</string>
-		</dict>
-		<dict>
-			<key>destination</key>
-			<dict>
-				<key>location-parameters</key>
-				<dict>
-					<key>EndingColumnNumber</key>
-					<string>0</string>
-					<key>EndingLineNumber</key>
-					<string>128</string>
-					<key>StartingColumnNumber</key>
-					<string>0</string>
-					<key>StartingLineNumber</key>
-					<string>127</string>
-					<key>Timestamp</key>
-					<string>726754788.957044</string>
-				</dict>
-				<key>rebasable-url</key>
-				<dict>
-					<key>base</key>
-					<string>workspace</string>
-					<key>payload</key>
-					<dict>
-						<key>relative-path</key>
-						<string>PodcastClient/AdditionalClasses/SubscriptionManager.swift</string>
-					</dict>
-				</dict>
-			</dict>
-			<key>text-context</key>
-			<dict>
-				<key>focused</key>
-				<string>            print("could not read data from OPML file")
-</string>
-				<key>leading</key>
-				<string>            addPodcastsfrom(OPMLfile: data)
-        }else{
-</string>
-				<key>trailing</key>
-				<string>        }
-    }
-    
-</string>
-			</dict>
-			<key>title</key>
-			<string>Check if OPML file is valid XML</string>
-			<key>type</key>
-			<string>bookmark</string>
-		</dict>
-		<dict>
-			<key>destination</key>
-			<dict>
-				<key>location-parameters</key>
-				<dict>
-					<key>EndingLineNumber</key>
-					<string>270</string>
-					<key>StartingLineNumber</key>
-					<string>270</string>
-					<key>Timestamp</key>
-					<string>726754788.941945</string>
-				</dict>
-				<key>rebasable-url</key>
-				<dict>
-					<key>base</key>
-					<string>workspace</string>
-					<key>payload</key>
-					<dict>
-						<key>relative-path</key>
-						<string>PodcastClient/AdditionalClasses/SubscriptionManager.swift</string>
-					</dict>
-				</dict>
-			</dict>
-			<key>text-context</key>
-			<dict>
-				<key>focused</key>
-				<string></string>
-				<key>leading</key>
-				<string>
-}
-</string>
-				<key>trailing</key>
-				<string></string>
-			</dict>
-			<key>title</key>
-			<string>Check if response header is valid XML/RSS/ATOM</string>
+			<string>replace true == true with updated == true</string>
 			<key>type</key>
 			<string>bookmark</string>
 		</dict>

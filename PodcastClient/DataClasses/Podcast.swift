@@ -117,7 +117,7 @@ class Podcast: Equatable{
     
 
     // MARK: init
-    init(details: [String: Any],  modelContext: ModelContext?) {
+    init(details: [String: Any]) {
         
         //update(details: details)
         
@@ -158,7 +158,8 @@ class Podcast: Equatable{
     
     
     func update(details: [String: Any]) {
-  
+        print("started update for \(details["title"] as? String ?? "")")
+/*
         title = details["title"] as? String ?? ""
         subtitle = details["itunes:subtitle"] as? String
         author = details["itunes:author"] as? String
@@ -173,16 +174,35 @@ class Podcast: Equatable{
         lastRefresh = Date()
         
         link = URL(string: details["link"] as? String ?? "")
-        coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
+   //     coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
+        */
+          
         
+        print("checking \((details["episodes"] as? [[String:Any]])?.count) episodes")
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-            if contains(episodeDetails: episodeDetails){
-                print("episode: \(episodeDetails["title"] ?? "") not yet added")
-                let episode = Episode(details: episodeDetails, podcast: self)
-                print("modelcontext existing: \(modelContext != nil)")
-                modelContext?.insert(episode)
+            print("check: \(episodeDetails["title"] as? String ?? "")")
+
+            if contains(episodeDetails: episodeDetails) == false{
+                print("does not contain: \(episodeDetails["link"] as? String ?? "")")
+                
+                if let container = try? ModelContainer(for: Podcast.self){
+                    let context = ModelContext(container)
+                    let episode = Episode(details: episodeDetails, podcast: self)
+                    print("created Episode \(episode.title ?? "") for \(self.title)")
+                    
+                   
+                    context.insert(episode)
+                    do{
+                        try context.save()
+                        print("Episode inserted")
+                    }catch{
+                        print(error)
+                    }
+                }else{
+                    print("could not create ModelContainer")
+                }
             }else{
-                print("podcast contains \(episodeDetails["title"] ?? "")")
+                print("Episode contains \(episodeDetails["title"] ?? "")")
             }
            
         }
@@ -191,10 +211,17 @@ class Podcast: Equatable{
     }
     
     func contains(episodeDetails: [String: Any]) -> Bool{
-        return (episodes.first(where: { episode in
-            
-            return episode.link == URL(string: episodeDetails["link"] as? String ?? "")
-        }) != nil)
+        
+       print("contains: \(episodeDetails["link"] as? String ?? "")")
+        let first = episodes.first(where: { $0.link == URL(string: episodeDetails["link"] as? String ?? "de.holgerkrupp.teststring") })
+        print("\(first?.title ?? "-") contains \(episodeDetails["link"] as? String ?? "") as \(first?.link?.absoluteString ?? "")")
+        if (first == nil){
+            return false
+        }else{
+            return true
+        }
+
+        
         
     }
     
@@ -204,10 +231,10 @@ class Podcast: Equatable{
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = try? await feedUpdated
                 
-        if updated == true{
+        if true == true{
             do{
                 if let data = try await feedData{
-                    
+                    print("got data for \(feed?.absoluteString ?? "")")
                     
                     
                     //podcast.feedData loads new data
@@ -217,7 +244,7 @@ class Podcast: Equatable{
                     parser.delegate = podcastParser
                     
                     if parser.parse() {
-                        
+                        print("parsed for \(feed?.absoluteString ?? "")")
                         if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
                             update(details: feedDetail)
                             

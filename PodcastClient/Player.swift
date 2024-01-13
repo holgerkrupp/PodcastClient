@@ -20,8 +20,12 @@ import Combine
         return avplayer.isPlaying
     }
     
+    var rate:Float{
+        avplayer.rate
+    }
+    
     var playNextQueue: Playlist = PlaylistManager.shared.playnext
-
+    var settings:PodcastSettings = SettingsManager.shared.defaultSettings
     
     var playPauseButton: some View{
         if currentEpisode != nil{
@@ -35,8 +39,12 @@ import Combine
         }
     }
     
+    
+    
 
     var observer: NSKeyValueObservation?
+    
+
    var currentEpisode:Episode?{
         didSet{
             if let asset = currentEpisode?.avAsset{
@@ -46,6 +54,7 @@ import Combine
                     await self.currentEpisode?.updateDuration()
                 }
                 
+                settings = currentEpisode?.podcast?.settings ?? SettingsManager.shared.defaultSettings
 
                     self.observer = playerItem.observe(\.status, options:  [.new, .old], changeHandler: { (playerItem, change) in
                     if playerItem.status == .readyToPlay {
@@ -70,17 +79,47 @@ import Combine
         }
     }
     
+    var currentChapter: Chapter?{
+      
+        if let chapters = currentEpisode?.chapters.sorted(by: {$0.start?.durationAsSeconds ?? 0 < $1.start?.durationAsSeconds ?? 0}), chapters.count > 0 {
+            return chapters.last(where: {$0.start?.durationAsSeconds ?? 0 > self.playPosition})
+        }else{
+            return nil
+        }
+            
+
+            
+        
+    }
+    
+    
+
+    
     var coverImage: some View{
         if let playing = currentEpisode{
-            return AnyView(playing.coverImage)
+            if let chapter = currentChapter{
+                
+                return AnyView(chapter.coverImage)
+            }else{
+                return AnyView(playing.coverImage)
+            }
+            
         }else{
-            return AnyView(Image(systemName: "mic.fill").resizable())
+            return AnyView(Image(systemName: "photo").resizable())
         }
     }
     
     var playPosition: Double = 0.0{
         didSet{
             currentEpisode?.playPosition = playPosition
+        }
+    }
+    
+    var remaining: Double?{
+        if let duration = avplayer.currentItem?.duration{
+           return duration.seconds - playPosition
+        }else{
+            return nil
         }
     }
     
@@ -105,7 +144,6 @@ import Combine
         avplayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: nil) { [weak self] time in
             guard let self = self else { return }
             
-            print("TimeObserver: \(avplayer.currentTime().seconds.description) Seconds")
             
             playPosition = avplayer.currentTime().seconds
         }
@@ -158,3 +196,5 @@ extension Double{
         }
     }
 }
+
+

@@ -22,9 +22,14 @@ class Playlist{
     
     init(){}
     
-    enum Position {
+    enum Position:Identifiable, Codable {
         case front
         case end
+        case none
+
+        var id: Self { self }
+
+    
     }
     
     func add(episode:Episode, to: Position = .end){
@@ -36,7 +41,7 @@ class Playlist{
             newPosition = (ordered.last?.order ?? 0) + 1
         }
         
-        var newEntry = PlaylistEntry()
+        let newEntry = PlaylistEntry()
         newEntry.episode = episode
         newEntry.order = newPosition
         newEntry.dateAdded = Date()

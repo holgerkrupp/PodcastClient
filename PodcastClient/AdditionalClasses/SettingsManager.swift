@@ -10,32 +10,28 @@ import SwiftData
 
 @Observable
 
-class PlaylistManager:NSObject{
+class SettingsManager:NSObject{
     
-    static let shared = PlaylistManager()
+    static let shared = SettingsManager()
     var modelContext: ModelContext?
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     
-    var playnext: Playlist {
+    var defaultSettings: PodcastSettings {
         
-        let playNextQueueTitel = "de.holgerkrupp.podbay.queue"
+        let defaultSettingsTitel = "de.holgerkrupp.podbay.queue"
         
-        var playNextQueue = FetchDescriptor<Playlist>(predicate: #Predicate { playlist in
-            playlist.title == playNextQueueTitel
+        var defaultSettings = FetchDescriptor<PodcastSettings>(predicate: #Predicate { settings in
+            settings.title == defaultSettingsTitel
         })
-        playNextQueue.fetchLimit = 1
+        defaultSettings.fetchLimit = 1
         
-        if let result = try! modelContext?.fetch(playNextQueue).first {
-            print("found old default Playlist")
+        if let result = try! modelContext?.fetch(defaultSettings).first {
             return result
         } else {
-            print("create new default Playlist")
-            let playNextPlaylist = Playlist()
-            playNextPlaylist.title = playNextQueueTitel
-            playNextPlaylist.deleteable = false
-            playNextPlaylist.hidden = true
-            modelContext?.insert(playNextPlaylist)
-            return playNextPlaylist
+            var newDefaultSettings = PodcastSettings()
+            newDefaultSettings.title = defaultSettingsTitel
+            modelContext?.insert(newDefaultSettings)
+            return newDefaultSettings
         }
     }
     
@@ -44,6 +40,7 @@ class PlaylistManager:NSObject{
         super.init()
         
         let schema = Schema([
+           
             Podcast.self,
             Episode.self,
             Chapter.self,
@@ -66,3 +63,4 @@ class PlaylistManager:NSObject{
     
     
 }
+

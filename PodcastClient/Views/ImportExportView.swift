@@ -55,7 +55,7 @@ struct ImportExportView: View {
                     }else{
                         return false
                     }
-                })
+                }).sorted(by: {$0.title ?? "" < $1.title ?? ""})
             
                     Button {
                        
@@ -79,7 +79,7 @@ struct ImportExportView: View {
                             return false
                         }
                        
-                    }), id: \.url) { newPodcastFeed in
+                    }).sorted(by: {$0.title ?? "" < $1.title ?? ""}), id: \.url) { newPodcastFeed in
                         SubscribeToView(newPodcastFeed: newPodcastFeed)
                         
                     }

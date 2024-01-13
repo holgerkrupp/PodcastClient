@@ -162,9 +162,26 @@ class SubscriptionManager:NSObject{
                 print("parsed for \(url.absoluteString)")
 
                 if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
-                    if let container = try? ModelContainer(for: Podcast.self){
+                    
+                    let schema = Schema([
+                        Podcast.self,
+                        Episode.self,
+                        Chapter.self,
+                        
+                        //        Asset.self,
+                        PodcastSettings.self,
+                        //     PlayStatus.self,
+                        
+                        Playlist.self,
+                        PlaylistEntry.self
+                        
+                    ])
+                    
+                    
+                    
+                    if let container = try? ModelContainer(for: schema){
                         let context = ModelContext(container)
-                        let podcast = Podcast(details: feedDetail, modelContext: context)
+                        let podcast = Podcast(details: feedDetail)
                         print("created Podcast \(podcast.title) for \(url.absoluteString)")
                         
                         podcast.feed = url

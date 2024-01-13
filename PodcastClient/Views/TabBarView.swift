@@ -22,7 +22,7 @@ struct TabBarView: View {
     
     var body: some View {
 
-            VStack{
+ 
          
                 TabView(selection: $selectedTab){
                     
@@ -55,11 +55,14 @@ struct TabBarView: View {
                             
                         }
                 
-            }
-               
-            }
-            
-            //.offset(y:-miniplayerHeight)
+                }
+                .onChange(of: selectedTab) {
+                    withAnimation{
+                        miniplayerHeight = 20.0
+                    }
+                }
+
+
            
        
     
@@ -69,6 +72,7 @@ struct TabBarView: View {
       
     }
 }
+
 /*
  #Preview {
  let schema = Schema([

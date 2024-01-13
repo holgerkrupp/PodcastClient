@@ -72,3 +72,4 @@ extension Bundle {
         object(forInfoDictionaryKey: "CFBundleName") as? String
     }
 }
+

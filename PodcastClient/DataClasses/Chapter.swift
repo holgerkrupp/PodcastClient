@@ -6,6 +6,7 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
 
 
 @Model
@@ -18,6 +19,17 @@ class Chapter{
     var duration: TimeInterval?
     var episode: Episode?
     var shouldPlay:Bool = true
+    
+    @Transient var coverImage: some View{
+        
+        if let imageURL = image{
+            return AnyView(ImageWithURL(imageURL))
+        }else {
+            return AnyView(episode?.coverImage)
+        }
+        
+    }
+    
     
     init(){}
     
