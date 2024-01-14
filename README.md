@@ -26,7 +26,7 @@ An Open Source Podcast client.
 
 ### Subscription Management
 - [x] OPML import
-- - [ ] to be validated with big file
+- - [x] to be validated with big file
 - - [ ] Show import progress
 - [ ] podcast directory search
 
