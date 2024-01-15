@@ -21,6 +21,7 @@ struct EpisodeView: View {
     
     init(for episodeID: PersistentIdentifier) {
         
+     
         
         self._episodes = Query(filter: #Predicate<Episode> {
             $0.persistentModelID == episodeID
@@ -70,6 +71,22 @@ struct EpisodeView: View {
                             .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
+                        
+                        if let podcast = episode.podcast{
+                            NavigationLink {
+                                
+                                PodcastView(for: podcast.persistentModelID)
+                                    .modelContext(modelContext)
+                                
+                            }label:{
+                                PodcastMiniView(podcast: podcast)
+                                
+                            }
+                        }else{
+                            Text("not linked to a podcast")
+                        }
+
+                        
                         
                     //    EpisodeStatusIcon(episode: episode)
                         
@@ -128,9 +145,10 @@ struct EpisodeMiniView: View {
     
     var body: some View {
         NavigationLink {
+            
             EpisodeView(for: model.episode.persistentModelID)
                 .modelContext(modelContext)
-            
+           
         }label:{
             VStack{
                 HStack{
@@ -195,12 +213,12 @@ struct EpisodeMiniView: View {
                 Label("Play now", systemImage: "play")
             }
             Button {
-                Player.shared.playNextQueue.add(episode: model.episode, to: .front)
+                PlaylistManager.shared.playnext.add(episode: model.episode, to: .front)
             } label: {
                 Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
             Button {
-                Player.shared.playNextQueue.add(episode: model.episode, to: .end)
+                PlaylistManager.shared.playnext.add(episode: model.episode, to: .end)
                 
             } label: {
                 Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")

@@ -27,7 +27,8 @@ An Open Source Podcast client.
 ### Subscription Management
 - [x] OPML import
 - - [x] to be validated with big file
-- - [ ] Show import progress
+- - [x] Show import progress
+- - [ ] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
 - [ ] podcast directory search
 
 ### Refresh and Downloads

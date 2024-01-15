@@ -15,7 +15,7 @@ class Chapter{
     var title: String = ""
     var link: URL?
     var image: URL?
-    var start: String?
+    var start: Double?
     var duration: TimeInterval?
     var episode: Episode?
     var shouldPlay:Bool = true
@@ -35,7 +35,7 @@ class Chapter{
     
     init(details: [String: Any]) {
         title = details["title"] as? String ?? ""
-        start = details["start"] as? String
+        start = (details["start"] as? String)?.durationAsSeconds
 
         
         link = URL(string: details["href"] as? String ?? "")

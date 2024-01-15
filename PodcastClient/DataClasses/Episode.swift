@@ -194,7 +194,6 @@ class Episode: Equatable{
     init(details: [String: Any], podcast:Podcast?) {
         
         title = details["itunes:title"] as? String ?? details["title"] as? String
-        print("new Episode \(title ?? "") for \(podcast?.title ?? "")")
         subtitle = details["itunes:subtitle"] as? String
 
         desc = details["description"] as? String
@@ -233,13 +232,35 @@ class Episode: Equatable{
 
     
     static func ==(lhs: Episode, rhs: Episode) -> Bool {
+       /*
         
+        if (lhs.guid == "gid://art19-episode-locator/V0/kVe_ifOT_l4MhiKYJJOxqtUfTtH6U29Dsurvph1IpFA"){
+        
+            print("-lhs-")
+            print(lhs.podcast)
+            print(lhs.guid)
+            print(lhs.link?.absoluteString)
+            print(lhs.number)
+            print(lhs.season)
+            print("-------")
+            print(rhs.podcast)
+            print(rhs.guid)
+            print(rhs.link?.absoluteString)
+            print(rhs.number)
+            print(rhs.season)
+            print("-rhs-")
+        }
+*/
+
         if lhs.podcast != rhs.podcast{
             return false
         }else{
-            if lhs.link == rhs.link, lhs.link != nil{
+            if lhs.guid == rhs.guid && lhs.guid != nil{
+               
                 return true
-            }else if lhs.number == rhs.number, lhs.number != nil, lhs.season == rhs.season{
+            }else if lhs.link == rhs.link{
+                return true
+            }else if lhs.number == rhs.number &&  lhs.number != nil && lhs.season == rhs.season{
                 return true
             }else{
                 return false

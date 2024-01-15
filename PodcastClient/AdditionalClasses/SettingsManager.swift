@@ -17,6 +17,7 @@ class SettingsManager:NSObject{
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     
     var defaultSettings: PodcastSettings {
+        print("reading Default Settings")
         
         let defaultSettingsTitel = "de.holgerkrupp.podbay.queue"
         
@@ -28,7 +29,7 @@ class SettingsManager:NSObject{
         if let result = try! modelContext?.fetch(defaultSettings).first {
             return result
         } else {
-            var newDefaultSettings = PodcastSettings()
+            let newDefaultSettings = PodcastSettings()
             newDefaultSettings.title = defaultSettingsTitel
             modelContext?.insert(newDefaultSettings)
             return newDefaultSettings

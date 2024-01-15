@@ -25,7 +25,7 @@ class PodcastFeed{
             subscribing = true
             status = try? await url.status()
             added = await subscriptionManager.subscribe(to: url)
-            dump(status)
+            
             return added
         }else{
             
@@ -59,9 +59,7 @@ class SubscriptionManager:NSObject{
             Episode.self,
             Chapter.self,
             
-    //        Asset.self,
             PodcastSettings.self,
-       //     PlayStatus.self,
             
             Playlist.self,
             PlaylistEntry.self
@@ -168,9 +166,7 @@ class SubscriptionManager:NSObject{
                         Episode.self,
                         Chapter.self,
                         
-                        //        Asset.self,
                         PodcastSettings.self,
-                        //     PlayStatus.self,
                         
                         Playlist.self,
                         PlaylistEntry.self
@@ -207,8 +203,21 @@ class SubscriptionManager:NSObject{
     
     func deleteAll(){
    
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            Chapter.self,
             
-            if let container = try? ModelContainer(for: Podcast.self){
+            PodcastSettings.self,
+            
+            Playlist.self,
+            PlaylistEntry.self
+            
+        ])
+        
+        
+        
+        if let container = try? ModelContainer(for: schema){
                 let context = ModelContext(container)
                 
                 do {

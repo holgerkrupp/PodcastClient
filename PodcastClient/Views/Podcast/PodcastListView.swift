@@ -13,7 +13,6 @@ import SwiftData
 struct PodcastListView: View {
     
     @Environment(\.modelContext) var modelContext
-   // @Query var podcasts: [Podcast]
     
     @State private var podcastModel: PodcastModel
 
@@ -28,7 +27,8 @@ struct PodcastListView: View {
     
     
     var body: some View {
-        NavigationStack {
+
+                NavigationStack {
             List{
                 Section {
                     ForEach(podcastModel.podcasts.filter {
@@ -39,7 +39,7 @@ struct PodcastListView: View {
                             
                             true
                             
-                        }) { podcast in
+                    }, id:\.self) { podcast in
                             NavigationLink {
                                 
                   
@@ -84,7 +84,8 @@ struct PodcastListView: View {
             }
             .searchable(text: $searchText)
         }
-    }
+    
+         }
     
     
 
@@ -108,12 +109,15 @@ extension PodcastListView {
         
         func fetchData() {
             print("podcastListView PodcastModel - fetch")
+            
             do {
                 let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
                 podcasts = try modelContext.fetch(descriptor)
+                print(podcasts.count)
             } catch {
                 print("Fetch failed")
             }
+             
         }
     }
 }

@@ -12,13 +12,13 @@
 					<key>EndingColumnNumber</key>
 					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>234</string>
+					<string>249</string>
 					<key>StartingColumnNumber</key>
 					<string>0</string>
 					<key>StartingLineNumber</key>
-					<string>233</string>
+					<string>248</string>
 					<key>Timestamp</key>
-					<string>726823502.892599</string>
+					<string>727024383.893351</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -34,7 +34,7 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>        if true == true{
+				<string>        if updated == true{
 </string>
 				<key>leading</key>
 				<string>        let updated = try? await feedUpdated

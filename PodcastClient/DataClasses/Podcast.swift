@@ -185,7 +185,21 @@ class Podcast: Equatable{
             if contains(episodeDetails: episodeDetails) == false{
                 print("does not contain: \(episodeDetails["link"] as? String ?? "")")
                 
-                if let container = try? ModelContainer(for: Podcast.self){
+                let schema = Schema([
+                    Podcast.self,
+                    Episode.self,
+                    Chapter.self,
+                    
+                    PodcastSettings.self,
+                    
+                    Playlist.self,
+                    PlaylistEntry.self
+                    
+                ])
+                
+                
+                
+                if let container = try? ModelContainer(for: schema){
                     let context = ModelContext(container)
                     let episode = Episode(details: episodeDetails, podcast: self)
                     print("created Episode \(episode.title ?? "") for \(self.title)")
@@ -194,6 +208,7 @@ class Podcast: Equatable{
                     context.insert(episode)
                     do{
                         try context.save()
+                        episodes.append(episode)
                         print("Episode inserted")
                     }catch{
                         print(error)
@@ -231,7 +246,7 @@ class Podcast: Equatable{
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = try? await feedUpdated
                 
-        if true == true{
+        if updated == true{
             do{
                 if let data = try await feedData{
                     print("got data for \(feed?.absoluteString ?? "")")
@@ -283,7 +298,7 @@ class Podcast: Equatable{
     static func ==(lhs: Podcast, rhs: Podcast) -> Bool {
         
         
-        if lhs.feed == rhs.feed, lhs.feed != nil{
+        if lhs.feed == rhs.feed{
             return true
         }else{
             return false

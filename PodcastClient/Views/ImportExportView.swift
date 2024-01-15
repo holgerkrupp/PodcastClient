@@ -14,7 +14,7 @@ struct ImportExportView: View {
 
 //    var subscriptionManager = SubscriptionManager.shared
     @Environment(SubscriptionManager.self) private var subscriptionManager
-
+    @State private var subBaseline = 0
     
     var body: some View {
         List{
@@ -58,13 +58,16 @@ struct ImportExportView: View {
                 }).sorted(by: {$0.title ?? "" < $1.title ?? ""})
             
                     Button {
-                       
+                        subBaseline = notExisting.count
                         Task{
-                        
                             await subscriptionManager.subscribe(all: notExisting)
                         }
                     } label: {
                         Text("Subscribe to all \(notExisting.count) podcasts")
+                        if subBaseline > 0{
+                            ProgressView(value: Float(subBaseline-notExisting.count), total: Float(subBaseline))
+                        
+                        }
                     }
                 
 
@@ -153,7 +156,7 @@ struct SubscribeToView: View{
                             }
                         } label: {
 
-                            Text("subscribe")
+                            Text("Subscribe")
                         }
                         .buttonStyle(.bordered)
                     }

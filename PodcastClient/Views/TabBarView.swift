@@ -16,22 +16,20 @@ struct TabBarView: View {
     enum Tab: Int {
         case upnext, podcastlist, search, settings
     }
-    @State var selectedTab = Tab.upnext
+    @State var selectedTab:Tab = Tab.upnext
     
     @State private var miniplayerHeight:CGFloat = 20.0
     
     var body: some View {
 
- 
-         
-                TabView(selection: $selectedTab){
-                    
-                    EpisodeListView(modelContext: modelContext)
-                        .tag(Tab.upnext)
-                        .tabItem {
-                            Label("UpNext", systemImage: "play.square.stack")
-                            
-                        }
+        TabView(selection: $selectedTab){
+            
+            EpisodeListView(modelContext: modelContext)
+                .tag(Tab.upnext)
+                .tabItem {
+                    Label("UpNext", systemImage: "play.square.stack")
+                }
+
                     
                     PodcastListView(modelContext: modelContext)
                         .tag(Tab.podcastlist)
@@ -54,6 +52,7 @@ struct TabBarView: View {
                             Label("Settings", systemImage: "gear")
                             
                         }
+                     
                 
                 }
                 .onChange(of: selectedTab) {
@@ -63,12 +62,10 @@ struct TabBarView: View {
                 }
 
 
-           
-       
-    
         PlayerControlsView(miniPlayerHeight: $miniplayerHeight)
             .environment(Player.shared)
         .frame(height: miniplayerHeight)
+       
       
     }
 }
