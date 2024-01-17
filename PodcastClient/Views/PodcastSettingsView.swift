@@ -13,6 +13,23 @@ struct PodcastSettingsView: View {
     
     var body: some View {
         List{
+            
+            Section {
+                
+                Toggle(isOn: $settings.markAsPlayedAfterSubscribe) {
+                    Text("Mark existing episodes as played")
+                }
+                
+                
+                
+                
+            } header: {
+                Text("Import Management")
+            } footer: {
+                Text("These Settings are applied when a feed is subscribed")
+            }
+            
+            
             Section {
                 
                     Toggle(isOn: $settings.autoDownload) {

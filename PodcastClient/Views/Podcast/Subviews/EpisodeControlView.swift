@@ -18,7 +18,9 @@ struct EpisodeControlView: View {
                 
             } label: {
                 if episode.isAvailableLocally {
-                    Text("Play Now")
+                    Image(systemName: "play")
+                        .resizable()
+                        .scaledToFit()
                 }else{
                     Text("Stream Now")
                 }
@@ -43,7 +45,9 @@ struct EpisodeControlView: View {
                 Button {
                     episode.download()
                 } label: {
-                    Text("Download")
+                    Image(systemName: "icloud.and.arrow.down")
+                        .resizable()
+                        .scaledToFit()
                     
                     
                 }

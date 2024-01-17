@@ -11,6 +11,9 @@ import SwiftData
 @Model
 class Podcast: Equatable{
     
+    var guid: String?
+    
+    
     var feed: URL?
     
     var title: String = "..loading"
@@ -49,38 +52,38 @@ class Podcast: Equatable{
     
     
     // MARK: computed properties
-
+    
     @Transient var feedData:Data?{
         get async throws{
-      
             
-                if let feed{
-                    let session = URLSession.shared
-                    var request = URLRequest(url: feed)
-                    if let appName = Bundle.main.applicationName{
-                        request.setValue(appName, forHTTPHeaderField: "User-Agent")
-                    }
-                    do{
-                        let (data, response) = try await session.data(for: request)
-                        lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
-
-                        switch (response as? HTTPURLResponse)?.statusCode {
-                        case 200:
-                            return data
-                        case .none:
-                            return nil
-                            
-                        case .some(_):
-                            return nil
-                            
-                        }
-                    }catch{
-                        print(error)
-                        return nil
-                    }
+            
+            if let feed{
+                let session = URLSession.shared
+                var request = URLRequest(url: feed)
+                if let appName = Bundle.main.applicationName{
+                    request.setValue(appName, forHTTPHeaderField: "User-Agent")
                 }
-                return nil
+                do{
+                    let (data, response) = try await session.data(for: request)
+                    lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
+                    
+                    switch (response as? HTTPURLResponse)?.statusCode {
+                    case 200:
+                        return data
+                    case .none:
+                        return nil
+                        
+                    case .some(_):
+                        return nil
+                        
+                    }
+                }catch{
+                    print(error)
+                    return nil
+                }
             }
+            return nil
+        }
         
     }
     
@@ -111,17 +114,27 @@ class Podcast: Equatable{
                 print("feed is very new")
                 return true
             }
-        
+            
         }
     }
     
-
+    
     // MARK: init
     init(details: [String: Any]) {
         
+        
+        
+        
         //update(details: details)
+        guid = details["guid"] as? String ?? ""
+        
         
         title = details["title"] as? String ?? ""
+        
+        print("Podcast \(guid) - \(title)")
+
+        
+        
         subtitle = details["itunes:subtitle"] as? String
         author = details["itunes:author"] as? String
         summary = details["itunes:summary"] as? String
@@ -132,7 +145,7 @@ class Podcast: Equatable{
         lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
         lastRefresh = Date()
         lastModified = lastBuildDate
-
+        
         link = URL(string: details["link"] as? String ?? "")
         coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
         
@@ -144,10 +157,12 @@ class Podcast: Equatable{
         episodes = tempE
         
         
-         }
+
+        
+    }
     
     init(){}
-
+    
     // MARK: functions
     
     func markAllAsPlayed(){
@@ -159,29 +174,29 @@ class Podcast: Equatable{
     
     func update(details: [String: Any]) {
         print("started update for \(details["title"] as? String ?? "")")
-/*
-        title = details["title"] as? String ?? ""
-        subtitle = details["itunes:subtitle"] as? String
-        author = details["itunes:author"] as? String
-        summary = details["itunes:summary"] as? String
-        desc = details["description"] as? String
+        /*
+         title = details["title"] as? String ?? ""
+         subtitle = details["itunes:subtitle"] as? String
+         author = details["itunes:author"] as? String
+         summary = details["itunes:summary"] as? String
+         desc = details["description"] as? String
+         
+         language = details["language"] as? String
+         
+         lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
+         lastModified = lastBuildDate
+         
+         lastRefresh = Date()
+         
+         link = URL(string: details["link"] as? String ?? "")
+         //     coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
+         */
         
-        language = details["language"] as? String
-        
-        lastBuildDate = Date.dateFromRFC1123(dateString: details["lastBuildDate"] as? String ?? "")
-        lastModified = lastBuildDate
-
-        lastRefresh = Date()
-        
-        link = URL(string: details["link"] as? String ?? "")
-   //     coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
-        */
-          
         
         print("checking \((details["episodes"] as? [[String:Any]])?.count) episodes")
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
             print("check: \(episodeDetails["title"] as? String ?? "")")
-
+            
             if contains(episodeDetails: episodeDetails) == false{
                 print("does not contain: \(episodeDetails["link"] as? String ?? "")")
                 
@@ -204,7 +219,7 @@ class Podcast: Equatable{
                     let episode = Episode(details: episodeDetails, podcast: self)
                     print("created Episode \(episode.title ?? "") for \(self.title)")
                     
-                   
+                    
                     context.insert(episode)
                     do{
                         try context.save()
@@ -219,7 +234,7 @@ class Podcast: Equatable{
             }else{
                 print("Episode contains \(episodeDetails["title"] ?? "")")
             }
-           
+            
         }
         
         
@@ -227,7 +242,7 @@ class Podcast: Equatable{
     
     func contains(episodeDetails: [String: Any]) -> Bool{
         
-       print("contains: \(episodeDetails["link"] as? String ?? "")")
+        print("contains: \(episodeDetails["link"] as? String ?? "")")
         let first = episodes.first(where: { $0.link == URL(string: episodeDetails["link"] as? String ?? "de.holgerkrupp.teststring") })
         print("\(first?.title ?? "-") contains \(episodeDetails["link"] as? String ?? "") as \(first?.link?.absoluteString ?? "")")
         if (first == nil){
@@ -235,7 +250,7 @@ class Podcast: Equatable{
         }else{
             return true
         }
-
+        
         
         
     }
@@ -245,7 +260,7 @@ class Podcast: Equatable{
         isUpdating = true
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = try? await feedUpdated
-                
+        
         if updated == true{
             do{
                 if let data = try await feedData{
@@ -282,7 +297,7 @@ class Podcast: Equatable{
         }
         
         
-
+        
     }
     
     func save(){
@@ -297,8 +312,9 @@ class Podcast: Equatable{
     
     static func ==(lhs: Podcast, rhs: Podcast) -> Bool {
         
-        
-        if lhs.feed == rhs.feed{
+        if lhs.guid == rhs.guid && lhs.guid != nil && rhs.guid != nil && lhs.guid != "" && rhs.guid != ""{
+            return true
+        }else if lhs.feed == rhs.feed{
             return true
         }else{
             return false
@@ -307,6 +323,10 @@ class Podcast: Equatable{
         
         
     }
+    
+
+    
+    
 }
 
 

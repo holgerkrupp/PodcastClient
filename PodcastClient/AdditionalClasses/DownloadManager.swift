@@ -49,7 +49,6 @@ extension Download {
 
 extension Download: URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        print("downloading \(totalBytesWritten/totalBytesExpectedToWrite*100)%")
         continuation?.yield(
             .progress(
                 currentBytes: totalBytesWritten,
@@ -57,7 +56,6 @@ extension Download: URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        print("download Finished")
         continuation?.yield(.success(url: location))
         continuation?.finish()
     }

@@ -15,16 +15,15 @@ struct SkipNextView: View {
         ZStack {
             Rectangle()
                 .stroke(
-                    Color.pink.opacity(0.5),
-                    lineWidth: 5
+                    Color.secondary,
+                    lineWidth: 3
                 )
             Rectangle()
             // 2
                 .trim(from: 0, to: progress)
                 .stroke(
-                    foregroundColor,
                     style: StrokeStyle(
-                        lineWidth: 5,
+                        lineWidth: 3,
                         lineCap: .round
                     )
                 )
@@ -32,8 +31,7 @@ struct SkipNextView: View {
             Image(systemName: "chevron.right")
                 .resizable()
                 .scaledToFit()
-                .padding(5)
-                .foregroundColor(foregroundColor)
+                .padding(3)
         }
         .aspectRatio(1.0, contentMode: .fit)
     
@@ -47,13 +45,12 @@ struct SkipNextView: View {
 
 struct SkipBackView: View {
 
-    var foregroundColor:Color = Color.pink
     
     var body: some View {
         ZStack {
             Rectangle()
                 .stroke(
-                    Color.pink.opacity(0.5),
+                    
                     lineWidth: 5
                 )
 
@@ -62,7 +59,6 @@ struct SkipBackView: View {
                 .resizable()
                 .scaledToFit()
                 .padding(5)
-                .foregroundColor(foregroundColor)
         }
         .aspectRatio(1.0, contentMode: .fit)
         

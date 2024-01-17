@@ -31,11 +31,13 @@ struct PlayerView: View {
                        if player.currentEpisode?.chapters.count ?? 0 > 0{
                     HStack{
                         Spacer()
+                            .frame(width: 50)
                         Button {
                             player.skipToChapterStart()
                         } label: {
                             SkipBackView()
                                 .aspectRatio(contentMode: .fit)
+                                .tint(.primary)
                         }
 
                         
@@ -48,10 +50,12 @@ struct PlayerView: View {
                         } label: {
                             SkipNextView(progress: player.chapterProgress ?? 0.0)
                                 .aspectRatio(contentMode: .fit)
+                                .tint(.primary)
                         }
 
 
                         Spacer()
+                            .frame(width: 50)
                     }
                     .frame(height: 30)
                          }
@@ -69,6 +73,7 @@ struct PlayerView: View {
                             Image(systemName: "gobackward.45")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
+                                .tint(.primary)
                             
                         }
                         .labelStyle(.iconOnly)
@@ -86,6 +91,7 @@ struct PlayerView: View {
                         } icon: {
                             player.playPauseButton
                                 .aspectRatio(contentMode: .fit)
+                                .tint(.primary)
                         }
                         .labelStyle(.iconOnly)
                         
@@ -101,6 +107,7 @@ struct PlayerView: View {
                             Image(systemName: "goforward.45")
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
+                                .tint(.primary)
                             
                         }
                         .labelStyle(.iconOnly)
@@ -115,14 +122,18 @@ struct PlayerView: View {
                     
                     HStack{
                         Text(player.playPosition.secondsToHoursMinutesSeconds ?? "00:00:00")
+                            .monospacedDigit()
                         Spacer()
                         Text(player.remaining?.secondsToHoursMinutesSeconds ?? "-")
+                            .monospacedDigit()
                     }
                 }
                 .padding()
                 Spacer()
+                    .frame(height: 50)
                 HStack{
                     Text(player.rate.description)
+                        .monospacedDigit()
                     Spacer()
                     Image(systemName: "gear")
                     Spacer()

@@ -58,9 +58,6 @@
     "do nothing" : {
 
     },
-    "Download" : {
-
-    },
     "Episode Management" : {
 
     },
@@ -71,6 +68,9 @@
 
     },
     "Import & Export" : {
+
+    },
+    "Import Management" : {
 
     },
     "Last Attempt" : {
@@ -89,6 +89,9 @@
 
     },
     "Mark All As Played" : {
+
+    },
+    "Mark existing episodes as played" : {
 
     },
     "Maximize" : {
@@ -121,9 +124,6 @@
     "Play now" : {
 
     },
-    "Play Now" : {
-
-    },
     "Playback Management" : {
 
     },
@@ -143,9 +143,6 @@
 
     },
     "refresh" : {
-
-    },
-    "Refresh Content" : {
 
     },
     "Search" : {
@@ -188,6 +185,9 @@
 
     },
     "Subscribed podcasts" : {
+
+    },
+    "These Settings are applied when a feed is subscribed" : {
 
     },
     "These Settings are applied when a new episode is loaded into the player and change the playback behaviour" : {

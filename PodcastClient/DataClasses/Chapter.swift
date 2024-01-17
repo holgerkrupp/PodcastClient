@@ -8,15 +8,24 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-
+enum ChapterType: String, Codable{
+    case podlove
+    case embedded
+    case extracted
+    case unknown
+}
 @Model
 class Chapter{
     
+
+    var uuid = UUID()
     var title: String = ""
     var link: URL?
     var image: URL?
     var start: Double?
     var duration: TimeInterval?
+    var type : ChapterType = ChapterType.unknown
+    
     var episode: Episode?
     var shouldPlay:Bool = true
     

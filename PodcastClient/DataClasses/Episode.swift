@@ -23,6 +23,7 @@ class Episode: Equatable{
     var title: String?
     var desc: String?
     var subtitle: String?
+    var content: String?
     
     var guid: String?
     
@@ -192,12 +193,18 @@ class Episode: Equatable{
 
     //MARK: INIT
     init(details: [String: Any], podcast:Podcast?) {
-        
+        guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
+        
+        print("Episode \(guid) - \(title)")
+
+        
+        
         subtitle = details["itunes:subtitle"] as? String
 
         desc = details["description"] as? String
-        guid = details["guid"] as? String
+        
+        content = details["content"] as? String
         
         duration = (details["itunes:duration"] as? String)?.durationAsSeconds
 
@@ -232,31 +239,11 @@ class Episode: Equatable{
 
     
     static func ==(lhs: Episode, rhs: Episode) -> Bool {
-       /*
-        
-        if (lhs.guid == "gid://art19-episode-locator/V0/kVe_ifOT_l4MhiKYJJOxqtUfTtH6U29Dsurvph1IpFA"){
-        
-            print("-lhs-")
-            print(lhs.podcast)
-            print(lhs.guid)
-            print(lhs.link?.absoluteString)
-            print(lhs.number)
-            print(lhs.season)
-            print("-------")
-            print(rhs.podcast)
-            print(rhs.guid)
-            print(rhs.link?.absoluteString)
-            print(rhs.number)
-            print(rhs.season)
-            print("-rhs-")
-        }
-*/
 
         if lhs.podcast != rhs.podcast{
             return false
         }else{
-            if lhs.guid == rhs.guid && lhs.guid != nil{
-               
+            if lhs.guid == rhs.guid{
                 return true
             }else if lhs.link == rhs.link{
                 return true
@@ -278,6 +265,61 @@ class Episode: Equatable{
         finishedPlaying = false
     }
     
+    
+    func createChapters(from text: String) -> [Chapter]{
+        let extractedData = extractTimeCodesAndTitles(from: text)
+        var newchapters:[Chapter] = []
+        for extractedChapter in extractedData{
+            if let startingTime =  extractedChapter.key.durationAsSeconds{
+                print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
+                var newChapter = Chapter()
+                newChapter.start = startingTime
+                newChapter.title = extractedChapter.value
+                newChapter.type = .extracted
+                modelContext?.insert(newChapter)
+                newchapters.append(newChapter)
+            }
+        }
+        self.chapters.append(contentsOf: chapters)
+        try? modelContext?.save()
+        return newchapters
+    }
+    /*
+    func extractTimeCodesAndTitles(from text: String) -> [String: String] {
+        var result = [String: String]()
+        
+        let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
+        
+        for match in matches {
+            if let titleRange = Range(match.range(at: 1), in: text),
+               let timeCodeRange = Range(match.range, in: text) {
+                let title = String(text[titleRange])
+                let timeCode = String(text[timeCodeRange].split(separator: " ")[0]) // Only take the time code part
+                result[timeCode] = title
+            }
+        }
+        
+        return result
+    }
+    */
+    func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String] {
+        var result = [String: String]()
+        
+        let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|</p>|<!--.*?-->|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+        let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: htmlEncodedText.utf16.count))
+        
+        for match in matches {
+            if let titleRange = Range(match.range(at: 1), in: htmlEncodedText),
+               let timeCodeRange = Range(match.range, in: htmlEncodedText) {
+                let title = String(htmlEncodedText[titleRange])
+                let timeCode = String(htmlEncodedText[timeCodeRange].split(separator: " ")[0]) // Only take the time code part
+                result[timeCode] = title.decodeHTML ?? title
+            }
+        }
+        
+        return result
+    }
   
     
     

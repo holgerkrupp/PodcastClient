@@ -25,6 +25,9 @@ class PodcastSettings {
     var skipForward:Float = 15.0
     var skipBack: Float = 15.0
     
+    // Secret Settings that should only be applied on global way:
+    var markAsPlayedAfterSubscribe: Bool = true
+    
     
     init(){}
 }

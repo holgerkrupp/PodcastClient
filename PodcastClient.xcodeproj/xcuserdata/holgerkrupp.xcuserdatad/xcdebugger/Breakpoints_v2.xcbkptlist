@@ -14,8 +14,8 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "196"
-            endingLineNumber = "196"
+            startingLineNumber = "197"
+            endingLineNumber = "197"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -30,8 +30,8 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "201"
-            endingLineNumber = "201"
+            startingLineNumber = "208"
+            endingLineNumber = "208"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -46,8 +46,8 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "202"
-            endingLineNumber = "202"
+            startingLineNumber = "209"
+            endingLineNumber = "209"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -62,8 +62,8 @@
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "203"
-            endingLineNumber = "203"
+            startingLineNumber = "210"
+            endingLineNumber = "210"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -72,54 +72,6 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "3D792A81-2815-4CB7-9A65-B20C2E89D4FC"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "PodcastClient/DataClasses/Episode.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "204"
-            endingLineNumber = "204"
-            landmarkName = "init(details:podcast:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "5A66C6AB-6CB4-4B47-87CF-B62153948A88"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "PodcastClient/DataClasses/Episode.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "205"
-            endingLineNumber = "205"
-            landmarkName = "init(details:podcast:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "E1CDE1B0-C222-4AE8-914D-DFE37B764D0A"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "PodcastClient/DataClasses/Episode.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "206"
-            endingLineNumber = "206"
-            landmarkName = "init(details:podcast:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "37F30E20-DAD8-41E0-A2C1-DB1FE2A3BB99"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
@@ -135,15 +87,15 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "DD97AA3F-6698-4CD8-A3E7-2A746F3014DB"
+            uuid = "5A66C6AB-6CB4-4B47-87CF-B62153948A88"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "215"
-            endingLineNumber = "215"
+            startingLineNumber = "212"
+            endingLineNumber = "212"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -151,15 +103,15 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "A5266BD7-E78B-4E5D-9C4B-F770B0AB0010"
+            uuid = "E1CDE1B0-C222-4AE8-914D-DFE37B764D0A"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "217"
-            endingLineNumber = "217"
+            startingLineNumber = "213"
+            endingLineNumber = "213"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -167,7 +119,7 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "AB1F8CAA-7CFB-4E58-B320-88BE098ECED6"
+            uuid = "37F30E20-DAD8-41E0-A2C1-DB1FE2A3BB99"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
@@ -183,15 +135,15 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "44B58D1B-8AF5-45F9-9FBB-E54B59EFA870"
+            uuid = "DD97AA3F-6698-4CD8-A3E7-2A746F3014DB"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "219"
-            endingLineNumber = "219"
+            startingLineNumber = "222"
+            endingLineNumber = "222"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -199,15 +151,15 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "62A5F4EC-D01A-474A-9F24-5FE6BA57491E"
+            uuid = "A5266BD7-E78B-4E5D-9C4B-F770B0AB0010"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "PodcastClient/DataClasses/Episode.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "223"
-            endingLineNumber = "223"
+            startingLineNumber = "224"
+            endingLineNumber = "224"
             landmarkName = "init(details:podcast:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -215,7 +167,7 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "055EE44D-813A-4A6B-AFB3-A2D5B079035A"
+            uuid = "AB1F8CAA-7CFB-4E58-B320-88BE098ECED6"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
@@ -231,7 +183,7 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "708B28F1-DD27-4CA7-80F1-2A446411E7FA"
+            uuid = "44B58D1B-8AF5-45F9-9FBB-E54B59EFA870"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
@@ -247,6 +199,54 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
+            uuid = "62A5F4EC-D01A-474A-9F24-5FE6BA57491E"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PodcastClient/DataClasses/Episode.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "230"
+            endingLineNumber = "230"
+            landmarkName = "init(details:podcast:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "055EE44D-813A-4A6B-AFB3-A2D5B079035A"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PodcastClient/DataClasses/Episode.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "232"
+            endingLineNumber = "232"
+            landmarkName = "init(details:podcast:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "708B28F1-DD27-4CA7-80F1-2A446411E7FA"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PodcastClient/DataClasses/Episode.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "233"
+            endingLineNumber = "233"
+            landmarkName = "init(details:podcast:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
             uuid = "91ABDDD9-46F1-40F3-9BAF-44644F065D5A"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -254,8 +254,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "144"
-            endingLineNumber = "144"
+            startingLineNumber = "157"
+            endingLineNumber = "157"
             landmarkName = "init(details:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -333,8 +333,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "181"
-            endingLineNumber = "181"
+            startingLineNumber = "196"
+            endingLineNumber = "196"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -413,6 +413,21 @@
                   endingLineNumber = "180"
                   offsetFromSymbolStart = "3376">
                </Location>
+               <Location
+                  uuid = "705E6EC3-B3DA-4059-A889-6C2EE6C24B2C - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -426,8 +441,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "182"
-            endingLineNumber = "182"
+            startingLineNumber = "197"
+            endingLineNumber = "197"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -491,6 +506,21 @@
                   endingLineNumber = "181"
                   offsetFromSymbolStart = "4024">
                </Location>
+               <Location
+                  uuid = "7E50A21E-A80D-4FF5-81D6-B6578699328C - d5e28fc5da94afbf"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "190"
+                  endingLineNumber = "190"
+                  offsetFromSymbolStart = "1600">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -504,8 +534,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "183"
-            endingLineNumber = "183"
+            startingLineNumber = "198"
+            endingLineNumber = "198"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -569,6 +599,21 @@
                   endingLineNumber = "182"
                   offsetFromSymbolStart = "4472">
                </Location>
+               <Location
+                  uuid = "097A4B05-DA85-40C3-B43E-D95F55CD7006 - d5e28fc5da94afdc"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "191"
+                  endingLineNumber = "191"
+                  offsetFromSymbolStart = "2048">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -582,8 +627,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "184"
-            endingLineNumber = "184"
+            startingLineNumber = "199"
+            endingLineNumber = "199"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -647,6 +692,21 @@
                   endingLineNumber = "184"
                   offsetFromSymbolStart = "5116">
                </Location>
+               <Location
+                  uuid = "20BF27F1-F3FF-476D-916B-56FC885D2E65 - d5e28fc5da94af02"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "193"
+                  endingLineNumber = "193"
+                  offsetFromSymbolStart = "2692">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -660,8 +720,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "163"
-            endingLineNumber = "163"
+            startingLineNumber = "178"
+            endingLineNumber = "178"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -695,6 +755,21 @@
                   endingLineNumber = "163"
                   offsetFromSymbolStart = "1048">
                </Location>
+               <Location
+                  uuid = "70028982-DE92-4940-8572-19F8322BEA41 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -708,8 +783,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "165"
-            endingLineNumber = "165"
+            startingLineNumber = "180"
+            endingLineNumber = "180"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -743,6 +818,21 @@
                   endingLineNumber = "165"
                   offsetFromSymbolStart = "1616">
                </Location>
+               <Location
+                  uuid = "54C18083-3B1F-4D27-92FF-807B59BE3BE3 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -756,8 +846,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "166"
-            endingLineNumber = "166"
+            startingLineNumber = "181"
+            endingLineNumber = "181"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -791,6 +881,21 @@
                   endingLineNumber = "166"
                   offsetFromSymbolStart = "1840">
                </Location>
+               <Location
+                  uuid = "9CC06659-D2D1-4600-88FD-FBBF3DE4A5BC - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -804,8 +909,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "164"
-            endingLineNumber = "164"
+            startingLineNumber = "179"
+            endingLineNumber = "179"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -839,6 +944,21 @@
                   endingLineNumber = "164"
                   offsetFromSymbolStart = "1392">
                </Location>
+               <Location
+                  uuid = "FCECDACC-DB21-4771-898C-A2FBDBEBE0C5 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -852,8 +972,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "167"
-            endingLineNumber = "167"
+            startingLineNumber = "182"
+            endingLineNumber = "182"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -900,8 +1020,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "170"
-            endingLineNumber = "170"
+            startingLineNumber = "185"
+            endingLineNumber = "185"
             landmarkName = "update(details:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -916,8 +1036,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "171"
-            endingLineNumber = "171"
+            startingLineNumber = "186"
+            endingLineNumber = "186"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -966,6 +1086,21 @@
                   endingLineNumber = "171"
                   offsetFromSymbolStart = "2512">
                </Location>
+               <Location
+                  uuid = "2DC6A3E9-4A38-491E-AB25-0F735621D739 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -979,8 +1114,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "168"
-            endingLineNumber = "168"
+            startingLineNumber = "183"
+            endingLineNumber = "183"
             landmarkName = "update(details:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -995,8 +1130,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "169"
-            endingLineNumber = "169"
+            startingLineNumber = "184"
+            endingLineNumber = "184"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -1045,6 +1180,21 @@
                   endingLineNumber = "169"
                   offsetFromSymbolStart = "2288">
                </Location>
+               <Location
+                  uuid = "831C4050-4F62-4572-8729-68364471D039 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -1058,8 +1208,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "172"
-            endingLineNumber = "172"
+            startingLineNumber = "187"
+            endingLineNumber = "187"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -1123,6 +1273,21 @@
                   endingLineNumber = "172"
                   offsetFromSymbolStart = "2868">
                </Location>
+               <Location
+                  uuid = "AEBDA346-446E-4772-80B6-22E59F425153 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -1136,8 +1301,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "174"
-            endingLineNumber = "174"
+            startingLineNumber = "189"
+            endingLineNumber = "189"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -1201,6 +1366,21 @@
                   endingLineNumber = "174"
                   offsetFromSymbolStart = "2908">
                </Location>
+               <Location
+                  uuid = "A7844FE8-1FD7-44A3-A7A0-8B5E0BDB6179 - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -1214,8 +1394,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "176"
-            endingLineNumber = "176"
+            startingLineNumber = "191"
+            endingLineNumber = "191"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -1279,6 +1459,21 @@
                   endingLineNumber = "176"
                   offsetFromSymbolStart = "2984">
                </Location>
+               <Location
+                  uuid = "F262F773-2A7E-41D7-83BA-8B6D6D17EF9D - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>
@@ -1292,8 +1487,8 @@
             filePath = "PodcastClient/DataClasses/Podcast.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "177"
-            endingLineNumber = "177"
+            startingLineNumber = "192"
+            endingLineNumber = "192"
             landmarkName = "update(details:)"
             landmarkType = "7">
             <Locations>
@@ -1357,7 +1552,54 @@
                   endingLineNumber = "180"
                   offsetFromSymbolStart = "3376">
                </Location>
+               <Location
+                  uuid = "E9CA00CD-D64D-4328-86FA-ABF909AC895E - d5e28fc5da94af9e"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.Podcast.update(details: Swift.Dictionary&lt;Swift.String, Any&gt;) -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/DataClasses/Podcast.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "189"
+                  endingLineNumber = "189"
+                  offsetFromSymbolStart = "956">
+               </Location>
             </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3A537D44-1BA4-48AB-82C8-2300B37EA7DB"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PodcastClient/DataClasses/Episode.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "242"
+            endingLineNumber = "242"
+            landmarkName = "==(lhs:rhs:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "128567B5-4260-4D99-B046-35002E8EB65C"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PodcastClient/DataClasses/Podcast.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "314"
+            endingLineNumber = "314"
+            landmarkName = "==(lhs:rhs:)"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

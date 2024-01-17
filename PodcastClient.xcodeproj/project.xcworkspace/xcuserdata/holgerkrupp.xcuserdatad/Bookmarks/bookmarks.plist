@@ -12,13 +12,13 @@
 					<key>EndingColumnNumber</key>
 					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>249</string>
+					<string>264</string>
 					<key>StartingColumnNumber</key>
 					<string>0</string>
 					<key>StartingLineNumber</key>
-					<string>248</string>
+					<string>263</string>
 					<key>Timestamp</key>
-					<string>727024383.893351</string>
+					<string>727199449.119276</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -38,7 +38,7 @@
 </string>
 				<key>leading</key>
 				<string>        let updated = try? await feedUpdated
-                
+        
 </string>
 				<key>trailing</key>
 				<string>            do{
@@ -48,6 +48,53 @@
 			</dict>
 			<key>title</key>
 			<string>replace true == true with updated == true</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>73</string>
+					<key>StartingColumnNumber</key>
+					<string>62</string>
+					<key>StartingLineNumber</key>
+					<string>72</string>
+					<key>Timestamp</key>
+					<string>727217346.234821</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>PodcastClient/PlayerView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>
+</string>
+				<key>leading</key>
+				<string>                            Text("Skip Back 45 seconds")
+                        } icon: {
+                            Image(systemName: "gobackward.45")</string>
+				<key>trailing</key>
+				<string>                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .tint(.primary)
+</string>
+			</dict>
+			<key>title</key>
+			<string>value needs to be updated according to setting.skipback</string>
 			<key>type</key>
 			<string>bookmark</string>
 		</dict>

@@ -63,7 +63,7 @@ struct EpisodeView: View {
                             
                             VStack{
                                 //         Text(episode.title ?? "")
-                                Text(episode.subtitle ?? "")
+                               // Text(episode.desc ?? "")
                                 Text(episode.pubDate?.formatted() ?? "").font(.caption)
                             }
                         }
@@ -100,7 +100,7 @@ struct EpisodeView: View {
                     
                 }
                 
-                Text(episode.desc?.toDetectedAttributedString() ?? "")
+                Text(episode.content?.decodeHTML ?? "")
                 /*
                  Section {
                  ForEach(episode.chapters){ chapter in

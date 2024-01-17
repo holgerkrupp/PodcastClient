@@ -113,7 +113,7 @@ extension PodcastListView {
             do {
                 let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
                 podcasts = try modelContext.fetch(descriptor)
-                print(podcasts.count)
+
             } catch {
                 print("Fetch failed")
             }

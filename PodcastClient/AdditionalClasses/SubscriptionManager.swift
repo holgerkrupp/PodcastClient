@@ -42,6 +42,9 @@ class SubscriptionManager:NSObject{
     
     static let shared = SubscriptionManager()
     var modelContext: ModelContext?
+    
+    
+    var settings:PodcastSettings = SettingsManager.shared.defaultSettings
 
     var podcasts : [Podcast] = []
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
@@ -181,13 +184,23 @@ class SubscriptionManager:NSObject{
                         print("created Podcast \(podcast.title) for \(url.absoluteString)")
                         
                         podcast.feed = url
-                        context.insert(podcast)
-                        do{
-                            try context.save()
-                            print("podcast inserted")
-                        }catch{
-                            print(error)
+                        if !podcasts.contains(podcast){
+                            context.insert(podcast)
+                            if settings.markAsPlayedAfterSubscribe{
+                                print("marking episodes for \(podcast.title) as played")
+                                podcast.markAllAsPlayed()
+                            }
+                            do{
+                                try context.save()
+                                print("podcast inserted")
+                            }catch{
+                                print(error)
+                            }
+                        }else{
+                            print("podcast \(podcast.title) alreads existing")
+                            return false
                         }
+                        
                     }else{
                         print("could not create ModelContainer")
                     }

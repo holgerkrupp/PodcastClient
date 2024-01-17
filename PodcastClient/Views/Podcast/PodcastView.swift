@@ -76,11 +76,21 @@ struct PodcastView: View {
                         subscriptionManager.refresh(podcast: podcast)
                     }
                 } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .rotationEffect(.degrees(podcast?.isUpdating ?? false ? 360 : 0))
+                        .animation(.easeInOut(duration: 1), value: podcast?.isUpdating ?? false)
+                    
+                    /*
                     if podcast?.isUpdating == true{
                         ProgressView()
                     }else{
-                        Text("Refresh Content")
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .resizable()
+                            .scaledToFit()
                     }
+                     */
                 }
                 .buttonStyle(.bordered)
                 Button {
@@ -179,7 +189,7 @@ struct PodcastMetaDataView: View{
 struct PodcastMiniView: View {
     
    
-    var podcast: Podcast
+    @State var podcast: Podcast
     
     var body: some View {
         HStack{

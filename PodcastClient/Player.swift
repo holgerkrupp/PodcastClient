@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import MediaPlayer
 import SwiftUI
 import Combine
 
@@ -25,7 +26,7 @@ import Combine
     }
     
     var playNextQueue: Playlist = PlaylistManager.shared.playnext
-    //   var settings:PodcastSettings = SettingsManager.shared.defaultSettings
+    var settings:PodcastSettings = SettingsManager.shared.defaultSettings
     
     var playPauseButton: some View{
         if currentEpisode != nil{
@@ -53,6 +54,13 @@ import Combine
                 Task{
                     await self.currentEpisode?.updateDuration()
                 }
+                if currentEpisode?.chapters.count == 0{
+                    if let content = currentEpisode?.content{
+                        if let chapters = currentEpisode?.createChapters(from: content){
+                            currentEpisode?.chapters = chapters
+                        }
+                    }
+                }
                 
                 //    settings = currentEpisode?.podcast?.settings ?? SettingsManager.shared.defaultSettings
                 
@@ -71,7 +79,8 @@ import Combine
                 let zero = CMTime(seconds: 0, preferredTimescale: 0)
                 avplayer.seek(to: currentEpisode?.playPosition.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
                 avplayer.play()
-                
+                initMPMediaPlayer()
+                initRemoteCommandCenter()
             }else{
                 print("could not read current Episode")
             }
@@ -194,13 +203,13 @@ import Combine
     }
     
     func skipback(){
-        jumpPlaypostion(by: -45)
+        jumpPlaypostion(by: -Double(settings.skipBack))
         print("skipback")
         
     }
     
     func skipforward(){
-        jumpPlaypostion(by: 45)
+        jumpPlaypostion(by: Double(settings.skipForward))
         print("skipforward")
         
     }
@@ -234,6 +243,70 @@ import Combine
             let jumpToTime = CMTimeAdd(avplayer.currentTime(), secondsToAdd)
             avplayer.seek(to: jumpToTime)
     }
+    
+    func initMPMediaPlayer(){
+        
+        let playcenter = MPNowPlayingInfoCenter.default()
+  //      let mediaArtwort = MPMediaItemArtwork(image: episode.coverImage)
+        playcenter.nowPlayingInfo = [
+         //   MPMediaItemPropertyArtwork: mediaArtwort,
+            
+            MPMediaItemPropertyTitle : currentEpisode?.title ?? "",
+            MPMediaItemPropertyPlaybackDuration: currentEpisode?.duration ?? avplayer.currentItem?.duration ?? 0.0,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: avplayer.currentTime().seconds,
+            MPNowPlayingInfoPropertyPlaybackRate: avplayer.rate]
+    }
+    
+    func initRemoteCommandCenter(){
+        let RCC = MPRemoteCommandCenter.shared()
+        
+        
+        
+        RCC.playCommand.isEnabled = true
+        
+        let playCommand = RCC.playCommand.addTarget { _ in
+            
+            if !self.avplayer.isPlaying {
+                self.playPause()
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        // Add handler for Pause Command
+        RCC.pauseCommand.isEnabled = true
+        let pauseCommand = RCC.pauseCommand.addTarget { _ in
+            
+            if self.avplayer.isPlaying{
+                self.playPause()
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        RCC.skipForwardCommand.isEnabled = true
+        let skipForwardCommand = RCC.skipForwardCommand.addTarget { event in
+            
+            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
+            self.jumpPlaypostion(by: seconds)
+            return.success
+        }
+        RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: settings.skipForward)]
+
+        
+        // <<
+        RCC.skipBackwardCommand.isEnabled = true
+        let skipBackwardCommand = MPRemoteCommandCenter.shared().skipBackwardCommand.addTarget { event in
+            
+            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
+            self.jumpPlaypostion(by: seconds)
+            return.success
+        }
+        
+        RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: settings.skipBack)]
+
+    }
+    
     
 }
 

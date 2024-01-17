@@ -75,7 +75,6 @@ extension EpisodeListView {
         
         func fetchData() {
             do {
-                print("fetch Episodes for EpisodeListView")
                 let descriptor = FetchDescriptor<Episode>(sortBy: [SortDescriptor(\.pubDate, order: .reverse)])
                 episodes = try modelContext.fetch(descriptor)
             } catch {

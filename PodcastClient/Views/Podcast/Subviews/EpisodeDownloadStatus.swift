@@ -21,7 +21,6 @@ class EpisodeDownloadStatus{
     
     
     func update(currentBytes: Int64, totalBytes: Int64) {
-        print(Double(currentBytes) / Double(totalBytes))
         self.currentBytes = currentBytes
         self.totalBytes = totalBytes
     }
