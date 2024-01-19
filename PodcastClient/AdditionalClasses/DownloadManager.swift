@@ -133,7 +133,7 @@ private extension DownloadManager {
             episode.isAvailableLocally = true
             try? filemanager.moveItem(at: url, to: newlocation)
             Task{
-                await episode.updateDuration()
+                await episode.postProcessingAfterDownload()
             }
             
         }

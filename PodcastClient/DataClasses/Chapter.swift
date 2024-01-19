@@ -22,6 +22,7 @@ class Chapter{
     var title: String = ""
     var link: URL?
     var image: URL?
+    var imageData:Data?
     var start: Double?
     var duration: TimeInterval?
     var type : ChapterType = ChapterType.unknown

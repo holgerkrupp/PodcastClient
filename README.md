@@ -14,12 +14,16 @@ An Open Source Podcast client.
 - - [x] delete files
 - - [x] update UI after file deleted
 - - [ ] implement background downloads
+- [ ] remove all files when one episode is deleted (including downloaded images)
 
 ### Player
 - [x] play / pause
 - [x] skip forward / backward
-- - [ ] make time adjustable
+- - [xm] make time adjustable
 - [ ] jump to chapter
+- [ ] include chapter art for mp3/m4a
+- [ ] include chapter links for mp3/m4a
+- [ ] download images during postprocessing
 - [ ] save last played episode and reload when opening the app
 
 ## Beta min Requirement

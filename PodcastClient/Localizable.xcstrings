@@ -13,6 +13,9 @@
     "%@ Podcasts" : {
 
     },
+    "%@ seconds" : {
+
+    },
     "About this app" : {
 
     },
@@ -106,13 +109,10 @@
     "NO DEPENDENCIES" : {
 
     },
-    "not linked to a podcast" : {
+    "no podcast loaded" : {
 
     },
     "paste URL to feed" : {
-
-    },
-    "Play" : {
 
     },
     "Play last" : {
@@ -127,10 +127,10 @@
     "Playback Management" : {
 
     },
-    "PlaylistView" : {
+    "Playback Speed" : {
 
     },
-    "PlaySpeed" : {
+    "PlaylistView" : {
 
     },
     "Podcast Settings" : {
@@ -143,6 +143,9 @@
 
     },
     "refresh" : {
+
+    },
+    "Refresh" : {
 
     },
     "Search" : {
@@ -169,7 +172,16 @@
     "Show Details" : {
 
     },
+    "Skip back" : {
+
+    },
+    "Skip Back" : {
+
+    },
     "Skip Back 45 seconds" : {
+
+    },
+    "Skip Forward" : {
 
     },
     "Skip Forward 45 seconds" : {

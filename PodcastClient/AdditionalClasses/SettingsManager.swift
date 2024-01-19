@@ -10,6 +10,7 @@ import SwiftData
 
 @Observable
 
+
 class SettingsManager:NSObject{
     
     static let shared = SettingsManager()

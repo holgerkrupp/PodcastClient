@@ -180,7 +180,7 @@ class SubscriptionManager:NSObject{
                     
                     if let container = try? ModelContainer(for: schema){
                         let context = ModelContext(container)
-                        let podcast = Podcast(details: feedDetail)
+                        let podcast = await Podcast(details: feedDetail)
                         print("created Podcast \(podcast.title) for \(url.absoluteString)")
                         
                         podcast.feed = url

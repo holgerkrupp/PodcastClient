@@ -120,7 +120,7 @@ class Podcast: Equatable{
     
     
     // MARK: init
-    init(details: [String: Any]) {
+    init(details: [String: Any]) async {
         
         
         
@@ -151,7 +151,7 @@ class Podcast: Equatable{
         
         var tempE:[Episode] = []
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-            let episode = Episode(details: episodeDetails, podcast: self)
+            let episode = await Episode(details: episodeDetails, podcast: self)
             tempE.append(episode)
         }
         episodes = tempE
@@ -172,7 +172,7 @@ class Podcast: Equatable{
     }
     
     
-    func update(details: [String: Any]) {
+    func update(details: [String: Any]) async {
         print("started update for \(details["title"] as? String ?? "")")
         /*
          title = details["title"] as? String ?? ""
@@ -216,7 +216,7 @@ class Podcast: Equatable{
                 
                 if let container = try? ModelContainer(for: schema){
                     let context = ModelContext(container)
-                    let episode = Episode(details: episodeDetails, podcast: self)
+                    let episode = await Episode(details: episodeDetails, podcast: self)
                     print("created Episode \(episode.title ?? "") for \(self.title)")
                     
                     
@@ -276,7 +276,7 @@ class Podcast: Equatable{
                     if parser.parse() {
                         print("parsed for \(feed?.absoluteString ?? "")")
                         if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
-                            update(details: feedDetail)
+                            await update(details: feedDetail)
                             
                         }
                         

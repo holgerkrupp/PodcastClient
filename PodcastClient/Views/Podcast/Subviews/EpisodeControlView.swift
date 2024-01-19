@@ -32,7 +32,9 @@ struct EpisodeControlView: View {
                 Button {
                     episode.removeFile()
                 } label: {
-                    Text("Delete")
+                    Image(systemName: "trash")
+                        .resizable()
+                        .scaledToFit()
                     
                     
                 }
@@ -56,5 +58,6 @@ struct EpisodeControlView: View {
             
 
         }
+        .frame(maxWidth: .infinity, maxHeight: 30)
     }
 }

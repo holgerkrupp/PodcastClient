@@ -142,6 +142,13 @@ class Episode: Equatable{
         self.lastPlayed = Date()
     }
     
+    func postProcessingAfterDownload() async{
+        await updateDuration()
+        if chapters.count == 0, let url = localFile {
+            chapters = await loadChaptersFromAsset(with: (url)) ?? []
+        }
+    }
+    
     
     func updateDuration() async{
         print("updating Duration")
@@ -150,7 +157,6 @@ class Episode: Equatable{
                 setDuration(duration)
             }
         }
-        
     }
     func setDuration(_ duration: CMTime) {
         
@@ -192,7 +198,7 @@ class Episode: Equatable{
     
 
     //MARK: INIT
-    init(details: [String: Any], podcast:Podcast?) {
+    init(details: [String: Any], podcast:Podcast?) async {
         guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
         
@@ -234,8 +240,110 @@ class Episode: Equatable{
         }
         chapters = tempC
         
+
+        
     }
     
+
+    
+    func loadChaptersFromAsset(with assetUrl: URL) async -> [Chapter]?{
+        print("loading Chapters from Asset with \(assetUrl.absoluteString)")
+        let asset = AVAsset(url: assetUrl)
+        let chapterLocalesKey = "availableChapterLocales"
+        var chapters: [Chapter] = []
+        let metadata = try? await asset.load(.metadata)
+        if (metadata != nil){
+            
+            
+            
+            let languages = Locale.preferredLanguages
+            if let chapterMetadataGroups = try? await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages) {
+                for group in chapterMetadataGroups {
+                    
+                    guard let titleItem = group.items.first(where: { $0.commonKey == .commonKeyTitle }),
+                          let title = try? await titleItem.load(.value) as? String else {
+                        continue
+                    }
+                    
+                    let artworkData = try? await group.items.first(where: { $0.commonKey == .commonKeyArtwork })?.load(.value) as? Data
+                    
+                    let timeRange = group.timeRange
+                    let start = timeRange.start.seconds
+                    let end = timeRange.end.seconds
+                    let duration = timeRange.duration.seconds
+                 
+                    // Validate the time fields for NaN and negative values
+                    let correctedStart = (start.isNaN || start < 0) ? 0 : start
+                    let correctedEnd = (end.isNaN || end < 0) ? 0 : end
+                    let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
+                    
+                    let newChaper = Chapter()
+                    newChaper.title = title
+                    newChaper.start = correctedStart
+                    newChaper.duration = correctedDuration
+                    newChaper.type = .embedded
+                    newChaper.imageData = artworkData
+                    chapters.append(newChaper)
+                }
+            }
+            
+            return chapters
+        }
+            return nil
+        
+        
+        /*
+        asset.loadValuesAsynchronously(forKeys: [chapterLocalesKey]) {
+            var error: NSError?
+            let status = asset.statusOfValue(forKey: chapterLocalesKey, error: &error)
+            if status == .loaded {
+                let languages = Locale.preferredLanguages
+                let chapterMetadata = asset.chapterMetadataGroups(bestMatchingPreferredLanguages: languages)
+                // Process chapter metadata.
+            }
+            else {
+                // Handle other status cases.
+            }
+        }
+         */
+    }
+    /*
+    func convertTimedMetadataGroupsToChapters(groups: [AVTimedMetadataGroup]) async -> [Chapter] {
+        groups.map { group in
+            // Retrieve the title metadata items.
+            let titleItems = AVMetadataItem.metadataItems(from: group.items,
+                                                          filteredByIdentifier: .commonIdentifierTitle)
+            
+            
+            // Retrieve the artwork metadata items.
+            let artworkItems = AVMetadataItem.metadataItems(from: group.items,
+                                                            filteredByIdentifier: .commonIdentifierArtwork)
+            
+            
+            var title = "Default Title"
+            var image = UIImage(named: "placeholder")!
+            
+            
+            if let titleValue = await titleItems.first?.load(.stringValue) {
+                title = titleValue
+            }
+            
+            
+            if let imgData = artworkItems.first?.load(.dataValue), let imageValue = UIImage(data: imgData) {
+                image = imageValue
+            }
+            
+            let start = group.timeRange.start.seconds
+            let duration = group.timeRange.duration
+            
+            var newChapter = Chapter()
+            newChapter.title = title
+            //newChapter.image = image
+            
+            return newChapter
+        }
+    }
+    */
 
     
     static func ==(lhs: Episode, rhs: Episode) -> Bool {
@@ -272,7 +380,7 @@ class Episode: Equatable{
         for extractedChapter in extractedData{
             if let startingTime =  extractedChapter.key.durationAsSeconds{
                 print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
-                var newChapter = Chapter()
+                let newChapter = Chapter()
                 newChapter.start = startingTime
                 newChapter.title = extractedChapter.value
                 newChapter.type = .extracted
@@ -314,7 +422,7 @@ class Episode: Equatable{
                let timeCodeRange = Range(match.range, in: htmlEncodedText) {
                 let title = String(htmlEncodedText[titleRange])
                 let timeCode = String(htmlEncodedText[timeCodeRange].split(separator: " ")[0]) // Only take the time code part
-                result[timeCode] = title.decodeHTML ?? title
+                result[timeCode] = title.decodeHTML() ?? title
             }
         }
         

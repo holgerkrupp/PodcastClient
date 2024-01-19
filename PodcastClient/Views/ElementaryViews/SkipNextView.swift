@@ -50,15 +50,15 @@ struct SkipBackView: View {
         ZStack {
             Rectangle()
                 .stroke(
-                    
-                    lineWidth: 5
+                    Color.secondary,
+                    lineWidth: 3
                 )
 
 
             Image(systemName: "chevron.left")
                 .resizable()
                 .scaledToFit()
-                .padding(5)
+                .padding(3)
         }
         .aspectRatio(1.0, contentMode: .fit)
         

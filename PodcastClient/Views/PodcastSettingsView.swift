@@ -57,15 +57,46 @@ struct PodcastSettingsView: View {
             
             Section {
                 
-                TextField("PlaySpeed", value: $settings.playbackSpeed, format: .number)
+                Picker(selection: $settings.playbackSpeed) {
+                    ForEach (PlayBackSpeed.allCases, id:\.self) { speed in
+                        Text(speed.description)
+                    }
+                } label: {
+                    HStack{
+                        Text("Playback Speed")
+                    }
+                }
                 TextField("Cut from Front", value: $settings.cutFront, format: .number)
                 TextField("Cut from End", value: $settings.cutEnd, format: .number)
+                Picker(selection: $settings.skipBack) {
+                    ForEach (SkipSteps.allCases, id:\.self) { skip in
+                        Text("\(skip.rawValue.formatted()) seconds")
+                    }
+                } label: {
+                    HStack{
+                        Image(systemName: "gobackward")
+                        Text("Skip back")
+                    }
+                }
+                Picker(selection: $settings.skipForward) {
+                    ForEach (SkipSteps.allCases, id:\.self) { skip in
+                        Text("\(skip.rawValue.formatted()) seconds")
+                    }
+                } label: {
+                    HStack{
+                        Image(systemName: "goforward")
+                        Text("Skip Forward")
+                    }
+                }
+
                 
             } header: {
                 Text("Playback Management")
             } footer: {
                 Text("These Settings are applied when a new episode is loaded into the player and change the playback behaviour")
             }
+            
+            
             
             
             Section {

@@ -7,12 +7,14 @@
 
 import SwiftUI
 
+
+
 struct PlayerControlsView: View {
     
     @Binding var miniPlayerHeight:CGFloat
     
     var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 150
-    var minPlayerHeight:CGFloat = 20.0
+    var minPlayerHeight:CGFloat = 30.0
     
   //  @State var player = Player.shared
     @Environment(Player.self) private var player
@@ -23,7 +25,13 @@ struct PlayerControlsView: View {
                 
                 if miniPlayerHeight == maxPlayerHeight{
                     
-                    PlayerView()
+                    
+                    if player.currentEpisode != nil{
+                        PlayerView()
+
+                    }else{
+                        Text("no podcast loaded")
+                    }
                     
                 }else{
                     ZStack{
@@ -62,7 +70,7 @@ struct PlayerControlsView: View {
                     Label {
                         Text("Skip Back 45 seconds")
                     } icon: {
-                        Image(systemName: "gobackward.45")
+                        Image(systemName: player.settings.skipBack.backString)
                             .resizable()
                             .scaledToFit()
                     }
@@ -74,16 +82,10 @@ struct PlayerControlsView: View {
                 Spacer()
                 
                 
-                Button(action:player.playPause){
-                    Label {
-                        Text("Play")
-                    } icon: {
-                        player.playPauseButton
-                            .scaledToFit()
-                    }
-                    .labelStyle(.iconOnly)
+                   PlayButtonView(playerPaused: !player.isPlaying, player: player)
                     .frame(maxWidth: .infinity)
-                }
+                
+                
                 
                 Spacer()
                 
@@ -92,7 +94,7 @@ struct PlayerControlsView: View {
                     Label {
                         Text("Skip Forward 45 seconds")
                     } icon: {
-                        Image(systemName: "goforward.45")
+                        Image(systemName: player.settings.skipForward.forwardString)
                             .resizable()
                             .scaledToFit()
                     }

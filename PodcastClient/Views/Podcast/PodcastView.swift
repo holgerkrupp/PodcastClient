@@ -76,21 +76,18 @@ struct PodcastView: View {
                         subscriptionManager.refresh(podcast: podcast)
                     }
                 } label: {
+                    Label {
+                        Text("Refresh")
+                    } icon: {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: 30)
                         .rotationEffect(.degrees(podcast?.isUpdating ?? false ? 360 : 0))
                         .animation(.easeInOut(duration: 1), value: podcast?.isUpdating ?? false)
-                    
-                    /*
-                    if podcast?.isUpdating == true{
-                        ProgressView()
-                    }else{
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .resizable()
-                            .scaledToFit()
                     }
-                     */
+                    .labelStyle(.iconOnly)
+
                 }
                 .buttonStyle(.bordered)
                 Button {
@@ -98,11 +95,39 @@ struct PodcastView: View {
                         podcast.markAllAsPlayed()
                     }
                 } label: {
-                   
+                    
+                    Label {
                         Text("Mark All As Played")
+                    } icon: {
+                        Image(systemName: "circlebadge.2.fill")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: 30)
+
+                        
+                    }
+                    .labelStyle(.iconOnly)
+
                     
                 }
                 .buttonStyle(.bordered)
+                
+                /*
+                 
+                 Label {
+                 Text("Skip Back")
+                 } icon: {
+                 Image(systemName: player.settings.skipBack.backString)
+                 .resizable()
+                 .aspectRatio(contentMode: .fit)
+                 .tint(.primary)
+                 
+                 }
+                 .labelStyle(.iconOnly)
+                 */
+                
+                
+                
             }
                     HStack{
                         Spacer()

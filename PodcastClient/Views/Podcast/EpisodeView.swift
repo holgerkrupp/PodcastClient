@@ -72,6 +72,7 @@ struct EpisodeView: View {
                         Spacer()
                         EpisodeControlView(episode: episode)
                         
+                        /*
                         if let podcast = episode.podcast{
                             NavigationLink {
                                 
@@ -85,7 +86,7 @@ struct EpisodeView: View {
                         }else{
                             Text("not linked to a podcast")
                         }
-
+*/
                         
                         
                     //    EpisodeStatusIcon(episode: episode)
@@ -100,10 +101,10 @@ struct EpisodeView: View {
                     
                 }
                 
-                Text(episode.content?.decodeHTML ?? "")
+              
                 /*
                  Section {
-                 ForEach(episode.chapters){ chapter in
+                     ForEach($episode.chapter){ chapter in
                  HStack{
                  
                  

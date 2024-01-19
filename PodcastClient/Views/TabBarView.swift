@@ -18,7 +18,7 @@ struct TabBarView: View {
     }
     @State var selectedTab:Tab = Tab.upnext
     
-    @State private var miniplayerHeight:CGFloat = 20.0
+    @State private var miniplayerHeight:CGFloat = 30.0
     
     var body: some View {
 
@@ -57,36 +57,19 @@ struct TabBarView: View {
                 }
                 .onChange(of: selectedTab) {
                     withAnimation{
-                        miniplayerHeight = 20.0
+                        miniplayerHeight = 30.0
                     }
                 }
 
+        if Player.shared.currentEpisode != nil{
+            PlayerControlsView(miniPlayerHeight: $miniplayerHeight)
+                .environment(Player.shared)
+                .frame(height: miniplayerHeight)
+        }
 
-        PlayerControlsView(miniPlayerHeight: $miniplayerHeight)
-            .environment(Player.shared)
-        .frame(height: miniplayerHeight)
+        
        
       
     }
 }
 
-/*
- #Preview {
- let schema = Schema([
- Item.self,
- Podcast.self,
- Episode.self,
- Chapter.self,
- Asset.self,
- PodcastSettings.self,
- Playlist.self
- 
- ])
- let config = ModelConfiguration(isStoredInMemoryOnly: true)
- let container = try! ModelContainer(for: schema, configurations: config)
- 
- TabBarView()
- .modelContainer(container)
- 
- }
- */

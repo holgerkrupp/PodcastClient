@@ -6,9 +6,10 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct PlayerView: View {
-   var player = Player.shared
+   @State var player = Player.shared
 
     
     
@@ -18,9 +19,7 @@ struct PlayerView: View {
                 
                 player.coverImage
                     .scaledToFit()
-                
-                Text(player.chapterRemaining?.secondsToHoursMinutesSeconds ?? "")
-                
+                            
                 VStack{
                     Text(player.currentEpisode?.title ?? "Here could be your Podcast Title")
                         .font(.title)
@@ -68,9 +67,9 @@ struct PlayerView: View {
                     Spacer()
                     Button(action:player.skipback){
                         Label {
-                            Text("Skip Back 45 seconds")
+                            Text("Skip Back")
                         } icon: {
-                            Image(systemName: "gobackward.45")
+                            Image(systemName: player.settings.skipBack.backString)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .tint(.primary)
@@ -83,28 +82,18 @@ struct PlayerView: View {
                     
                     
                     Spacer()
-                    
-                    
-                    Button(action:player.playPause){
-                        Label {
-                            Text("Play")
-                        } icon: {
-                            player.playPauseButton
-                                .aspectRatio(contentMode: .fit)
-                                .tint(.primary)
-                        }
-                        .labelStyle(.iconOnly)
-                        
-                    }
-                    
+                    PlayButtonView(playerPaused: !player.isPlaying, player: player)
+                        .frame(width: 60.0, alignment: .center)
+                        .tint(.primary)
+
                     Spacer()
                     
                     
                     Button(action:player.skipforward){
                         Label {
-                            Text("Skip Forward 45 seconds")
+                            Text("Skip Forward")
                         } icon: {
-                            Image(systemName: "goforward.45")
+                            Image(systemName: player.settings.skipForward.forwardString)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .tint(.primary)
@@ -130,10 +119,20 @@ struct PlayerView: View {
                 }
                 .padding()
                 Spacer()
-                    .frame(height: 50)
+                    .frame(height: 30)
                 HStack{
-                    Text(player.rate.description)
-                        .monospacedDigit()
+                    
+                    Picker(selection: $player.settings.playbackSpeed) {
+                        ForEach (PlayBackSpeed.allCases, id:\.self) { speed in
+                            Text(speed.description)
+                                .monospacedDigit()
+                        }
+                    } label: {
+                        HStack{
+                            Text("Playback Speed")
+                        }
+                    }
+                        
                     Spacer()
                     Image(systemName: "gear")
                     Spacer()
@@ -149,4 +148,31 @@ struct PlayerView: View {
 
 #Preview {
     PlayerView()
+}
+
+struct PlayButtonView : View {
+    @State var playerPaused = true
+    @State var player: Player
+    var body: some View {
+        Button(action: {
+            self.playerPaused.toggle()
+            if self.playerPaused {
+                self.player.pause()
+            }
+            else {
+                self.player.play()
+            }
+        }) {
+            
+            Image(systemName: playerPaused ? "play" : "pause")
+                .resizable()
+                .aspectRatio(1.0, contentMode: .fit)
+
+            
+            
+        }
+        .onAppear(){
+            playerPaused = !player.isPlaying
+        }
+    }
 }
