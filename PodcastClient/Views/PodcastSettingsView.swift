@@ -29,6 +29,19 @@ struct PodcastSettingsView: View {
                 Text("These Settings are applied when a feed is subscribed")
             }
             
+            /*
+            Section {
+    
+                Toggle(isOn: $settings.playSumAdjustedbyPlayspeed) {
+                    Text("Show Play time sum adjusted by playback speed")
+                }
+                
+            } header: {
+                Text("Global Settings")
+            } footer: {
+                Text("These Settings are applied to all podcasts/episodes")
+            }
+            */
             
             Section {
                 
@@ -57,15 +70,11 @@ struct PodcastSettingsView: View {
             
             Section {
                 
-                Picker(selection: $settings.playbackSpeed) {
-                    ForEach (PlayBackSpeed.allCases, id:\.self) { speed in
-                        Text(speed.description)
-                    }
-                } label: {
-                    HStack{
-                        Text("Playback Speed")
-                    }
+                Stepper(value: $settings.playbackSpeed, in: 0.1...3.0, step: 0.1) {
+                    Text("Playback Speed")
                 }
+                
+
                 TextField("Cut from Front", value: $settings.cutFront, format: .number)
                 TextField("Cut from End", value: $settings.cutEnd, format: .number)
                 Picker(selection: $settings.skipBack) {

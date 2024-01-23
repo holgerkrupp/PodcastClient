@@ -13,8 +13,8 @@ struct PlayerControlsView: View {
     
     @Binding var miniPlayerHeight:CGFloat
     
-    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 150
-    var minPlayerHeight:CGFloat = 30.0
+    var maxPlayerHeight:CGFloat 
+    var minPlayerHeight:CGFloat
     
   //  @State var player = Player.shared
     @Environment(Player.self) private var player
@@ -82,7 +82,7 @@ struct PlayerControlsView: View {
                 Spacer()
                 
                 
-                   PlayButtonView(playerPaused: !player.isPlaying, player: player)
+                   PlayButtonView(player: player)
                     .frame(maxWidth: .infinity)
                 
                 

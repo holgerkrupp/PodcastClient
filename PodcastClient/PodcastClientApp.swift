@@ -11,31 +11,19 @@ import BackgroundTasks
 
 
 @main
-struct PodcastClientApp: App {
+  struct PodcastClientApp: App {
     @Environment(\.scenePhase) private var phase
 
-    
-    
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Podcast.self,
-            Episode.self,
-            Chapter.self,
+      var sharedModelContainer: ModelContainer
 
-            PodcastSettings.self,
-
-            Playlist.self,
-            PlaylistEntry.self
-            
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+     
+      init() {
+          let pm = PersistanceManager.shared
+          
+          self.sharedModelContainer = pm.sharedModelContainer
+          
+          
+      }
 
     var body: some Scene {
         WindowGroup {

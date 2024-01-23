@@ -15,6 +15,12 @@ struct ImageWithURL: View {
     }
 }
 
+
+
+
+
+
+
 class ImageLoaderAndCache: ObservableObject {
     
     @Published var imageData = Data()
@@ -40,5 +46,44 @@ class ImageLoaderAndCache: ObservableObject {
                 }
             }).resume()
         }
+    }
+}
+
+
+
+
+struct ImageWithData: View {
+    
+     var image:Image?
+    var data : Data
+    
+    
+    init(_ data: Data) {
+        
+        self.data = data
+        self.image = createImage()
+        print("load image from data")
+    }
+    
+    var body: some View {
+        image?
+            .resizable()
+            
+    }
+    
+    func uiImage() -> UIImage{
+        return UIImage(data: data) ?? UIImage()
+    }
+    
+    func createImage() -> Image {
+#if canImport(UIKit)
+        let songArtwork: UIImage = uiImage()
+        return Image(uiImage: songArtwork)
+#elseif canImport(AppKit)
+        let songArtwork: NSImage = NSImage(data: data) ?? NSImage()
+        return Image(nsImage: songArtwork)
+#else
+        return Image(systemImage: "some_default")
+#endif
     }
 }

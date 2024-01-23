@@ -10,8 +10,9 @@ import AVFoundation
 
 struct PlayerView: View {
    @State var player = Player.shared
+    @State var showSpeedSetting:Bool = false
+    @State var showSleeptimerSetting:Bool = false
 
-    
     
     var body: some View {
 
@@ -20,48 +21,18 @@ struct PlayerView: View {
                 player.coverImage
                     .scaledToFit()
                             
-                VStack{
+                
                     Text(player.currentEpisode?.title ?? "Here could be your Podcast Title")
                         .font(.title)
                         .lineLimit(1)
                         .minimumScaleFactor(0.01)
                         .padding()
                     
-                       if player.currentEpisode?.chapters.count ?? 0 > 0{
-                    HStack{
-                        Spacer()
-                            .frame(width: 50)
-                        Button {
-                            player.skipToChapterStart()
-                        } label: {
-                            SkipBackView()
-                                .aspectRatio(contentMode: .fit)
-                                .tint(.primary)
-                        }
-
-                        
-
-                        Spacer()
-                        Text(player.currentChapter?.title ?? "no chapter title")
-                        Spacer()
-                        Button {
-                            player.skipToNextChapter()
-                        } label: {
-                            SkipNextView(progress: player.chapterProgress ?? 0.0)
-                                .aspectRatio(contentMode: .fit)
-                                .tint(.primary)
-                        }
-
-
-                        Spacer()
-                            .frame(width: 50)
-                    }
-                    .frame(height: 30)
-                         }
+                      PlayerChapterView()
                     
                     
                     
-                }
+                
                 Spacer()
                 HStack{
                     Spacer()
@@ -107,7 +78,10 @@ struct PlayerView: View {
                 .frame(height: 40.0, alignment: .center)
                 Spacer()
                 VStack{
-                    ProgressView(value: player.progress, total: 1.0)
+                 //   ProgressView(value: player.progress, total: 1.0)
+                    
+                    PlayerProgressSliderView(value: $player.progress, sliderRange: 0...1)
+                        .frame(height: 30)
                     
                     HStack{
                         Text(player.playPosition.secondsToHoursMinutesSeconds ?? "00:00:00")
@@ -122,26 +96,92 @@ struct PlayerView: View {
                     .frame(height: 30)
                 HStack{
                     
-                    Picker(selection: $player.settings.playbackSpeed) {
-                        ForEach (PlayBackSpeed.allCases, id:\.self) { speed in
-                            Text(speed.description)
-                                .monospacedDigit()
-                        }
+                    Button {
+                        
+                        showSpeedSetting = true
+                        
                     } label: {
-                        HStack{
+                        
+                        Label {
                             Text("Playback Speed")
+                        } icon: {
+                            Image(systemName: "dial.medium")
+                                .tint(.primary)
                         }
+                        .labelStyle(.iconOnly)
+                        
+                       
                     }
+                    .sheet(isPresented: $showSpeedSetting, content: {
+                        VStack{
+                            Text("Adjust Playback Speed")
+                            Stepper(value: $player.settings.playbackSpeed, in: 0.1...3.0, step: 0.1) {
+                                Text("\(player.settings.playbackSpeed.formatted())x")
+                            }
+                            .padding()
+                        }
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(.thinMaterial)
+                        .presentationDetents([.fraction(0.2)])
+                        .presentationCompactAdaptation(
+                            horizontal: .popover,
+                            vertical: .sheet)
+                    })
+                    
+                    
+                    
+
                         
                     Spacer()
                     Image(systemName: "gear")
                     Spacer()
-                    Image(systemName: "moon.zzz")
+                    
+                    
+                    Button {
+                        
+                        showSleeptimerSetting = true
+                        
+                    } label: {
+                        
+                        Label {
+                            Text("Sleeptimer")
+                        } icon: {
+                            Image(systemName: "moon.zzz")
+                                .tint(.primary)
+                        }
+                        .labelStyle(.iconOnly)
+                        
+                        
+                    }
+                    .sheet(isPresented: $showSleeptimerSetting, content: {
+                        VStack{
+                            Text("Adjust Sleeptimer")
+                            Toggle(isOn: $player.sleeptimer.activated) {
+                                Text("Activate Sleeptimer")
+                            }
+                            Stepper(value: $player.sleeptimer.minutes, in: 1...60, step: 1) {
+                                Text(player.sleeptimer.secondsLeft?.secondsToHoursMinutesSeconds ?? "00:00")
+                            }
+                            .disabled(!player.sleeptimer.activated)
+                            
+                            
+                        }.padding()
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(.thinMaterial)
+                        .presentationDetents([.fraction(0.2)])
+                        .presentationCompactAdaptation(
+                            horizontal: .popover,
+                            vertical: .sheet)
+                    })
+                    
+                    
+                    
                 }
                 
                 .padding()
                 
             }
+            .background(Color("backgroundColor"))
   
     }
 }
@@ -164,7 +204,7 @@ struct PlayButtonView : View {
             }
         }) {
             
-            Image(systemName: playerPaused ? "play" : "pause")
+            Image(systemName: playerPaused ? "play.fill" : "pause.fill")
                 .resizable()
                 .aspectRatio(1.0, contentMode: .fit)
 
@@ -172,6 +212,9 @@ struct PlayButtonView : View {
             
         }
         .onAppear(){
+            playerPaused = !player.isPlaying
+        }
+        .onChange(of: player.isPlaying) {
             playerPaused = !player.isPlaying
         }
     }

@@ -35,137 +35,136 @@ struct PodcastView: View {
                     Image(systemName: "line.3.horizontal")
                 }
                 
-            }
-            
-         //   Text(podcast?.title ?? "").font(.title)
-            
-                    HStack{
-                        
-                        if let imageULR = podcast?.coverURL{
-                            ImageWithURL(imageULR)
-                                .scaledToFit()
-                                .frame(width: 100, height: 100)
-                        }else{
-                            Image(systemName: "mic.fill")
-                                .scaledToFit()
-                                .frame(width: 100, height: 100)
-                        }
-                         
-                        VStack{
-                            
-                            Text(podcast?.author ?? "").font(.caption)
-                            Spacer()
-                            Text(podcast?.subtitle ?? "").font(.subheadline)
-                            Spacer()
-                            if let weblink = podcast?.link{
-                                Link(destination: weblink, label: {
-                                    HStack{
-                                        Image(systemName: "safari")
-                                        Text(weblink.host() ?? "Website")
-                                    }
-                                })
-                                .buttonStyle(.bordered)
-                            }
-                            
-                        }
-                    }.listRowSeparator(.hidden)
-            Text(podcast?.summary ?? "")
-            HStack{
-                Button {
-                    if let podcast{
-                        subscriptionManager.refresh(podcast: podcast)
+                
+                
+                //   Text(podcast?.title ?? "").font(.title)
+                
+                HStack{
+                    if let data = podcast.cover{
+                        ImageWithData(data)
+                            .scaledToFit()
+                            .frame(width: 100, height: 100)
+                    }else if let imageULR = podcast.coverURL{
+                        ImageWithURL(imageULR)
+                            .scaledToFit()
+                            .frame(width: 100, height: 100)
+                    }else{
+                        Image(systemName: "mic.fill")
+                            .scaledToFit()
+                            .frame(width: 100, height: 100)
                     }
-                } label: {
-                    Label {
-                        Text("Refresh")
-                    } icon: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: 30)
-                        .rotationEffect(.degrees(podcast?.isUpdating ?? false ? 360 : 0))
-                        .animation(.easeInOut(duration: 1), value: podcast?.isUpdating ?? false)
-                    }
-                    .labelStyle(.iconOnly)
-
-                }
-                .buttonStyle(.bordered)
-                Button {
-                    if let podcast{
-                        podcast.markAllAsPlayed()
-                    }
-                } label: {
                     
-                    Label {
-                        Text("Mark All As Played")
-                    } icon: {
-                        Image(systemName: "circlebadge.2.fill")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity, maxHeight: 30)
-
+                    VStack(alignment: .trailing){
                         
-                    }
-                    .labelStyle(.iconOnly)
-
-                    
-                }
-                .buttonStyle(.bordered)
-                
-                /*
-                 
-                 Label {
-                 Text("Skip Back")
-                 } icon: {
-                 Image(systemName: player.settings.skipBack.backString)
-                 .resizable()
-                 .aspectRatio(contentMode: .fit)
-                 .tint(.primary)
-                 
-                 }
-                 .labelStyle(.iconOnly)
-                 */
-                
-                
-                
-            }
-                    HStack{
+                        Text(podcast.author ?? "").font(.caption)
                         Spacer()
-                        Button {
-                            print("Settings")
-                        } label: {
+                        Text(podcast.subtitle ?? "").font(.subheadline)
+                        Spacer()
+                        if let weblink = podcast.link{
+                            Link(destination: weblink, label: {
+                                HStack{
+                                    Image(systemName: "safari")
+                                    Text(weblink.host() ?? "Website")
+                                }
+                            })
+                            .buttonStyle(.bordered)
+                        }
+                        
+                    }
+                }.listRowSeparator(.hidden)
+                Text(podcast.summary ?? "")
+                HStack{
+                    Button {
+                       
+                            subscriptionManager.refresh(podcast: podcast)
+                        
+                    } label: {
+                        Label {
+                            Text("Refresh")
+                        } icon: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 20)
+                                .rotationEffect(.degrees(podcast.isUpdating ?? false ? 360 : 0))
+                                .animation(.easeInOut(duration: 1), value: podcast.isUpdating ?? false)
+                        }
+                        .labelStyle(.iconOnly)
+                        
+                    }
+                    .buttonStyle(.bordered)
+                    Button {
+                            podcast.markAllAsPlayed()
+                        
+                    } label: {
+                        
+                        Label {
+                            Text("Mark All As Played")
+                        } icon: {
+                            Image(systemName: "circlebadge.2.fill")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 20)
+                            
+                            
+                        }
+                        .labelStyle(.iconOnly)
+                        
+                        
+                    }
+                    .buttonStyle(.bordered)
+                    
+
+                   
+                    Spacer()
+                    Button {
+                        print("Settings")
+                        PodcastSettingsView(settings: podcast.settings ?? PodcastSettings(podcast: podcast))
+                    } label: {
+                        Label {
                             Text("Settings")
+                        } icon: {
+                            Image(systemName: "gear")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 20)
+                            
+                            
                         }
-                        .buttonStyle(.bordered)
+                        .labelStyle(.iconOnly)
                         
-                        Spacer()
-                        
-                        Button {
-                            print("Unsubscribe")
-                        } label: {
-                            Text("Unsubscribe")
-                        }
-                        .buttonStyle(.bordered)
-                        Spacer()
-                    }.listRowSeparator(.hidden)
- 
-              
-            Section {
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Spacer()
+                    
+                    Button {
+                        print("Unsubscribe")
+                    } label: {
+                        Text("Unsubscribe")
+                            .frame(maxHeight: 20)
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                }.listRowSeparator(.hidden)
                 
-                ListofEpisodesView(episodes: podcast?.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? [])
-                .modelContext(modelContext)
-
-            } header: {
-                Text("\(podcast?.episodes.count.description ?? "") Episodes")
+                
+                Section {
+                    
+                    ListofEpisodesView(episodes: podcast.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) )
+                        .modelContext(modelContext)
+                    
+                } header: {
+                    Text("\(podcast.episodes.count.description ) Episodes")
+                }
+                
+                
             }
-
- 
-
-
-        }.listStyle(.plain)
-            .navigationTitle(Text(podcast?.title ?? ""))
                 
-                
+            }.listStyle(.plain)
+                .navigationTitle(Text(podcast?.title ?? ""))
+            
+            
             
         
     }
@@ -218,11 +217,15 @@ struct PodcastMiniView: View {
     
     var body: some View {
         HStack{
-            
-            if let imageULR = podcast.coverURL{
+            if let data = podcast.cover{
+                ImageWithData(data)
+                    .scaledToFit()
+                    .frame(width: 50, height: 50)
+            }else if let imageULR = podcast.coverURL{
                 ImageWithURL(imageULR)
                     .scaledToFit()
                     .frame(width: 50, height: 50)
+                  
                 
             }
              

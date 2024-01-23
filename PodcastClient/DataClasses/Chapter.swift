@@ -15,7 +15,7 @@ enum ChapterType: String, Codable{
     case unknown
 }
 @Model
-class Chapter{
+class Chapter: Equatable{
     
 
     var uuid = UUID()
@@ -29,7 +29,7 @@ class Chapter{
     
     var episode: Episode?
     var shouldPlay:Bool = true
-    
+    @Transient var didSkip:Bool = false
     @Transient var coverImage: some View{
         
         if let imageURL = image{
@@ -46,13 +46,31 @@ class Chapter{
     init(details: [String: Any]) {
         title = details["title"] as? String ?? ""
         start = (details["start"] as? String)?.durationAsSeconds
-
-        
         link = URL(string: details["href"] as? String ?? "")
         image = URL(string: details["image"] as? String ?? "")
-
-       
+        type = .podlove
+   
+    }
+    
+    init(start: Double, title: String, type: ChapterType, imageData: Data? = nil){
+        self.start = start
+        self.title = title
+        self.type = type
+        self.imageData = imageData
+        print("init Chapter \(title)")
+    }
+    
+    static func ==(lhs: Chapter, rhs: Chapter) -> Bool {
         
+        if lhs.episode != rhs.episode, lhs.episode != nil{
+            return false
+        }else if lhs.type != rhs.type{
+            return false
+        }else if lhs.start == rhs.start, lhs.start != nil{
+            return true
+        }else{
+            return false
+        }
         
         
         

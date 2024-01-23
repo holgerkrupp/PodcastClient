@@ -16,13 +16,14 @@ class Podcast: Equatable{
     
     var feed: URL?
     
-    var title: String = "..loading"
+    var title: String = "loading"
     var subtitle: String?
     var author: String?
     var link: URL?
     var desc: String?
     var summary: String?
     var coverURL: URL?
+    var cover:Data?
     
     
     
@@ -90,11 +91,12 @@ class Podcast: Equatable{
     
     @Transient var feedUpdated:Bool?{
         get async throws{
+            lastAttempt = Date()
             if let lastRefresh{
                 if let serverLastModified = try? await feed?.status()?.lastModified {
                     print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
                     
-                    lastAttempt = Date()
+                    
                     if serverLastModified > lastRefresh{
                         print("feed is new")
                         // feed on server is new
@@ -148,7 +150,9 @@ class Podcast: Equatable{
         
         link = URL(string: details["link"] as? String ?? "")
         coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
-        
+        if let coverURL{
+            cover = await coverURL.downloadData()
+        }
         var tempE:[Episode] = []
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
             let episode = await Episode(details: episodeDetails, podcast: self)
@@ -160,6 +164,8 @@ class Podcast: Equatable{
 
         
     }
+    
+
     
     init(){}
     
@@ -200,22 +206,12 @@ class Podcast: Equatable{
             if contains(episodeDetails: episodeDetails) == false{
                 print("does not contain: \(episodeDetails["link"] as? String ?? "")")
                 
-                let schema = Schema([
-                    Podcast.self,
-                    Episode.self,
-                    Chapter.self,
-                    
-                    PodcastSettings.self,
-                    
-                    Playlist.self,
-                    PlaylistEntry.self
-                    
-                ])
+
                 
                 
                 
-                if let container = try? ModelContainer(for: schema){
-                    let context = ModelContext(container)
+                let container =  PersistanceManager.shared.sharedModelContainer
+                let context = PersistanceManager.shared.sharedContext
                     let episode = await Episode(details: episodeDetails, podcast: self)
                     print("created Episode \(episode.title ?? "") for \(self.title)")
                     
@@ -228,9 +224,7 @@ class Podcast: Equatable{
                     }catch{
                         print(error)
                     }
-                }else{
-                    print("could not create ModelContainer")
-                }
+                
             }else{
                 print("Episode contains \(episodeDetails["title"] ?? "")")
             }
@@ -261,7 +255,7 @@ class Podcast: Equatable{
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = try? await feedUpdated
         
-        if updated == true{
+        if updated != false{ // could be true (feed file updated) or nil (no last modified day)
             do{
                 if let data = try await feedData{
                     print("got data for \(feed?.absoluteString ?? "")")
@@ -295,7 +289,6 @@ class Podcast: Equatable{
             isUpdating = false
             print("no update in feed header - skip refresh")
         }
-        
         
         
     }

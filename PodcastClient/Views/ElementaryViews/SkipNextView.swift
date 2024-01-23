@@ -68,3 +68,36 @@ struct SkipBackView: View {
 #Preview {
     SkipBackView()
 }
+
+
+
+struct SkipChapter: ToggleStyle {
+    
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+         //   configuration.label
+         //   Spacer()
+            Rectangle()
+                .foregroundColor(configuration.isOn ? .accent : .secondary)
+                .frame(width: 51, height: 31, alignment: .center)
+                .overlay(
+                    Circle()
+                        .foregroundColor(.white)
+                        .padding(.all, 3)
+                        .overlay(
+                            Image(systemName: configuration.isOn ? "play.fill" : "play.slash.fill")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .font(Font.title.weight(.black))
+                                .frame(width: 10, height: 10, alignment: .center)
+                                .foregroundColor(configuration.isOn ? .accent  : .accent)
+                        )
+                        .offset(x: configuration.isOn ? 11 : -11, y: 0)
+                        .animation(.linear, value: 0.2)
+                    
+                ).cornerRadius(20)
+                .onTapGesture { configuration.isOn.toggle() }
+        }
+    }
+    
+}

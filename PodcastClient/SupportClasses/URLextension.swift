@@ -42,4 +42,19 @@ extension URL{
         return status
         }
     
+    
+    func downloadData() async -> Data?{
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: self)
+            return data
+            
+        }catch{
+            print(error)
+        }
+    return nil
+    }
+       
+
+    
 }

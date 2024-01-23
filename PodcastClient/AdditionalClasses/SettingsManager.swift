@@ -14,7 +14,7 @@ import SwiftData
 class SettingsManager:NSObject{
     
     static let shared = SettingsManager()
-    var modelContext: ModelContext?
+    var modelContext: ModelContext? = PersistanceManager.shared.sharedContext
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     
     var defaultSettings: PodcastSettings {
@@ -41,26 +41,7 @@ class SettingsManager:NSObject{
     private override init() {
         super.init()
         
-        let schema = Schema([
-           
-            Podcast.self,
-            Episode.self,
-            Chapter.self,
-            
-            PodcastSettings.self,
-            
-            Playlist.self,
-            PlaylistEntry.self
-            
-        ])
-        
-        
-        if let container = try? ModelContainer(
-            for: schema,
-            configurations: configuration
-        ){
-            modelContext = ModelContext(container)
-        }
+
     }
     
     

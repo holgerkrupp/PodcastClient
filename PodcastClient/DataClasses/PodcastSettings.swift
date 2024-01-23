@@ -17,7 +17,7 @@ class PodcastSettings {
     
     var autoDownload:Bool = false
     var playnextPosition:Playlist.Position = Playlist.Position.none
-    var playbackSpeed:PlayBackSpeed = PlayBackSpeed.one
+    var playbackSpeed:Float = 1.0
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
     var cutFront:Float? // how much to cut from the front / Intro
     var cutEnd:Float? // how much to cut from the end / Outro
@@ -27,9 +27,16 @@ class PodcastSettings {
     
     // Secret Settings that should only be applied on global way:
     var markAsPlayedAfterSubscribe: Bool = true
+    var playSumAdjustedbyPlayspeed: Bool = false
     
+    var podcast:Podcast?
     
     init(){}
+    
+    init(podcast: Podcast){
+        title = podcast.title
+        self.podcast = podcast
+    }
 }
 
 enum Operator:Codable {
@@ -65,22 +72,4 @@ enum SkipSteps:Int, Codable, CaseIterable{
     }
 }
 
-enum PlayBackSpeed:Float, Codable, CaseIterable{
-    case half = 0.5
-    case threequarters = 0.75
-    case one = 1.0
-    case oneandaforth = 1.25
-    case oneandahalf = 1.5
-    case oneandthreequarters = 1.75
-    case two = 2.0
-    case twoandaforth = 2.25
-    case twoandahalf = 2.5
-    case twoandthreequarters = 2.75
-    case three = 3.0
 
-    
-    var description:String{
-        return (rawValue.formatted()).appending("x")
-    }
-    
-}

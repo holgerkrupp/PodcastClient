@@ -38,6 +38,10 @@ class Download: NSObject {
     func resume() {
         task.resume()
     }
+    
+    func cancel(){
+        task.cancel()
+    }
 }
 
 extension Download {
@@ -90,7 +94,7 @@ class DownloadManager: NSObject, ObservableObject {
             downloads[fileURL] = download
             episode.downloadStatus.isDownloading = true
             for await event in download.events {
-                process(event, for: episode)
+                await process(event, for: episode)
             }
             downloads[fileURL] = nil
         }else{
@@ -112,33 +116,71 @@ class DownloadManager: NSObject, ObservableObject {
             episode.downloadStatus.isDownloading = true
         }
     }
+    
+    func cancelDownload(for episode: Episode) {
+        if let fileURL = episode.assetLink{
+            downloads[fileURL]?.cancel()
+            episode.downloadStatus.isDownloading = false
+            downloads.removeValue(forKey: fileURL)
+        }
+    }
+    
 }
 
-private extension DownloadManager {
-    func process(_ event: Download.Event, for episode: Episode) {
+extension DownloadManager: FileManagerDelegate {
+    func process(_ event: Download.Event, for episode: Episode) async {
         switch event {
         case let .progress(current, total):
             episode.downloadStatus.update(currentBytes: current, totalBytes: total)
+           
         case let .success(url):
             saveFile(for: episode, at: url)
+            
         }
     }
     
     func saveFile(for episode: Episode, at url: URL) {
 
         if let newlocation = episode.localFile{
+            print("saving File \(url)")
             print("saving File to \(newlocation)")
             let filemanager = FileManager.default
-            episode.downloadStatus.isDownloading = false
-            episode.isAvailableLocally = true
-            try? filemanager.moveItem(at: url, to: newlocation)
-            Task{
-                await episode.postProcessingAfterDownload()
+            do{
+                try filemanager.createDirectory(at: newlocation.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try filemanager.moveItem(at: url, to: newlocation)
+                
+                episode.isAvailableLocally = true
+                episode.downloadStatus.isDownloading = false
+               
+                Task{
+                    await episode.postProcessingAfterDownload()
+                }
+            }catch{
+                print(error)
+                episode.downloadStatus.isDownloading = false
+
+             
             }
+
             
         }
     }
     
+    func fileManager(_ fileManager: FileManager, shouldMoveItemAt srcURL: URL, to dstURL: URL) -> Bool {
+        if fileManager.fileExists(atPath: dstURL.path()){
+            do{
+                try fileManager.removeItem(at: dstURL)
+            }catch{
+                print(error)
+                return false
+            }
+        }
+        return true
+    }
+    
+
+    
+  
 
     
 }
@@ -147,6 +189,6 @@ private extension DownloadManager {
 extension Podcast {
     var directoryURL: URL {
         URL.documentsDirectory
-            .appending(path: "\(id)", directoryHint: .isDirectory)
+            .appending(path: "\(title)", directoryHint: .isDirectory)
     }
 }

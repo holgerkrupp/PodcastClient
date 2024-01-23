@@ -65,13 +65,14 @@ struct EpisodeView: View {
                                 //         Text(episode.title ?? "")
                                // Text(episode.desc ?? "")
                                 Text(episode.pubDate?.formatted() ?? "").font(.caption)
+                                Spacer()
                             }
                         }
                         EpisodePlayProgressView(episode: episode)
                             .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
-                        
+                        Text(episode.desc ?? "")
                         /*
                         if let podcast = episode.podcast{
                             NavigationLink {
@@ -102,28 +103,15 @@ struct EpisodeView: View {
                 }
                 
               
-                /*
-                 Section {
-                     ForEach($episode.chapter){ chapter in
-                 HStack{
-                 
-                 
-                 Toggle(isOn: chapter.shouldPlay, label: {
-                 Text(chapter.title.wrappedValue)
-                 })
-                 .padding()
-                 .toggleStyle(.switch)
-                 }
-                 }
-                 } header: {
-                 Text("Chapters")
-                 }
-                 */
+                if let chapters = episode.chapters{
+                    ChapterListView(chapters: chapters)
+                }
                 
                 
             }
             .listStyle(.plain)
             .navigationTitle(Text(episode.title ?? ""))
+            
             
         }else{
             Text("error loading episode")
@@ -156,7 +144,7 @@ struct EpisodeMiniView: View {
                     VStack{
                         Spacer()
                         if model.episode.finishedPlaying == true{
-                            Image(systemName: "circle.fill")
+                            Image(systemName: "checkmark.circle")
                         }else{
                             Image(systemName: "circle")
                         }
@@ -185,28 +173,39 @@ struct EpisodeMiniView: View {
                         Text(model.episode.title ?? "")
                         Spacer()
                         HStack{
-                            //   Text(episode.pubDate?.formatted(date: .numeric, time: .omitted) ?? "--")
                             Text(model.episode.pubDate?.formatted(formatStyle) ?? "--")
                             Spacer()
                             Text(model.episode.duration?.secondsToHoursMinutesSeconds ?? "")
+                                .monospacedDigit()
                         }
                         .font(.caption)
                         .foregroundColor(.secondary)
                         
                         
                         
-                        if model.episode.playPosition > 0.0{
-                            EpisodePlayProgressView(episode: model.episode)
-                                .frame(maxWidth: .infinity, maxHeight: 30)
-                        }
+
+
+                        
                         
                     }
+                }
+                if let desc = model.episode.desc{
+                    Spacer()
+                    Text(desc)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
+                }
+                if model.episode.playPosition > 0.0{
+                    EpisodePlayProgressView(episode: model.episode)
+                        .frame(maxWidth: .infinity, maxHeight: 30)
                 }
                 
             }
             
             
         }
+        /*
         .contextMenu {
             Button {
                     model.episode.playNow()
@@ -215,6 +214,8 @@ struct EpisodeMiniView: View {
             }
             Button {
                 PlaylistManager.shared.playnext.add(episode: model.episode, to: .front)
+
+                
             } label: {
                 Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
             }
@@ -225,6 +226,7 @@ struct EpisodeMiniView: View {
                 Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
             }
         }
+         */
     }
 }
 
@@ -254,7 +256,7 @@ struct EpisodeStatusIcon:View{
             ProgressView(value: episode.downloadStatus.downloadProgress)
                 .progressViewStyle(.circular)
                 .frame(width: 10, height: 10)
-            Text(episode.downloadStatus.downloadProgress.rounded().formatted())
+ 
         }else{
             Image(systemName: "cloud")
                 .scaledToFit()
@@ -277,7 +279,7 @@ struct EpisodePlayProgressView:View{
                     if (duration - episode.playPosition) > 0.9{
                         
                         Text("\((duration - episode.playPosition).secondsToHoursMinutesSeconds ?? "")")
-                            .monospaced()
+                            .monospacedDigit()
                             .font(.caption)
                             .foregroundColor(.secondary)
                         

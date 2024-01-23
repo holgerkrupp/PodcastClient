@@ -16,7 +16,22 @@
     "%@ seconds" : {
 
     },
+    "%@x" : {
+
+    },
     "About this app" : {
+
+    },
+    "Activate Sleeptimer" : {
+
+    },
+    "Adjust Playback Speed" : {
+
+    },
+    "Adjust Sleeptimer" : {
+
+    },
+    "All" : {
 
     },
     "already subscribed" : {
@@ -115,6 +130,9 @@
     "paste URL to feed" : {
 
     },
+    "Play Chapter" : {
+
+    },
     "Play last" : {
 
     },
@@ -130,13 +148,13 @@
     "Playback Speed" : {
 
     },
-    "PlaylistView" : {
-
-    },
     "Podcast Settings" : {
 
     },
     "Podcasts" : {
+
+    },
+    "Postprocess" : {
 
     },
     "Put new Elements to Play Next Queue" : {
@@ -146,6 +164,9 @@
 
     },
     "Refresh" : {
+
+    },
+    "Remove from list" : {
 
     },
     "Search" : {
@@ -185,6 +206,9 @@
 
     },
     "Skip Forward 45 seconds" : {
+
+    },
+    "Sleeptimer" : {
 
     },
     "Stream Now" : {

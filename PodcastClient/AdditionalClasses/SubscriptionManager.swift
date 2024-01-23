@@ -41,7 +41,7 @@ class PodcastFeed{
 class SubscriptionManager:NSObject{
     
     static let shared = SubscriptionManager()
-    var modelContext: ModelContext?
+    var modelContext: ModelContext? = PersistanceManager.shared.sharedContext
     
     
     var settings:PodcastSettings = SettingsManager.shared.defaultSettings
@@ -56,27 +56,7 @@ class SubscriptionManager:NSObject{
 
     private override init() {
         super.init()
-        
-        let schema = Schema([
-            Podcast.self,
-            Episode.self,
-            Chapter.self,
-            
-            PodcastSettings.self,
-            
-            Playlist.self,
-            PlaylistEntry.self
-            
-        ])
-        
-        
-        if let container = try? ModelContainer(
-            for: schema,
-            configurations: configuration
-        ){
-            modelContext = ModelContext(container)
-            fetchData()
-        }
+
     }
     
     func fetchData() {
@@ -164,22 +144,12 @@ class SubscriptionManager:NSObject{
 
                 if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
                     
-                    let schema = Schema([
-                        Podcast.self,
-                        Episode.self,
-                        Chapter.self,
-                        
-                        PodcastSettings.self,
-                        
-                        Playlist.self,
-                        PlaylistEntry.self
-                        
-                    ])
+
                     
                     
                     
-                    if let container = try? ModelContainer(for: schema){
-                        let context = ModelContext(container)
+                    let container = PersistanceManager.shared.sharedModelContainer
+                    let context = PersistanceManager.shared.sharedContext
                         let podcast = await Podcast(details: feedDetail)
                         print("created Podcast \(podcast.title) for \(url.absoluteString)")
                         
@@ -201,9 +171,7 @@ class SubscriptionManager:NSObject{
                             return false
                         }
                         
-                    }else{
-                        print("could not create ModelContainer")
-                    }
+                    
 
                    
                     return true
@@ -215,24 +183,13 @@ class SubscriptionManager:NSObject{
     }
     
     func deleteAll(){
-   
-        let schema = Schema([
-            Podcast.self,
-            Episode.self,
-            Chapter.self,
-            
-            PodcastSettings.self,
-            
-            Playlist.self,
-            PlaylistEntry.self
-            
-        ])
+
         
         
         
-        if let container = try? ModelContainer(for: schema){
-                let context = ModelContext(container)
-                
+     let container = PersistanceManager.shared.sharedModelContainer
+        let context = PersistanceManager.shared.sharedContext
+
                 do {
                     try context.delete(model: Podcast.self)
                 } catch {
@@ -241,10 +198,7 @@ class SubscriptionManager:NSObject{
                 
                 
                 
-            }else{
-                print("could not create ModelContainer")
-            }
-            
+          
 
         
     }

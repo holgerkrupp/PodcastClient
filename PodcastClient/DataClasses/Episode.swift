@@ -31,6 +31,8 @@ class Episode: Equatable{
     var pubDate: Date?
     
     var image: URL?
+    var cover:Data?
+
     
     var number: String?
     var season: String?
@@ -41,12 +43,14 @@ class Episode: Equatable{
     var assetType: String?
     var assetLink: URL? // the original URL of the asset
     var length: Int?
+    var transcriptURL: [URL]?
+    var transcripts:[Transcript]?
     
-    @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter] = []
+    @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter]?
     
     var podcast: Podcast?
     
-    
+    var playlistentries: [PlaylistEntry]?
     
     var playpostion: Double = 0.0
     var lastPlayed: Date?
@@ -67,11 +71,9 @@ class Episode: Equatable{
   
     
     @Transient var localFile: URL?{
-        let fileName = assetLink?.lastPathComponent ?? title?.appending(pubDate?.ISO8601Format() ?? Date().ISO8601Format())  ?? Date().ISO8601Format()
-        let documentsDirectoryUrl =  FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        
-        
-        return documentsDirectoryUrl?.appendingPathComponent(fileName)
+        let fileName = assetLink?.lastPathComponent ?? title ?? pubDate?.ISO8601Format() ?? Date().ISO8601Format()
+        let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        return documentsDirectoryUrl?.appendingPathComponent(fileName).standardizedFileURL
     }
     
     func UpdateisAvailableLocally() -> Bool?{
@@ -117,6 +119,18 @@ class Episode: Equatable{
          
     }
     
+    
+    @Transient var uiimage: UIImage{
+    
+        if let cover{
+            return ImageWithData(cover).uiImage()
+        }else if let cover = podcast?.cover{
+            return ImageWithData(cover).uiImage()
+        }else{
+            return UIImage(systemName: "photo") ?? UIImage()
+        }
+    }
+    
   
     @Transient var playPosition:Double{
         get{
@@ -143,18 +157,26 @@ class Episode: Equatable{
     }
     
     func postProcessingAfterDownload() async{
+        print("postProcessing")
         await updateDuration()
-        if chapters.count == 0, let url = localFile {
-            chapters = await loadChaptersFromAsset(with: (url)) ?? []
+        if let localFile{
+            let fileChapters = await loadChaptersFromAsset(with: localFile) ?? []
+            chapters?.append(contentsOf: fileChapters)
         }
+
     }
-    
     
     func updateDuration() async{
         print("updating Duration")
         if let localFile = localFile{
-            if let duration = try? await AVAsset(url: localFile).load(.duration){
-                setDuration(duration)
+            do{
+                
+                let duration = try await AVAsset(url: localFile).load(.duration)
+                print (duration.seconds)
+               setDuration(duration)
+                
+            }catch{
+                print(error)
             }
         }
     }
@@ -162,14 +184,17 @@ class Episode: Equatable{
         
         let seconds = CMTimeGetSeconds(duration)
         print("updating to \(seconds.description)")
+        
         if !seconds.isNaN{
             self.duration = seconds
         }
+         
     }
 
     
     func playNow(){
-        Player.shared.currentEpisode = self
+        
+        Player.shared.setCurrentEpisode(episode: self, playDirectly: true)
     }
     
     
@@ -202,7 +227,7 @@ class Episode: Equatable{
         guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
         
-        print("Episode \(guid) - \(title)")
+    
 
         
         
@@ -217,7 +242,9 @@ class Episode: Equatable{
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")
         image = URL(string: details["itunes:image"] as? String ?? "")
-        
+        if let image{
+            cover = await image.downloadData()
+        }
     
         number = details["itunes:episode"] as? String
         
@@ -233,6 +260,10 @@ class Episode: Equatable{
  
         }
         
+        for transcript in details["transcripts"] as? [Transcript] ?? []{
+            transcripts?.append(transcript)
+        }
+        
         var tempC:[Chapter] = []
         for chapterDetails in details["psc:chapters"] as? [[String:Any]] ?? []{
             let chapter = Chapter(details: chapterDetails)
@@ -244,107 +275,6 @@ class Episode: Equatable{
         
     }
     
-
-    
-    func loadChaptersFromAsset(with assetUrl: URL) async -> [Chapter]?{
-        print("loading Chapters from Asset with \(assetUrl.absoluteString)")
-        let asset = AVAsset(url: assetUrl)
-        let chapterLocalesKey = "availableChapterLocales"
-        var chapters: [Chapter] = []
-        let metadata = try? await asset.load(.metadata)
-        if (metadata != nil){
-            
-            
-            
-            let languages = Locale.preferredLanguages
-            if let chapterMetadataGroups = try? await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages) {
-                for group in chapterMetadataGroups {
-                    
-                    guard let titleItem = group.items.first(where: { $0.commonKey == .commonKeyTitle }),
-                          let title = try? await titleItem.load(.value) as? String else {
-                        continue
-                    }
-                    
-                    let artworkData = try? await group.items.first(where: { $0.commonKey == .commonKeyArtwork })?.load(.value) as? Data
-                    
-                    let timeRange = group.timeRange
-                    let start = timeRange.start.seconds
-                    let end = timeRange.end.seconds
-                    let duration = timeRange.duration.seconds
-                 
-                    // Validate the time fields for NaN and negative values
-                    let correctedStart = (start.isNaN || start < 0) ? 0 : start
-                    let correctedEnd = (end.isNaN || end < 0) ? 0 : end
-                    let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
-                    
-                    let newChaper = Chapter()
-                    newChaper.title = title
-                    newChaper.start = correctedStart
-                    newChaper.duration = correctedDuration
-                    newChaper.type = .embedded
-                    newChaper.imageData = artworkData
-                    chapters.append(newChaper)
-                }
-            }
-            
-            return chapters
-        }
-            return nil
-        
-        
-        /*
-        asset.loadValuesAsynchronously(forKeys: [chapterLocalesKey]) {
-            var error: NSError?
-            let status = asset.statusOfValue(forKey: chapterLocalesKey, error: &error)
-            if status == .loaded {
-                let languages = Locale.preferredLanguages
-                let chapterMetadata = asset.chapterMetadataGroups(bestMatchingPreferredLanguages: languages)
-                // Process chapter metadata.
-            }
-            else {
-                // Handle other status cases.
-            }
-        }
-         */
-    }
-    /*
-    func convertTimedMetadataGroupsToChapters(groups: [AVTimedMetadataGroup]) async -> [Chapter] {
-        groups.map { group in
-            // Retrieve the title metadata items.
-            let titleItems = AVMetadataItem.metadataItems(from: group.items,
-                                                          filteredByIdentifier: .commonIdentifierTitle)
-            
-            
-            // Retrieve the artwork metadata items.
-            let artworkItems = AVMetadataItem.metadataItems(from: group.items,
-                                                            filteredByIdentifier: .commonIdentifierArtwork)
-            
-            
-            var title = "Default Title"
-            var image = UIImage(named: "placeholder")!
-            
-            
-            if let titleValue = await titleItems.first?.load(.stringValue) {
-                title = titleValue
-            }
-            
-            
-            if let imgData = artworkItems.first?.load(.dataValue), let imageValue = UIImage(data: imgData) {
-                image = imageValue
-            }
-            
-            let start = group.timeRange.start.seconds
-            let duration = group.timeRange.duration
-            
-            var newChapter = Chapter()
-            newChapter.title = title
-            //newChapter.image = image
-            
-            return newChapter
-        }
-    }
-    */
-
     
     static func ==(lhs: Episode, rhs: Episode) -> Bool {
 
@@ -380,16 +310,10 @@ class Episode: Equatable{
         for extractedChapter in extractedData{
             if let startingTime =  extractedChapter.key.durationAsSeconds{
                 print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
-                let newChapter = Chapter()
-                newChapter.start = startingTime
-                newChapter.title = extractedChapter.value
-                newChapter.type = .extracted
-                modelContext?.insert(newChapter)
+                let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
                 newchapters.append(newChapter)
             }
         }
-        self.chapters.append(contentsOf: chapters)
-        try? modelContext?.save()
         return newchapters
     }
     /*
@@ -429,6 +353,53 @@ class Episode: Equatable{
         return result
     }
   
+    func loadChaptersFromAsset(with assetUrl: URL) async -> [Chapter]?{
+        print("loading Chapters from Asset with \(assetUrl.absoluteString)")
+        let asset = AVAsset(url: assetUrl)
+        let chapterLocalesKey = "availableChapterLocales"
+        var chapters: [Chapter] = []
+        let metadata = try? await asset.load(.metadata)
+        if (metadata != nil){
+            
+            
+            
+            let languages = Locale.preferredLanguages
+            if let chapterMetadataGroups = try? await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages) {
+                for group in chapterMetadataGroups {
+                    
+                    guard let titleItem = group.items.first(where: { $0.commonKey == .commonKeyTitle }),
+                          let title = try? await titleItem.load(.value) as? String else {
+                        continue
+                    }
+                    
+                    let artworkData = try? await group.items.first(where: { $0.commonKey == .commonKeyArtwork })?.load(.value) as? Data
+                    
+                    let timeRange = group.timeRange
+                    let start = timeRange.start.seconds
+                    let end = timeRange.end.seconds
+                    let duration = timeRange.duration.seconds
+                    
+                    // Validate the time fields for NaN and negative values
+                    let correctedStart = (start.isNaN || start < 0) ? 0 : start
+                    let correctedEnd = (end.isNaN || end < 0) ? 0 : end
+                    let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
+                    
+                    let newChaper = Chapter()
+                    newChaper.title = title
+                    newChaper.start = correctedStart
+                    newChaper.duration = correctedDuration
+                    newChaper.type = .embedded
+                    newChaper.imageData = artworkData
+                    chapters.append(newChaper)
+                }
+            }
+            print("returning \(chapters.count.formatted()) Chapters")
+            return chapters
+        }
+        print("returning nil")
+        return nil
+
+    }
     
     
 }

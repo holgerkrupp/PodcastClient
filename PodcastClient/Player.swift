@@ -14,13 +14,38 @@ import SwiftData
 
 @Observable class Player: NSObject{
     
-    private var avplayer = AVPlayer()
+    
+    struct Sleeptimer{
+        enum SleeptimerType{
+            case time, episode
+        }
+        var activated:Bool = false{
+            didSet{
+                if activated == true{
+                    start = Date()
+                }else{
+                    start = nil
+                }
+            }
+        }
+        var minutes:Double = 5
+        var secondsLeft:Double?{
+            end?.timeIntervalSince(Date())
+        }
+        var type:SleeptimerType = .time
+        var start: Date? = nil
+        var end:Date? {
+            start?.addingTimeInterval(60*minutes)
+        }
+    }
+    
+    var avplayer = AVPlayer()
     private let session = AVAudioSession.sharedInstance()
 //    private let defaults = UserDefaults.standard
     
     static let shared = Player()
     
-    
+    var sleeptimer = Sleeptimer()
 
     var isPlaying:Bool{
         return avplayer.isPlaying
@@ -29,7 +54,7 @@ import SwiftData
     var rate:Float{
         avplayer.rate
     }
-    var playNextQueue: Playlist = PlaylistManager.shared.playnext {
+    var currentPlaylist: Playlist = PlaylistManager.shared.playnext {
         didSet{
           // defaults.setValue(playNextQueue.persistentModelID., forKey: "player.playNextQueue")
         }
@@ -54,52 +79,16 @@ import SwiftData
     var observer: NSKeyValueObservation?
     
     
-    var currentEpisode:Episode?{
+    var currentEpisode:Episode?
+    
+    var currentChapter: Chapter?{
         didSet{
-            if let asset = currentEpisode?.avAsset{
-                let playerItem = AVPlayerItem(asset: asset)
-                avplayer.replaceCurrentItem(with: playerItem)
-                Task{
-                    await self.currentEpisode?.updateDuration()
-                }
-                
-                if currentEpisode?.chapters.count == 0{
-                    if let content = currentEpisode?.content{
-                        if let chapters = currentEpisode?.createChapters(from: content){
-                            currentEpisode?.chapters = chapters
-                        }
-                    }
-                }
-                
-                    settings = currentEpisode?.podcast?.settings ?? SettingsManager.shared.defaultSettings
-                
-                self.observer = playerItem.observe(\.status, options:  [.new, .old], changeHandler: { (playerItem, change) in
-                    if playerItem.status == .readyToPlay {
-                        
-                        
-                        if playerItem.duration.isValid{
-                            self.currentEpisode?.setDuration(playerItem.duration)
-                        }
-                        
-                        
-                    }
-                })
-                let tolerance = CMTime(seconds: 0, preferredTimescale: 1)
-                let zero = CMTime(seconds: 0, preferredTimescale: 0)
-                
-                avplayer.seek(to: currentEpisode?.playPosition.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
-                updateCurrentChapter()
-                avplayer.play()
-                initMPMediaPlayer()
-                initRemoteCommandCenter()
-            }else{
-                print("could not read current Episode")
+            if currentChapter?.shouldPlay == false, currentChapter?.didSkip == false{
+                currentChapter?.didSkip = true
+                skipToNextChapter()
             }
-            
         }
     }
-    
-    var currentChapter: Chapter?
     var nextChapter: Chapter?
     var previousChapter: Chapter?
     
@@ -140,41 +129,122 @@ import SwiftData
     var duration:Double?{
         avplayer.currentItem?.duration.seconds
     }
+    
+    
     var progress:Double {
-        if let duration {
-            return ((playPosition) / duration)
+        set{
+            let seconds:Double  = newValue * (duration ?? 1.0)
+            let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
+            jumpTo(time: newTime)
+        }
+        get{
+            if let duration {
+                return ((playPosition) / duration)
+            }else{
+                return 0.0
+            }
+        }
+
+    }
+    @objc
+    func playerDidFinishPlaying(){
+        currentEpisode?.finishedPlaying = true
+        currentPlaylist.items?.removeAll(where: { item in
+            item.episode == currentEpisode
+        })
+        if let nextEpisode = currentPlaylist.ordered.first?.episode{
+            setCurrentEpisode(episode: nextEpisode, playDirectly: true)
+           // currentEpisode = nextItem.episode
+        }
+        
+    }
+    
+    func setCurrentEpisode(episode: Episode, playDirectly: Bool = true){
+        currentEpisode = episode
+        currentPlaylist.add(episode: episode, to: .front)
+        if let asset = currentEpisode?.avAsset{
+            let playerItem = AVPlayerItem(asset: asset)
+            avplayer.replaceCurrentItem(with: playerItem)
+            
+            
+            
+            
+            settings = currentEpisode?.podcast?.settings ?? SettingsManager.shared.defaultSettings
+            self.observer = playerItem.observe(\.status, options:  [.new, .old], changeHandler: { (playerItem, change) in
+                if playerItem.status == .readyToPlay {
+                    if playerItem.duration.isValid{
+                        self.currentEpisode?.setDuration(playerItem.duration)
+                    }
+                    
+                    
+                }
+            })
+            
+            
+            NotificationCenter.default
+                .addObserver(self,
+                             selector: #selector(playerDidFinishPlaying),
+                             name: .AVPlayerItemDidPlayToEndTime,
+                             object: avplayer.currentItem
+                )
+            
+            
+            
+            
+            let tolerance = CMTime(seconds: 0, preferredTimescale: 1)
+            let zero = CMTime(seconds: 0, preferredTimescale: 0)
+            
+            avplayer.seek(to: currentEpisode?.playPosition.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
+            updateCurrentChapter()
+            if playDirectly == true{
+                avplayer.play()
+
+            }
+            initMPMediaPlayer()
+            initRemoteCommandCenter()
         }else{
-            return 0.0
+            print("could not read current Episode")
         }
     }
     
-    
-    
-    
     private override init() {
         super.init()
-        try? session.setCategory(.playback, mode: .spokenAudio)
+        
+        
+        if let oldEpisode = currentPlaylist.ordered.first?.episode{
+            setCurrentEpisode(episode: oldEpisode, playDirectly: false)
+
+        }
+
+        do{
+            try session.setCategory(.playback, mode: .spokenAudio)
+        }catch{
+            print(error)
+        }
         
         avplayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: nil) { [weak self] time in
             guard let self = self else { return }
             if avplayer.isPlaying{
-                avplayer.rate = settings.playbackSpeed.rawValue
+                avplayer.rate = settings.playbackSpeed
                 playPosition = avplayer.currentTime().seconds
-                
                 updateCurrentChapter()
-
+                
+            }
+            if sleeptimer.activated == true, let end = sleeptimer.end, end <= Date(){
+                pause()
+                sleeptimer.activated.toggle()
             }
         }
     }
     
     private func updateCurrentChapter(){
-        currentChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 < self.playPosition})
-        nextChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+        currentChapter = currentEpisode?.chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 < self.playPosition})
+        nextChapter = currentEpisode?.chapters?.filter({ $0.shouldPlay == true  }).sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
         if let currentChapter{
-            let index = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).firstIndex(of: currentChapter)
+            let index = currentEpisode?.chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).firstIndex(of: currentChapter)
             if let index, index > 0{
-                if let previousIndex = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).index(before: index), previousIndex >= 0{
-                    previousChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0})[previousIndex]
+                if let previousIndex = currentEpisode?.chapters?.filter({ $0.shouldPlay == true  }).sorted(by: {$0.start ?? 0 < $1.start ?? 0}).index(before: index), previousIndex >= 0{
+                    previousChapter = currentEpisode?.chapters?.filter({ $0.shouldPlay == true  }).sorted(by: {$0.start ?? 0 < $1.start ?? 0})[previousIndex]
                 }
                 
             }
@@ -247,22 +317,30 @@ import SwiftData
     }
     
     func skipToNextChapter(){
-        
         if let nextChapterStart = nextChapter?.start{
             let jumpToTime = CMTimeMakeWithSeconds(nextChapterStart,preferredTimescale: 1)
-            let tolerance = CMTime(seconds: 0, preferredTimescale: 1)
+            jumpTo(time: jumpToTime)
+        }
+    }
+    
+    
+    func skipTo(chapter: Chapter){
+        
+        if chapter.episode == currentEpisode{
+            if let start = chapter.start{
+                let jumpToTime = CMTimeMakeWithSeconds(start,preferredTimescale: 1)
+                jumpTo(time: jumpToTime)
+            }
+        }else{
+            if let newEpisode = chapter.episode{
+                setCurrentEpisode(episode: newEpisode, playDirectly: true)
+            }
+           
 
-            avplayer.seek(to: jumpToTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
-            
-            // avplayer.seek(to: jumpToTime)
-            playPosition = jumpToTime.seconds
-            updateCurrentChapter()
         }
-        /*
-        if let chapterRemaining{
-            jumpPlaypostion(by: chapterRemaining+0.5)
-        }
-         */
+        
+
+
     }
     
     func skipToChapterStart(){
@@ -274,34 +352,51 @@ import SwiftData
                 if let previousStart = previousChapter?.start{
                     let previousChapterPlayPosition = playPosition - previousStart
                     jumpPlaypostion(by: -previousChapterPlayPosition)
+                }else{
+                    // if the first chapter is not starting at 00:00:00 let's start to the beginning instead
+                    jumpPlaypostion(by: -playPosition)
                 }
             }else{
                 jumpPlaypostion(by: -currentChapterPlayPosition)
 
             }
+        }else{
+            // if the first chapter is not starting at 00:00:00 let's start to the beginning instead
+            jumpPlaypostion(by: -playPosition)
         }
     }
     
     private func jumpPlaypostion(by seconds:Double){
             let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
             let jumpToTime = CMTimeAdd(avplayer.currentTime(), secondsToAdd)
-        let tolerance = CMTime(seconds: 0, preferredTimescale: 1)
-        print("jumpToTime \(jumpToTime.seconds.formatted())")
+            jumpTo(time: jumpToTime)
 
-            avplayer.seek(to: jumpToTime, toleranceBefore: tolerance, toleranceAfter: tolerance)
-
-           // avplayer.seek(to: jumpToTime)
-            playPosition = jumpToTime.seconds
-            updateCurrentChapter()
             
+    }
+    
+    private func jumpTo(time: CMTime){
+        let tolerance = CMTime(seconds: 0, preferredTimescale: 1)
+        avplayer.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance)
+        playPosition = time.seconds
+        updateCurrentChapter()
+        if !isPlaying{
+            play()
+        }
     }
     
     func initMPMediaPlayer(){
         
         let playcenter = MPNowPlayingInfoCenter.default()
-  //      let mediaArtwort = MPMediaItemArtwork(image: episode.coverImage)
+        
+        
+        
+        
+        
+     //   let image =  ?? ImageWithData(currentEpisode?.podcast?.cover ?? ImageWithURL(currentEpisode?.image) ?? UIImage())
+        let mediaArtwort = MPMediaItemArtwork(image: currentEpisode?.uiimage ?? UIImage())
         playcenter.nowPlayingInfo = [
-         //   MPMediaItemPropertyArtwork: mediaArtwort,
+            
+            MPMediaItemPropertyArtwork: mediaArtwort,
             
             MPMediaItemPropertyTitle : currentEpisode?.title ?? "",
             MPMediaItemPropertyPlaybackDuration: currentEpisode?.duration ?? avplayer.currentItem?.duration ?? 0.0,
@@ -365,6 +460,8 @@ extension AVPlayer {
     var isPlaying: Bool {
         return rate != 0 && error == nil
     }
+    
+    
 }
 
 extension Double{

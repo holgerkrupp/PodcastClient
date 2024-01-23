@@ -12,6 +12,11 @@ enum elements:String, CaseIterable{
     case title, link, description, lastBuildDate, language, trash, pubDate
 }
 
+struct Transcript:Codable{
+    let url:String
+    let type:String
+    let source:String
+}
 
 class PodcastParser:NSObject, XMLParserDelegate{
 
@@ -19,6 +24,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
+    var transcriptArray = [Any]()
     var enclosureArray = [Any]()
     var episodesArray = [Any]()
     
@@ -67,7 +73,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         tempDict.removeAll()
         currentElements.removeAll()
         currentValue = ""
-
+        transcriptArray.removeAll()
      
     }
     
@@ -87,6 +93,15 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         if qName ?? elementName == "psc:chapters"{
             chapterArray.removeAll()
+        }
+        
+        if qName ?? elementName == "podcast:transcript"{
+            if let url = attributeDict["url"] , let type = attributeDict["type"]{
+                let newTranscript = Transcript(url: url, type: type, source: "feed")
+                transcriptArray.append(newTranscript)
+              //  transcriptArray.append(url)
+            }
+            
         }
         
         if currentDepth > 3, currentElements[2] == "image"{
@@ -159,6 +174,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
+                    transcriptArray.removeAll()
                 case "psc:chapters":
                     // list of chapters is finished
                     episodeDict.updateValue(chapterArray, forKey: currentElement) // add all chapters to the Episode
@@ -168,6 +184,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     episodeDict.updateValue(currentValue, forKey: "content")
                 case "enclosure":
                     episodeDict.updateValue(enclosureArray, forKey: currentElement)
+              
+                case "podcast:transcript":
+                    episodeDict.updateValue(transcriptArray, forKey: "transcripts")
                 default:
                     // add the value of the current Element to the Episode
                     episodeDict.updateValue(currentValue, forKey: currentElement)

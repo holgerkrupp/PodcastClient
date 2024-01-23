@@ -27,6 +27,16 @@ struct EpisodeControlView: View {
             }
             .buttonStyle(.bordered)
             Spacer()
+            Button {
+                Task{
+                    await episode.postProcessingAfterDownload()
+
+                }
+            } label: {
+                Text("Postprocess")
+            }
+
+            Spacer()
             
             if episode.isAvailableLocally{
                 Button {

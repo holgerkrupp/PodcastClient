@@ -14,10 +14,10 @@ class Playlist{
     
     var deleteable:Bool = true // to enable standard lists like "play next queue" or similar that can't be deleted by the user
     var hidden: Bool = false
-    var items: [PlaylistEntry] = [] // we need to ensure that we can create an ordered list. Swiftdata won't ensure that the items are kept in the same order without manually managing that.
+    var items: [PlaylistEntry]? // we need to ensure that we can create an ordered list. Swiftdata won't ensure that the items are kept in the same order without manually managing that.
     
-    var ordered:[PlaylistEntry]{
-        items.sorted(by: {$0.order < $1.order})
+   @Transient var ordered:[PlaylistEntry]{
+        items?.sorted(by: {$0.order < $1.order}) ?? []
     }
     
     init(){}
@@ -36,6 +36,20 @@ class Playlist{
 
     
     }
+    func addPlayTimes() -> [Double]{
+        var playTime = 0.0
+        var playTimes:[Double] = []
+        let adjust = SettingsManager.shared.defaultSettings.markAsPlayedAfterSubscribe
+
+        for item in ordered {
+            let episodeSpeed = item.episode?.podcast?.settings?.playbackSpeed ?? SettingsManager.shared.defaultSettings.playbackSpeed
+            let playbackspeed = adjust ? episodeSpeed : 1
+            let adjustedEpisodeDuration = ((item.episode?.duration ?? 0.0) - (item.episode?.playpostion ?? 0.0) * Double(playbackspeed))
+            playTime = playTime + adjustedEpisodeDuration
+            playTimes.append(playTime)
+        }
+        return playTimes
+    }
     
     func add(episode:Episode, to: Position = .end){
         var newPosition = 0
@@ -45,23 +59,44 @@ class Playlist{
         default:
             newPosition = (ordered.last?.order ?? 0) + 1
         }
+        print("ModelContext same? \(modelContext == episode.modelContext)")
+    
+        if let existingItem = items?.first(where: { item in
+            item.episode == episode
+        }){
+            existingItem.order = newPosition
+        }
+        else if let nE: Episode = PersistanceManager.shared.sharedContext.model(for: episode.persistentModelID) as? Episode{
+            print("ModelContext same? \(modelContext == nE.modelContext)")
+            let newEntry = PlaylistEntry(episode: nE, order: newPosition)
+            items?.append(newEntry)
+
+        }else{
+            print("could not find Episode in Playlist ModelContext")
+        }
+
         
-        let newEntry = PlaylistEntry()
-        newEntry.episode = episode
-        newEntry.order = newPosition
-        newEntry.dateAdded = Date()
-        
-        items.append(newEntry)
+
+
+
     }
 }
 
 @Model
-class PlaylistEntry {
+class PlaylistEntry: Equatable{
+
     var episode: Episode?
     var dateAdded: Date?
     var order:Int = 0
-    
-    init(){}
+    var playlist:Playlist?
+    init(episode: Episode, order: Int?){
+        
+        
+        self.order = order ?? 0
+        self.dateAdded = Date()
+        self.episode = episode
+    }
+
 }
 
 

@@ -13,12 +13,15 @@ import SwiftData
 class PlaylistManager:NSObject{
     
     static let shared = PlaylistManager()
-    var modelContext: ModelContext?
-    let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
+    var modelContext: ModelContext? = PersistanceManager.shared.sharedContext
+    
+    public let playNextQueueTitel = "de.holgerkrupp.podbay.queue"
+    
+    
     
     var playnext: Playlist {
         
-        let playNextQueueTitel = "de.holgerkrupp.podbay.queue"
+        
         
         var playNextQueue = FetchDescriptor<Playlist>(predicate: #Predicate { playlist in
             playlist.title == playNextQueueTitel
@@ -43,25 +46,7 @@ class PlaylistManager:NSObject{
     private override init() {
         super.init()
         
-        let schema = Schema([
-            Podcast.self,
-            Episode.self,
-            Chapter.self,
-            
-            PodcastSettings.self,
-            
-            Playlist.self,
-            PlaylistEntry.self
-            
-        ])
-        
-        
-        if let container = try? ModelContainer(
-            for: schema,
-            configurations: configuration
-        ){
-            modelContext = ModelContext(container)
-        }
+        modelContext = PersistanceManager.shared.sharedContext
     }
     
     
