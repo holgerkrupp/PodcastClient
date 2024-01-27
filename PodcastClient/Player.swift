@@ -37,6 +37,9 @@ import SwiftData
         var end:Date? {
             start?.addingTimeInterval(60*minutes)
         }
+        var lastFinish:Date?
+        
+ 
     }
     
     var avplayer = AVPlayer()
@@ -232,6 +235,7 @@ import SwiftData
             }
             if sleeptimer.activated == true, let end = sleeptimer.end, end <= Date(){
                 pause()
+                sleeptimer.lastFinish = Date()
                 sleeptimer.activated.toggle()
             }
         }
@@ -284,12 +288,12 @@ import SwiftData
     func playPause(){
         try? session.setActive(true)
         if avplayer.isPlaying{
-            avplayer.pause()
+            pause()
             print(isPlaying)
             
         }else{
             //avplayer.rate = settings.playbackSpeed.rawValue
-            avplayer.play()
+            play()
             print(isPlaying)
 
         }
@@ -297,6 +301,16 @@ import SwiftData
     }
     
     func play(){
+        
+        if let sleetTimerJustFinished = sleeptimer.lastFinish?.addingTimeInterval(settings.sleepTimerDurationToReactivate * 60), sleetTimerJustFinished >= Date(){
+            // Sleeptime just finished, but if the user presses play again, we reactivate the sleeptimer and add some more time
+            print("reactivate SleepTimer")
+            sleeptimer.minutes = settings.sleepTimerAddMinutes
+            sleeptimer.activated.toggle()
+            
+            
+        }
+        
         avplayer.play()
     }
     

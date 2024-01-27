@@ -82,6 +82,9 @@
     "error loading episode" : {
 
     },
+    "Extend Sleep Timer by %@ minutes" : {
+
+    },
     "Import" : {
 
     },
@@ -128,6 +131,9 @@
 
     },
     "paste URL to feed" : {
+
+    },
+    "Play button reactivates sleep timer during %@ minutes after stopping playing." : {
 
     },
     "Play Chapter" : {
@@ -208,6 +214,9 @@
     "Skip Forward 45 seconds" : {
 
     },
+    "Sleep Timer" : {
+
+    },
     "Sleeptimer" : {
 
     },
@@ -239,6 +248,9 @@
 
     },
     "UpNext" : {
+
+    },
+    "When a sleep timer ends, you can press play / the air pod button to reactivate it. Here you can customize the behaviour" : {
 
     }
   },

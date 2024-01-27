@@ -29,6 +29,9 @@ class PodcastSettings {
     var markAsPlayedAfterSubscribe: Bool = true
     var playSumAdjustedbyPlayspeed: Bool = false
     
+    var sleepTimerAddMinutes: Double = 10 // 10 minutes
+    var sleepTimerDurationToReactivate: Double = 5 // 5 minutes * 60 seconds
+    
     var podcast:Podcast?
     
     init(){}

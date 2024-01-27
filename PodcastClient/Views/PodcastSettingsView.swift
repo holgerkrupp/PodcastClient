@@ -71,7 +71,7 @@ struct PodcastSettingsView: View {
             Section {
                 
                 Stepper(value: $settings.playbackSpeed, in: 0.1...3.0, step: 0.1) {
-                    Text("Playback Speed")
+                    Text("\(settings.playbackSpeed.formatted())x")
                 }
                 
 
@@ -106,8 +106,6 @@ struct PodcastSettingsView: View {
             }
             
             
-            
-            
             Section {
                 
                 Text("Settings for skipping Chapters by keyword")
@@ -116,6 +114,25 @@ struct PodcastSettingsView: View {
                 Text("Chapter Management")
             } footer: {
                 Text("These Settings are applied when chapters are detected in an episode")
+            }
+            
+            Section {
+                
+                Stepper(value: $settings.sleepTimerAddMinutes, in: 1...30, step: 1) {
+                    Text("Extend Sleep Timer by \(settings.sleepTimerAddMinutes.formatted()) minutes")
+                }
+                
+                
+                Stepper(value: $settings.sleepTimerDurationToReactivate, in: 1...30, step: 1) {
+                    Text("Play button reactivates sleep timer during \(settings.sleepTimerDurationToReactivate.formatted()) minutes after stopping playing.")
+                }
+
+                
+                
+            } header: {
+                Text("Sleep Timer")
+            } footer: {
+                Text("When a sleep timer ends, you can press play / the air pod button to reactivate it. Here you can customize the behaviour")
             }
 
         }

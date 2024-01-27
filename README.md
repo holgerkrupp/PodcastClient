@@ -40,7 +40,7 @@ An Open Source Podcast client.
 - [ ] auto download/refresh feeds
 
 ### Player
-- [ ] skip manually selected chapters
+- [x] skip manually selected chapters
 - [x] sleep timer
 - [x] play next queue
 - [x] set playbackspeed (per podcast)
