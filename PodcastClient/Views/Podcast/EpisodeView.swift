@@ -62,17 +62,19 @@ struct EpisodeView: View {
                             }
                             
                             VStack{
-                                //         Text(episode.title ?? "")
-                               // Text(episode.desc ?? "")
                                 Text(episode.pubDate?.formatted() ?? "").font(.caption)
                                 Spacer()
+                                if let skipCount = episode.skips?.count, skipCount > 0{
+                                    Text("\(skipCount) Skips detected")
+                                }
+                                
                             }
                         }
                         EpisodePlayProgressView(episode: episode)
                             .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
-                        Text(episode.desc ?? "")
+                        Text(episode.desc?.decodeHTML() ?? "")
                         /*
                         if let podcast = episode.podcast{
                             NavigationLink {
@@ -153,7 +155,12 @@ struct EpisodeMiniView: View {
                         Spacer()
                     }
                     
-                    if let imageULR = model.episode.image{
+                    if let data = model.episode.cover{
+                        ImageWithData(data)
+                            .scaledToFit()
+                            .frame(width: 50, height: 50)
+
+                    }else if let imageULR = model.episode.image{
                         ImageWithURL(imageULR)
                             .scaledToFit()
                             .frame(width: 50, height: 50)

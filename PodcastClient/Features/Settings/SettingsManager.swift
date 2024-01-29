@@ -18,7 +18,6 @@ class SettingsManager:NSObject{
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     
     var defaultSettings: PodcastSettings {
-        print("reading Default Settings")
         
         let defaultSettingsTitel = "de.holgerkrupp.podbay.queue"
         

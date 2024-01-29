@@ -64,7 +64,7 @@ An Open Source Podcast client.
 - [ ] Notification after refresh
 
 ### Player
-- [ ] skip detection
+- [x] skip detection
 - [ ] custom playlists
 
 
@@ -80,28 +80,31 @@ An Open Source Podcast client.
 - [ ] CarPlay
 
 
-1.x requirements
+##1.x requirements
 - [ ] Transkripts
 - [ ] Apple Watch App
+- [ ] remove tracking information from URLs
 
-loose Requirementlist
 
-- [ ] no backend for refreshing feeds (for cost & reliability reasons)
-- [ ] inbox/queue system
-- [ ] skipping chapters
-- [ ] different playback speeds per feed
-- [ ] Kapitelbilder
-- [ ] Optional: CarPlay / Android Auto
-- [ ] Playlists/Save-Queue-Function to switch between everyday/special use
-- [ ] OPML Import/Export
-- [ ] some users really want a good sleep timer. No idea why.
-- [ ] skip forward/back 15/30s buttons in Player UI
-- [x] Shownotes with clickable links
-- [ ] configurable automatic download  behavior (download all new, only keep last n episodes, no auto-download) per feed
+-------
 
-Nice to have:
-- [ ] skip intro/outro per feed (n seconds)
-- [ ] Chapter Images
-- [ ] fyyd.de as search engine
-- [ ] avoid accidentally skipping forward or backwards
-- [ ] auto-skipper skipping chapters with specific keywords
+# Known Bugs and current items to work on
+
+## Import
+- [ ] Sometimes duplicate items are put into a dictionary that crashes the app. No idea why.
+
+> Fatal error: Duplicate keys of type 'Canonical' were found in a Dictionary.
+> This usually means either that the type violates Hashable's requirements, or
+> that members of such a dictionary were mutated after insertion.
+
+- [ ] Mark all as played after import takes long time
+
+## Download
+- [ ] Images shall be downloaded when a new episode is downloaded (to avoid saving all images from old episodes)
+
+## Player
+- [ ] Undo a skip creates a new skip entry
+- [ ] Cover Image changes size depening if chapter bar is visible or not
+- [ ] mp3 / m4a chapers not working
+- [ ] Player starts playing when starting the app (??)
+

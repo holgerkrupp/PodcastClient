@@ -9,10 +9,10 @@ import Foundation
 import SwiftData
 
 @Model
-class Podcast: Equatable{
-    
-    var guid: String?
-    
+class Podcast: Equatable, Hashable{
+    var id = UUID()
+    var settings:PodcastSettings = SettingsManager.shared.defaultSettings
+
     
     var feed: URL?
     
@@ -128,12 +128,11 @@ class Podcast: Equatable{
         
         
         //update(details: details)
-        guid = details["guid"] as? String ?? ""
         
         
         title = details["title"] as? String ?? ""
         
-        print("Podcast \(guid) - \(title)")
+        print("Podcast \(id) - \(title)")
 
         
         
@@ -150,15 +149,48 @@ class Podcast: Equatable{
         
         link = URL(string: details["link"] as? String ?? "")
         coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
+        /*
         if let coverURL{
             cover = await coverURL.downloadData()
         }
+         */
         var tempE:[Episode] = []
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-            let episode = await Episode(details: episodeDetails, podcast: self)
+
+                let episode = await Episode(details: episodeDetails, podcast: self)
+                
+            
+            
+             if settings.markAsPlayedAfterSubscribe{
+                 episode.markAsPlayed()
+             }
+             
+            
+            
+            
             tempE.append(episode)
+            /*
+                if tempE.contains(episode){
+                    print("--->>>>>")
+                    print("\(episode.title ?? episode.guid) is already existing")
+                    print(episode.assetLink)
+                    print(episode.guid)
+                    print("---")
+                    if let existingIndex = tempE.firstIndex(of: episode){
+                        print(tempE[existingIndex].title)
+                        print(tempE[existingIndex].assetLink)
+                        print(tempE[existingIndex].guid)
+                    }
+                    print("<<<<<-----")
+                }else{
+                    tempE.append(episode)
+                }
+*/
+        
+
         }
         episodes = tempE
+        tempE.removeAll()
         
         
 
@@ -172,9 +204,9 @@ class Podcast: Equatable{
     // MARK: functions
     
     func markAllAsPlayed(){
-        for episode in episodes {
-            episode.markAsPlayed()
-        }
+        
+        episodes.map { $0.markAsPlayed() }
+
     }
     
     
@@ -235,10 +267,10 @@ class Podcast: Equatable{
     }
     
     func contains(episodeDetails: [String: Any]) -> Bool{
-        
-        print("contains: \(episodeDetails["link"] as? String ?? "")")
-        let first = episodes.first(where: { $0.link == URL(string: episodeDetails["link"] as? String ?? "de.holgerkrupp.teststring") })
-        print("\(first?.title ?? "-") contains \(episodeDetails["link"] as? String ?? "") as \(first?.link?.absoluteString ?? "")")
+        let testURL = (episodeDetails["enclosure"]as? [[String:Any]])?.first?["url"] as? String
+        print("contains: \(testURL ?? "")")
+        let first = episodes.first(where: { $0.assetLink == URL(string: testURL ?? "de.holgerkrupp.teststring") })
+        print("\(first?.title ?? "-") contains \(testURL ?? "") as \(first?.assetLink?.absoluteString ?? "")")
         if (first == nil){
             return false
         }else{
@@ -305,16 +337,19 @@ class Podcast: Equatable{
     
     static func ==(lhs: Podcast, rhs: Podcast) -> Bool {
         
-        if lhs.guid == rhs.guid && lhs.guid != nil && rhs.guid != nil && lhs.guid != "" && rhs.guid != ""{
+        if lhs.id == rhs.id{
             return true
-        }else if lhs.feed == rhs.feed{
+        }else if lhs.feed == rhs.feed, lhs.feed != nil{
             return true
         }else{
             return false
         }
         
-        
-        
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(feed)
+        hasher.combine(id)
     }
     
 

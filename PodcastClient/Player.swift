@@ -47,6 +47,8 @@ import SwiftData
 //    private let defaults = UserDefaults.standard
     
     static let shared = Player()
+    let playcenter = MPNowPlayingInfoCenter.default()
+
     
     var sleeptimer = Sleeptimer()
 
@@ -57,11 +59,7 @@ import SwiftData
     var rate:Float{
         avplayer.rate
     }
-    var currentPlaylist: Playlist = PlaylistManager.shared.playnext {
-        didSet{
-          // defaults.setValue(playNextQueue.persistentModelID., forKey: "player.playNextQueue")
-        }
-    }
+    var currentPlaylist: Playlist = PlaylistManager.shared.playnext
     var settings:PodcastSettings = SettingsManager.shared.defaultSettings
     
     var playPauseButton: some View{
@@ -117,6 +115,14 @@ import SwiftData
     
     var playPosition: Double = 0.0{
         didSet{
+        
+            if abs(playPosition - oldValue) > 5{
+                print("skip detected")
+                let newSkip = Skip(start: oldValue, end: playPosition)
+                currentEpisode?.skips?.append(newSkip)
+            }
+            
+            
             currentEpisode?.playPosition = playPosition
         }
     }
@@ -135,7 +141,10 @@ import SwiftData
     
     
     var progress:Double {
+
         set{
+           
+
             let seconds:Double  = newValue * (duration ?? 1.0)
             let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
             jumpTo(time: newTime)
@@ -162,14 +171,14 @@ import SwiftData
         
     }
     
+    
+    
     func setCurrentEpisode(episode: Episode, playDirectly: Bool = true){
         currentEpisode = episode
         currentPlaylist.add(episode: episode, to: .front)
         if let asset = currentEpisode?.avAsset{
             let playerItem = AVPlayerItem(asset: asset)
             avplayer.replaceCurrentItem(with: playerItem)
-            
-            
             
             
             settings = currentEpisode?.podcast?.settings ?? SettingsManager.shared.defaultSettings
@@ -200,10 +209,11 @@ import SwiftData
             avplayer.seek(to: currentEpisode?.playPosition.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
             updateCurrentChapter()
             if playDirectly == true{
-                avplayer.play()
-
+                play()
+            }else{
+                pause()
             }
-            initMPMediaPlayer()
+            updateMPMediaPlayer()
             initRemoteCommandCenter()
         }else{
             print("could not read current Episode")
@@ -224,13 +234,14 @@ import SwiftData
         }catch{
             print(error)
         }
-        
+        avplayer.rate = settings.playbackSpeed
         avplayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: nil) { [weak self] time in
             guard let self = self else { return }
             if avplayer.isPlaying{
-                avplayer.rate = settings.playbackSpeed
+               
                 playPosition = avplayer.currentTime().seconds
                 updateCurrentChapter()
+                updateMPMediaPlayer()
                 
             }
             if sleeptimer.activated == true, let end = sleeptimer.end, end <= Date(){
@@ -292,7 +303,8 @@ import SwiftData
             print(isPlaying)
             
         }else{
-            //avplayer.rate = settings.playbackSpeed.rawValue
+          
+            avplayer.rate = settings.playbackSpeed
             play()
             print(isPlaying)
 
@@ -320,14 +332,20 @@ import SwiftData
     
     func skipback(){
         jumpPlaypostion(by: -Double(settings.skipBack.float))
-        print("skipback")
         
     }
     
     func skipforward(){
         jumpPlaypostion(by: Double(settings.skipForward.float))
-        print("skipforward")
-        
+    }
+    
+    func undo(skip: Skip){
+        if let start = skip.start?.CMTime{
+            jumpTo(time: start)
+            currentEpisode?.skips?.removeAll(where: { sk in
+                sk == skip
+            })
+        }
     }
     
     func skipToNextChapter(){
@@ -398,13 +416,7 @@ import SwiftData
         }
     }
     
-    func initMPMediaPlayer(){
-        
-        let playcenter = MPNowPlayingInfoCenter.default()
-        
-        
-        
-        
+    func updateMPMediaPlayer(){
         
      //   let image =  ?? ImageWithData(currentEpisode?.podcast?.cover ?? ImageWithURL(currentEpisode?.image) ?? UIImage())
         let mediaArtwort = MPMediaItemArtwork(image: currentEpisode?.uiimage ?? UIImage())
@@ -418,10 +430,20 @@ import SwiftData
             MPNowPlayingInfoPropertyPlaybackRate: avplayer.rate]
     }
     
+    func bookmark(){
+        print("bookmark")
+    }
+    
+    
+    
     func initRemoteCommandCenter(){
         let RCC = MPRemoteCommandCenter.shared()
         
-        
+        RCC.bookmarkCommand.isEnabled = true
+        RCC.bookmarkCommand.addTarget { _ in
+            self.bookmark()
+            return .success
+        }
         
         RCC.playCommand.isEnabled = true
         RCC.playCommand.addTarget { _ in
@@ -456,7 +478,7 @@ import SwiftData
         
         // <<
         RCC.skipBackwardCommand.isEnabled = true
-        MPRemoteCommandCenter.shared().skipBackwardCommand.addTarget { event in
+        RCC.skipBackwardCommand.addTarget { event in
             
             let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
             self.jumpPlaypostion(by: seconds)
@@ -478,6 +500,9 @@ extension AVPlayer {
     
 }
 
+
+
+
 extension Double{
     var CMTime: CMTime{
         if self > 0 {
@@ -487,5 +512,3 @@ extension Double{
         }
     }
 }
-
-

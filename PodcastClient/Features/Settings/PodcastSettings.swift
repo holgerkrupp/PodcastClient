@@ -12,7 +12,7 @@ import SwiftData
 @Model
 class PodcastSettings {
     
-
+    var id = UUID()
     var title:String?
     
     var autoDownload:Bool = false

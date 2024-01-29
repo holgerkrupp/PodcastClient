@@ -24,7 +24,24 @@ class PodcastFeed{
         if let url{
             subscribing = true
             status = try? await url.status()
-            added = await subscriptionManager.subscribe(to: url)
+            print("\(status?.statusCode?.formatted() ?? "STATUSCODE") - \(status?.doctype ?? "DOCTYPE")")
+            switch status?.statusCode {
+            case 200:
+                added = await subscriptionManager.subscribe(to: url)
+            case 404:
+                added = false
+            case 410:
+                if let newURL = status?.newURL{
+                    added = await subscriptionManager.subscribe(to: newURL)
+                }else{
+                    added = false
+                }
+                
+            default:
+                added = await subscriptionManager.subscribe(to: url)
+            }
+            
+            
             
             return added
         }else{
@@ -56,6 +73,7 @@ class SubscriptionManager:NSObject{
 
     private override init() {
         super.init()
+        fetchData()
 
     }
     
@@ -132,34 +150,24 @@ class SubscriptionManager:NSObject{
     }
     
     func subscribe(to url: URL) async -> Bool{
-        if let data = await feedData(for: url){
-            print("got Data for \(url.absoluteString)")
-
-            let parser = XMLParser(data: data)
-            parser.shouldProcessNamespaces = true
-            parser.shouldResolveExternalEntities = true
-            parser.delegate = podcastParser
-            if parser.parse(){
-                print("parsed for \(url.absoluteString)")
-
-                if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
-                    
-
-                    
-                    
-                    
-                    let container = PersistanceManager.shared.sharedModelContainer
-                    let context = PersistanceManager.shared.sharedContext
+        
+        if !(podcasts.map { $0.feed }.contains(url) ? true : false){
+            if let data = await feedData(for: url){
+                
+                let parser = XMLParser(data: data)
+                parser.shouldProcessNamespaces = true
+                parser.shouldResolveExternalEntities = true
+                parser.delegate = podcastParser
+                if parser.parse(){
+                    if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
+                        
+                        let context = PersistanceManager.shared.sharedContext
                         let podcast = await Podcast(details: feedDetail)
                         print("created Podcast \(podcast.title) for \(url.absoluteString)")
-                        
                         podcast.feed = url
                         if !podcasts.contains(podcast){
                             context.insert(podcast)
-                            if settings.markAsPlayedAfterSubscribe{
-                                print("marking episodes for \(podcast.title) as played")
-                                podcast.markAllAsPlayed()
-                            }
+
                             do{
                                 try context.save()
                                 print("podcast inserted")
@@ -171,14 +179,20 @@ class SubscriptionManager:NSObject{
                             return false
                         }
                         
+                        
+                        
+                        
+                        return true
+                    }
                     
-
-                   
-                    return true
                 }
-                
             }
+        }else{
+            print("\(url.absoluteString) already subscribed")
         }
+        
+        
+
         return false
     }
     
@@ -187,7 +201,6 @@ class SubscriptionManager:NSObject{
         
         
         
-     let container = PersistanceManager.shared.sharedModelContainer
         let context = PersistanceManager.shared.sharedContext
 
                 do {

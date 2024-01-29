@@ -31,10 +31,10 @@ struct TabBarView: View {
                         Label("UpNext", systemImage: "play.square.stack")
                     }
                 
-                EpisodeListView(modelContext: modelContext)
+                InboxView(modelContext: _modelContext)
                     .tag(Tab.episodes)
                     .tabItem {
-                        Label("All", systemImage: "play.square.stack")
+                        Label("Inbox", systemImage: "tray.fill")
                     }
                 
                 
@@ -76,6 +76,7 @@ struct TabBarView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
+           /*
             if miniplayerHeight == maxPlayerHeight{
                 Spacer()
                   //  .foregroundColor(.green)
@@ -87,18 +88,17 @@ struct TabBarView: View {
                         }
                     }
             }
+            */
 
                 
-        }
+        }.ignoresSafeArea()
         if Player.shared.currentEpisode != nil{
             PlayerControlsView(miniPlayerHeight: $miniplayerHeight, maxPlayerHeight: maxPlayerHeight, minPlayerHeight: minPlayerHeight)
                 .environment(Player.shared)
                 .frame(height: miniplayerHeight)
         }
 
-        
-       
-      
     }
+        
 }
 

@@ -22,38 +22,40 @@ struct AddPodcastView: View {
     }
     
     var body: some View {
-        List{
-            TextField(text: $newFeed) {
-                Text("paste URL to feed")
-            }.disabled(updateing)
-            
-            Button {
-                updateing = true
-                if let feed {
-                    Task{
-                        let finished = await subscriptionManager.subscribe(to: feed)
-                        if finished == true{
-                            newFeed = ""
+      
+            List{
+                TextField(text: $newFeed) {
+                    Text("paste URL to feed")
+                }.disabled(updateing)
+                
+                Button {
+                    updateing = true
+                    if let feed {
+                        Task{
+                            let finished = await subscriptionManager.subscribe(to: feed)
+                            if finished == true{
+                                newFeed = ""
+                            }
+                            updateing = false
                         }
-                        updateing = false
+                        
+                    }
+                    
+                } label: {
+                    if updateing{
+                        ProgressView()
+                    }else{
+                        Text("Subscribe")
                     }
                     
                 }
+                .disabled(!newFeed.isValidURL || updateing)
+                .buttonStyle(.bordered)
                 
-            } label: {
-                if updateing{
-                    ProgressView()
-                }else{
-                    Text("Subscribe")
-                }
                 
             }
-            .disabled(!newFeed.isValidURL || updateing)
-            .buttonStyle(.bordered)
-            
-            
         }
-    }
+    
     
 }
 

@@ -17,9 +17,6 @@ struct ChapterListView: View {
                 VStack{
                     Text(chapter.wrappedValue.type.rawValue).foregroundStyle(.secondary)
                     
-                    
-                    
-                    
                     HStack(alignment: .center){
                         Button {
                             player.skipTo(chapter: chapter.wrappedValue)

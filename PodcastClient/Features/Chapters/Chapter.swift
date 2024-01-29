@@ -15,10 +15,10 @@ enum ChapterType: String, Codable{
     case unknown
 }
 @Model
-class Chapter: Equatable{
+class Chapter: Equatable, Hashable{
     
-
-    var uuid = UUID()
+    
+    var id = UUID()
     var title: String = ""
     var link: URL?
     var image: URL?
@@ -49,7 +49,7 @@ class Chapter: Equatable{
         link = URL(string: details["href"] as? String ?? "")
         image = URL(string: details["image"] as? String ?? "")
         type = .podlove
-   
+        
     }
     
     init(start: Double, title: String, type: ChapterType, imageData: Data? = nil){
@@ -66,14 +66,16 @@ class Chapter: Equatable{
             return false
         }else if lhs.type != rhs.type{
             return false
-        }else if lhs.start == rhs.start, lhs.start != nil{
+        }else if lhs.id == rhs.id{
             return true
         }else{
             return false
         }
         
         
-        
     }
-
+    func hash(into hasher: inout Hasher) {
+        
+        hasher.combine(id)
+    }
 }

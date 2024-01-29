@@ -19,6 +19,9 @@
     "%@x" : {
 
     },
+    "%lld Skips detected" : {
+
+    },
     "About this app" : {
 
     },
@@ -29,9 +32,6 @@
 
     },
     "Adjust Sleeptimer" : {
-
-    },
-    "All" : {
 
     },
     "already subscribed" : {
@@ -92,6 +92,9 @@
 
     },
     "Import Management" : {
+
+    },
+    "Inbox" : {
 
     },
     "Last Attempt" : {
@@ -242,6 +245,9 @@
 
     },
     "These Settings change how new Episodes of Podcasts are managed." : {
+
+    },
+    "Undo Skip" : {
 
     },
     "Unsubscribe" : {

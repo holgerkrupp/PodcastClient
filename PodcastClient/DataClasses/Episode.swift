@@ -16,7 +16,7 @@ enum EpisodeType: String, Codable{
 }
 
 @Model
-class Episode: Equatable{
+class Episode: Equatable, Hashable{
     
     //MARK: Values to be storred in the database
     var id = UUID()
@@ -49,7 +49,7 @@ class Episode: Equatable{
     @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter]?
     
     var podcast: Podcast?
-    
+    var skips: [Skip]?
     var playlistentries: [PlaylistEntry]?
     
     var playpostion: Double = 0.0
@@ -226,9 +226,8 @@ class Episode: Equatable{
     init(details: [String: Any], podcast:Podcast?) async {
         guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
-        
     
-
+       // print("Episode \(id) - \(guid) - \(title)")
         
         
         subtitle = details["itunes:subtitle"] as? String
@@ -242,10 +241,12 @@ class Episode: Equatable{
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")
         image = URL(string: details["itunes:image"] as? String ?? "")
+    
+        /* THIS TAKES TO MUCH TIME WHILE SUBSCRIBING TO FEEDS
         if let image{
             cover = await image.downloadData()
         }
-    
+    */
         number = details["itunes:episode"] as? String
         
         type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
@@ -280,19 +281,30 @@ class Episode: Equatable{
 
         if lhs.podcast != rhs.podcast{
             return false
+        }else if lhs.guid == rhs.guid, lhs.guid != nil, lhs.guid != ""{
+            return true
         }else{
-            if lhs.guid == rhs.guid{
-                return true
-            }else if lhs.link == rhs.link{
+            if lhs.assetLink == rhs.assetLink, lhs.assetLink != nil{
                 return true
             }else if lhs.number == rhs.number &&  lhs.number != nil && lhs.season == rhs.season{
                 return true
+            }else if lhs.id == rhs.id{
+                return true
             }else{
+                
                 return false
             }
         }
         
 
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(guid)
+        hasher.combine(assetLink)
+        hasher.combine(podcast)
+        hasher.combine(title)
+        hasher.combine(id)
     }
     
     func markAsPlayed(){

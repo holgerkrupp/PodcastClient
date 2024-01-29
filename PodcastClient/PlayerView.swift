@@ -136,7 +136,24 @@ struct PlayerView: View {
                     Image(systemName: "gear")
                     Spacer()
                     
+                    if let skip = (player.currentEpisode?.skips?.last(where: { skip in skip.date < Date().addingTimeInterval(60*5) })) {
+                        Button{
+                            player.undo(skip: skip)
+                        } label: {
+                        
+                        Label {
+                            Text("Undo Skip")
+                        } icon: {
+                            Image(systemName: "arrow.uturn.backward")
+                                .tint(.primary)
+                        }
+                        .labelStyle(.iconOnly)
+                        
+                        
+                    }
+                    }
                     
+                    Spacer()
                     Button {
                         
                         showSleeptimerSetting = true

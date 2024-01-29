@@ -12,6 +12,7 @@ struct URLstatus{
     var newURL: URL?
     var lastModified:Date?
     var lastRequest:Date
+    var doctype:String?
 }
 
 
@@ -31,6 +32,8 @@ extension URL{
                         let (_, response) = try await session.data(for: request)
                         
                         status.statusCode = (response as? HTTPURLResponse)?.statusCode
+                        status.doctype = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")
+                        
                         status.lastModified =  Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? "")
                         status.newURL = URL(string: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location") ?? "")
                         
