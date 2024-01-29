@@ -19,6 +19,9 @@
     "%@x" : {
 
     },
+    "%lld Bookmarks detected" : {
+
+    },
     "%lld Skips detected" : {
 
     },
@@ -53,6 +56,9 @@
       "comment" : "My Mastodon"
     },
     "Counter" : {
+
+    },
+    "Create Bookmark" : {
 
     },
     "Cut from End" : {

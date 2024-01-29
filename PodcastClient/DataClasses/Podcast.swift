@@ -11,7 +11,7 @@ import SwiftData
 @Model
 class Podcast: Equatable, Hashable{
     var id = UUID()
-    var settings:PodcastSettings = SettingsManager.shared.defaultSettings
+    var settings:PodcastSettings?
 
     
     var feed: URL?
@@ -30,7 +30,6 @@ class Podcast: Equatable, Hashable{
     var lastBuildDate:Date?
     var language:String?
     
-    var settings: PodcastSettings?
     
     @Relationship(deleteRule: .cascade, inverse: \Episode.podcast) var episodes: [Episode] = []
     
@@ -159,13 +158,13 @@ class Podcast: Equatable, Hashable{
 
                 let episode = await Episode(details: episodeDetails, podcast: self)
                 
+    /*
             
-            
-             if settings.markAsPlayedAfterSubscribe{
+            if ((settings?.markAsPlayedAfterSubscribe) != nil){
                  episode.markAsPlayed()
              }
              
-            
+      */
             
             
             tempE.append(episode)

@@ -118,8 +118,8 @@ import SwiftData
         
             if abs(playPosition - oldValue) > 5{
                 print("skip detected")
-                let newSkip = Skip(start: oldValue, end: playPosition)
-                currentEpisode?.skips?.append(newSkip)
+                let newSkip = Event(start: oldValue, end: playPosition, type: .skip)
+                currentEpisode?.events?.append(newSkip)
             }
             
             
@@ -300,13 +300,11 @@ import SwiftData
         try? session.setActive(true)
         if avplayer.isPlaying{
             pause()
-            print(isPlaying)
             
         }else{
           
             avplayer.rate = settings.playbackSpeed
             play()
-            print(isPlaying)
 
         }
         
@@ -339,10 +337,10 @@ import SwiftData
         jumpPlaypostion(by: Double(settings.skipForward.float))
     }
     
-    func undo(skip: Skip){
+    func undo(skip: Event){
         if let start = skip.start?.CMTime{
             jumpTo(time: start)
-            currentEpisode?.skips?.removeAll(where: { sk in
+            currentEpisode?.events?.removeAll(where: { sk in
                 sk == skip
             })
         }
@@ -431,7 +429,8 @@ import SwiftData
     }
     
     func bookmark(){
-        print("bookmark")
+        let bookmark = Event(start: playPosition, type: .bookmark)
+        currentEpisode?.events?.append(bookmark)
     }
     
     

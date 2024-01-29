@@ -36,7 +36,7 @@
 		48DC0B5F2B5FA19300A6A0D0 /* PlayerChapterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B5E2B5FA19300A6A0D0 /* PlayerChapterView.swift */; };
 		48DC0B612B5FA50F00A6A0D0 /* ChapterListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B602B5FA50F00A6A0D0 /* ChapterListView.swift */; };
 		48DC0B632B659C9500A6A0D0 /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B622B659C9500A6A0D0 /* InboxView.swift */; };
-		48DC0B652B67CA4800A6A0D0 /* Skip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B642B67CA4700A6A0D0 /* Skip.swift */; };
+		48DC0B652B67CA4800A6A0D0 /* Event.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B642B67CA4700A6A0D0 /* Event.swift */; };
 		48E0915D2B19FE7100DFE83A /* PodcastClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48E0915C2B19FE7100DFE83A /* PodcastClientApp.swift */; };
 		48E091632B19FE7400DFE83A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 48E091622B19FE7400DFE83A /* Assets.xcassets */; };
 		48E091662B19FE7400DFE83A /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 48E091652B19FE7400DFE83A /* Preview Assets.xcassets */; };
@@ -87,7 +87,7 @@
 		48DC0B5E2B5FA19300A6A0D0 /* PlayerChapterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerChapterView.swift; sourceTree = "<group>"; };
 		48DC0B602B5FA50F00A6A0D0 /* ChapterListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterListView.swift; sourceTree = "<group>"; };
 		48DC0B622B659C9500A6A0D0 /* InboxView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
-		48DC0B642B67CA4700A6A0D0 /* Skip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skip.swift; sourceTree = "<group>"; };
+		48DC0B642B67CA4700A6A0D0 /* Event.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Event.swift; sourceTree = "<group>"; };
 		48DC0B682B67D2FF00A6A0D0 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		48DC0B6D2B67D67B00A6A0D0 /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; name = README.md; path = PodcastClient/Features/Chapters/README.md; sourceTree = SOURCE_ROOT; };
 		48DC0B6F2B67D6D200A6A0D0 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
@@ -201,18 +201,18 @@
 				48DC0B702B67D8A000A6A0D0 /* Transcripts */,
 				48DC0B6B2B67D5E700A6A0D0 /* Settings */,
 				48DC0B692B67D56F00A6A0D0 /* Chapters */,
-				48DC0B672B67D2C800A6A0D0 /* Skipdetection */,
+				48DC0B672B67D2C800A6A0D0 /* SkipdetectionANDBookmarks */,
 			);
 			path = Features;
 			sourceTree = "<group>";
 		};
-		48DC0B672B67D2C800A6A0D0 /* Skipdetection */ = {
+		48DC0B672B67D2C800A6A0D0 /* SkipdetectionANDBookmarks */ = {
 			isa = PBXGroup;
 			children = (
 				48DC0B682B67D2FF00A6A0D0 /* README.md */,
-				48DC0B642B67CA4700A6A0D0 /* Skip.swift */,
+				48DC0B642B67CA4700A6A0D0 /* Event.swift */,
 			);
-			path = Skipdetection;
+			path = SkipdetectionANDBookmarks;
 			sourceTree = "<group>";
 		};
 		48DC0B692B67D56F00A6A0D0 /* Chapters */ = {
@@ -409,7 +409,7 @@
 			files = (
 				48C043922B2F2E160006C352 /* SettingsView.swift in Sources */,
 				48DC0B5D2B5E996F00A6A0D0 /* PersistanceManager.swift in Sources */,
-				48DC0B652B67CA4800A6A0D0 /* Skip.swift in Sources */,
+				48DC0B652B67CA4800A6A0D0 /* Event.swift in Sources */,
 				489346EF2B4C316700DF4D82 /* ListofEpisodesView.swift in Sources */,
 				48C043962B34C4C10006C352 /* DownloadManager.swift in Sources */,
 				484F93962B4307FF00C3E309 /* EpisodeControlView.swift in Sources */,

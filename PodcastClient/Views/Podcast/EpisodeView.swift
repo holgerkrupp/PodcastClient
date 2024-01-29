@@ -64,8 +64,11 @@ struct EpisodeView: View {
                             VStack{
                                 Text(episode.pubDate?.formatted() ?? "").font(.caption)
                                 Spacer()
-                                if let skipCount = episode.skips?.count, skipCount > 0{
-                                    Text("\(skipCount) Skips detected")
+                                if let count = episode.events?.filter({$0.type == .skip}).count, count > 0{
+                                    Text("\(count) Skips detected")
+                                }
+                                if let count = episode.events?.filter({$0.type == .bookmark}).count, count > 0{
+                                    Text("\(count) Bookmarks detected")
                                 }
                                 
                             }
@@ -74,7 +77,7 @@ struct EpisodeView: View {
                             .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
-                        Text(episode.desc?.decodeHTML() ?? "")
+                        Text(episode.desc ?? "")
                         /*
                         if let podcast = episode.podcast{
                             NavigationLink {

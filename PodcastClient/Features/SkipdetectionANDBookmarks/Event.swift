@@ -8,16 +8,26 @@
 import Foundation
 import SwiftData
 
+enum EventType: Codable {
+    case skip, bookmark
+}
+
 @Model
-class Skip {
+class Event {
+    
+
+    
     var id = UUID()
     var start: Double?
     var end: Double?
     var episode: Episode?
     var date: Date = Date()
+    var type: EventType?
     
-    init(start: Double, end: Double){
+    
+    init(start: Double? = nil, end: Double? = nil, type: EventType? = EventType.skip){
         self.start = start
         self.end = end
+        self.type = type
     }
 }

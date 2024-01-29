@@ -49,7 +49,7 @@ class Episode: Equatable, Hashable{
     @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter]?
     
     var podcast: Podcast?
-    var skips: [Skip]?
+    var events: [Event]?
     var playlistentries: [PlaylistEntry]?
     
     var playpostion: Double = 0.0

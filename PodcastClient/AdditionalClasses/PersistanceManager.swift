@@ -16,7 +16,7 @@ class PersistanceManager{
             Podcast.self,
             Episode.self,
             Chapter.self,
-            Skip.self,
+            Event.self,
             
             PodcastSettings.self,
             

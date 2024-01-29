@@ -136,7 +136,10 @@ struct PlayerView: View {
                     Image(systemName: "gear")
                     Spacer()
                     
-                    if let skip = (player.currentEpisode?.skips?.last(where: { skip in skip.date < Date().addingTimeInterval(60*5) })) {
+                    if let skip = (player.currentEpisode?.events?.last(where: { event in
+                        event.date < Date().addingTimeInterval(60*5) &&
+                        event.type == .skip
+                    })) {
                         Button{
                             player.undo(skip: skip)
                         } label: {
@@ -152,7 +155,19 @@ struct PlayerView: View {
                         
                     }
                     }
-                    
+                    Spacer()
+                    Button{
+                        player.bookmark()
+                    } label: {
+                        
+                        Label {
+                            Text("Create Bookmark")
+                        } icon: {
+                            Image(systemName: "bookmark")
+                                .tint(.primary)
+                        }
+                        .labelStyle(.iconOnly)
+                    }
                     Spacer()
                     Button {
                         
