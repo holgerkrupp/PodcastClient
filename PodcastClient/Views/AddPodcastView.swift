@@ -15,7 +15,7 @@ struct AddPodcastView: View {
     
     
     var parserDelegate = PodcastParser()
-    var subscriptionManager = SubscriptionManager.shared
+    var subscriptionManager = SubscriptionManager()
     
     var feed:URL?{
         URL(string: newFeed.trimmingCharacters(in: .whitespacesAndNewlines))

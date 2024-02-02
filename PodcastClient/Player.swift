@@ -193,6 +193,8 @@ import SwiftData
             })
             
             
+            
+            
             NotificationCenter.default
                 .addObserver(self,
                              selector: #selector(playerDidFinishPlaying),
@@ -226,7 +228,6 @@ import SwiftData
         
         if let oldEpisode = currentPlaylist.ordered.first?.episode{
             setCurrentEpisode(episode: oldEpisode, playDirectly: false)
-
         }
 
         do{
@@ -235,6 +236,7 @@ import SwiftData
             print(error)
         }
         avplayer.rate = settings.playbackSpeed
+        pause()
         avplayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: nil) { [weak self] time in
             guard let self = self else { return }
             if avplayer.isPlaying{
@@ -275,26 +277,9 @@ import SwiftData
             }
         }
         
-        updateImage()
+
     }
-    
-    private func updateImage(){
-        /*
-        if let playing = currentEpisode{
-           // return AnyView(playing.coverImage)
-            
-             if let chapter = currentChapter{
-             
-                 coverImage =  AnyView(chapter.coverImage)
-             }else{
-                 coverImage = AnyView(playing.coverImage)
-             }
-             
-        }else{
-            coverImage = AnyView(Image(systemName: "photo").resizable())
-        }
-         */
-    }
+
     
     func playPause(){
         try? session.setActive(true)

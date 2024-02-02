@@ -37,7 +37,7 @@ import BackgroundTasks
             }
         })
         .backgroundTask(.appRefresh("feedRefresh")) {
-            await SubscriptionManager.shared.refreshall()
+            await SubscriptionManager().refreshall()
         }
      
     }

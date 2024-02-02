@@ -64,7 +64,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     
-    func parserDidStartDocument(_ parser: XMLParser) {
+    func parserDidStartDocument(_ parser: XMLParser)  {
         episodeDict.removeAll()
         enclosureArray.removeAll()
         episodesArray.removeAll()
@@ -78,7 +78,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     }
     
     
-    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:])  {
        // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
         currentValue = ""
         currentElement = qName ?? elementName
@@ -130,14 +130,14 @@ class PodcastParser:NSObject, XMLParserDelegate{
     }
     
     
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
+    func parser(_ parser: XMLParser, foundCharacters string: String)  {
         
         if !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             currentValue += string
         }
     }
     
-    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?)  {
         
         
         switch isHeader{
@@ -201,7 +201,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     }
     
     
-    func parserDidEndDocument(_ parser: XMLParser) {
+    func parserDidEndDocument(_ parser: XMLParser)   {
         podcastDictArr.updateValue(episodesArray, forKey: "episodes")
     }
 

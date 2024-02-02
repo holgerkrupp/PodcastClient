@@ -12,8 +12,9 @@ struct ImportExportView: View {
     
     @State private var importing = false
 
-//    var subscriptionManager = SubscriptionManager.shared
-    @Environment(SubscriptionManager.self) private var subscriptionManager
+    var subscriptionManager = SubscriptionManager()
+    @State var newPodcasts: [PodcastFeed] = []
+
     @State private var subBaseline = 0
     
     var body: some View {
@@ -28,8 +29,9 @@ struct ImportExportView: View {
                 ) { result in
                     switch result {
                     case .success(let file):
-                        subscriptionManager.read(file: file.absoluteURL)
-                        
+                        Task{
+                            newPodcasts = await subscriptionManager.read(file: file.absoluteURL) ?? []
+                        }
                     case .failure(let error):
                         print(error.localizedDescription)
                     }
@@ -41,7 +43,7 @@ struct ImportExportView: View {
             }
             
             
-            if subscriptionManager.newPodcasts.filter({ newPod in
+            if newPodcasts.filter({ newPod in
                 if newPod.existing == false && newPod.added == false {
                     return true
                 }else{
@@ -49,7 +51,7 @@ struct ImportExportView: View {
                 }
             }).count > 0{
                 
-                let notExisting = subscriptionManager.newPodcasts.filter({ newPod in
+                let notExisting = newPodcasts.filter({ newPod in
                     if newPod.existing == false && newPod.added == false {
                         return true
                     }else{
@@ -59,9 +61,11 @@ struct ImportExportView: View {
             
                     Button {
                         subBaseline = notExisting.count
+                        
                         Task{
-                            await subscriptionManager.subscribe(all: notExisting)
+                            await subscribe()
                         }
+                        
                     } label: {
                         Text("Subscribe to all \(notExisting.count) podcasts")
                         if subBaseline > 0{
@@ -75,7 +79,7 @@ struct ImportExportView: View {
                 
                 
                 Section{
-                    ForEach(subscriptionManager.newPodcasts.filter({ newPod in
+                    ForEach(newPodcasts.filter({ newPod in
                         if newPod.existing == false && newPod.added == false {
                             return true
                         }else{
@@ -91,11 +95,11 @@ struct ImportExportView: View {
                 }
             }
             
-            if subscriptionManager.newPodcasts.filter({ newPod in
+            if newPodcasts.filter({ newPod in
                 return newPod.existing == true
             }).count > 0{
                 Section{
-                    ForEach(subscriptionManager.newPodcasts.filter({ newPod in
+                    ForEach(newPodcasts.filter({ newPod in
                         return newPod.existing == true
                     }), id: \.url) { newPodcastFeed in
                         SubscribeToView(newPodcastFeed: newPodcastFeed)
@@ -115,6 +119,20 @@ struct ImportExportView: View {
 
 
     }
+    
+    func subscribe() async{
+        let notExisting = await newPodcasts.filter({ newPod in
+            if newPod.existing == false && newPod.added == false {
+                return true
+            }else{
+                return false
+            }
+        }).sorted(by: {$0.title ?? "" < $1.title ?? ""}).asyncMap { newFeed in
+            await  newFeed.subscribe()
+        }
+        
+
+    }
 }
 
 #Preview {
@@ -124,9 +142,6 @@ struct ImportExportView: View {
 
 
 struct SubscribeToView: View{
-    
-    
-    var subscriptionManager = SubscriptionManager.shared
     
     var newPodcastFeed: PodcastFeed
     

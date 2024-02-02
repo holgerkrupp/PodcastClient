@@ -145,6 +145,7 @@ extension DownloadManager: FileManagerDelegate {
             print("saving File \(url)")
             print("saving File to \(newlocation)")
             let filemanager = FileManager.default
+            filemanager.delegate = self
             do{
                 try filemanager.createDirectory(at: newlocation.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try filemanager.moveItem(at: url, to: newlocation)
@@ -178,6 +179,9 @@ extension DownloadManager: FileManagerDelegate {
         return true
     }
     
+    func fileManager(_ fileManager: FileManager, shouldProceedAfterError error: Error, movingItemAt srcURL: URL, to dstURL: URL) -> Bool {
+        return true
+    }
 
     
   

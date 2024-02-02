@@ -13,7 +13,7 @@ struct PodcastView: View {
     @Environment(\.modelContext) var modelContext
     @Query var podcasts: [Podcast]
     var podcast: Podcast? { podcasts.first}
-    var subscriptionManager = SubscriptionManager.shared
+    var subscriptionManager = SubscriptionManager()
     
     
     
@@ -75,9 +75,9 @@ struct PodcastView: View {
                 Text(podcast.summary ?? "")
                 HStack{
                     Button {
-                       
-                            subscriptionManager.refresh(podcast: podcast)
-                        
+                        Task{
+                            await subscriptionManager.refresh(podcast: podcast)
+                        }
                     } label: {
                         Label {
                             Text("Refresh")

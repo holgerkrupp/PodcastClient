@@ -77,7 +77,9 @@ struct EpisodeView: View {
                             .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
-                        Text(episode.desc ?? "")
+                        Text(episode.content?.decodeHTML() ?? episode.desc ?? "")
+                            .lineLimit(nil)
+                            .selectionDisabled(false)
                         /*
                         if let podcast = episode.podcast{
                             NavigationLink {

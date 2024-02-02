@@ -33,7 +33,7 @@ struct SettingsView: View {
                     
                     
                     ImportExportView()
-                        .environment(SubscriptionManager.shared)
+                      
                     
                 }label:{
                     Text("Import & Export")
@@ -50,7 +50,10 @@ struct SettingsView: View {
                 
                 Section {
                     Button {
-                        SubscriptionManager.shared.deleteAll()
+                        Task{
+                            await    SubscriptionManager().deleteAll()
+
+                        }
                     } label: {
                         Text("Delete all Database entries")
                     }

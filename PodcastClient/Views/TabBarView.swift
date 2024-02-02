@@ -24,7 +24,7 @@ struct TabBarView: View {
     var body: some View {
         ZStack(alignment: .bottom){
             TabView(selection: $selectedTab){
-                
+             /*
                 PlaylistView(modelContext: _modelContext)
                     .tag(Tab.upnext)
                     .tabItem {
@@ -37,7 +37,7 @@ struct TabBarView: View {
                         Label("Inbox", systemImage: "tray.fill")
                     }
                 
-                
+               */
                 PodcastListView(modelContext: modelContext)
                     .tag(Tab.podcastlist)
                     .tabItem {

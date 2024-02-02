@@ -122,10 +122,12 @@ class Podcast: Equatable, Hashable{
     
     // MARK: init
     init(details: [String: Any]) async {
-        
-        
-        
-        
+/*
+        print("---init Podcast--->>")
+        dump(details)
+        print("<<---init Podcast---")
+
+  */
         //update(details: details)
         
         
@@ -300,7 +302,7 @@ class Podcast: Equatable, Hashable{
                     
                     if parser.parse() {
                         print("parsed for \(feed?.absoluteString ?? "")")
-                        if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
+                        if let feedDetail = await (parser.delegate as? PodcastParser)?.podcastDictArr {
                             await update(details: feedDetail)
                             
                         }

@@ -18,66 +18,71 @@ class PodcastFeed{
     var subscribing: Bool = false
     var status: URLstatus?
     
-    private var subscriptionManager = SubscriptionManager.shared
+    
     
     func subscribe() async -> Bool?{
-        if let url{
+    
             subscribing = true
-            status = try? await url.status()
-            print("\(status?.statusCode?.formatted() ?? "STATUSCODE") - \(status?.doctype ?? "DOCTYPE")")
-            switch status?.statusCode {
-            case 200:
-                added = await subscriptionManager.subscribe(to: url)
-            case 404:
-                added = false
-            case 410:
-                if let newURL = status?.newURL{
-                    added = await subscriptionManager.subscribe(to: newURL)
-                }else{
-                    added = false
+            if let url{
+                Task{
+                    var subscriptionManager = SubscriptionManager()
+                    subscribing = true
+                    status = try? await url.status()
+                    print("\(status?.statusCode?.formatted() ?? "STATUSCODE") - \(status?.doctype ?? "DOCTYPE")")
+                    switch status?.statusCode {
+                    case 200:
+                        added = await subscriptionManager.subscribe(to: url)
+                    case 404:
+                        added = false
+                    case 410:
+                        if let newURL = status?.newURL{
+                            added = await subscriptionManager.subscribe(to: newURL)
+                        }else{
+                            added = false
+                        }
+                        
+                    default:
+                        added = await subscriptionManager.subscribe(to: url)
+                    }
+                    
+                    
+                    
+                    return added
                 }
+                }else{
                 
-            default:
-                added = await subscriptionManager.subscribe(to: url)
+                subscribing = false
+                return nil
             }
-            
-            
-            
-            return added
-        }else{
-            
-            subscribing = false
-            return nil
-        }
-        
+        return nil
     }
     
 }
 
-@Observable
-class SubscriptionManager:NSObject{
+actor SubscriptionManager:NSObject{
     
-    static let shared = SubscriptionManager()
-    var modelContext: ModelContext? = PersistanceManager.shared.sharedContext
+    var modelContext: ModelContext? = ModelContext(PersistanceManager.shared.sharedModelContainer)
     
-    
-    var settings:PodcastSettings = SettingsManager.shared.defaultSettings
-
     var podcasts : [Podcast] = []
-    let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     var opmlParser = OPMLParser()
-    var podcastParser = PodcastParser()
+   // var podcastParser = PodcastParser()
 
-    var newPodcasts: [PodcastFeed] = []
+
     
 
-    private override init() {
+     override init() {
         super.init()
-        fetchData()
+        
+        
+        let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
+        if let fetchresult = try? modelContext?.fetch(descriptor){
+            podcasts = fetchresult
+        }
+        
 
     }
     
-    func fetchData() {
+     func fetchData() {
         
         let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
         if let fetchresult = try? modelContext?.fetch(descriptor){
@@ -111,65 +116,67 @@ class SubscriptionManager:NSObject{
 
 
     
-    func read(file url: URL){
-        
-        newPodcasts.removeAll()
-        
+    func read(file url: URL) -> [PodcastFeed]?{
+        var newPodcasts: [PodcastFeed] = []
+
         print("subscriptionmanager: read \(url.absoluteString)")
         guard url.startAccessingSecurityScopedResource() else { // Notice this line right here
-            return
+            return nil
         }
 
         
         if let data = try? Data(contentsOf: url){
-            addPodcastsfrom(OPMLfile: data)
+    
+            let parser = XMLParser(data: data)
+            parser.shouldProcessNamespaces = true
+            parser.shouldResolveExternalEntities = true
+            parser.delegate = opmlParser
+            if parser.parse(){
+                
+                if let feeds = (parser.delegate as? OPMLParser)?.podcastFeeds {
+                    newPodcasts = feeds
+                    let podcastURLs = podcasts.map { $0.feed }
+                    
+
+                    
+                    for index in newPodcasts.indices {
+                        newPodcasts[index].existing = podcastURLs.contains(newPodcasts[index].url) ? true : false
+                    }
+                    
+                }
+                return newPodcasts
+            }
+            
+            
         }else{
             print("could not read data from OPML file")
         }
+        return nil
     }
     
-    
-    func addPodcastsfrom(OPMLfile data: Data){
-        let parser = XMLParser(data: data)
-        parser.shouldProcessNamespaces = true
-        parser.shouldResolveExternalEntities = true
-        parser.delegate = opmlParser
-        if parser.parse(){
-            
-            if let feeds = (parser.delegate as? OPMLParser)?.podcastFeeds {
-                newPodcasts = feeds
-                let podcastURLs = podcasts.map { $0.feed }
-                
-                for index in newPodcasts.indices {
-                    newPodcasts[index].existing = podcastURLs.contains(newPodcasts[index].url) ? true : false
-                }
-                
-            }
-            
-        }
-    }
+
     
     func subscribe(to url: URL) async -> Bool{
         
         if !(podcasts.map { $0.feed }.contains(url) ? true : false){
             if let data = await feedData(for: url){
-                
+                var podcastParser = PodcastParser()
                 let parser = XMLParser(data: data)
                 parser.shouldProcessNamespaces = true
                 parser.shouldResolveExternalEntities = true
                 parser.delegate = podcastParser
                 if parser.parse(){
-                    if let feedDetail = (parser.delegate as? PodcastParser)?.podcastDictArr {
+                     let feedDetail =  podcastParser.podcastDictArr
                         
-                        let context = PersistanceManager.shared.sharedContext
+                       
                         let podcast = await Podcast(details: feedDetail)
                         print("created Podcast \(podcast.title) for \(url.absoluteString)")
                         podcast.feed = url
                         if !podcasts.contains(podcast){
-                            context.insert(podcast)
+                            modelContext?.insert(podcast)
 
                             do{
-                                try context.save()
+                                try modelContext?.save()
                                 print("podcast inserted")
                             }catch{
                                 print(error)
@@ -183,7 +190,7 @@ class SubscriptionManager:NSObject{
                         
                         
                         return true
-                    }
+                    
                     
                 }
             }
@@ -199,12 +206,9 @@ class SubscriptionManager:NSObject{
     func deleteAll(){
 
         
-        
-        
-        let context = PersistanceManager.shared.sharedContext
 
                 do {
-                    try context.delete(model: Podcast.self)
+                    try modelContext?.delete(model: Podcast.self)
                 } catch {
                     fatalError(error.localizedDescription)
                 }
@@ -233,7 +237,7 @@ class SubscriptionManager:NSObject{
     
     func subscribe(all newPodcasts:[PodcastFeed]) async{
         
-        newPodcasts.forEach { $0.subscribing = true }
+     //   newPodcasts.forEach { $0.subscribing = true }
         for podcast in newPodcasts {
             
             await podcast.subscribe()
