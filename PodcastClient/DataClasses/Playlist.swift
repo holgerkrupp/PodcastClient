@@ -44,7 +44,7 @@ class Playlist{
         for item in ordered {
             let episodeSpeed = item.episode?.podcast?.settings?.playbackSpeed ?? SettingsManager.shared.defaultSettings.playbackSpeed
             let playbackspeed = adjust ? episodeSpeed : 1
-            let adjustedEpisodeDuration = ((item.episode?.duration ?? 0.0) - (item.episode?.playpostion ?? 0.0) * Double(playbackspeed))
+            let adjustedEpisodeDuration = ((item.episode?.duration ?? 0.0) - (item.episode?.playPosition ?? 0.0) * Double(playbackspeed))
             playTime = playTime + adjustedEpisodeDuration
             playTimes.append(playTime)
         }
@@ -75,7 +75,7 @@ class Playlist{
             print("could not find Episode in Playlist ModelContext")
         }
 
-        
+        episode.download()
 
 
 
@@ -85,7 +85,7 @@ class Playlist{
 @Model
 class PlaylistEntry: Equatable{
 
-    var episode: Episode?
+    @Relationship(deleteRule: .nullify, inverse: \Episode.playlists)  var episode: Episode?
     var dateAdded: Date?
     var order:Int = 0
     var playlist:Playlist?

@@ -100,6 +100,9 @@
     "Import Management" : {
 
     },
+    "Inbox" : {
+
+    },
     "Last Attempt" : {
 
     },
@@ -118,6 +121,9 @@
     "Mark All As Played" : {
 
     },
+    "Mark as Played" : {
+
+    },
     "Mark existing episodes as played" : {
 
     },
@@ -134,9 +140,6 @@
 
     },
     "no podcast loaded" : {
-
-    },
-    "paste URL to feed" : {
 
     },
     "Play button reactivates sleep timer during %@ minutes after stopping playing." : {
@@ -182,6 +185,9 @@
 
     },
     "Search" : {
+
+    },
+    "Search or enter URL" : {
 
     },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
@@ -254,6 +260,9 @@
 
     },
     "Unsubscribe" : {
+
+    },
+    "UpNext" : {
 
     },
     "When a sleep timer ends, you can press play / the air pod button to reactivate it. Here you can customize the behaviour" : {

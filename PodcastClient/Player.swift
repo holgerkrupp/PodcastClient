@@ -115,17 +115,29 @@ import SwiftData
     
     var playPosition: Double = 0.0{
         didSet{
-        
-            if abs(playPosition - oldValue) > 5{
+            
+            if let undo = currentEpisode?.events?.first(where: { event in
+                event.start == playPosition
+            }){
+                print("skip undo detected")
+                currentEpisode?.events?.removeAll(where: { event in
+                    event.start == playPosition
+                })
+                
+            }else if abs(playPosition - oldValue) > 5{
                 print("skip detected")
                 let newSkip = Event(start: oldValue, end: playPosition, type: .skip)
                 currentEpisode?.events?.append(newSkip)
+                
             }
+                
+                
+                currentEpisode?.playPosition = playPosition
             
-            
-            currentEpisode?.playPosition = playPosition
         }
     }
+    
+   
     
     var remaining: Double?{
         if let duration = avplayer.currentItem?.duration{
@@ -255,7 +267,7 @@ import SwiftData
     }
     
     private func updateCurrentChapter(){
-        currentChapter = currentEpisode?.chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 < self.playPosition})
+        currentChapter = currentEpisode?.chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         nextChapter = currentEpisode?.chapters?.filter({ $0.shouldPlay == true  }).sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
         if let currentChapter{
             let index = currentEpisode?.chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).firstIndex(of: currentChapter)

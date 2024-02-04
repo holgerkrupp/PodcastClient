@@ -12,7 +12,7 @@ struct AddPodcastView: View {
 
     @State var newFeed:String = "https://hierisauch.net/feed/test/"
     @State private var updateing = false
-    
+    @State private var iTunesResults:[ITunesFeed]?
     
     var parserDelegate = PodcastParser()
     var subscriptionManager = SubscriptionManager()
@@ -25,12 +25,12 @@ struct AddPodcastView: View {
       
             List{
                 TextField(text: $newFeed) {
-                    Text("paste URL to feed")
+                    Text("Search or enter URL")
                 }.disabled(updateing)
                 
                 Button {
                     updateing = true
-                    if let feed {
+                    if let feed, newFeed.isValidURL {
                         Task{
                             let finished = await subscriptionManager.subscribe(to: feed)
                             if finished == true{
@@ -38,20 +38,33 @@ struct AddPodcastView: View {
                             }
                             updateing = false
                         }
-                        
+                    }else{
+                        Task{
+                            iTunesResults = await iTunesSearchManager().search(for: newFeed)
+                            updateing = false
+                        }
                     }
                     
                 } label: {
                     if updateing{
                         ProgressView()
                     }else{
-                        Text("Subscribe")
+                        if newFeed.isValidURL{
+                            Text("Subscribe")
+                        }else{
+                            Text("Search")
+                        }
                     }
                     
                 }
-                .disabled(!newFeed.isValidURL || updateing)
+                .disabled(newFeed.isEmpty || updateing)
                 .buttonStyle(.bordered)
                 
+                
+                
+                if let iTunesResults{
+                    ITunesResultView(iTunesResults: iTunesResults)
+                }
                 
             }
         }

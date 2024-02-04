@@ -33,6 +33,8 @@
 		48C0439C2B3CBBA50006C352 /* EpisodeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C0439B2B3CBBA50006C352 /* EpisodeListView.swift */; };
 		48C726782B6CDA34007AF19E /* SequenceExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C726772B6CDA34007AF19E /* SequenceExtension.swift */; };
 		48C7267A2B6CF067007AF19E /* EpisodeExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C726792B6CF067007AF19E /* EpisodeExtension.swift */; };
+		48D525602B7020B9001FF830 /* iTunesSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */; };
+		48D525622B702617001FF830 /* ITunesResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D525612B702617001FF830 /* ITunesResultView.swift */; };
 		48DC0B5D2B5E996F00A6A0D0 /* PersistanceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */; };
 		48DC0B5F2B5FA19300A6A0D0 /* PlayerChapterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B5E2B5FA19300A6A0D0 /* PlayerChapterView.swift */; };
 		48DC0B612B5FA50F00A6A0D0 /* ChapterListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B602B5FA50F00A6A0D0 /* ChapterListView.swift */; };
@@ -85,6 +87,8 @@
 		48C0439B2B3CBBA50006C352 /* EpisodeListView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EpisodeListView.swift; sourceTree = "<group>"; };
 		48C726772B6CDA34007AF19E /* SequenceExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SequenceExtension.swift; sourceTree = "<group>"; };
 		48C726792B6CF067007AF19E /* EpisodeExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeExtension.swift; sourceTree = "<group>"; };
+		48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iTunesSearchManager.swift; sourceTree = "<group>"; };
+		48D525612B702617001FF830 /* ITunesResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITunesResultView.swift; sourceTree = "<group>"; };
 		48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistanceManager.swift; sourceTree = "<group>"; };
 		48DC0B5E2B5FA19300A6A0D0 /* PlayerChapterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerChapterView.swift; sourceTree = "<group>"; };
 		48DC0B602B5FA50F00A6A0D0 /* ChapterListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterListView.swift; sourceTree = "<group>"; };
@@ -204,13 +208,25 @@
 				484F93A12B48082100C3E309 /* ImportExportView.swift */,
 				48C043992B3C28280006C352 /* SubscriptionManager.swift */,
 				484F939F2B47FA7000C3E309 /* OPMLParser.swift */,
+				48E091972B1B12DC00DFE83A /* PodcastParser.swift */,
 			);
 			path = Subscribe;
+			sourceTree = "<group>";
+		};
+		48D5255E2B7020A3001FF830 /* Search */ = {
+			isa = PBXGroup;
+			children = (
+				480D434A2B2347F900BBB1CD /* AddPodcastView.swift */,
+				48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */,
+				48D525612B702617001FF830 /* ITunesResultView.swift */,
+			);
+			path = Search;
 			sourceTree = "<group>";
 		};
 		48DC0B662B67D2B600A6A0D0 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				48D5255E2B7020A3001FF830 /* Search */,
 				48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */,
 				48C726762B6CC311007AF19E /* Subscribe */,
 				48DC0B702B67D8A000A6A0D0 /* Transcripts */,
@@ -315,7 +331,6 @@
 		48E0918A2B1A2A8000DFE83A /* AdditionalClasses */ = {
 			isa = PBXGroup;
 			children = (
-				48E091972B1B12DC00DFE83A /* PodcastParser.swift */,
 				48C043952B34C4C10006C352 /* DownloadManager.swift */,
 				483AB80A2B511E2B00E20DF8 /* PlaylistManager.swift */,
 			);
@@ -329,7 +344,6 @@
 				480CF9AA2B53000900359A7E /* Podcast */,
 				48E091912B1A693800DFE83A /* TabBarView.swift */,
 				48C043912B2F2E160006C352 /* SettingsView.swift */,
-				480D434A2B2347F900BBB1CD /* AddPodcastView.swift */,
 				480D43132B208A3200BBB1CD /* DependenciesView.swift */,
 			);
 			path = Views;
@@ -443,6 +457,7 @@
 				480D43212B219D8200BBB1CD /* EpisodeView.swift in Sources */,
 				484F93A02B47FA7000C3E309 /* OPMLParser.swift in Sources */,
 				48FBE9D12B49360800B278C5 /* URLextension.swift in Sources */,
+				48D525622B702617001FF830 /* ITunesResultView.swift in Sources */,
 				48E091962B1A743B00DFE83A /* PlaylistView.swift in Sources */,
 				48E091872B1A250100DFE83A /* Podcast.swift in Sources */,
 				480CF9A92B52FD9100359A7E /* SettingsManager.swift in Sources */,
@@ -459,6 +474,7 @@
 				483AB80B2B511E2B00E20DF8 /* PlaylistManager.swift in Sources */,
 				48E091982B1B12DC00DFE83A /* PodcastParser.swift in Sources */,
 				48E091832B1A250100DFE83A /* PodcastSettings.swift in Sources */,
+				48D525602B7020B9001FF830 /* iTunesSearchManager.swift in Sources */,
 				48E091922B1A693800DFE83A /* TabBarView.swift in Sources */,
 				48E0918C2B1A2ADE00DFE83A /* Playlist.swift in Sources */,
 			);
@@ -601,12 +617,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PodcastClient/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = PodBay;
+				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -633,12 +649,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PodcastClient/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = PodBay;
+				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

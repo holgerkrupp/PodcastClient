@@ -59,6 +59,7 @@ class PodcastFeed{
     
 }
 
+
 actor SubscriptionManager:NSObject{
     
     var modelContext: ModelContext? = ModelContext(PersistanceManager.shared.sharedModelContainer)
@@ -102,6 +103,7 @@ actor SubscriptionManager:NSObject{
     }
     
     func refreshall() async{
+        print("refresh all")
             fetchData()
         for podcast in podcasts.sorted(by: { lhs, rhs in
             lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
@@ -160,7 +162,7 @@ actor SubscriptionManager:NSObject{
         
         if !(podcasts.map { $0.feed }.contains(url) ? true : false){
             if let data = await feedData(for: url){
-                var podcastParser = PodcastParser()
+                let podcastParser = PodcastParser()
                 let parser = XMLParser(data: data)
                 parser.shouldProcessNamespaces = true
                 parser.shouldResolveExternalEntities = true

@@ -46,91 +46,55 @@ class Podcast: Equatable, Hashable{
     
     
     @Transient var isUpdating:Bool = false
-    @Transient var modelContext:ModelContext?
-    
-    
-    
+ 
     
     // MARK: computed properties
     
-    @Transient var feedData:Data?{
-        get async throws{
-            
-            
-            if let feed{
-                let session = URLSession.shared
-                var request = URLRequest(url: feed)
-                if let appName = Bundle.main.applicationName{
-                    request.setValue(appName, forHTTPHeaderField: "User-Agent")
-                }
-                do{
-                    let (data, response) = try await session.data(for: request)
-                    lastHTTPcode = (response as? HTTPURLResponse)?.statusCode
-                    
-                    switch (response as? HTTPURLResponse)?.statusCode {
-                    case 200:
-                        return data
-                    case .none:
-                        return nil
-                        
-                    case .some(_):
-                        return nil
-                        
-                    }
-                }catch{
-                    print(error)
-                    return nil
-                }
-            }
-            return nil
-        }
+    
+    func feedData() async -> Data?{
+        guard let feed else {  return nil }
         
+        return await SubscriptionManager().feedData(for: feed)
+
     }
     
+
     
-    @Transient var feedUpdated:Bool?{
-        get async throws{
-            lastAttempt = Date()
-            if let lastRefresh{
-                if let serverLastModified = try? await feed?.status()?.lastModified {
-                    print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
-                    
-                    
-                    if serverLastModified > lastRefresh{
-                        print("feed is new")
-                        // feed on server is new
-                        return true
-                    }else{
-                        // feed on server is old
-                        print("feed is old")
-                        return false
-                    }
+    func feedUpdated() async ->Bool?{
+        
+        lastAttempt = Date()
+        if let lastRefresh{
+            if let serverLastModified = try? await feed?.status()?.lastModified {
+                print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
+                
+                
+                if serverLastModified > lastRefresh{
+                    print("feed is new")
+                    // feed on server is new
+                    return true
                 }else{
-                    // server is not answering with a lastmodified Date
-                    print("no last modified date")
-                    return nil
+                    // feed on server is old
+                    print("feed is old")
+                    return false
                 }
             }else{
-                // feed has never been fetched before, no last modified date is set.
-                print("feed is very new")
-                return true
+                // server is not answering with a lastmodified Date
+                print("no last modified date")
+                return nil
             }
-            
+        }else{
+            // feed has never been fetched before, no last modified date is set.
+            print("feed is very new")
+            return true
         }
     }
+
     
     
     // MARK: init
     init(details: [String: Any]) async {
-/*
-        print("---init Podcast--->>")
-        dump(details)
-        print("<<---init Podcast---")
 
-  */
-        //update(details: details)
-        
-        
+
         title = details["title"] as? String ?? ""
         
         print("Podcast \(id) - \(title)")
@@ -149,44 +113,27 @@ class Podcast: Equatable, Hashable{
         lastModified = lastBuildDate
         
         link = URL(string: details["link"] as? String ?? "")
-        coverURL = URL(string: (details["image"] as? [String:Any])?["url"] as? String ?? "")
-        /*
+    
+        
+        
+        coverURL = URL(string: (details["coverImage"] as? String) ?? (details["image"] as? [String:Any])?["url"] as? String ?? "")
+        
         if let coverURL{
             cover = await coverURL.downloadData()
         }
-         */
+         
         var tempE:[Episode] = []
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
 
-                let episode = await Episode(details: episodeDetails, podcast: self)
+            let episode = await Episode(details: episodeDetails, podcast: self)
                 
-    /*
-            
-            if ((settings?.markAsPlayedAfterSubscribe) != nil){
-                 episode.markAsPlayed()
-             }
-             
-      */
-            
+    
+            if SettingsManager.shared.defaultSettings.markAsPlayedAfterSubscribe == true{
+                episode.markAsPlayed()
+            }
             
             tempE.append(episode)
-            /*
-                if tempE.contains(episode){
-                    print("--->>>>>")
-                    print("\(episode.title ?? episode.guid) is already existing")
-                    print(episode.assetLink)
-                    print(episode.guid)
-                    print("---")
-                    if let existingIndex = tempE.firstIndex(of: episode){
-                        print(tempE[existingIndex].title)
-                        print(tempE[existingIndex].assetLink)
-                        print(tempE[existingIndex].guid)
-                    }
-                    print("<<<<<-----")
-                }else{
-                    tempE.append(episode)
-                }
-*/
+
         
 
         }
@@ -233,8 +180,11 @@ class Podcast: Equatable, Hashable{
         
         
         print("checking \((details["episodes"] as? [[String:Any]])?.count) episodes")
+        
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
             print("check: \(episodeDetails["title"] as? String ?? "")")
+            
+
             
             if contains(episodeDetails: episodeDetails) == false{
                 print("does not contain: \(episodeDetails["link"] as? String ?? "")")
@@ -244,7 +194,7 @@ class Podcast: Equatable, Hashable{
                 
                 
                 let container =  PersistanceManager.shared.sharedModelContainer
-                let context = PersistanceManager.shared.sharedContext
+                let context = modelContext ?? ModelContext(container)
                     let episode = await Episode(details: episodeDetails, podcast: self)
                     print("created Episode \(episode.title ?? "") for \(self.title)")
                     
@@ -259,7 +209,7 @@ class Podcast: Equatable, Hashable{
                     }
                 
             }else{
-                print("Episode contains \(episodeDetails["title"] ?? "")")
+                print("Podcast contains \(episodeDetails["title"] ?? "")")
             }
             
         }
@@ -269,9 +219,16 @@ class Podcast: Equatable, Hashable{
     
     func contains(episodeDetails: [String: Any]) -> Bool{
         let testURL = (episodeDetails["enclosure"]as? [[String:Any]])?.first?["url"] as? String
+        
+        let guid = episodeDetails["guid"] as? String ?? (episodeDetails["enclosure"] as? [[String:Any]])?.first?["url"] as? String
+        
         print("contains: \(testURL ?? "")")
-        let first = episodes.first(where: { $0.assetLink == URL(string: testURL ?? "de.holgerkrupp.teststring") })
-        print("\(first?.title ?? "-") contains \(testURL ?? "") as \(first?.assetLink?.absoluteString ?? "")")
+      //  let first = episodes.first(where: { $0.assetLink == URL(string: testURL ?? "de.holgerkrupp.teststring") })
+        
+        let first = episodes.first(where: { $0.guid == guid })
+
+        print("\(first?.title ?? "-") contains \(guid ?? "")")
+        
         if (first == nil){
             return false
         }else{
@@ -286,15 +243,14 @@ class Podcast: Equatable, Hashable{
     func refresh() async{
         isUpdating = true
         DEBUGAttemptCount = DEBUGAttemptCount + 1
-        let updated = try? await feedUpdated
+        let updated = await feedUpdated()
         
         if updated != false{ // could be true (feed file updated) or nil (no last modified day)
             do{
-                if let data = try await feedData{
+                if let data = await feedData(){
                     print("got data for \(feed?.absoluteString ?? "")")
                     
-                    
-                    //podcast.feedData loads new data
+   
                     
                     let parser = XMLParser(data: data)
                     let podcastParser = PodcastParser()
@@ -302,7 +258,7 @@ class Podcast: Equatable, Hashable{
                     
                     if parser.parse() {
                         print("parsed for \(feed?.absoluteString ?? "")")
-                        if let feedDetail = await (parser.delegate as? PodcastParser)?.podcastDictArr {
+                        if let feedDetail =  (parser.delegate as? PodcastParser)?.podcastDictArr {
                             await update(details: feedDetail)
                             
                         }
@@ -315,8 +271,6 @@ class Podcast: Equatable, Hashable{
                     print("could not load feedData")
                     isUpdating = false
                 }
-            }catch{
-                print(error)
             }
         }else{
             isUpdating = false
@@ -335,7 +289,7 @@ class Podcast: Equatable, Hashable{
             }
         }
     }
-    
+   /*
     static func ==(lhs: Podcast, rhs: Podcast) -> Bool {
         
         if lhs.id == rhs.id{
@@ -352,7 +306,7 @@ class Podcast: Equatable, Hashable{
         hasher.combine(feed)
         hasher.combine(id)
     }
-    
+    */
 
     
     

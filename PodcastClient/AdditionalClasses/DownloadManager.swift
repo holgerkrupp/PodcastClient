@@ -67,7 +67,7 @@ extension Download: URLSessionDownloadDelegate {
 
 
 class DownloadManager: NSObject, ObservableObject {
-    @Published var podcast: Podcast?
+   // @Published var podcast: Podcast?
     private var downloads: [URL: Download] = [:]
     
     
@@ -84,7 +84,7 @@ class DownloadManager: NSObject, ObservableObject {
     }
     
     
-    @MainActor
+    //@MainActor
     func download(_ episode: Episode) async throws {
         
         guard episode.assetLink != nil else { return }

@@ -3,6 +3,54 @@
 <plist version="1.0">
 <dict>
 	<key>top-level-items</key>
-	<array/>
+	<array>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>39</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>38</string>
+					<key>Timestamp</key>
+					<string>728771874.072928</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>PodcastClient/Features/Search/iTunesSearchManager.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>                    let podcasts = try decoder.decode([String: [ITunesFeed]].self, from: responseData)
+</string>
+				<key>leading</key>
+				<string>                    dump(json)
+                    
+</string>
+				<key>trailing</key>
+				<string>                    dump(podcasts)
+                    return nil
+                }catch{
+</string>
+			</dict>
+			<key>title</key>
+			<string>Must decode to Dictionary [String: Any] with Any beeing iTunesFeed</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+	</array>
 </dict>
 </plist>

@@ -21,7 +21,7 @@ import BackgroundTasks
           let pm = PersistanceManager.shared
           
           self.sharedModelContainer = pm.sharedModelContainer
-          
+          UserDefaults.standard.register(defaults: ["UserAgent" : "Raúl Podcatcher"])
           
       }
 
@@ -45,9 +45,16 @@ import BackgroundTasks
     
     
     func scheduleAppRefresh() {
+        print("went to background will schedule AppRefresh")
         let request = BGAppRefreshTaskRequest(identifier: "feedRefresh")
         request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
-        try? BGTaskScheduler.shared.submit(request)
+        dump(request)
+        do{
+            try BGTaskScheduler.shared.submit(request)
+        }catch{
+            print(error)
+        }
+  
     }
     
     

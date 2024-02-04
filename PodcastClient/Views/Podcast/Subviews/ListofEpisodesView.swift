@@ -20,7 +20,8 @@ struct ListofEpisodesView: View {
                 .modelContext(modelContext)
                 .swipeActions(edge: .trailing){
                     Button(role: .destructive) {
-                        modelContext.delete(episode)
+                        
+                        episode.removeFile()
                     } label: {
                         Label("Delete", systemImage: "trash.fill")
                     }
@@ -33,14 +34,14 @@ struct ListofEpisodesView: View {
                     }
                     Button {
                         PlaylistManager.shared.playnext.add(episode: episode, to: .front)
-                        
+                  
                         
                     } label: {
                         Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
                     }
                     Button {
                         PlaylistManager.shared.playnext.add(episode: episode, to: .end)
-                        
+                       
                     } label: {
                         Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
                     }

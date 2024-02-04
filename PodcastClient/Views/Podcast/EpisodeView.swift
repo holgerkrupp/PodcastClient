@@ -33,9 +33,8 @@ struct EpisodeView: View {
     var body: some View {
         if let episode{
             List{
-                Section {
+              
 
-                                
                     VStack{
                         HStack{
                           
@@ -77,34 +76,32 @@ struct EpisodeView: View {
                             .frame(maxWidth: .infinity, maxHeight: 30)
                         Spacer()
                         EpisodeControlView(episode: episode)
-                        Text(episode.content?.decodeHTML() ?? episode.desc ?? "")
-                            .lineLimit(nil)
-                            .selectionDisabled(false)
-                        /*
-                        if let podcast = episode.podcast{
-                            NavigationLink {
-                                
-                                PodcastView(for: podcast.persistentModelID)
-                                    .modelContext(modelContext)
-                                
-                            }label:{
-                                PodcastMiniView(podcast: podcast)
-                                
-                            }
-                        }else{
-                            Text("not linked to a podcast")
+                        
+                        let html = episode.content ?? episode.desc ?? ""
+                        
+                        if let nsAttributedString = try? NSAttributedString(data: Data(html.utf8), options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil),
+                           let attributedString = try? AttributedString(nsAttributedString, including: \.uiKit) {
+                            Text(attributedString)
+                                .lineLimit(nil)
+                                .selectionDisabled(false)
+                                .foregroundColor(.primary)
+                                .font(.body)
+                        } else {
+                            
+                            Text(html)
+                                .lineLimit(nil)
+                                .selectionDisabled(false)
+                                .foregroundColor(.primary)
+                                .font(.body)
                         }
-*/
-                        
-                        
-                    //    EpisodeStatusIcon(episode: episode)
                         
                         
                         
+
+
      
                         
-                        
-                    }
+                    
                     
                     
                 }

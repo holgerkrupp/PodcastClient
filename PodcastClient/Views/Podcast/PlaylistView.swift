@@ -10,7 +10,7 @@ import SwiftData
 
 struct PlaylistView: View {
     @Environment(\.modelContext) var modelContext
-    
+
     // @State var playlist = PlaylistManager.shared.playnext
     
    
@@ -53,7 +53,7 @@ struct PlaylistView: View {
                             
                             HStack{
                                 Image(systemName: "sum")
-                                Text(playTimes[idx ?? 1].secondsToHoursMinutesSeconds ?? "")
+                                Text(playTimes[idx ?? 0].secondsToHoursMinutesSeconds ?? "")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .monospacedDigit()

@@ -85,17 +85,19 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         attributes.removeAll()
         
-        if qName ?? elementName == "item" {
+
+        
+        if currentElement == "item" {
             // new PodcastEpisode found
          //   isHeader = false
             episodeDict = [:]
         }
         
-        if qName ?? elementName == "psc:chapters"{
+        if currentElement == "psc:chapters"{
             chapterArray.removeAll()
         }
         
-        if qName ?? elementName == "podcast:transcript"{
+        if currentElement == "podcast:transcript"{
             if let url = attributeDict["url"] , let type = attributeDict["type"]{
                 let newTranscript = Transcript(url: url, type: type, source: "feed")
                 transcriptArray.append(newTranscript)
@@ -109,9 +111,25 @@ class PodcastParser:NSObject, XMLParserDelegate{
         }
         
         if !attributeDict.isEmpty{
+            
+
+            
             if isHeader{
+             
+                if currentElement == "itunes:image"{
+                    
+                    currentValue = attributeDict["href"] ?? ""
+                    
+                    podcastDictArr.updateValue(currentValue, forKey: currentElement)
+                    podcastDictArr.updateValue(currentValue, forKey: "coverImage")
+                    
+                }
+          
                 attributes = [elementName: attributeDict]
                 podcastDictArr.updateValue(attributes, forKey: currentElement)
+                
+
+                
 
             }else{
                 
@@ -150,13 +168,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 
             }else if currentDepth == 3, elementName == "image"{
                 podcastDictArr.updateValue(tempDict, forKey: currentElement)
-          //      podcastDictArr.append([currentElement:tempDict])
-                    tempDict.removeAll()
-                
+                tempDict.removeAll()
+           
             }else{
-            //    attributes.updateValue(currentValue, forKey: currentElement)
                 podcastDictArr.updateValue(currentValue, forKey: currentElement)
-         //       podcastDictArr.append([currentElement:currentValue])
             }
             
         case false:

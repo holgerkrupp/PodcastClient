@@ -9,13 +9,12 @@ import SwiftUI
 
 struct ChapterListView: View {
     var player = Player.shared
-
     @State var chapters: [Chapter]
     var body: some View {
         ScrollView{
             ForEach($chapters.sorted(by: {$0.start.wrappedValue ?? 0 < $1.start.wrappedValue ?? 1})){ chapter in
-                VStack{
-                    Text(chapter.wrappedValue.type.rawValue).foregroundStyle(.secondary)
+          
+                  //  Text(chapter.wrappedValue.type.rawValue).foregroundStyle(.secondary)
                     
                     HStack(alignment: .center){
                         Button {
@@ -28,22 +27,28 @@ struct ChapterListView: View {
                         Spacer()
                     
                         Text(chapter.wrappedValue.title)
-                              
-                                
+                               
                         Spacer()
+                        VStack{
+                            Toggle("Play Chapter", isOn: chapter.shouldPlay)
+                                .toggleStyle(SkipChapter())
+                            Text(chapter.wrappedValue.duration?.secondsToHoursMinutesSeconds ?? "")
+                                .font(.footnote)
+                                .monospacedDigit()
+                        }
                         
-                        Toggle("Play Chapter", isOn: chapter.shouldPlay)
-                            .toggleStyle(SkipChapter())
-                            
-                        
+                    }
+                    .onTapGesture {
+                        player.skipTo(chapter: chapter.wrappedValue)
                     }
                     .foregroundStyle(
                         chapter.shouldPlay.wrappedValue == false ? Color.secondary : Color.primary
                     )
-                    Text(chapter.wrappedValue.duration?.secondsToHoursMinutesSeconds ?? "")
-                }
+                    
+                   // Text(chapter.wrappedValue.duration?.secondsToHoursMinutesSeconds ?? "")
                 
-                .padding(.horizontal)
+                
+                .padding()
                 
                 if chapter.id != chapters.last?.id {
                     Divider()

@@ -25,10 +25,12 @@ extension URL{
                     let session = URLSession.shared
                     var request = URLRequest(url: self)
                     request.httpMethod = "HEAD"
+        
                     if let appName = Bundle.main.applicationName{
                         request.setValue(appName, forHTTPHeaderField: "User-Agent")
                     }
-                    do{
+        
+        do{
                         let (_, response) = try await session.data(for: request)
                         
                         status.statusCode = (response as? HTTPURLResponse)?.statusCode
@@ -41,7 +43,7 @@ extension URL{
                         print(error)
                         return nil
                     }
-        dump(status)
+       
         return status
         }
     

@@ -33,7 +33,7 @@ struct PlayerView: View {
                     
                     
                 
-                Spacer()
+              
                 HStack{
                     Spacer()
                     Button(action:player.skipback){
@@ -78,7 +78,6 @@ struct PlayerView: View {
                 .frame(height: 40.0, alignment: .center)
                 Spacer()
                 VStack{
-                 //   ProgressView(value: player.progress, total: 1.0)
                     
                     PlayerProgressSliderView(value: $player.progress, sliderRange: 0...1)
                         .frame(height: 30)

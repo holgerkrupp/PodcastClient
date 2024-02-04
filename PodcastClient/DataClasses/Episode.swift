@@ -22,9 +22,11 @@ class Episode: Equatable, Hashable{
     //MARK: Values to be storred in the database
     var id = UUID()
     var title: String?
+    
     var desc: String?
     var subtitle: String?
     var content: String?
+    var decodedContent: String?
     
     var guid: String?
     
@@ -48,12 +50,18 @@ class Episode: Equatable, Hashable{
     var transcripts:[Transcript]?
     
     @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter]?
+    var playlists: [PlaylistEntry]? = []
     
     var podcast: Podcast?
     var events: [Event]?
-    var playlistentries: [PlaylistEntry]?
+ 
     
-    var playpostion: Double = 0.0
+   // var playpostion: Double = 0.0
+    var playPosition:Double  = 0.0{
+        didSet{
+            updateLastPlayed()
+        }
+    }
     var lastPlayed: Date?
     var finishedPlaying: Bool? = false
     var duration:Double?
@@ -97,7 +105,6 @@ class Episode: Equatable, Hashable{
             return AVAsset(url: url)
         }else{
             print("avAsset remote - \(assetLink?.absoluteString)")
-
             if let remoteURL = assetLink{
                 return AVAsset(url: remoteURL)
             }
@@ -133,20 +140,9 @@ class Episode: Equatable, Hashable{
     }
     
   
-    @Transient var playPosition:Double{
-        get{
-            return playpostion
-        }
-        set{
-           
-                playpostion = newValue
-                updateLastPlayed()
-            
-            
-        }
-    }
+
     
-    var progress:Double {
+    @Transient var progress:Double {
         if let duration{
             return ((playPosition) / duration)
         }
@@ -160,6 +156,13 @@ class Episode: Equatable, Hashable{
     func postProcessingAfterDownload() async{
         print("postProcessing")
         await updateDuration()
+        await updateChapters()
+        
+        
+
+    }
+    
+    func updateChapters() async{
         let embeddedChapterCount = chapters?.filter({ $0.type == .embedded }).count ?? 0
         if embeddedChapterCount == 0{
             if let localFile{
@@ -174,8 +177,25 @@ class Episode: Equatable, Hashable{
                 chapters =  createChapters(from: sourceText)
             }
         }
+        
+        if let chapters, chapters.count > 0{
 
-
+            
+            
+            var chapterGrouped = Dictionary(grouping: chapters, by: { $0.type })
+            
+            for group in chapterGrouped{
+                print("enhancing \(group.key.rawValue) chapters")
+                var lastEnd = duration ?? 100
+                for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? duration ?? 100}){
+                    chapter.duration = lastEnd - (chapter.start ?? 0.0)
+                    lastEnd = chapter.start ?? 0.0
+                }
+            }
+            
+            
+        }
+        
     }
     
     func updateDuration() async{
@@ -205,7 +225,6 @@ class Episode: Equatable, Hashable{
 
     
     func playNow(){
-        
         Player.shared.setCurrentEpisode(episode: self, playDirectly: true)
     }
     
@@ -238,32 +257,32 @@ class Episode: Equatable, Hashable{
     init(details: [String: Any], podcast:Podcast?) async {
         guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
-    
-       // print("Episode \(id) - \(guid) - \(title)")
-        
-        
         subtitle = details["itunes:subtitle"] as? String
 
         desc = details["description"] as? String
         
         content = details["content"] as? String
-        
+     /*
+        if let content{
+            decodedContent = content.decodeHTML()
+        }
+       */
         duration = (details["itunes:duration"] as? String)?.durationAsSeconds
 
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")
         image = URL(string: details["itunes:image"] as? String ?? "")
     
-        /* THIS TAKES TO MUCH TIME WHILE SUBSCRIBING TO FEEDS
+ /* THIS TAKES TO MUCH TIME WHILE SUBSCRIBING TO FEEDS
         if let image{
             cover = await image.downloadData()
         }
-    */
+*/
         number = details["itunes:episode"] as? String
         
         type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
         
-        //self.podcast = podcast
+
       
         for assetDetails in details["enclosure"] as? [[String:Any]] ?? []{
             
@@ -277,47 +296,17 @@ class Episode: Equatable, Hashable{
             transcripts?.append(transcript)
         }
 
-        
         if let psc = details["psc:chapters"] as? [[String:Any]]{
             chapters = createChapters(from: psc)
         }
         
         
-
-        
-    }
-    
-    
-    static func ==(lhs: Episode, rhs: Episode) -> Bool {
-
-        if lhs.podcast != rhs.podcast{
-            return false
-        }else if lhs.guid == rhs.guid, lhs.guid != nil, lhs.guid != ""{
-            return true
-        }else{
-            if lhs.assetLink == rhs.assetLink, lhs.assetLink != nil{
-                return true
-            }else if lhs.number == rhs.number &&  lhs.number != nil && lhs.season == rhs.season{
-                return true
-            }else if lhs.id == rhs.id{
-                return true
-            }else{
-                
-                return false
-            }
+        if guid == nil || guid == ""{
+            guid = assetLink?.absoluteString ?? id.uuidString
         }
         
+    }
 
-    }
-    
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(guid)
-        hasher.combine(assetLink)
-        hasher.combine(podcast)
-        hasher.combine(title)
-        hasher.combine(id)
-    }
-    
     func markAsPlayed(){
       finishedPlaying = true
     }
@@ -326,6 +315,7 @@ class Episode: Equatable, Hashable{
         finishedPlaying = false
     }
     
+
     
 }
 

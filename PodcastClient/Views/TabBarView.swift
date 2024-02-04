@@ -19,25 +19,28 @@ struct TabBarView: View {
     @State var selectedTab:Tab = Tab.episodes
     
     @State private var miniplayerHeight:CGFloat = 30.0
-    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 150
+    var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 120
     var minPlayerHeight:CGFloat = 30.0
     var body: some View {
         ZStack(alignment: .bottom){
             TabView(selection: $selectedTab){
-             /*
-                PlaylistView(modelContext: _modelContext)
+             
+            
+                PlaylistView()
+                    .modelContext(modelContext)
                     .tag(Tab.upnext)
                     .tabItem {
                         Label("UpNext", systemImage: "play.square.stack")
                     }
                 
-                InboxView(modelContext: _modelContext)
+                InboxView()
+                    .modelContext(modelContext)
                     .tag(Tab.episodes)
                     .tabItem {
                         Label("Inbox", systemImage: "tray.fill")
                     }
                 
-               */
+               
                 PodcastListView(modelContext: modelContext)
                     .tag(Tab.podcastlist)
                     .tabItem {
@@ -45,7 +48,8 @@ struct TabBarView: View {
                         
                     }
                 
-                AddPodcastView(modelContext: _modelContext)
+                AddPodcastView()
+                    .modelContext(modelContext)
                     .tag(Tab.search)
                     .tabItem {
                         Label("Search", systemImage: "magnifyingglass")
@@ -53,7 +57,8 @@ struct TabBarView: View {
                     }
                 
                 
-                SettingsView(modelContext: _modelContext)
+                SettingsView()
+                    .modelContext(modelContext)
                     .tag(Tab.settings)
                     .tabItem {
                         Label("Settings", systemImage: "gear")

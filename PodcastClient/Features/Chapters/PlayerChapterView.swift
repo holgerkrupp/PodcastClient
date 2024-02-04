@@ -34,10 +34,9 @@ struct PlayerChapterView: View {
                         
                         
                     } label: {
-                        VStack{
+                       
                             Text(player.currentChapter?.title ?? "")
-                            Text(player.currentChapter?.type.rawValue ?? "")
-                        }
+                          
                     }
                     .sheet(isPresented: $presentingModal, content: {
                         ChapterListView(chapters: chapters)

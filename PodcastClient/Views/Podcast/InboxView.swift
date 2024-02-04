@@ -23,15 +23,16 @@ struct InboxView: View {
             NavigationStack {
                 List{
                     
-                    ForEach(episodes.filter({$0.playlistentries != nil}), id:\.self) { episode in
+                    ForEach(episodes.filter({$0.playlists?.count ?? 0 < 1}), id:\.self) { episode in
                             EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
                                 .modelContext(modelContext)
                                 .swipeActions(edge: .trailing){
                                     Button(role: .destructive) {
-                                       
-
+                                        withAnimation{
+                                            episode.markAsPlayed()
+                                        }
                                     } label: {
-                                        Label("Remove from list", systemImage: "xmark.circle.fill")
+                                        Label("Mark as Played", systemImage: "checkmark.circle.fill")
                                     }
                                 }
                                 .contextMenu {
@@ -41,15 +42,19 @@ struct InboxView: View {
                                         Label("Play now", systemImage: "play")
                                     }
                                     Button {
-                                        PlaylistManager.shared.playnext.add(episode: episode, to: .front)
+                                        withAnimation{
+                                            PlaylistManager.shared.playnext.add(episode: episode, to: .front)
+                                        }
+                                    
                                         
                                         
                                     } label: {
                                         Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
                                     }
                                     Button {
-                                        PlaylistManager.shared.playnext.add(episode: episode, to: .end)
-                                        
+                                        withAnimation{
+                                            PlaylistManager.shared.playnext.add(episode: episode, to: .end)
+                                        }
                                     } label: {
                                         Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
                                     }
@@ -61,6 +66,7 @@ struct InboxView: View {
                     }
                 }
             }
+            
         
     }
 
