@@ -22,53 +22,58 @@ struct AddPodcastView: View {
     }
     
     var body: some View {
-      
-            List{
-                TextField(text: $newFeed) {
-                    Text("Search or enter URL")
-                }.disabled(updateing)
-                
-                Button {
-                    updateing = true
-                    if let feed, newFeed.isValidURL {
-                        Task{
-                            let finished = await subscriptionManager.subscribe(to: feed)
-                            if finished == true{
-                                newFeed = ""
+        List{
+            Section {
+                HStack{
+                    TextField(text: $newFeed) {
+                        Text("Search or enter URL")
+                    }.disabled(updateing)
+                    
+                    Button {
+                        updateing = true
+                        if let feed, newFeed.isValidURL {
+                            Task{
+                                let finished = await subscriptionManager.subscribe(to: feed)
+                                if finished == true{
+                                    newFeed = ""
+                                }
+                                updateing = false
                             }
-                            updateing = false
-                        }
-                    }else{
-                        Task{
-                            iTunesResults = await iTunesSearchManager().search(for: newFeed)
-                            updateing = false
-                        }
-                    }
-                    
-                } label: {
-                    if updateing{
-                        ProgressView()
-                    }else{
-                        if newFeed.isValidURL{
-                            Text("Subscribe")
                         }else{
-                            Text("Search")
+                            Task{
+                                iTunesResults = await iTunesSearchManager().search(for: newFeed)
+                                updateing = false
+                            }
                         }
+                        
+                    } label: {
+                        if updateing{
+                            ProgressView()
+                        }else{
+                            if (newFeed.isValidURL) {
+                                Text("Subscribe")
+                            }else{
+                                Text("Search")
+                            }
+                        }
+                        
                     }
-                    
+                    .disabled(newFeed.isEmpty || updateing)
+                    .buttonStyle(.bordered)
                 }
-                .disabled(newFeed.isEmpty || updateing)
-                .buttonStyle(.bordered)
-                
-                
-                
-                if let iTunesResults{
+            }
+
+            
+            
+            if let iTunesResults{
+                Section{
                     ITunesResultView(iTunesResults: iTunesResults)
                 }
-                
             }
+            
+            
         }
-    
+    }
     
 }
 

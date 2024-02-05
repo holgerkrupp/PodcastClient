@@ -77,23 +77,16 @@ struct EpisodeView: View {
                         Spacer()
                         EpisodeControlView(episode: episode)
                         
-                        let html = episode.content ?? episode.desc ?? ""
+                        let desciption = episode.content ?? episode.desc ?? ""
                         
-                        if let nsAttributedString = try? NSAttributedString(data: Data(html.utf8), options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil),
-                           let attributedString = try? AttributedString(nsAttributedString, including: \.uiKit) {
-                            Text(attributedString)
-                                .lineLimit(nil)
-                                .selectionDisabled(false)
-                                .foregroundColor(.primary)
-                                .font(.body)
-                        } else {
+
                             
-                            Text(html)
+                            Text(desciption)
                                 .lineLimit(nil)
                                 .selectionDisabled(false)
                                 .foregroundColor(.primary)
                                 .font(.body)
-                        }
+                        
                         
                         
                         

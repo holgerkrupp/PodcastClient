@@ -34,7 +34,9 @@ An Open Source Podcast client.
 - - [x] to be validated with big file
 - - [x] Show import progress
 - - [ ] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
-- [ ] podcast directory search
+- [x] podcast directory search
+- - [x] iTunes Directory Search (basic)
+
 
 ### Refresh and Downloads
 - [ ] auto download/refresh feeds
@@ -56,6 +58,8 @@ An Open Source Podcast client.
 
 ### Subscription Management
 - [ ] OPML export
+- [ ] Fyyd Directory Search
+
 
 ### Refresh and Downloads
 - [ ] Automatic deletion of files

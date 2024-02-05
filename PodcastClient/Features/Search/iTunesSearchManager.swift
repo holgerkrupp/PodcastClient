@@ -34,10 +34,27 @@ class iTunesSearchManager {
 
 
                     
-                    dump(json)
+                    var iTunesFeeds:[ITunesFeed] = []
+     
                     
-                    let podcasts = try decoder.decode([String: [ITunesFeed]].self, from: responseData)
-                    dump(podcasts)
+                    if let podcasts = json["results"] as? [[String: Any]]{
+                        
+                        for podcast in podcasts {
+                            dump(podcast)
+                            var newFeed = ITunesFeed()
+                            newFeed.artist = podcast["artistName"] as? String
+                            newFeed.title = podcast["collectionName"] as? String
+                            newFeed.url = URL(string: podcast["feedUrl"]  as? String ?? "")
+                            newFeed.artworkURL = URL(string: podcast["artworkUrl100"] as? String ?? "")
+ 
+                            newFeed.lastRelease = ISO8601DateFormatter().date(from: (podcast["releaseDate"] as? String ?? ""))
+                            iTunesFeeds.append(newFeed)
+                        }
+         
+                        return iTunesFeeds
+                    }
+                    
+                    
                     return nil
                 }catch{
                     print(error)
@@ -66,27 +83,8 @@ class ITunesFeed: Decodable, Hashable{
     var url: URL?
     var artist: String?
     var artworkURL: URL?
+    var lastRelease: Date?
     
-    
-    enum CodingKeys: CodingKey{
-        case collectionName, feedUrl, artistName, artworkUrl100
-    }
-    
-    required init(from decoder: Decoder) throws {
-        if let container = try? decoder.container(keyedBy: CodingKeys.self){
-            do{
-                title = try container.decode(String.self, forKey: .collectionName)
-                let urlString = try container.decode(String.self, forKey: .feedUrl)
-                url = URL(string: urlString)
-                
-                artist = try container.decode(String.self, forKey: .artistName)
-                //    artworkURL = try? container.decode(URL?.self, forKey: .artworkUrl100)
-            }catch{
-                print(error)
-            }
-        }
-        
-    }
-    
-    
+
+    init(){}
 }

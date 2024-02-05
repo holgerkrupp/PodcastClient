@@ -93,6 +93,15 @@ actor SubscriptionManager:NSObject{
     }
     
     
+    func contains(url: URL) -> Bool{
+        if (podcasts.map { $0.feed }.contains(url) ? true : false){
+            return true
+        }else{
+            return false
+        }
+    }
+    
+    
     
     
     
@@ -112,8 +121,6 @@ actor SubscriptionManager:NSObject{
                 await podcast.refresh()
             }
         
-
-
     }
 
 
@@ -160,7 +167,7 @@ actor SubscriptionManager:NSObject{
     
     func subscribe(to url: URL) async -> Bool{
         
-        if !(podcasts.map { $0.feed }.contains(url) ? true : false){
+        if !contains(url: url){
             if let data = await feedData(for: url){
                 let podcastParser = PodcastParser()
                 let parser = XMLParser(data: data)
@@ -180,6 +187,7 @@ actor SubscriptionManager:NSObject{
                             do{
                                 try modelContext?.save()
                                 print("podcast inserted")
+                                fetchData()
                             }catch{
                                 print(error)
                             }
@@ -198,6 +206,7 @@ actor SubscriptionManager:NSObject{
             }
         }else{
             print("\(url.absoluteString) already subscribed")
+            return true
         }
         
         
