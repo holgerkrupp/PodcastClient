@@ -26,6 +26,9 @@
 		489346EF2B4C316700DF4D82 /* ListofEpisodesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */; };
 		489346F22B4C4D8700DF4D82 /* DoubleExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */; };
 		48AA18972B2C59B8007558FC /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AA18962B2C59B8007558FC /* ImageLoader.swift */; };
+		48BF0D152B72579E00EAF0B0 /* LocalNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BF0D142B72579E00EAF0B0 /* LocalNotificationManager.swift */; };
+		48BF0D172B726B0300EAF0B0 /* FyydSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BF0D162B726B0200EAF0B0 /* FyydSearchManager.swift */; };
+		48BF0D192B727EC000EAF0B0 /* ArrayExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BF0D182B727EC000EAF0B0 /* ArrayExtensions.swift */; };
 		48C043902B2F27690006C352 /* Stringextensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C0438F2B2F27690006C352 /* Stringextensions.swift */; };
 		48C043922B2F2E160006C352 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C043912B2F2E160006C352 /* SettingsView.swift */; };
 		48C043962B34C4C10006C352 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C043952B34C4C10006C352 /* DownloadManager.swift */; };
@@ -79,6 +82,9 @@
 		489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListofEpisodesView.swift; sourceTree = "<group>"; };
 		489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleExtensions.swift; sourceTree = "<group>"; };
 		48AA18962B2C59B8007558FC /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
+		48BF0D142B72579E00EAF0B0 /* LocalNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationManager.swift; sourceTree = "<group>"; };
+		48BF0D162B726B0200EAF0B0 /* FyydSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FyydSearchManager.swift; sourceTree = "<group>"; };
+		48BF0D182B727EC000EAF0B0 /* ArrayExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrayExtensions.swift; sourceTree = "<group>"; };
 		48C0438F2B2F27690006C352 /* Stringextensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stringextensions.swift; sourceTree = "<group>"; };
 		48C043912B2F2E160006C352 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		48C043952B34C4C10006C352 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
@@ -190,8 +196,17 @@
 				48FBE9D02B49360800B278C5 /* URLextension.swift */,
 				489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */,
 				48C726772B6CDA34007AF19E /* SequenceExtension.swift */,
+				48BF0D182B727EC000EAF0B0 /* ArrayExtensions.swift */,
 			);
 			path = SupportClasses;
+			sourceTree = "<group>";
+		};
+		48BF0D132B72578200EAF0B0 /* Notification */ = {
+			isa = PBXGroup;
+			children = (
+				48BF0D142B72579E00EAF0B0 /* LocalNotificationManager.swift */,
+			);
+			path = Notification;
 			sourceTree = "<group>";
 		};
 		48C043972B3C0B480006C352 /* Images-Source */ = {
@@ -219,6 +234,7 @@
 				480D434A2B2347F900BBB1CD /* AddPodcastView.swift */,
 				48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */,
 				48D525612B702617001FF830 /* ITunesResultView.swift */,
+				48BF0D162B726B0200EAF0B0 /* FyydSearchManager.swift */,
 			);
 			path = Search;
 			sourceTree = "<group>";
@@ -226,6 +242,7 @@
 		48DC0B662B67D2B600A6A0D0 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				48BF0D132B72578200EAF0B0 /* Notification */,
 				48D5255E2B7020A3001FF830 /* Search */,
 				48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */,
 				48C726762B6CC311007AF19E /* Subscribe */,
@@ -302,6 +319,7 @@
 		48E0915B2B19FE7100DFE83A /* PodcastClient */ = {
 			isa = PBXGroup;
 			children = (
+				48E0915C2B19FE7100DFE83A /* PodcastClientApp.swift */,
 				48DC0B662B67D2B600A6A0D0 /* Features */,
 				48E091882B1A29D000DFE83A /* Player.swift */,
 				480CF9AD2B5308A600359A7E /* PlayerView.swift */,
@@ -309,7 +327,6 @@
 				48E0918A2B1A2A8000DFE83A /* AdditionalClasses */,
 				484F939A2B4733F600C3E309 /* DataClasses */,
 				48E0918D2B1A589600DFE83A /* Views */,
-				48E0915C2B19FE7100DFE83A /* PodcastClientApp.swift */,
 				48E091902B1A665C00DFE83A /* to be deleted */,
 				48E091622B19FE7400DFE83A /* Assets.xcassets */,
 				48E091672B19FE7400DFE83A /* PodcastClient.entitlements */,
@@ -434,6 +451,7 @@
 			files = (
 				48C043922B2F2E160006C352 /* SettingsView.swift in Sources */,
 				48DC0B5D2B5E996F00A6A0D0 /* PersistanceManager.swift in Sources */,
+				48BF0D152B72579E00EAF0B0 /* LocalNotificationManager.swift in Sources */,
 				48DC0B652B67CA4800A6A0D0 /* Event.swift in Sources */,
 				48C7267A2B6CF067007AF19E /* EpisodeExtension.swift in Sources */,
 				489346EF2B4C316700DF4D82 /* ListofEpisodesView.swift in Sources */,
@@ -442,6 +460,7 @@
 				48E091942B1A70F700DFE83A /* PlayerControlsView.swift in Sources */,
 				48DC0B612B5FA50F00A6A0D0 /* ChapterListView.swift in Sources */,
 				480D43142B208A3200BBB1CD /* DependenciesView.swift in Sources */,
+				48BF0D172B726B0300EAF0B0 /* FyydSearchManager.swift in Sources */,
 				48E091852B1A250100DFE83A /* Episode.swift in Sources */,
 				48E091842B1A250100DFE83A /* Chapter.swift in Sources */,
 				48E0918F2B1A5B0F00DFE83A /* PodcastListView.swift in Sources */,
@@ -461,6 +480,7 @@
 				48E091962B1A743B00DFE83A /* PlaylistView.swift in Sources */,
 				48E091872B1A250100DFE83A /* Podcast.swift in Sources */,
 				480CF9A92B52FD9100359A7E /* SettingsManager.swift in Sources */,
+				48BF0D192B727EC000EAF0B0 /* ArrayExtensions.swift in Sources */,
 				480D431F2B21082700BBB1CD /* PodcastView.swift in Sources */,
 				480CF9AE2B5308A600359A7E /* PlayerView.swift in Sources */,
 				48DC0B5F2B5FA19300A6A0D0 /* PlayerChapterView.swift in Sources */,

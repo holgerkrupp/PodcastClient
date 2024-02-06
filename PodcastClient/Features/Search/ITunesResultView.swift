@@ -13,6 +13,8 @@ struct ITunesResultView: View {
     var subscriptionManager = SubscriptionManager()
     
     var body: some View {
+        
+        
        
             ForEach(iTunesResults, id:\.self){ podcast in
                 iTunesMiniView(podcast: podcast)

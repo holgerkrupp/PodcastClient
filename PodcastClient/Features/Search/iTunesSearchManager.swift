@@ -33,7 +33,6 @@ class iTunesSearchManager {
                     }
 
 
-                    
                     var iTunesFeeds:[ITunesFeed] = []
      
                     

@@ -62,7 +62,7 @@ struct ImageWithData: View {
         
         self.data = data
         self.image = createImage()
-        print("load image from data")
+      //  print("load image from data")
     }
     
     var body: some View {
@@ -77,11 +77,11 @@ struct ImageWithData: View {
     
     func createImage() -> Image {
 #if canImport(UIKit)
-        let songArtwork: UIImage = uiImage()
-        return Image(uiImage: songArtwork)
+        let cover: UIImage = uiImage()
+        return Image(uiImage: cover)
 #elseif canImport(AppKit)
-        let songArtwork: NSImage = NSImage(data: data) ?? NSImage()
-        return Image(nsImage: songArtwork)
+        let cover: NSImage = NSImage(data: data) ?? NSImage()
+        return Image(nsImage: cover)
 #else
         return Image(systemImage: "some_default")
 #endif

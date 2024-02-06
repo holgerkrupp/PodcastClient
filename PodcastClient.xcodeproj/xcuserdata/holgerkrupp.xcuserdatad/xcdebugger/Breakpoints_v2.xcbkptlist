@@ -39,5 +39,53 @@
             stopOnStyle = "0">
          </BreakpointContent>
       </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "F753CDA4-A25B-400E-8917-B4C476E310A8"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "PodcastClient/PodcastClientApp.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "54"
+            endingLineNumber = "54"
+            landmarkName = "scheduleAppRefresh()"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "F753CDA4-A25B-400E-8917-B4C476E310A8 - cb0e975191bab88b"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.PodcastClientApp.scheduleAppRefresh() -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/PodcastClientApp.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "54"
+                  endingLineNumber = "54"
+                  offsetFromSymbolStart = "852">
+               </Location>
+               <Location
+                  uuid = "F753CDA4-A25B-400E-8917-B4C476E310A8 - cb0e975191bab8ec"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "PodcastClient.PodcastClientApp.scheduleAppRefresh() -&gt; ()"
+                  moduleName = "PodcastClient"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/holgerkrupp/Development/PodcastClient/PodcastClient/PodcastClientApp.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "55"
+                  endingLineNumber = "55"
+                  offsetFromSymbolStart = "852">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
    </Breakpoints>
 </Bucket>

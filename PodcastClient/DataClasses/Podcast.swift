@@ -63,6 +63,7 @@ class Podcast: Equatable, Hashable{
     func feedUpdated() async ->Bool?{
         
         lastAttempt = Date()
+
         if let lastRefresh{
             if let serverLastModified = try? await feed?.status()?.lastModified {
                 print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
@@ -159,7 +160,47 @@ class Podcast: Equatable, Hashable{
     
     
     func update(details: [String: Any]) async {
-        print("started update for \(details["title"] as? String ?? "")")
+        
+ 
+        let guids =
+            (details["episodes"] as? [[String:Any]]).map { episodes in
+                episodes.map { episode in
+                     episode["guid"] as? String ??
+                    (episode["enclosure"] as? [[String:Any]])?.first?["url"] as? String
+                }
+            }
+
+        let diff = guids?.difference(from: episodes.map { $0.guid })
+        
+        print("\(diff?.count.description ?? "0") new Episodes")
+
+        if let diff{
+            let newEpisodes = (details["episodes"] as? [[String:Any]])?.filter({ episode in
+                diff.contains(
+                    episode["guid"] as? String ??
+                    (episode["enclosure"] as? [[String:Any]])?.first?["url"] as? String
+                )
+            })
+            dump(newEpisodes)
+            /*
+            let episode = await Episode(details: episodeDetails, podcast: self)
+
+            modelContext?.insert(episode)
+            do{
+                try modelContext?.save()
+                episodes.append(episode)
+                //          print("Episode inserted")
+            }catch{
+                print(error)
+            }
+            */
+            
+        }
+
+        
+        
+        
+        
         /*
          title = details["title"] as? String ?? ""
          subtitle = details["itunes:subtitle"] as? String
@@ -179,37 +220,34 @@ class Podcast: Equatable, Hashable{
          */
         
         
-        print("checking \((details["episodes"] as? [[String:Any]])?.count) episodes")
+      //  print("checking \((details["episodes"] as? [[String:Any]])?.count) episodes")
         
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-            print("check: \(episodeDetails["title"] as? String ?? "")")
+           // print("check: \(episodeDetails["title"] as? String ?? "")")
             
 
             
             if contains(episodeDetails: episodeDetails) == false{
-                print("does not contain: \(episodeDetails["link"] as? String ?? "")")
+             //   print("does not contain: \(episodeDetails["link"] as? String ?? "")")
                 
 
-                
-                
-                
-                let container =  PersistanceManager.shared.sharedModelContainer
-                let context = modelContext ?? ModelContext(container)
-                    let episode = await Episode(details: episodeDetails, podcast: self)
-                    print("created Episode \(episode.title ?? "") for \(self.title)")
+            //    let container =  PersistanceManager.shared.sharedModelContainer
+             //   let context = modelContext ?? ModelContext(container)
+                let episode = await Episode(details: episodeDetails, podcast: self)
+             
                     
                     
-                    context.insert(episode)
+                    modelContext?.insert(episode)
                     do{
-                        try context.save()
+                        try modelContext?.save()
                         episodes.append(episode)
-                        print("Episode inserted")
+              //          print("Episode inserted")
                     }catch{
                         print(error)
                     }
                 
             }else{
-                print("Podcast contains \(episodeDetails["title"] ?? "")")
+     //           print("Podcast contains \(episodeDetails["title"] ?? "")")
             }
             
         }
@@ -218,16 +256,16 @@ class Podcast: Equatable, Hashable{
     }
     
     func contains(episodeDetails: [String: Any]) -> Bool{
-        let testURL = (episodeDetails["enclosure"]as? [[String:Any]])?.first?["url"] as? String
+        let testURL = (episodeDetails["enclosure"] as? [[String:Any]])?.first?["url"] as? String
         
         let guid = episodeDetails["guid"] as? String ?? (episodeDetails["enclosure"] as? [[String:Any]])?.first?["url"] as? String
         
-        print("contains: \(testURL ?? "")")
+     //   print("contains: \(testURL ?? "")")
       //  let first = episodes.first(where: { $0.assetLink == URL(string: testURL ?? "de.holgerkrupp.teststring") })
         
         let first = episodes.first(where: { $0.guid == guid })
 
-        print("\(first?.title ?? "-") contains \(guid ?? "")")
+    //    print("\(first?.title ?? "-") contains \(guid ?? "")")
         
         if (first == nil){
             return false
@@ -244,6 +282,12 @@ class Podcast: Equatable, Hashable{
         isUpdating = true
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = await feedUpdated()
+        
+        do{
+            try modelContext?.save()
+        }catch{
+            print(error)
+        }
         
         if updated != false{ // could be true (feed file updated) or nil (no last modified day)
             do{

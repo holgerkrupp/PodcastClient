@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 class Download: NSObject {
     let url: URL
@@ -162,9 +163,8 @@ extension DownloadManager: FileManagerDelegate {
 
              
             }
-
-            
         }
+
     }
     
     func fileManager(_ fileManager: FileManager, shouldMoveItemAt srcURL: URL, to dstURL: URL) -> Bool {
@@ -193,6 +193,6 @@ extension DownloadManager: FileManagerDelegate {
 extension Podcast {
     var directoryURL: URL {
         URL.documentsDirectory
-            .appending(path: "\(title)", directoryHint: .isDirectory)
+            .appending(path: "\(title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "default")", directoryHint: .isDirectory)
     }
 }

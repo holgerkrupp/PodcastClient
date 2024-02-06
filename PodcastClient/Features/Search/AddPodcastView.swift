@@ -28,6 +28,7 @@ struct AddPodcastView: View {
                     TextField(text: $newFeed) {
                         Text("Search or enter URL")
                     }.disabled(updateing)
+                 
                     
                     Button {
                         updateing = true
@@ -69,10 +70,13 @@ struct AddPodcastView: View {
                 Section{
                     ITunesResultView(iTunesResults: iTunesResults)
                 }
+                
             }
             
             
         }
+      
+        
     }
     
 }

@@ -25,7 +25,6 @@ struct PlaylistView: View {
         let playlist = playListEntries.first?.playlist
         let adjust = SettingsManager.shared.defaultSettings.markAsPlayedAfterSubscribe
       
-        let playTimes: [Double] = playlist?.addPlayTimes() ?? []
   
             //    Text("\(episodes.count) Episodes")
             NavigationStack {
@@ -48,22 +47,7 @@ struct PlaylistView: View {
                                         Label("Remove from list", systemImage: "xmark.circle.fill")
                                     }
                                 }
-                            
-                            let idx = playListEntries.firstIndex(of: item)
-                            
-                            HStack{
-                                Image(systemName: "sum")
-                                Text(playTimes[idx ?? 0].secondsToHoursMinutesSeconds ?? "")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .monospacedDigit()
-                                /*
-                                if adjust == true {
-                                    Text(" \(adjust.description)- \(playbackspeed.description)")
-                                }
-                                 */
-                                Spacer()
-                            }
+  
                             .background(.thinMaterial)
                             
                         }

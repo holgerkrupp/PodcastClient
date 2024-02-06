@@ -46,11 +46,12 @@ import BackgroundTasks
     
     func scheduleAppRefresh() {
         print("went to background will schedule AppRefresh")
-        let request = BGAppRefreshTaskRequest(identifier: "feedRefresh")
+        let request = BGProcessingTaskRequest(identifier: "feedRefresh")
         request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
-        dump(request)
+
         do{
             try BGTaskScheduler.shared.submit(request)
+            
         }catch{
             print(error)
         }

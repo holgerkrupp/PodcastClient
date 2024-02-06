@@ -15,7 +15,7 @@ class Playlist{
     var deleteable:Bool = true // to enable standard lists like "play next queue" or similar that can't be deleted by the user
     var hidden: Bool = false
     var items: [PlaylistEntry]? // we need to ensure that we can create an ordered list. Swiftdata won't ensure that the items are kept in the same order without manually managing that.
-    
+        
    @Transient var ordered:[PlaylistEntry]{
         items?.sorted(by: {$0.order < $1.order}) ?? []
     }
@@ -60,13 +60,27 @@ class Playlist{
             newPosition = (ordered.last?.order ?? 0) + 1
         }
         print("ModelContext same? \(modelContext == episode.modelContext)")
-    
+        
+        
+        if let nE: Episode = modelContext?.model(for: episode.persistentModelID) as? Episode{
+            if let existingItem = items?.first(where: { item in
+                item.episode == nE
+            }){
+                existingItem.order = newPosition
+            }else{
+            let newEntry = PlaylistEntry(episode: nE, order: newPosition)
+            items?.append(newEntry)
+            nE.download()
+        }
+        }
+        
+    /*
         if let existingItem = items?.first(where: { item in
             item.episode == episode
         }){
             existingItem.order = newPosition
         }
-        else if let nE: Episode = PersistanceManager.shared.sharedContext.model(for: episode.persistentModelID) as? Episode{
+        else if let nE: Episode = modelContext?.model(for: episode.persistentModelID) as? Episode{
             print("ModelContext same? \(modelContext == nE.modelContext)")
             let newEntry = PlaylistEntry(episode: nE, order: newPosition)
             items?.append(newEntry)
@@ -74,8 +88,10 @@ class Playlist{
         }else{
             print("could not find Episode in Playlist ModelContext")
         }
-
-        episode.download()
+     
+     episode.download()
+*/
+        
 
 
 

@@ -199,13 +199,13 @@ class Episode: Equatable, Hashable{
     }
     
     func updateDuration() async{
-        print("updating Duration")
-        if let localFile = localFile{
+        print(duration?.formatted())
+        if let localFile = localFile, duration == nil{
             do{
-                
+                print("updating Duration")
                 let duration = try await AVAsset(url: localFile).load(.duration)
                 print (duration.seconds)
-               setDuration(duration)
+                setDuration(duration)
                 
             }catch{
                 print(error)

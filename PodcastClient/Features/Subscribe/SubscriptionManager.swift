@@ -117,7 +117,6 @@ actor SubscriptionManager:NSObject{
         for podcast in podcasts.sorted(by: { lhs, rhs in
             lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
         }){
-            
                 await podcast.refresh()
             }
         

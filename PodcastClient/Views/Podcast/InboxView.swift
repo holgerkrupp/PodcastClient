@@ -22,7 +22,6 @@ struct InboxView: View {
 
             NavigationStack {
                 List{
-                    
                     ForEach(episodes.filter({$0.playlists?.count ?? 0 < 1}), id:\.self) { episode in
                             EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
                                 .modelContext(modelContext)
@@ -45,9 +44,6 @@ struct InboxView: View {
                                         withAnimation{
                                             PlaylistManager.shared.playnext.add(episode: episode, to: .front)
                                         }
-                                    
-                                        
-                                        
                                     } label: {
                                         Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
                                     }
@@ -59,17 +55,13 @@ struct InboxView: View {
                                         Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
                                     }
                                 }
-                            
-
-                            
-                        
                     }
                 }
+                .refreshable {
+                    await SubscriptionManager().refreshall()
+                }
             }
-            
-        
     }
-
 }
 
 

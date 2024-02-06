@@ -188,6 +188,7 @@ import SwiftData
     func setCurrentEpisode(episode: Episode, playDirectly: Bool = true){
         currentEpisode = episode
         currentPlaylist.add(episode: episode, to: .front)
+        
         if let asset = currentEpisode?.avAsset{
             let playerItem = AVPlayerItem(asset: asset)
             avplayer.replaceCurrentItem(with: playerItem)
