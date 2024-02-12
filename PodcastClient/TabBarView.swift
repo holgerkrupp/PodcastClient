@@ -41,7 +41,8 @@ struct TabBarView: View {
                     }
                 
                
-                PodcastListView(modelContext: modelContext)
+                LibraryView()
+                    .modelContext(modelContext)
                     .tag(Tab.podcastlist)
                     .tabItem {
                         Label("Podcasts", systemImage: "list.bullet")
@@ -99,7 +100,6 @@ struct TabBarView: View {
         }.ignoresSafeArea()
         if Player.shared.currentEpisode != nil{
             PlayerControlsView(miniPlayerHeight: $miniplayerHeight, maxPlayerHeight: maxPlayerHeight, minPlayerHeight: minPlayerHeight)
-                .environment(Player.shared)
                 .frame(height: miniplayerHeight)
         }
 

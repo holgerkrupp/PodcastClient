@@ -33,7 +33,7 @@ struct PlaylistView: View {
                     ForEach(playListEntries.filter({$0.episode != nil}), id:\.self) { item in
                         let episodeSpeed = item.episode?.podcast?.settings?.playbackSpeed ?? SettingsManager.shared.defaultSettings.playbackSpeed
                         VStack{
-                            EpisodeMiniView(model: EpisodeListItemModel(episode: item.episode!))
+                            EpisodeMiniView(episode: item.episode!)
                                 .modelContext(modelContext)
                                 .swipeActions(edge: .trailing){
                                     Button(role: .destructive) {

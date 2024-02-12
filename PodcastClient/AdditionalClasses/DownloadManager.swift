@@ -151,17 +151,18 @@ extension DownloadManager: FileManagerDelegate {
                 try filemanager.createDirectory(at: newlocation.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try filemanager.moveItem(at: url, to: newlocation)
                 
-                episode.isAvailableLocally = true
-                episode.downloadStatus.isDownloading = false
-               
-                Task{
-                    await episode.postProcessingAfterDownload()
-                }
+
             }catch{
                 print(error)
                 episode.downloadStatus.isDownloading = false
 
              
+            }
+            episode.isAvailableLocally = true
+            episode.downloadStatus.isDownloading = false
+            
+            Task{
+                await episode.postProcessingAfterDownload()
             }
         }
 
@@ -169,6 +170,7 @@ extension DownloadManager: FileManagerDelegate {
     
     func fileManager(_ fileManager: FileManager, shouldMoveItemAt srcURL: URL, to dstURL: URL) -> Bool {
         if fileManager.fileExists(atPath: dstURL.path()){
+            print("shouldMoveItemAt")
             do{
                 try fileManager.removeItem(at: dstURL)
             }catch{
@@ -180,6 +182,8 @@ extension DownloadManager: FileManagerDelegate {
     }
     
     func fileManager(_ fileManager: FileManager, shouldProceedAfterError error: Error, movingItemAt srcURL: URL, to dstURL: URL) -> Bool {
+        print("shouldProceedAfterError")
+        print(error)
         return true
     }
 

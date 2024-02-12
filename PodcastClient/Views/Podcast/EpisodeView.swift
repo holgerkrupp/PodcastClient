@@ -14,20 +14,10 @@ struct EpisodeView: View {
     private let coverSize:CGFloat = 100
 
     @Environment(\.modelContext) var modelContext
-    @Query var episodes: [Episode]
-    var episode: Episode? { episodes.first}
+
+    var episode: Episode?
     
-    
-    
-    init(for episodeID: PersistentIdentifier) {
-        
-     
-        
-        self._episodes = Query(filter: #Predicate<Episode> {
-            $0.persistentModelID == episodeID
-        })
-        
-    }
+   
     
     
     var body: some View {
@@ -62,7 +52,7 @@ struct EpisodeView: View {
                             
                             VStack{
                                 Text(episode.pubDate?.formatted() ?? "").font(.caption)
-                                Spacer()
+                              
                                 if let count = episode.events?.filter({$0.type == .skip}).count, count > 0{
                                     Text("\(count) Skips detected")
                                 }
@@ -77,7 +67,7 @@ struct EpisodeView: View {
                         Spacer()
                         EpisodeControlView(episode: episode)
                         
-                        let desciption = episode.content ?? episode.desc ?? ""
+                        let desciption = episode.decodedContent ?? episode.content ?? episode.desc ?? ""
                         
 
                             
@@ -87,15 +77,6 @@ struct EpisodeView: View {
                                 .foregroundColor(.primary)
                                 .font(.body)
                         
-                        
-                        
-                        
-
-
-     
-                        
-                    
-                    
                     
                 }
                 
@@ -125,14 +106,14 @@ struct EpisodeMiniView: View {
     
     var formatStyle = Date.RelativeFormatStyle()
  
-    var model: EpisodeListItemModel
-    
+   // var model: EpisodeListItemModel
+    var episode: Episode
     
     
     var body: some View {
         NavigationLink {
             
-            EpisodeView(for: model.episode.persistentModelID)
+            EpisodeView(episode: episode)
                 .modelContext(modelContext)
            
         }label:{
@@ -140,27 +121,27 @@ struct EpisodeMiniView: View {
                 HStack{
                     VStack{
                         Spacer()
-                        if model.episode.finishedPlaying == true{
+                        if episode.finishedPlaying == true{
                             Image(systemName: "checkmark.circle")
                         }else{
                             Image(systemName: "circle")
                         }
                         Spacer()
-                        EpisodeStatusIcon(episode: model.episode)
+                        EpisodeStatusIcon(episode: episode)
                         Spacer()
                     }
                     
-                    if let data = model.episode.cover{
+                    if let data = episode.cover{
                         ImageWithData(data)
                             .scaledToFit()
                             .frame(width: 50, height: 50)
 
-                    }else if let imageULR = model.episode.image{
+                    }else if let imageULR = episode.image{
                         ImageWithURL(imageULR)
                             .scaledToFit()
                             .frame(width: 50, height: 50)
                         
-                    }else if let imageULR = model.episode.podcast?.coverURL{
+                    }else if let imageULR = episode.podcast?.coverURL{
                         ImageWithURL(imageULR)
                             .scaledToFit()
                             .frame(width: 50, height: 50)
@@ -172,12 +153,12 @@ struct EpisodeMiniView: View {
                     
                     VStack(alignment: .leading){
                         Spacer()
-                        Text(model.episode.title ?? "")
+                        Text(episode.title ?? "")
                         Spacer()
                         HStack{
-                            Text(model.episode.pubDate?.formatted(formatStyle) ?? "--")
+                            Text(episode.pubDate?.formatted(formatStyle) ?? "--")
                             Spacer()
-                            Text(model.episode.duration?.secondsToHoursMinutesSeconds ?? "")
+                            Text(episode.duration?.secondsToHoursMinutesSeconds ?? "")
                                 .monospacedDigit()
                         }
                         .font(.caption)
@@ -191,15 +172,15 @@ struct EpisodeMiniView: View {
                         
                     }
                 }
-                if let desc = model.episode.desc{
+                if let desc = episode.desc{
                     Spacer()
                     Text(desc)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
-                if model.episode.playPosition > 0.0{
-                    EpisodePlayProgressView(episode: model.episode)
+                if episode.playPosition > 0.0{
+                    EpisodePlayProgressView(episode: episode)
                         .frame(maxWidth: .infinity, maxHeight: 30)
                 }
                 

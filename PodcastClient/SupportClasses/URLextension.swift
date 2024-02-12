@@ -60,6 +60,30 @@ extension URL{
     return nil
     }
        
-
+    func feedData() async -> Data?{
+        
+        let session = URLSession.shared
+        
+        var request = URLRequest(url: self)
+        if let appName = Bundle.main.applicationName{
+            request.setValue(appName, forHTTPHeaderField: "User-Agent")
+        }
+        do{
+            let (data, response) = try await session.data(for: request)
+            switch (response as? HTTPURLResponse)?.statusCode {
+            case 200:
+                return data
+            case .none:
+                return nil
+                
+            case .some(_):
+                return nil
+                
+            }
+        }catch{
+            print(error)
+            return nil
+        }
+    }
     
 }

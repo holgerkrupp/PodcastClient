@@ -11,6 +11,9 @@ import SwiftData
 struct PodcastView: View {
     
     @Environment(\.modelContext) var modelContext
+    var subscriptionManager = SubscriptionManager()
+    var podcast: Podcast
+    /*
     @Query var podcasts: [Podcast]
     var podcast: Podcast? { podcasts.first}
     var subscriptionManager = SubscriptionManager()
@@ -25,10 +28,10 @@ struct PodcastView: View {
         })
         
     }
-    
+    */
     var body: some View {
         List{
-            if let podcast{
+          //  if let podcast{
                 Menu{
                     PodcastMetaDataView(podcast: podcast)
                 }label:{
@@ -159,10 +162,10 @@ struct PodcastView: View {
                 }
                 
                 
-            }
+           // }
                 
             }.listStyle(.plain)
-                .navigationTitle(Text(podcast?.title ?? ""))
+                .navigationTitle(Text(podcast.title ?? ""))
             
             
             

@@ -42,8 +42,8 @@ struct PodcastListView: View {
                     }, id:\.self) { podcast in
                             NavigationLink {
                                 
-                  
-                                PodcastView(for: podcast.persistentModelID)
+                                PodcastView(podcast: podcast)
+                           //     PodcastView(for: podcast.persistentModelID)
                                     .modelContext(modelContext)
                     
                             }label:{

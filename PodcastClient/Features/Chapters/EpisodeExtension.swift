@@ -73,7 +73,7 @@ extension Episode{
     
     
     //MARK: Create Chapters from Episode Description
-    func createChapters(from text: String) -> [Chapter]{
+    @MainActor func createChapters(from text: String) -> [Chapter]{
         print("extracting Chapters from Shownotes")
         let extractedData = extractTimeCodesAndTitles(from: text)
         var newchapters:[Chapter] = []
@@ -112,10 +112,13 @@ extension Episode{
      return result
      }
      */
-    func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String] {
+    @MainActor func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String] {
         var result = [String: String]()
         
-        let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|</p>|<!--.*?-->|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+     //   let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|</p>|<!--.*?-->|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+    //    let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+        let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|<br />|</p>|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+
         let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: htmlEncodedText.utf16.count))
         
         for match in matches {

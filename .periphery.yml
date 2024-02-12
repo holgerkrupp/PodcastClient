@@ -1,0 +1,6 @@
+project: PodcastClient.xcodeproj
+retain_objc_accessible: true
+schemes:
+- PodcastClient
+targets:
+- PodcastClient

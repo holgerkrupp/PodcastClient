@@ -167,7 +167,7 @@ actor SubscriptionManager:NSObject{
     func subscribe(to url: URL) async -> Bool{
         
         if !contains(url: url){
-            if let data = await feedData(for: url){
+            if let data = await url.feedData(){
                 let podcastParser = PodcastParser()
                 let parser = XMLParser(data: data)
                 parser.shouldProcessNamespaces = true
@@ -254,37 +254,6 @@ actor SubscriptionManager:NSObject{
             
         }
     }
-    
-    
-    
-    func feedData(for url: URL) async -> Data?{
-      
-            let session = URLSession.shared
-        
-            var request = URLRequest(url: url)
-            if let appName = Bundle.main.applicationName{
-                request.setValue(appName, forHTTPHeaderField: "User-Agent")
-            }
-            do{
-                let (data, response) = try await session.data(for: request)
-                switch (response as? HTTPURLResponse)?.statusCode {
-                case 200:
-                    return data
-                case .none:
-                    return nil
-                    
-                case .some(_):
-                    return nil
-                    
-                }
-            }catch{
-                print(error)
-                return nil
-            }
-        }
-        
-    
-
     
 
 }

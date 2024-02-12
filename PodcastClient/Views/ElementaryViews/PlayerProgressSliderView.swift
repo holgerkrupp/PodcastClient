@@ -28,7 +28,7 @@ struct PlayerProgressSliderView: View {
             
             let scaleFactor = (maxValue - minValue) / (sliderRange.upperBound - sliderRange.lowerBound)
             let lower = sliderRange.lowerBound
-            let sliderVal = (self.value - lower) * scaleFactor + minValue
+            let sliderVal = abs((self.value - lower) * scaleFactor + minValue)
             
             ZStack {
                 Rectangle()

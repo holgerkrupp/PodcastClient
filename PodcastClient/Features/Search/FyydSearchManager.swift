@@ -25,6 +25,62 @@ class FyydSearchManager{
         
     }
     
+    func search(for term: String, endpoint: Endpoints = .podcasts) async -> [FyydFeed]?{
+        if term != "" {
+            
+            if let requestURL = endpoint.url{
+                
+                print(requestURL)
+                
+                var request = URLRequest(url: requestURL)
+                let session = URLSession.shared
+                
+                let decoder = JSONDecoder()
+                do {
+                    let (responseData, _) = try await session.data(for: request)
+                    dump(responseData)
+                    
+                    
+                    guard let json = try JSONSerialization.jsonObject(with: responseData , options: []) as? [String: Any] else {
+                        // appropriate error handling
+                        return nil
+                    }
+                    
+                    
+                    var FyydFeeds:[FyydFeed] = []
+                    
+                    
+                    if let podcasts = json["results"] as? [[String: Any]]{
+                        
+                        for podcast in podcasts {
+                            dump(podcast)
+                            var newFeed = FyydFeed()
+                            newFeed.artist = podcast["artistName"] as? String
+                            newFeed.title = podcast["collectionName"] as? String
+                            newFeed.url = URL(string: podcast["feedUrl"]  as? String ?? "")
+                            newFeed.coverURL = URL(string: podcast["artworkUrl100"] as? String ?? "")
+                            
+                            newFeed.lastRelease = ISO8601DateFormatter().date(from: (podcast["releaseDate"] as? String ?? ""))
+                            FyydFeeds.append(newFeed)
+                        }
+                        
+                        return FyydFeeds
+                    }
+                    
+                    
+                    return nil
+                }catch{
+                    print(error)
+                    return nil
+                    
+                }
+            }
+            
+        }
+        return nil
+    }
+    
+    
 }
 
 

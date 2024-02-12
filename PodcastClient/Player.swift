@@ -15,32 +15,7 @@ import SwiftData
 @Observable class Player: NSObject{
     
     
-    struct Sleeptimer{
-        enum SleeptimerType{
-            case time, episode
-        }
-        var activated:Bool = false{
-            didSet{
-                if activated == true{
-                    start = Date()
-                }else{
-                    start = nil
-                }
-            }
-        }
-        var minutes:Double = 5
-        var secondsLeft:Double?{
-            end?.timeIntervalSince(Date())
-        }
-        var type:SleeptimerType = .time
-        var start: Date? = nil
-        var end:Date? {
-            start?.addingTimeInterval(60*minutes)
-        }
-        var lastFinish:Date?
-        
- 
-    }
+
     
     var avplayer = AVPlayer()
     private let session = AVAudioSession.sharedInstance()
@@ -50,14 +25,21 @@ import SwiftData
     let playcenter = MPNowPlayingInfoCenter.default()
 
     
-    var sleeptimer = Sleeptimer()
+    var sleeptimer = SleepTimer()
 
     var isPlaying:Bool{
         return avplayer.isPlaying
     }
     
     var rate:Float{
-        avplayer.rate
+        get{
+            settings.playbackSpeed
+        }
+        set{
+            avplayer.rate = newValue
+            settings.playbackSpeed = newValue
+        }
+       
     }
     var currentPlaylist: Playlist = PlaylistManager.shared.playnext
     var settings:PodcastSettings = SettingsManager.shared.defaultSettings
@@ -96,7 +78,7 @@ import SwiftData
     
     var chapterRemaining: Double?
     var chapterProgress: Double?
-    
+
     var coverImage: some View{
         if let playing = currentEpisode{
             return AnyView(playing.coverImage)
@@ -188,6 +170,7 @@ import SwiftData
     func setCurrentEpisode(episode: Episode, playDirectly: Bool = true){
         currentEpisode = episode
         currentPlaylist.add(episode: episode, to: .front)
+        print("current Episode Duration: \(currentEpisode?.duration?.description)")
         
         if let asset = currentEpisode?.avAsset{
             let playerItem = AVPlayerItem(asset: asset)
@@ -196,17 +179,19 @@ import SwiftData
             
             settings = currentEpisode?.podcast?.settings ?? SettingsManager.shared.defaultSettings
             self.observer = playerItem.observe(\.status, options:  [.new, .old], changeHandler: { (playerItem, change) in
+                
+            
+                
                 if playerItem.status == .readyToPlay {
+                    print("playerItem Duration: \(playerItem.duration)")
+
                     if playerItem.duration.isValid{
-                        self.currentEpisode?.setDuration(playerItem.duration)
+                //        self.currentEpisode?.setDuration(playerItem.duration)
                     }
                     
                     
                 }
             })
-            
-            
-            
             
             NotificationCenter.default
                 .addObserver(self,
@@ -241,6 +226,7 @@ import SwiftData
         
         if let oldEpisode = currentPlaylist.ordered.first?.episode{
             setCurrentEpisode(episode: oldEpisode, playDirectly: false)
+            
         }
 
         do{
@@ -301,25 +287,20 @@ import SwiftData
             
         }else{
           
-            avplayer.rate = settings.playbackSpeed
+            
             play()
-
+           
         }
         
     }
     
     func play(){
         
-        if let sleetTimerJustFinished = sleeptimer.lastFinish?.addingTimeInterval(settings.sleepTimerDurationToReactivate * 60), sleetTimerJustFinished >= Date(){
-            // Sleeptime just finished, but if the user presses play again, we reactivate the sleeptimer and add some more time
-            print("reactivate SleepTimer")
-            sleeptimer.minutes = settings.sleepTimerAddMinutes
-            sleeptimer.activated.toggle()
-            
-            
-        }
-        
         avplayer.play()
+        avplayer.rate = settings.playbackSpeed
+        sleeptimer.reactivate()
+        
+
     }
     
     func pause(){

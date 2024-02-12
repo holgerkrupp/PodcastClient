@@ -127,6 +127,19 @@ struct PodcastSettingsView: View {
                     Text("Play button reactivates sleep timer during \(settings.sleepTimerDurationToReactivate.formatted()) minutes after stopping playing.")
                 }
 
+                Toggle("Voice Feedback when sleep timer is extended", isOn: $settings.sleepTimerVoiceFeedbackEnabled)
+            
+                TextField("Sleep Timer Voice Feedback Text", text: $settings.sleepTimerText)
+                    .disabled(!settings.sleepTimerVoiceFeedbackEnabled)
+                
+                Button {
+                    SleepTimer().speak()
+                } label: {
+                    Text("Test Sleep Timer Voice Feedback")
+                }
+                .disabled(!settings.sleepTimerVoiceFeedbackEnabled)
+
+
                 
                 
             } header: {

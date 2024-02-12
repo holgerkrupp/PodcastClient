@@ -17,8 +17,8 @@ struct PlayerControlsView: View {
     var minPlayerHeight:CGFloat
     
   //  @State var player = Player.shared
-    @Environment(Player.self) private var player
-    
+     var player = Player.shared
+
     
     var body: some View {
 

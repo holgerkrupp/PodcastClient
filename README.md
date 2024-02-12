@@ -39,7 +39,7 @@ An Open Source Podcast client.
 
 
 ### Refresh and Downloads
-- [ ] auto download/refresh feeds
+- [x] auto download/refresh feeds
 
 ### Player
 - [x] skip manually selected chapters
@@ -85,7 +85,7 @@ An Open Source Podcast client.
 
 
 ##1.x requirements
-- [ ] Transkripts
+- [x] Transkripts
 - [ ] Apple Watch App
 - [ ] remove tracking information from URLs
 

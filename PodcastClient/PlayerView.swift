@@ -12,14 +12,40 @@ struct PlayerView: View {
    @State var player = Player.shared
     @State var showSpeedSetting:Bool = false
     @State var showSleeptimerSetting:Bool = false
+    @State private var currentTime: Double = 0
+    @State private var showTranscripts: Bool = false
+
 
     
     var body: some View {
 
             VStack{
-                
-                player.coverImage
-                    .scaledToFit()
+                ZStack(alignment: .top){
+                    Color.clear  // <- this is a stupid hack to macke the ZStack align the image on the top. if anyone from apple reads this: WHY ?????????
+                    
+                    
+                    player.coverImage
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .onTapGesture(perform: {
+                            showTranscripts.toggle()
+                        })
+                        
+
+                }
+                .frame(height: UIScreen.main.bounds.width) // Set height to match the width
+                .overlay(alignment: .bottom) {
+                    if let vttFileContent = player.currentEpisode?.transcriptData, player.playPosition.isNormal, showTranscripts{
+                        
+                        TranscriptScrollView(vttContent: vttFileContent, currentTime: $player.playPosition)
+                          //  .background(.thinMaterial)
+                            .frame(maxWidth: .infinity)
+                        
+                    }
+                }
+
+               
+
                             
                 
                     Text(player.currentEpisode?.title ?? "Here could be your Podcast Title")
@@ -114,7 +140,7 @@ struct PlayerView: View {
                     .sheet(isPresented: $showSpeedSetting, content: {
                         VStack{
                             Text("Adjust Playback Speed")
-                            Stepper(value: $player.settings.playbackSpeed, in: 0.1...3.0, step: 0.1) {
+                            Stepper(value: $player.rate, in: 0.1...3.0, step: 0.1) {
                                 Text("\(player.settings.playbackSpeed.formatted())x")
                             }
                             .padding()
@@ -122,9 +148,7 @@ struct PlayerView: View {
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.thinMaterial)
                         .presentationDetents([.fraction(0.2)])
-                        .presentationCompactAdaptation(
-                            horizontal: .popover,
-                            vertical: .sheet)
+                      
                     })
                     
                     
@@ -200,9 +224,7 @@ struct PlayerView: View {
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.thinMaterial)
                         .presentationDetents([.fraction(0.2)])
-                        .presentationCompactAdaptation(
-                            horizontal: .popover,
-                            vertical: .sheet)
+                      
                     })
                     
                     

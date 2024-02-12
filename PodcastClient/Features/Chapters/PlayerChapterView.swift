@@ -36,6 +36,7 @@ struct PlayerChapterView: View {
                     } label: {
                        
                             Text(player.currentChapter?.title ?? "")
+                            .foregroundStyle(Color.primary)
                           
                     }
                     .sheet(isPresented: $presentingModal, content: {
@@ -63,7 +64,7 @@ struct PlayerChapterView: View {
                     .frame(width: 50)
             }
             .frame(maxWidth: .infinity, maxHeight: 40)
-            .background(.ultraThinMaterial)
+         //   .background(.ultraThinMaterial)
 
         }
     }

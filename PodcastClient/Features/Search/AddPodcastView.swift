@@ -28,24 +28,13 @@ struct AddPodcastView: View {
                     TextField(text: $newFeed) {
                         Text("Search or enter URL")
                     }.disabled(updateing)
+                        .onSubmit {
+                            search()
+                        }
                  
                     
                     Button {
-                        updateing = true
-                        if let feed, newFeed.isValidURL {
-                            Task{
-                                let finished = await subscriptionManager.subscribe(to: feed)
-                                if finished == true{
-                                    newFeed = ""
-                                }
-                                updateing = false
-                            }
-                        }else{
-                            Task{
-                                iTunesResults = await iTunesSearchManager().search(for: newFeed)
-                                updateing = false
-                            }
-                        }
+                        search()
                         
                     } label: {
                         if updateing{
@@ -68,7 +57,7 @@ struct AddPodcastView: View {
             
             if let iTunesResults{
                 Section{
-                    ITunesResultView(iTunesResults: iTunesResults)
+                    ITunesResultView(iTunesResults: iTunesResults).id(UUID())
                 }
                 
             }
@@ -77,6 +66,25 @@ struct AddPodcastView: View {
         }
       
         
+    }
+    
+    func search(){
+        updateing = true
+        if let feed, newFeed.isValidURL {
+            Task{
+                let finished = await subscriptionManager.subscribe(to: feed)
+                if finished == true{
+                    newFeed = ""
+                }
+                updateing = false
+            }
+        }else{
+            Task{
+                iTunesResults = nil
+                iTunesResults = await iTunesSearchManager().search(for: newFeed)
+                updateing = false
+            }
+        }
     }
     
 }

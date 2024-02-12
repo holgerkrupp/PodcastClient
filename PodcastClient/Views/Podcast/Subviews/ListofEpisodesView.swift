@@ -16,7 +16,7 @@ struct ListofEpisodesView: View {
     var body: some View {
         ForEach(episodes, id:\.self) { episode in
             
-            EpisodeMiniView(model: EpisodeListItemModel(episode: episode))
+            EpisodeMiniView(episode: episode)
                 .modelContext(modelContext)
                 .swipeActions(edge: .trailing){
                     Button(role: .destructive) {

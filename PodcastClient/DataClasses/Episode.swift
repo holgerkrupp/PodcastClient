@@ -46,8 +46,9 @@ class Episode: Equatable, Hashable{
     var assetType: String?
     var assetLink: URL? // the original URL of the asset
     var length: Int?
-    var transcriptURL: [URL]?
-    var transcripts:[Transcript]?
+   
+    var transcripts:[Transcript] = []
+    var transcriptData:String?
     
     @Relationship(deleteRule: .cascade, inverse: \Chapter.episode)  var chapters: [Chapter]?
     var playlists: [PlaylistEntry]? = []
@@ -79,11 +80,11 @@ class Episode: Equatable, Hashable{
     
   
     
-    @Transient var localFile: URL?{
+    @Transient lazy var localFile: URL? = {
         let fileName = assetLink?.lastPathComponent ?? title ?? pubDate?.ISO8601Format() ?? Date().ISO8601Format()
         let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         return documentsDirectoryUrl?.appendingPathComponent(fileName).standardizedFileURL
-    }
+    }()
     
     func UpdateisAvailableLocally() -> Bool?{
         
@@ -99,7 +100,7 @@ class Episode: Equatable, Hashable{
     
  
     
-    @Transient var avAsset:AVAsset?{
+    @Transient lazy var avAsset:AVAsset? = {
         print("avAsset read - \(localFile?.absoluteString) - \(isAvailableLocally)")
         if let url = localFile, isAvailableLocally{
             return AVAsset(url: url)
@@ -110,12 +111,15 @@ class Episode: Equatable, Hashable{
             }
         }
         return nil
-    }
+    }()
     
     
+    @Transient private lazy var downloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        return URLSession(configuration: configuration, delegate: nil, delegateQueue: .main)
+    }()
     
-    
-    @Transient var coverImage: some View{
+    @Transient lazy var coverImage: some View = {
         
         if let imageURL = image{
             return AnyView(ImageWithURL(imageURL))
@@ -125,10 +129,10 @@ class Episode: Equatable, Hashable{
             return AnyView(Image(systemName: "mic.fill"))
         }
          
-    }
+    }()
     
     
-    @Transient var uiimage: UIImage{
+    @Transient lazy var uiimage: UIImage = {
     
         if let cover{
             return ImageWithData(cover).uiImage()
@@ -137,12 +141,12 @@ class Episode: Equatable, Hashable{
         }else{
             return UIImage(systemName: "photo") ?? UIImage()
         }
-    }
+    }()
     
   
 
     
-    @Transient var progress:Double {
+    @Transient  var progress:Double {
         if let duration{
             return ((playPosition) / duration)
         }
@@ -174,14 +178,13 @@ class Episode: Equatable, Hashable{
         let extractedChapterCount = chapters?.filter({ $0.type == .extracted }).count ?? 0
         if extractedChapterCount == 0{
             if let sourceText = content ?? desc{
-                chapters =  createChapters(from: sourceText)
+                let sourceChapters =  await createChapters(from: sourceText)
+                chapters?.append(contentsOf: sourceChapters)
             }
         }
         
         if let chapters, chapters.count > 0{
 
-            
-            
             var chapterGrouped = Dictionary(grouping: chapters, by: { $0.type })
             
             for group in chapterGrouped{
@@ -195,20 +198,29 @@ class Episode: Equatable, Hashable{
             
             
         }
-        
+        do{
+            try modelContext?.save()
+        }catch{
+            print(error)
+        }
     }
     
     func updateDuration() async{
-        print(duration?.formatted())
-        if let localFile = localFile, duration == nil{
-            do{
-                print("updating Duration")
-                let duration = try await AVAsset(url: localFile).load(.duration)
-                print (duration.seconds)
-                setDuration(duration)
-                
-            }catch{
-                print(error)
+        print("updateDuration()")
+        print("pre-update \(duration?.formatted() ?? "")")
+        if duration == nil{
+            if let localFile = localFile{
+                do{
+                    print("updating Duration")
+                    let duration = try await AVAsset(url: localFile).load(.duration)
+                    print("post-update from file \(duration.seconds)")
+                    setDuration(duration)
+                    
+                }catch{
+                    print(error)
+                }
+            }else{
+                print("no local file")
             }
         }
     }
@@ -219,6 +231,9 @@ class Episode: Equatable, Hashable{
         
         if !seconds.isNaN{
             self.duration = seconds
+            print("new Duration: \(self.duration?.description ?? "nil")")
+        }else{
+            print("seconds NaN")
         }
          
     }
@@ -231,14 +246,33 @@ class Episode: Equatable, Hashable{
     
     func download(){
         print("episode download")
+        
         Task{
             do{
                 try await DownloadManager.shared.download(self)
             }catch{
                 print(error)
             }
+            await downloadTranscript()
         }
         
+        
+    }
+    
+    func downloadTranscript() async{
+        print("downloading Transcript")
+ 
+        if let vttFileString = transcripts.first(where: {$0.type == "text/vtt"})?.url{
+            if let vttURL = URL(string: vttFileString){
+                
+                if let vttData = try? await URLSession(configuration: .default).data(from: vttURL){
+              
+                    print("vttfile from \(vttURL.description)")
+                    transcriptData = String(decoding: vttData.0, as: UTF8.self)
+                }
+            }
+
+        }
     }
     
     func removeFile(){
@@ -255,6 +289,9 @@ class Episode: Equatable, Hashable{
 
     //MARK: INIT
     init(details: [String: Any], podcast:Podcast?) async {
+        
+      
+        
         guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
         subtitle = details["itunes:subtitle"] as? String
@@ -262,11 +299,11 @@ class Episode: Equatable, Hashable{
         desc = details["description"] as? String
         
         content = details["content"] as? String
-     /*
+     
         if let content{
-            decodedContent = content.decodeHTML()
+            decodedContent = await content.decodeHTML()
         }
-       */
+       
         duration = (details["itunes:duration"] as? String)?.durationAsSeconds
 
         link = URL(string: details["link"] as? String ?? "")
@@ -293,7 +330,8 @@ class Episode: Equatable, Hashable{
         }
         
         for transcript in details["transcripts"] as? [Transcript] ?? []{
-            transcripts?.append(transcript)
+            
+            transcripts.append(transcript)
         }
 
         if let psc = details["psc:chapters"] as? [[String:Any]]{

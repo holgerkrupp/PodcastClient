@@ -25,20 +25,31 @@ class PodcastSettings {
     var skipForward:SkipSteps = SkipSteps.thirty
     var skipBack: SkipSteps = SkipSteps.fifteen
     
+    
+    
+    
     // Secret Settings that should only be applied on global way:
     var markAsPlayedAfterSubscribe: Bool = true
     var playSumAdjustedbyPlayspeed: Bool = false
     
     var sleepTimerAddMinutes: Double = 10 // 10 minutes
-    var sleepTimerDurationToReactivate: Double = 5 // 5 minutes * 60 seconds
+    var sleepTimerDurationToReactivate: Double = 300 // 5 minutes * 60 seconds
+    var sleepTimerVoiceFeedbackEnabled: Bool = true
+    var sleepTimerText: String = "Sleep Timer extended"
+    var sleepTimerVoice: String = "com.apple.speech.voice.Alex"
+    
+    var voices: [String:[String:String]]?
     
     var podcast:Podcast?
+    
+    
     
     init(){}
     
     init(podcast: Podcast){
         title = podcast.title
         self.podcast = podcast
+      //  self.voices = SleepTimer().listOfVoices()
     }
 }
 

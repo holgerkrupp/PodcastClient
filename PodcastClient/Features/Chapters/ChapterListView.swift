@@ -14,7 +14,7 @@ struct ChapterListView: View {
         ScrollView{
             ForEach($chapters.sorted(by: {$0.start.wrappedValue ?? 0 < $1.start.wrappedValue ?? 1})){ chapter in
           
-                  //  Text(chapter.wrappedValue.type.rawValue).foregroundStyle(.secondary)
+                    Text(chapter.wrappedValue.type.rawValue).foregroundStyle(.secondary)
                     
                     HStack(alignment: .center){
                         Button {

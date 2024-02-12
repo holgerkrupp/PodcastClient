@@ -13,12 +13,13 @@ struct SkipNextView: View {
     
     var body: some View {
         ZStack {
-            Rectangle()
+         /*   Rectangle()
                 .stroke(
                     Color.secondary,
                     lineWidth: 3
                 )
-            Rectangle()
+          */
+          Rectangle()
             // 2
                 .trim(from: 0, to: progress)
                 .stroke(
@@ -47,13 +48,14 @@ struct SkipBackView: View {
 
     
     var body: some View {
+       
         ZStack {
-            Rectangle()
+            /*            Rectangle()
                 .stroke(
                     Color.secondary,
                     lineWidth: 3
                 )
-
+*/
 
             Image(systemName: "chevron.left")
                 .resizable()

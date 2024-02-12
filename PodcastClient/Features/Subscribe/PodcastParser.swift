@@ -96,16 +96,16 @@ class PodcastParser:NSObject, XMLParserDelegate{
         if currentElement == "psc:chapters"{
             chapterArray.removeAll()
         }
-        
+        /*
         if currentElement == "podcast:transcript"{
             if let url = attributeDict["url"] , let type = attributeDict["type"]{
                 let newTranscript = Transcript(url: url, type: type, source: "feed")
                 transcriptArray.append(newTranscript)
-              //  transcriptArray.append(url)
+            
             }
             
         }
-        
+        */
         if currentDepth > 3, currentElements[2] == "image"{
             tempDict.updateValue(currentValue, forKey: currentElement)
         }
@@ -139,6 +139,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     case "psc:chapter": chapterArray.append(attributeDict)
                     case "enclosure": enclosureArray.append(attributeDict)
                     case "itunes:image": currentValue = attributeDict["href"] ?? ""
+                    case "podcast:transcript":
+                        if let url = attributeDict["url"] , let type = attributeDict["type"]{
+                            let newTranscript = Transcript(url: url, type: type, source: "feed")
+                            transcriptArray.append(newTranscript)
+                        }
                     default:
                         break
                     }
@@ -186,7 +191,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 case "item":
                     //PodcastEpisode finished
                     //   isHeader = true // go back to header Level
-                    
+                    episodeDict.updateValue(transcriptArray, forKey: "transcripts")
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
                     transcriptArray.removeAll()
@@ -199,9 +204,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     episodeDict.updateValue(currentValue, forKey: "content")
                 case "enclosure":
                     episodeDict.updateValue(enclosureArray, forKey: currentElement)
-              
-                case "podcast:transcript":
-                    episodeDict.updateValue(transcriptArray, forKey: "transcripts")
+
                 default:
                     // add the value of the current Element to the Episode
                     episodeDict.updateValue(currentValue, forKey: currentElement)

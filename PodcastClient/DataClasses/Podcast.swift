@@ -54,7 +54,7 @@ class Podcast: Equatable, Hashable{
     func feedData() async -> Data?{
         guard let feed else {  return nil }
         
-        return await SubscriptionManager().feedData(for: feed)
+        return await feed.feedData()
 
     }
     
@@ -62,13 +62,12 @@ class Podcast: Equatable, Hashable{
     
     func feedUpdated() async ->Bool?{
         
-        lastAttempt = Date()
+    
 
         if let lastRefresh{
             if let serverLastModified = try? await feed?.status()?.lastModified {
                 print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
-                
-                
+      
                 if serverLastModified > lastRefresh{
                     print("feed is new")
                     // feed on server is new
@@ -182,19 +181,24 @@ class Podcast: Equatable, Hashable{
                 )
             })
             dump(newEpisodes)
-            /*
-            let episode = await Episode(details: episodeDetails, podcast: self)
-
-            modelContext?.insert(episode)
-            do{
-                try modelContext?.save()
-                episodes.append(episode)
-                //          print("Episode inserted")
-            }catch{
-                print(error)
-            }
-            */
             
+            if let newEpisodes{
+                for episodeDetails in newEpisodes {
+                    let container =  PersistanceManager.shared.sharedModelContainer
+                    let context = modelContext ?? ModelContext(container)
+                    let episode = await Episode(details: episodeDetails, podcast: self)
+                    
+                    context.insert(episode)
+                    do{
+                        try context.save()
+                        episodes.append(episode)
+                        //          print("Episode inserted")
+                    }catch{
+                        print(error)
+                    }
+                }
+                
+            }
         }
 
         
@@ -221,36 +225,34 @@ class Podcast: Equatable, Hashable{
         
         
       //  print("checking \((details["episodes"] as? [[String:Any]])?.count) episodes")
-        
+        /*
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
-           // print("check: \(episodeDetails["title"] as? String ?? "")")
-            
-
+            print("check: \(episodeDetails["title"] as? String ?? "")")
             
             if contains(episodeDetails: episodeDetails) == false{
-             //   print("does not contain: \(episodeDetails["link"] as? String ?? "")")
+                print("does not contain: \(episodeDetails["link"] as? String ?? "")")
                 
-
-            //    let container =  PersistanceManager.shared.sharedModelContainer
-             //   let context = modelContext ?? ModelContext(container)
+                let container =  PersistanceManager.shared.sharedModelContainer
+                let context = modelContext ?? ModelContext(container)
                 let episode = await Episode(details: episodeDetails, podcast: self)
              
                     
                     
-                    modelContext?.insert(episode)
+                context.insert(episode)
                     do{
-                        try modelContext?.save()
+                        try context.save()
                         episodes.append(episode)
-              //          print("Episode inserted")
+                        print("Episode inserted")
                     }catch{
                         print(error)
                     }
                 
             }else{
-     //           print("Podcast contains \(episodeDetails["title"] ?? "")")
+                print("Podcast contains \(episodeDetails["title"] ?? "")")
             }
             
         }
+        */
         
         
     }
@@ -282,6 +284,7 @@ class Podcast: Equatable, Hashable{
         isUpdating = true
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = await feedUpdated()
+        lastAttempt = Date()
         
         do{
             try modelContext?.save()
@@ -290,7 +293,7 @@ class Podcast: Equatable, Hashable{
         }
         
         if updated != false{ // could be true (feed file updated) or nil (no last modified day)
-            do{
+            
                 if let data = await feedData(){
                     print("got data for \(feed?.absoluteString ?? "")")
                     
@@ -315,7 +318,7 @@ class Podcast: Equatable, Hashable{
                     print("could not load feedData")
                     isUpdating = false
                 }
-            }
+            
         }else{
             isUpdating = false
             print("no update in feed header - skip refresh")
