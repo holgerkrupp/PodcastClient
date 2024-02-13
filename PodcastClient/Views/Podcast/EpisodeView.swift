@@ -67,7 +67,7 @@ struct EpisodeView: View {
                         Spacer()
                         EpisodeControlView(episode: episode)
                         
-                        let desciption = episode.content?.decodeHTML() ?? episode.content ?? episode.desc ?? ""
+                        let desciption = episode.content ?? episode.desc ?? ""
                         
 
                             
@@ -172,7 +172,7 @@ struct EpisodeMiniView: View {
                         
                     }
                 }
-                if let desc = episode.desc?.decodeHTML(){
+                if let desc = episode.desc{
                     Spacer()
                     Text(desc)
                         .font(.caption2)

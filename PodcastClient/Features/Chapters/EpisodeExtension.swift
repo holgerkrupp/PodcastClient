@@ -27,6 +27,35 @@ extension Episode{
         print("loading Chapters from Asset with \(assetUrl.absoluteString)")
         let asset = AVAsset(url: assetUrl)
         
+        if let audioTracks = try? await asset.loadTracks(withMediaType: .audio){
+            
+            if let audioTrack = audioTracks.first {
+                if let formatDescriptions = try? await audioTrack.load(.formatDescriptions){
+                    
+                    for formatDescription in formatDescriptions {
+                        guard let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription ) else {
+                        continue
+                    }
+                    
+                    let audioFormatID = audioStreamBasicDescription.pointee.mFormatID
+                    
+                    if audioFormatID == kAudioFormatMPEGLayer3 {
+                        return await extractMP3Chapters(from: asset)
+                    } else if audioFormatID == kAudioFormatMPEG4AAC {
+                        return await extractM4AChapters(from: asset)
+                    }
+                }
+            }
+            }
+        }
+        print("returning nil")
+        return nil
+        
+    }
+    
+    
+    
+    func extractM4AChapters(from asset: AVAsset) async -> [Chapter]?{
         let chapterLocalesKey = "availableChapterLocales"
         var chapters: [Chapter] = []
         let metadata = try? await asset.load(.metadata)
@@ -62,65 +91,62 @@ extension Episode{
                     chapters.append(newChaper)
                 }
             }
-            print("returning \(chapters.count.formatted()) Chapters")
+            print("returning \(chapters.count.formatted()) M4A Chapters")
             return chapters
+        }else{
+            return nil
         }
-        print("returning nil")
+    }
+    
+     
+     
+    func extractMP3Chapters(from asset: AVAsset) async -> [Chapter]? {
+        
+        
+        do {
+            var chapters: [Chapter] = []
+            let commonMetadata = try await asset.load(.commonMetadata)
+            
+            for metadataItem in commonMetadata {
+                if let key = metadataItem.commonKey,
+                   key.rawValue == "chapter" {
+                    
+                    if let chapterData = try await metadataItem.load(.value) as? Data,
+                       let chapter = parseMP3ChapterMark(data: chapterData) {
+                        chapters.append(chapter)
+                    }
+                }
+            }
+            print("returning \(chapters.count.formatted()) MP3 Chapters")
+            return chapters
+        } catch {
+            print("Error extracting chapter marks: \(error.localizedDescription)")
+        }
         return nil
         
     }
     
+    func parseMP3ChapterMark(data: Data) -> Chapter? {
+        // Assuming a specific structure for the "CHAP" frame
+        // You may need to adjust based on your actual implementation
+        // Refer to the ID3v2 specification for details
+        
+        // Example structure: [Start Time (4 bytes)][End Time (4 bytes)][Start Offset (2 bytes)][End Offset (2 bytes)][Flags (2 bytes)][Chapter Title (variable)]
+        
+        // Parse start time (4 bytes)
+        let startTimeBytes = data[0..<4].withUnsafeBytes { $0.load(as: UInt32.self) }
+        let startTime = TimeInterval(startTimeBytes) / 1000.0 // Assuming time is stored in milliseconds
+        
+        // Parse chapter title (variable)
+        let titleData = data[12..<data.count]
+        if let title = String(data: titleData, encoding: .utf8) {
+            return Chapter(start: startTime, title: title, type: .extracted)
+        }
+        
+        return nil
+    }
     
     
-    
-    /*
-     
-     
-     func extractChapterMarks(from mp3URL: URL) -> [Chapter] {
-     var chapters: [Chapter] = []
-     
-     do {
-     let asset = AVAsset(url: mp3URL)
-     let commonMetadata = asset.commonMetadata
-     
-     for metadataItem in commonMetadata {
-     if let key = metadataItem.commonKey,
-     key.rawValue == "chapter" {
-     
-     if let chapterData = metadataItem.value as? Data,
-     let chapterMark = parseChapterMark(data: chapterData) {
-     chapters.append(Chapter)
-     }
-     }
-     }
-     } catch {
-     print("Error extracting chapter marks: \(error.localizedDescription)")
-     }
-     
-     return chapters
-     }
-     
-     func parseChapterMark(data: Data) -> Chapter? {
-     // Assuming a specific structure for the "CHAP" frame
-     // You may need to adjust based on your actual implementation
-     // Refer to the ID3v2 specification for details
-     
-     // Example structure: [Start Time (4 bytes)][End Time (4 bytes)][Start Offset (2 bytes)][End Offset (2 bytes)][Flags (2 bytes)][Chapter Title (variable)]
-     
-     // Parse start time (4 bytes)
-     let startTimeBytes = data[0..<4].withUnsafeBytes { $0.load(as: UInt32.self) }
-     let startTime = TimeInterval(startTimeBytes) / 1000.0 // Assuming time is stored in milliseconds
-     
-     // Parse chapter title (variable)
-     let titleData = data[12..<data.count]
-     if let title = String(data: titleData, encoding: .utf8) {
-     return Chapter(title: title, start: startTime)
-     }
-     
-     return nil
-     }
-     
-     */
     
     
     

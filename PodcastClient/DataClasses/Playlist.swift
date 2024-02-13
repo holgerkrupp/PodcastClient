@@ -52,6 +52,7 @@ class Playlist{
     }
     
     func add(episode:Episode, to: Position = .end){
+        episode.download()
         var newPosition = 0
         switch to {
         case .front:
@@ -70,7 +71,7 @@ class Playlist{
             }else{
             let newEntry = PlaylistEntry(episode: nE, order: newPosition)
             items?.append(newEntry)
-            nE.download()
+           
         }
         }
         
