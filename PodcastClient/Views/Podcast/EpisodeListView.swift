@@ -52,7 +52,7 @@ struct EpisodeListView: View {
             .searchable(text: $searchText)
             .refreshable {
                 Task{
-                    await SubscriptionManager().refreshall()
+                    await SubscriptionManager.shared.refreshall()
                 }
             }
         }

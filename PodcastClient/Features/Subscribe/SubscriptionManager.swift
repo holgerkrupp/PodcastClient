@@ -25,7 +25,7 @@ class PodcastFeed{
             subscribing = true
             if let url{
                 Task{
-                    var subscriptionManager = SubscriptionManager()
+                    var subscriptionManager = SubscriptionManager.shared
                     subscribing = true
                     status = try? await url.status()
                     print("\(status?.statusCode?.formatted() ?? "STATUSCODE") - \(status?.doctype ?? "DOCTYPE")")
@@ -67,11 +67,12 @@ actor SubscriptionManager:NSObject{
     var podcasts : [Podcast] = []
     var opmlParser = OPMLParser()
    // var podcastParser = PodcastParser()
-
+    
+    static let shared = SubscriptionManager()
 
     
 
-     override init() {
+    private override init() {
         super.init()
         
         

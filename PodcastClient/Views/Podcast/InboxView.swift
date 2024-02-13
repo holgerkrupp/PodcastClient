@@ -60,7 +60,7 @@ struct InboxView: View {
                     }
                 }
                 .refreshable {
-                    await SubscriptionManager().refreshall()
+                    await SubscriptionManager.shared.refreshall()
                 }
             }
     }

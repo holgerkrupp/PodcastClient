@@ -54,7 +54,7 @@ struct SettingsView: View {
                 Section {
                     Button {
                         Task{
-                            await    SubscriptionManager().deleteAll()
+                            await    SubscriptionManager.shared.deleteAll()
 
                         }
                     } label: {

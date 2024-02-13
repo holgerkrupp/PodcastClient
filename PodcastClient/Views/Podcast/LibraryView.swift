@@ -55,7 +55,7 @@ struct LibraryView: View {
                     
                 
                 .refreshable {
-                    await SubscriptionManager().refreshall()
+                    await SubscriptionManager.shared.refreshall()
                 }
             }
     }

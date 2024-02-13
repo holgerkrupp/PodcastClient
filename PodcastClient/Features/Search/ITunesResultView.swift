@@ -10,7 +10,7 @@ import SwiftUI
 struct ITunesResultView: View {
     @State var iTunesResults:[ITunesFeed] = []
     
-    var subscriptionManager = SubscriptionManager()
+    var subscriptionManager = SubscriptionManager.shared
     
     var body: some View {
         
@@ -30,7 +30,7 @@ struct ITunesResultView: View {
 
 struct iTunesMiniView: View {
     @State var podcast: ITunesFeed
-    var subscriptionManager = SubscriptionManager()
+    var subscriptionManager = SubscriptionManager.shared
     @State var subscribed:Bool? = false
     
     

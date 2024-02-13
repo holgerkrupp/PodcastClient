@@ -12,7 +12,7 @@ struct ImportExportView: View {
     
     @State private var importing = false
 
-    var subscriptionManager = SubscriptionManager()
+    var subscriptionManager = SubscriptionManager.shared
     @State var newPodcasts: [PodcastFeed] = []
 
     @State private var subBaseline = 0

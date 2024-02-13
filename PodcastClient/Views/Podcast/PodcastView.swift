@@ -11,12 +11,12 @@ import SwiftData
 struct PodcastView: View {
     
     @Environment(\.modelContext) var modelContext
-    var subscriptionManager = SubscriptionManager()
+    var subscriptionManager = SubscriptionManager.shared
     var podcast: Podcast
     /*
     @Query var podcasts: [Podcast]
     var podcast: Podcast? { podcasts.first}
-    var subscriptionManager = SubscriptionManager()
+    var subscriptionManager = SubscriptionManager.shared
     
     
     
