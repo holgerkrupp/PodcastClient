@@ -11,8 +11,7 @@ import SwiftData
 struct LibraryView: View {
     @Environment(\.modelContext) var modelContext
     
-    
-   
+
     @Query(sort: [SortDescriptor(\Podcast.title, order: .forward)] ) var podcasts: [Podcast]
     
 

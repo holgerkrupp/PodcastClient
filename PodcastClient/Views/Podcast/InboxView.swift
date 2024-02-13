@@ -14,7 +14,9 @@ struct InboxView: View {
     
    
     @Query(filter: #Predicate<Episode> {$0.finishedPlaying != true },
-           sort: [SortDescriptor(\Episode.pubDate, order: .reverse)] ) var episodes: [Episode]
+           sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+    
+    ) var episodes: [Episode]
     
 
     

@@ -139,7 +139,7 @@ class Podcast: Equatable, Hashable{
         }
         episodes = tempE
         tempE.removeAll()
-        
+        DownloadManager.shared.createDirectory(at: directoryURL)
         
 
         
