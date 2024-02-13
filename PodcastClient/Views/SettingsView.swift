@@ -14,15 +14,18 @@ struct SettingsView: View {
         NavigationStack {
             List{
                 Section {
-                    Text("developed by Holger Krupp")
-                    ActionRowView(symbol: Image(systemName: "safari.fill"), title: NSLocalizedString("Settings.MyWebsite", comment: "My Website")) {
+                 
+                    ActionRowView(symbol: Image(systemName: "safari.fill"), title: "Developed by Holger Krupp") {
                         UIApplication.shared.open(URL(string: "https://holgerkrupp.de")!)
                     }
-                    ActionRowView(title: NSLocalizedString("Settings.MoreApps", comment: "MoreApps")) {
+                    ActionRowView(symbol: Image(systemName: "apps.iphone"), title: "My other Apps", action:  {
                         UIApplication.shared.open(URL(string: "https://apps.apple.com/developer/holger-krupp/id362806171")!)
-                    }
-                    ActionRowView(symbol: Image(systemName: "envelope"), title: NSLocalizedString("Contact", comment: "My Mastodon"), action:  {
-                        UIApplication.shared.open(URL(string: "mailto:app-feedback@holgerkrupp.de")!)
+                    })
+                    ActionRowView(symbol: Image(systemName: "text.badge.xmark"), title: "Get the source code", action:  {
+                        UIApplication.shared.open(URL(string: "https://github.com/holgerkrupp/PodcastClient/")!)
+                    })
+                    ActionRowView(symbol: Image(systemName: "ladybug"), title: "Report bugs on GitHub", action:  {
+                        UIApplication.shared.open(URL(string: "https://github.com/holgerkrupp/PodcastClient/issues")!)
                     })
                 } header: {
                     Text("About this app")
@@ -76,6 +79,16 @@ struct SettingsView: View {
 struct VersionNumberView: View {
     //First get the nsObject by defining as an optional anyObject
     
+    var compileDate:Date
+    {
+        let bundleName = Bundle.main.infoDictionary!["CFBundleName"] as? String ?? "Info.plist"
+        if let infoPath = Bundle.main.path(forResource: bundleName, ofType: nil),
+           let infoAttr = try? FileManager.default.attributesOfItem(atPath: infoPath),
+           let infoDate = infoAttr[FileAttributeKey.creationDate] as? Date
+        { return infoDate }
+        return Date()
+    }
+    
     let
     VersionNumber = "Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "0") - (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0000"))"
     
@@ -83,6 +96,7 @@ struct VersionNumberView: View {
     var body: some View {
         
         Text(VersionNumber).font(.footnote)
+        Text(compileDate.formatted()).font(.footnote)
         
     }
 }

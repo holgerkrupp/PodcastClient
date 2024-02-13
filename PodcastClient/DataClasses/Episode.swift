@@ -34,7 +34,7 @@ class Episode: Equatable, Hashable{
     var pubDate: Date?
     
     var image: URL?
-    var cover:Data?
+    @Attribute(.externalStorage) var cover:Data?
 
     
     var number: String?
@@ -254,9 +254,14 @@ class Episode: Equatable, Hashable{
                 print(error)
             }
             await downloadTranscript()
+            await downloadCover()
         }
-        
-        
+    }
+    
+    func downloadCover() async{
+        if let image{
+            cover = await image.downloadData()
+        }
     }
     
     func downloadTranscript() async{
@@ -309,12 +314,6 @@ class Episode: Equatable, Hashable{
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")
         image = URL(string: details["itunes:image"] as? String ?? "")
-    
- /* THIS TAKES TO MUCH TIME WHILE SUBSCRIBING TO FEEDS
-        if let image{
-            cover = await image.downloadData()
-        }
-*/
         number = details["itunes:episode"] as? String
         
         type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown") ?? .unknown

@@ -37,8 +37,7 @@ struct PlayerView: View {
                 .overlay(alignment: .bottom) {
                     if let vttFileContent = player.currentEpisode?.transcriptData, player.playPosition.isNormal, showTranscripts{
                         
-                        TranscriptScrollView(vttContent: vttFileContent, currentTime: $player.playPosition)
-                          //  .background(.thinMaterial)
+                        TranscriptView(vttContent: vttFileContent, currentTime: $player.playPosition)
                             .frame(maxWidth: .infinity)
                         
                     }

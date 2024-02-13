@@ -108,7 +108,7 @@ An Open Source Podcast client.
 
 ## Player
 - [ ] Undo a skip creates a new skip entry
-- [ ] Cover Image changes size depening if chapter bar is visible or not
-- [ ] mp3 / m4a chapers not working
-- [ ] Player starts playing when starting the app (??)
+- [x] Cover Image changes size depening if chapter bar is visible or not
+- [ ] mp3 chapers not working
+- [x] Player starts playing when starting the app (??)
 

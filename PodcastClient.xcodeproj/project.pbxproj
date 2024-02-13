@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		48043EBF2B794E5F00D6CCB4 /* TranscriptScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48043EBE2B794E5F00D6CCB4 /* TranscriptScrollView.swift */; };
+		48043EBF2B794E5F00D6CCB4 /* TranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48043EBE2B794E5F00D6CCB4 /* TranscriptView.swift */; };
 		480CF9A92B52FD9100359A7E /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480CF9A82B52FD9100359A7E /* SettingsManager.swift */; };
 		480CF9AC2B53006900359A7E /* PodcastSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480CF9AB2B53006900359A7E /* PodcastSettingsView.swift */; };
 		480CF9AE2B5308A600359A7E /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480CF9AD2B5308A600359A7E /* PlayerView.swift */; };
@@ -65,7 +65,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		48043EBE2B794E5F00D6CCB4 /* TranscriptScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptScrollView.swift; sourceTree = "<group>"; };
+		48043EBE2B794E5F00D6CCB4 /* TranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptView.swift; sourceTree = "<group>"; };
 		480CF9A82B52FD9100359A7E /* SettingsManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		480CF9AB2B53006900359A7E /* PodcastSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastSettingsView.swift; sourceTree = "<group>"; };
 		480CF9AD2B5308A600359A7E /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
@@ -306,7 +306,7 @@
 			isa = PBXGroup;
 			children = (
 				48DC0B712B67D8B100A6A0D0 /* README.md */,
-				48043EBE2B794E5F00D6CCB4 /* TranscriptScrollView.swift */,
+				48043EBE2B794E5F00D6CCB4 /* TranscriptView.swift */,
 			);
 			path = Transcripts;
 			sourceTree = "<group>";
@@ -504,7 +504,7 @@
 				48DC0B5F2B5FA19300A6A0D0 /* PlayerChapterView.swift in Sources */,
 				48553BBB2B751262008DDFE9 /* LibraryView.swift in Sources */,
 				48AA18972B2C59B8007558FC /* ImageLoader.swift in Sources */,
-				48043EBF2B794E5F00D6CCB4 /* TranscriptScrollView.swift in Sources */,
+				48043EBF2B794E5F00D6CCB4 /* TranscriptView.swift in Sources */,
 				489346F22B4C4D8700DF4D82 /* DoubleExtensions.swift in Sources */,
 				484F93A22B48082100C3E309 /* ImportExportView.swift in Sources */,
 				480D431C2B20B5FD00BBB1CD /* DateRFC1123.swift in Sources */,

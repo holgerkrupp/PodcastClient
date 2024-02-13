@@ -86,7 +86,7 @@ struct TranscriptLine: Identifiable, Hashable {
     let text: String
 }
 
-struct TranscriptScrollView: View {
+struct TranscriptView: View {
     let vttContent: String
     @Binding var currentTime: TimeInterval
     
@@ -112,7 +112,7 @@ struct TranscriptScrollView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .background(.thinMaterial)
+            .background(.ultraThinMaterial)
             
        
     }

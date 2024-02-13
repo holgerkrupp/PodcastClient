@@ -23,7 +23,7 @@ class Podcast: Equatable, Hashable{
     var desc: String?
     var summary: String?
     var coverURL: URL?
-    var cover:Data?
+    @Attribute(.externalStorage) var cover:Data?
     
     
     

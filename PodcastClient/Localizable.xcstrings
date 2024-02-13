@@ -482,6 +482,7 @@
     },
     "Contact" : {
       "comment" : "My Mastodon",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -706,6 +707,7 @@
       }
     },
     "developed by Holger Krupp" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1911,6 +1913,7 @@
     },
     "Settings.MoreApps" : {
       "comment" : "MoreApps",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1940,6 +1943,7 @@
     },
     "Settings.MyWebsite" : {
       "comment" : "My Website",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
