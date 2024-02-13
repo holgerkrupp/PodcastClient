@@ -15,8 +15,6 @@ enum EventType: Codable {
 @Model
 class Event {
     
-
-    
     var id = UUID()
     var start: Double?
     var end: Double?

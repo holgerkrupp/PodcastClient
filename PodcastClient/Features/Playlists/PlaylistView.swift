@@ -48,7 +48,7 @@ struct PlaylistView: View {
                                     }
                                 }
   
-                            .background(.thinMaterial)
+                            
                             
                         }
                     }

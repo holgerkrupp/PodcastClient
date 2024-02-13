@@ -59,6 +59,9 @@ An Open Source Podcast client.
 ### Subscription Management
 - [ ] OPML export
 - [ ] Fyyd Directory Search
+- [ ] accept opml from share sheet
+- [ ] accept rss / xml from share sheet 
+- [ ] accept any URL that could be a feed
 
 
 ### Refresh and Downloads
@@ -69,7 +72,8 @@ An Open Source Podcast client.
 
 ### Player
 - [x] skip detection
-- [ ] custom playlists
+- [ ] share Episode (including Playposition if possible)
+
 
 
 
@@ -82,12 +86,14 @@ An Open Source Podcast client.
 
 ### Player
 - [ ] CarPlay
+- [ ] custom playlists
 
 
 ##1.x requirements
 - [x] Transkripts
 - [ ] Apple Watch App
 - [ ] remove tracking information from URLs
+- [ ] share little videos from episodes for social media
 
 
 -------
@@ -95,16 +101,16 @@ An Open Source Podcast client.
 # Known Bugs and current items to work on
 
 ## Import
-- [ ] Sometimes duplicate items are put into a dictionary that crashes the app. No idea why.
+- [x] Sometimes duplicate items are put into a dictionary that crashes the app. No idea why.
 
 > Fatal error: Duplicate keys of type 'Canonical' were found in a Dictionary.
 > This usually means either that the type violates Hashable's requirements, or
 > that members of such a dictionary were mutated after insertion.
 
-- [ ] Mark all as played after import takes long time
+- [x] Mark all as played after import takes long time
 
 ## Download
-- [ ] Images shall be downloaded when a new episode is downloaded (to avoid saving all images from old episodes)
+- [x] Images shall be downloaded when a new episode is downloaded (to avoid saving all images from old episodes)
 
 ## Player
 - [ ] Undo a skip creates a new skip entry

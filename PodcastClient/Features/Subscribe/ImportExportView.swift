@@ -121,13 +121,13 @@ struct ImportExportView: View {
     }
     
     func subscribe() async{
-        let notExisting = await newPodcasts.filter({ newPod in
+        _ = await newPodcasts.filter({ newPod in
             if newPod.existing == false && newPod.added == false {
                 return true
             }else{
                 return false
             }
-        }).sorted(by: {$0.title ?? "" < $1.title ?? ""}).asyncMap { newFeed in
+        }).sorted(by: {$0.title ?? "" < $1.title ?? ""}).concurrentForEach { newFeed in
             await  newFeed.subscribe()
         }
         

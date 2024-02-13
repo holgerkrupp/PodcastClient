@@ -24,7 +24,7 @@ class iTunesSearchManager {
                 let decoder = JSONDecoder()
                 do {
                     let (responseData, _) = try await session.data(for: request)
-                    dump(responseData)
+                  
                     
                     
                     guard let json = try JSONSerialization.jsonObject(with: responseData , options: []) as? [String: Any] else {
@@ -39,7 +39,7 @@ class iTunesSearchManager {
                     if let podcasts = json["results"] as? [[String: Any]]{
                         
                         for podcast in podcasts {
-                            dump(podcast)
+                           
                             var newFeed = ITunesFeed()
                             newFeed.artist = podcast["artistName"] as? String
                             newFeed.title = podcast["collectionName"] as? String

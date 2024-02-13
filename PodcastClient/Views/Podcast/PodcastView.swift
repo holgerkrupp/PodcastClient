@@ -11,24 +11,8 @@ import SwiftData
 struct PodcastView: View {
     
     @Environment(\.modelContext) var modelContext
-    var subscriptionManager = SubscriptionManager.shared
     var podcast: Podcast
-    /*
-    @Query var podcasts: [Podcast]
-    var podcast: Podcast? { podcasts.first}
-    var subscriptionManager = SubscriptionManager.shared
-    
-    
-    
-    init(for podcastID: PersistentIdentifier) {
-        
-        
-        self._podcasts = Query(filter: #Predicate<Podcast> {
-            $0.persistentModelID == podcastID
-        })
-        
-    }
-    */
+
     var body: some View {
         List{
           //  if let podcast{
@@ -79,7 +63,7 @@ struct PodcastView: View {
                 HStack{
                     Button {
                         Task{
-                            await subscriptionManager.refresh(podcast: podcast)
+                            await podcast.refresh()
                         }
                     } label: {
                         Label {
@@ -154,18 +138,18 @@ struct PodcastView: View {
                 
                 Section {
                     
-                    ListofEpisodesView(episodes: podcast.episodes.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) )
+                    ListofEpisodesView(episodes: podcast.episodes?.sorted(by: { $0.pubDate ?? Date() > $1.pubDate ?? Date()}) ?? [] )
                         .modelContext(modelContext)
                     
                 } header: {
-                    Text("\(podcast.episodes.count.description ) Episodes")
+                    Text("\(podcast.episodes?.count.description ?? "") Episodes")
                 }
                 
                 
            // }
                 
             }.listStyle(.plain)
-                .navigationTitle(Text(podcast.title ?? ""))
+            .navigationTitle(Text(podcast.title ))
             
             
             

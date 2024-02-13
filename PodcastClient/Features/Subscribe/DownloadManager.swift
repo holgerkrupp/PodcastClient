@@ -197,6 +197,7 @@ extension DownloadManager: FileManagerDelegate {
                 return false
             }
         }
+        
         return true
     }
     

@@ -143,6 +143,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		48043EC02B7B65CA00D6CCB4 /* Playlists */ = {
+			isa = PBXGroup;
+			children = (
+				483AB80A2B511E2B00E20DF8 /* PlaylistManager.swift */,
+				48E091952B1A743B00DFE83A /* PlaylistView.swift */,
+			);
+			path = Playlists;
+			sourceTree = "<group>";
+		};
 		480CF9AA2B53000900359A7E /* Podcast */ = {
 			isa = PBXGroup;
 			children = (
@@ -150,7 +159,6 @@
 				480D431E2B21082700BBB1CD /* PodcastView.swift */,
 				48C0439B2B3CBBA50006C352 /* EpisodeListView.swift */,
 				480D43202B219D8200BBB1CD /* EpisodeView.swift */,
-				48E091952B1A743B00DFE83A /* PlaylistView.swift */,
 				48DC0B622B659C9500A6A0D0 /* InboxView.swift */,
 				48553BBA2B751262008DDFE9 /* LibraryView.swift */,
 			);
@@ -163,14 +171,6 @@
 				4829A6F02B5A65BE00E27208 /* PlayerProgressSliderView.swift */,
 			);
 			path = ElementaryViews;
-			sourceTree = "<group>";
-		};
-		480D431D2B20B60B00BBB1CD /* Extensions */ = {
-			isa = PBXGroup;
-			children = (
-				480D431B2B20B5FD00BBB1CD /* DateRFC1123.swift */,
-			);
-			path = Extensions;
 			sourceTree = "<group>";
 		};
 		484F939A2B4733F600C3E309 /* DataClasses */ = {
@@ -211,6 +211,7 @@
 				489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */,
 				48C726772B6CDA34007AF19E /* SequenceExtension.swift */,
 				48BF0D182B727EC000EAF0B0 /* ArrayExtensions.swift */,
+				480D431B2B20B5FD00BBB1CD /* DateRFC1123.swift */,
 			);
 			path = SupportClasses;
 			sourceTree = "<group>";
@@ -238,6 +239,7 @@
 				48C043992B3C28280006C352 /* SubscriptionManager.swift */,
 				484F939F2B47FA7000C3E309 /* OPMLParser.swift */,
 				48E091972B1B12DC00DFE83A /* PodcastParser.swift */,
+				48C043952B34C4C10006C352 /* DownloadManager.swift */,
 			);
 			path = Subscribe;
 			sourceTree = "<group>";
@@ -257,6 +259,7 @@
 			isa = PBXGroup;
 			children = (
 				48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */,
+				48043EC02B7B65CA00D6CCB4 /* Playlists */,
 				48BF0D132B72578200EAF0B0 /* Notification */,
 				48D5255E2B7020A3001FF830 /* Search */,
 				48C726762B6CC311007AF19E /* Subscribe */,
@@ -337,19 +340,16 @@
 			children = (
 				48E0915C2B19FE7100DFE83A /* PodcastClientApp.swift */,
 				48E091912B1A693800DFE83A /* TabBarView.swift */,
+				484F939A2B4733F600C3E309 /* DataClasses */,
 				48DC0B662B67D2B600A6A0D0 /* Features */,
+				48E0918D2B1A589600DFE83A /* Views */,
+				48AA18952B2C599D007558FC /* SupportClasses */,
 				48E091882B1A29D000DFE83A /* Player.swift */,
 				480CF9AD2B5308A600359A7E /* PlayerView.swift */,
-				48AA18952B2C599D007558FC /* SupportClasses */,
-				48E0918A2B1A2A8000DFE83A /* AdditionalClasses */,
-				484F939A2B4733F600C3E309 /* DataClasses */,
-				48E0918D2B1A589600DFE83A /* Views */,
-				48E091902B1A665C00DFE83A /* to be deleted */,
 				48E091622B19FE7400DFE83A /* Assets.xcassets */,
 				48E091672B19FE7400DFE83A /* PodcastClient.entitlements */,
 				48E091682B19FE7400DFE83A /* Info.plist */,
 				48E091642B19FE7400DFE83A /* Preview Content */,
-				480D431D2B20B60B00BBB1CD /* Extensions */,
 			);
 			path = PodcastClient;
 			sourceTree = "<group>";
@@ -362,15 +362,6 @@
 			path = "Preview Content";
 			sourceTree = "<group>";
 		};
-		48E0918A2B1A2A8000DFE83A /* AdditionalClasses */ = {
-			isa = PBXGroup;
-			children = (
-				48C043952B34C4C10006C352 /* DownloadManager.swift */,
-				483AB80A2B511E2B00E20DF8 /* PlaylistManager.swift */,
-			);
-			path = AdditionalClasses;
-			sourceTree = "<group>";
-		};
 		48E0918D2B1A589600DFE83A /* Views */ = {
 			isa = PBXGroup;
 			children = (
@@ -381,13 +372,6 @@
 				480D43132B208A3200BBB1CD /* DependenciesView.swift */,
 			);
 			path = Views;
-			sourceTree = "<group>";
-		};
-		48E091902B1A665C00DFE83A /* to be deleted */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = "to be deleted";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -658,6 +642,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PodcastClient/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -690,6 +675,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = PodcastClient/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

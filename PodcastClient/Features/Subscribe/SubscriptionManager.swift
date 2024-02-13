@@ -72,7 +72,7 @@ actor SubscriptionManager:NSObject{
 
     
 
-    private override init() {
+     override init() {
         super.init()
         
         
@@ -166,9 +166,10 @@ actor SubscriptionManager:NSObject{
 
     
     func subscribe(to url: URL) async -> Bool{
-        
+        print("SM subscribe to: \(url.absoluteString)")
         if !contains(url: url){
             if let data = await url.feedData(){
+
                 let podcastParser = PodcastParser()
                 let parser = XMLParser(data: data)
                 parser.shouldProcessNamespaces = true
@@ -183,7 +184,7 @@ actor SubscriptionManager:NSObject{
                         podcast.feed = url
                         if !podcasts.contains(podcast){
                             modelContext?.insert(podcast)
-
+                         /*
                             do{
                                 try modelContext?.save()
                                 print("podcast inserted")
@@ -191,12 +192,11 @@ actor SubscriptionManager:NSObject{
                             }catch{
                                 print(error)
                             }
-                        }else{
+                        */
+                          }else{
                             print("podcast \(podcast.title) alreads existing")
                             return false
                         }
-                        
-                        
                         
                         
                         return true

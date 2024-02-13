@@ -190,7 +190,7 @@ class Episode: Equatable, Hashable{
             for group in chapterGrouped{
                 print("enhancing \(group.key.rawValue) chapters")
                 var lastEnd = duration ?? 100
-                for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? duration ?? 100}){
+                for chapter in group.value.sorted(by: {$0.start ?? 0.0 > $1.start ?? duration ?? 100}){
                     chapter.duration = lastEnd - (chapter.start ?? 0.0)
                     lastEnd = chapter.start ?? 0.0
                 }
@@ -305,10 +305,10 @@ class Episode: Equatable, Hashable{
         
         content = details["content"] as? String
      
-        if let content{
-            decodedContent = await content.decodeHTML()
+   /*     if let content{
+            decodedContent = await content.decodeHTML() // THIS KILLS THE IMPORT of the OPML file
         }
-       
+     */
         duration = (details["itunes:duration"] as? String)?.durationAsSeconds
 
         link = URL(string: details["link"] as? String ?? "")

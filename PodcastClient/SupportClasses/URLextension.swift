@@ -61,7 +61,7 @@ extension URL{
     }
        
     func feedData() async -> Data?{
-        
+        print("loading feedData for \(self.absoluteString)")
         let session = URLSession.shared
         
         var request = URLRequest(url: self)
@@ -70,6 +70,8 @@ extension URL{
         }
         do{
             let (data, response) = try await session.data(for: request)
+            print("got response for \(self.absoluteString) ")
+           
             switch (response as? HTTPURLResponse)?.statusCode {
             case 200:
                 return data

@@ -65,6 +65,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     func parserDidStartDocument(_ parser: XMLParser)  {
+        print("parserDidStartDocument")
         episodeDict.removeAll()
         enclosureArray.removeAll()
         episodesArray.removeAll()

@@ -31,7 +31,7 @@ class Podcast: Equatable, Hashable{
     var language:String?
     
     
-    @Relationship(deleteRule: .cascade, inverse: \Episode.podcast) var episodes: [Episode] = []
+    @Relationship(deleteRule: .cascade, inverse: \Episode.podcast) var episodes: [Episode]? = []
     
     var lastHTTPcode: Int?
     
@@ -97,7 +97,6 @@ class Podcast: Equatable, Hashable{
 
         title = details["title"] as? String ?? ""
         
-        print("Podcast \(id) - \(title)")
 
         
         
@@ -153,7 +152,7 @@ class Podcast: Equatable, Hashable{
     
     func markAllAsPlayed(){
         
-        episodes.map { $0.markAsPlayed() }
+        episodes?.map { $0.markAsPlayed() }
 
     }
     
@@ -169,7 +168,7 @@ class Podcast: Equatable, Hashable{
                 }
             }
 
-        let diff = guids?.difference(from: episodes.map { $0.guid })
+        let diff = guids?.difference(from: episodes?.map { $0.guid } ?? [] )
         
         print("\(diff?.count.description ?? "0") new Episodes")
 
@@ -180,7 +179,7 @@ class Podcast: Equatable, Hashable{
                     (episode["enclosure"] as? [[String:Any]])?.first?["url"] as? String
                 )
             })
-            dump(newEpisodes)
+          
             
             if let newEpisodes{
                 for episodeDetails in newEpisodes {
@@ -191,7 +190,7 @@ class Podcast: Equatable, Hashable{
                     context.insert(episode)
                     do{
                         try context.save()
-                        episodes.append(episode)
+                        episodes?.append(episode)
                         //          print("Episode inserted")
                     }catch{
                         print(error)
@@ -265,7 +264,7 @@ class Podcast: Equatable, Hashable{
      //   print("contains: \(testURL ?? "")")
       //  let first = episodes.first(where: { $0.assetLink == URL(string: testURL ?? "de.holgerkrupp.teststring") })
         
-        let first = episodes.first(where: { $0.guid == guid })
+        let first = episodes?.first(where: { $0.guid == guid })
 
     //    print("\(first?.title ?? "-") contains \(guid ?? "")")
         
