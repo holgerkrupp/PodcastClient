@@ -16,7 +16,8 @@ struct TabBarView: View {
     enum Tab: Int {
         case upnext, episodes, podcastlist, search, settings, none
     }
-    @State var selectedTab:Tab = Tab.episodes
+    @AppStorage("selectedTab") var selectedTab:Tab = Tab.episodes
+    
     
     @State private var miniplayerHeight:CGFloat = 30.0
     var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 120

@@ -40,7 +40,7 @@ extension Episode{
                     let audioFormatID = audioStreamBasicDescription.pointee.mFormatID
                     
                     if audioFormatID == kAudioFormatMPEGLayer3 {
-                        return await extractMP3Chapters(from: asset)
+                      //  return await extractMP3Chapters(from: assetUrl)
                     } else if audioFormatID == kAudioFormatMPEG4AAC {
                         return await extractM4AChapters(from: asset)
                     }
@@ -100,52 +100,64 @@ extension Episode{
     
      
      
-    func extractMP3Chapters(from asset: AVAsset) async -> [Chapter]? {
-        
+    func extractMP3Chapters(from url: URL) async -> [Chapter]? {
+        print("extractMP3Chapters")
         
         do {
-            var chapters: [Chapter] = []
-            let commonMetadata = try await asset.load(.commonMetadata)
+         
+            let data = try Data(contentsOf: url)
             
-            for metadataItem in commonMetadata {
-                if let key = metadataItem.commonKey,
-                   key.rawValue == "chapter" {
-                    
-                    if let chapterData = try await metadataItem.load(.value) as? Data,
-                       let chapter = parseMP3ChapterMark(data: chapterData) {
-                        chapters.append(chapter)
-                    }
-                }
+            // Check if the file starts with the "ID3" identifier indicating an ID3v2 tag
+            guard data.count >= 3, let id3Identifier = String(data: data[0..<3], encoding: .utf8), id3Identifier == "ID3" else {
+                return []
             }
-            print("returning \(chapters.count.formatted()) MP3 Chapters")
+            
+            // Extract chapter information based on your specific ID3v2 structure
+            let chapters = parseChapterFrames(data: data)
+            
             return chapters
         } catch {
             print("Error extracting chapter marks: \(error.localizedDescription)")
+            return nil
         }
-        return nil
+
         
     }
     
-    func parseMP3ChapterMark(data: Data) -> Chapter? {
-        // Assuming a specific structure for the "CHAP" frame
-        // You may need to adjust based on your actual implementation
-        // Refer to the ID3v2 specification for details
+    func parseChapterFrames(data: Data) -> [Chapter] {
+        var chapters: [Chapter] = []
         
-        // Example structure: [Start Time (4 bytes)][End Time (4 bytes)][Start Offset (2 bytes)][End Offset (2 bytes)][Flags (2 bytes)][Chapter Title (variable)]
-        
-        // Parse start time (4 bytes)
-        let startTimeBytes = data[0..<4].withUnsafeBytes { $0.load(as: UInt32.self) }
-        let startTime = TimeInterval(startTimeBytes) / 1000.0 // Assuming time is stored in milliseconds
-        
-        // Parse chapter title (variable)
-        let titleData = data[12..<data.count]
-        if let title = String(data: titleData, encoding: .utf8) {
-            return Chapter(start: startTime, title: title, type: .extracted)
+        var index = 0
+        while index + 8 < data.count {
+            var startTimeBytes: UInt32 = 0
+            data[index..<index+4].withUnsafeBytes { bufferPointer in
+                guard let baseAddress = bufferPointer.baseAddress else { return }
+                memcpy(&startTimeBytes, baseAddress, MemoryLayout<UInt32>.size)
+            }
+            
+            let startTime = TimeInterval(bitPattern: UInt64(bigEndian: UInt64(startTimeBytes))) / 1000.0 // Assuming time is stored in milliseconds
+
+            index += 4
+            
+            guard let titleData = data[index..<data.count].split(separator: 0).first else {
+                break // No null terminator found, indicating malformed data
+            }
+            
+            if let title = String(bytes: titleData, encoding: .utf8) {
+                print("\(startTime.secondsToHoursMinutesSeconds) - \(title)")
+
+                chapters.append(Chapter(start: startTime, title: title, type: .embedded))           
+            } else {
+                print("Unable to decode title from bytes: \(titleData)")
+            }
+            
+    
+            
+            index += titleData.count + 1 // Move to the next frame
         }
         
-        return nil
+        return chapters
     }
-    
     
     
     

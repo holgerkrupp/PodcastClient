@@ -198,11 +198,13 @@ class Episode: Equatable, Hashable{
             
             
         }
+        /*
         do{
             try modelContext?.save()
         }catch{
             print(error)
         }
+         */
     }
     
     func updateDuration() async{

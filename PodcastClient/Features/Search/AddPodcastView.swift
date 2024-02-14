@@ -10,7 +10,7 @@ import SwiftUI
 struct AddPodcastView: View {
     @Environment(\.modelContext) var modelContext
 
-    @State var newFeed:String = "https://hierisauch.net/feed/test/"
+    @State var newFeed:String = ""
     @State private var updateing = false
     @State private var iTunesResults:[ITunesFeed]?
     
@@ -22,50 +22,62 @@ struct AddPodcastView: View {
     }
     
     var body: some View {
-        List{
-            Section {
-                HStack{
-                    TextField(text: $newFeed) {
-                        Text("Search or enter URL")
-                    }.disabled(updateing)
-                        .onSubmit {
-                            search()
-                        }
-                 
-                    
-                    Button {
-                        search()
+        NavigationStack{
+            List{
+                Section {
+                    NavigationLink {
                         
-                    } label: {
-                        if updateing{
-                            ProgressView()
-                        }else{
-                            if (newFeed.isValidURL) {
-                                Text("Subscribe")
-                            }else{
-                                Text("Search")
-                            }
-                        }
+                        ImportExportView()
                         
+                    }label:{
+                        Text("Import & Export")
                     }
-                    .disabled(newFeed.isEmpty || updateing)
-                    .buttonStyle(.bordered)
                 }
-            }
-
-            
-            
-            if let iTunesResults{
-                Section{
-                    ITunesResultView(iTunesResults: iTunesResults).id(UUID())
+                
+                Section {
+                    HStack{
+                        TextField(text: $newFeed) {
+                            Text("Search or enter URL")
+                        }.disabled(updateing)
+                            .onSubmit {
+                                search()
+                            }
+                        
+                        
+                        Button {
+                            search()
+                            
+                        } label: {
+                            if updateing{
+                                ProgressView()
+                            }else{
+                                if (newFeed.isValidURL) {
+                                    Text("Subscribe")
+                                }else{
+                                    Text("Search")
+                                }
+                            }
+                            
+                        }
+                        .disabled(newFeed.isEmpty || updateing)
+                        .buttonStyle(.bordered)
+                    }
                 }
+                
+                
+                
+                if let iTunesResults{
+                    Section{
+                        ITunesResultView(iTunesResults: iTunesResults).id(UUID())
+                    }
+                    
+                }
+                
                 
             }
             
             
         }
-      
-        
     }
     
     func search(){

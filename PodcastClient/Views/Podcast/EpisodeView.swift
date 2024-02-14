@@ -22,80 +22,87 @@ struct EpisodeView: View {
     
     var body: some View {
         if let episode{
-            List{
-              
-
-                    VStack{
-                        HStack{
-                          
-                            if episode.finishedPlaying == true{
-                                Image(systemName: "circle.fill")
-                            }else{
-                                Image(systemName: "circle")
-                            }
-                            
-                            
-                            if let imageULR = episode.image{
-                                ImageWithURL(imageULR)
-                                    .scaledToFit()
-                                    .frame(width: coverSize, height: coverSize)
-                                
-                            }else if let imageULR = episode.podcast?.coverURL{
-                                ImageWithURL(imageULR)
-                                    .scaledToFit()
-                                    .frame(width: coverSize, height: coverSize)
-                            }else{
-                                Image(systemName: "mic.fill")
-                                    .scaledToFit()
-                                    .frame(width: coverSize, height: coverSize)
-                            }
-                            
-                            VStack{
-                                Text(episode.pubDate?.formatted() ?? "").font(.caption)
-                              
-                                if let count = episode.events?.filter({$0.type == .skip}).count, count > 0{
-                                    Text("\(count) Skips detected")
-                                }
-                                if let count = episode.events?.filter({$0.type == .bookmark}).count, count > 0{
-                                    Text("\(count) Bookmarks detected")
-                                }
-                                
-                            }
-                        }
-                        EpisodePlayProgressView(episode: episode)
-                            .frame(maxWidth: .infinity, maxHeight: 30)
-                        Spacer()
-                        EpisodeControlView(episode: episode)
-                        
-                        let desciption = episode.content ?? episode.desc ?? ""
-                        
-
-                            
-                            Text(desciption)
-                                .lineLimit(nil)
-                                .selectionDisabled(false)
-                                .foregroundColor(.primary)
-                                .font(.body)
-                        
+            
+            
+            
+            VStack{
+                HStack{
                     
+                    if episode.finishedPlaying == true{
+                        Image(systemName: "circle.fill")
+                    }else{
+                        Image(systemName: "circle")
+                    }
+                    
+                    
+                    if let imageULR = episode.image{
+                        ImageWithURL(imageULR)
+                            .scaledToFit()
+                            .frame(width: coverSize, height: coverSize)
+                        
+                    }else if let imageULR = episode.podcast?.coverURL{
+                        ImageWithURL(imageULR)
+                            .scaledToFit()
+                            .frame(width: coverSize, height: coverSize)
+                    }else{
+                        Image(systemName: "mic.fill")
+                            .scaledToFit()
+                            .frame(width: coverSize, height: coverSize)
+                    }
+                    
+                    VStack{
+                        Text(episode.pubDate?.formatted() ?? "").font(.caption)
+                        
+                        if let count = episode.events?.filter({$0.type == .skip}).count, count > 0{
+                            Text("\(count) Skips detected")
+                        }
+                        if let count = episode.events?.filter({$0.type == .bookmark}).count, count > 0{
+                            Text("\(count) Bookmarks detected")
+                        }
+                        
+                    }
                 }
+                EpisodePlayProgressView(episode: episode)
+                    .frame(maxWidth: .infinity, maxHeight: 30)
+                Spacer()
+                EpisodeControlView(episode: episode)
                 
-              
-                if let chapters = episode.chapters{
-                    ChapterListView(chapters: chapters)
-                }
+                let desciption = episode.content ?? episode.desc ?? ""
                 
+                HTMLView(htmlString: desciption)
+                    .lineLimit(nil)
+                    .selectionDisabled(false)
+                    .foregroundColor(.primary)
+                    .font(.body)
+                    
+                /*
+                 Text(desciption)
+                 .lineLimit(nil)
+                 .selectionDisabled(false)
+                 .foregroundColor(.primary)
+                 .font(.body)
+                 */
                 
             }
-            .listStyle(.plain)
-            .navigationTitle(Text(episode.title ?? ""))
+          
+            /*
             
+            if let chapters = episode.chapters{
+                ChapterListView(chapters: chapters)
+            }
+            */
             
-        }else{
-            Text("error loading episode")
-    }
+        }
         
+        //    .listStyle(.plain)
+        //   .navigationTitle(Text(episode.title ?? ""))
+        
+        
+        else{
+            Text("error loading episode")
+        }
     }
+    
 }
 
 struct EpisodeMiniView: View {
@@ -163,13 +170,6 @@ struct EpisodeMiniView: View {
                         }
                         .font(.caption)
                         .foregroundColor(.secondary)
-                        
-                        
-                        
-
-
-                        
-                        
                     }
                 }
                 if let desc = episode.desc{
@@ -185,7 +185,6 @@ struct EpisodeMiniView: View {
                 }
                 
             }
-            
             
         }
         /*

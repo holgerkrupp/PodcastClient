@@ -26,6 +26,7 @@
 		484F93A62B4810BE00C3E309 /* Opml-icon.svg.png in Resources */ = {isa = PBXBuildFile; fileRef = 484F93A52B4810BE00C3E309 /* Opml-icon.svg.png */; };
 		48553BBB2B751262008DDFE9 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48553BBA2B751262008DDFE9 /* LibraryView.swift */; };
 		48553BBD2B763115008DDFE9 /* SleepTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48553BBC2B763115008DDFE9 /* SleepTimer.swift */; };
+		48790BC32B7C99310027E240 /* HTMLView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48790BC22B7C99310027E240 /* HTMLView.swift */; };
 		489346EF2B4C316700DF4D82 /* ListofEpisodesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */; };
 		489346F22B4C4D8700DF4D82 /* DoubleExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */; };
 		48AA18972B2C59B8007558FC /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AA18962B2C59B8007558FC /* ImageLoader.swift */; };
@@ -85,6 +86,7 @@
 		484F93A52B4810BE00C3E309 /* Opml-icon.svg.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Opml-icon.svg.png"; sourceTree = "<group>"; };
 		48553BBA2B751262008DDFE9 /* LibraryView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		48553BBC2B763115008DDFE9 /* SleepTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimer.swift; sourceTree = "<group>"; };
+		48790BC22B7C99310027E240 /* HTMLView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLView.swift; sourceTree = "<group>"; };
 		489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListofEpisodesView.swift; sourceTree = "<group>"; };
 		489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleExtensions.swift; sourceTree = "<group>"; };
 		48AA18962B2C59B8007558FC /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
@@ -198,6 +200,7 @@
 				489346EE2B4C316700DF4D82 /* ListofEpisodesView.swift */,
 				484F93952B4307FF00C3E309 /* EpisodeControlView.swift */,
 				48E091932B1A70F700DFE83A /* PlayerControlsView.swift */,
+				48790BC22B7C99310027E240 /* HTMLView.swift */,
 			);
 			path = Subviews;
 			sourceTree = "<group>";
@@ -491,6 +494,7 @@
 				48043EBF2B794E5F00D6CCB4 /* TranscriptView.swift in Sources */,
 				489346F22B4C4D8700DF4D82 /* DoubleExtensions.swift in Sources */,
 				484F93A22B48082100C3E309 /* ImportExportView.swift in Sources */,
+				48790BC32B7C99310027E240 /* HTMLView.swift in Sources */,
 				480D431C2B20B5FD00BBB1CD /* DateRFC1123.swift in Sources */,
 				48E091892B1A29D000DFE83A /* Player.swift in Sources */,
 				480CF9B32B5426A100359A7E /* SkipNextView.swift in Sources */,
