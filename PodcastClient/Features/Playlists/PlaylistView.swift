@@ -47,7 +47,15 @@ struct PlaylistView: View {
                                         Label("Remove from list", systemImage: "xmark.circle.fill")
                                     }
                                 }
-  
+                                .swipeActions(edge: .leading){
+                                    Button(role: .none) {
+                                        item.episode?.markAsPlayed()
+                                        
+                                    } label: {
+                                        Label("Mark as played", systemImage: "circle.fill")
+                                    }
+                                }
+                                .tint(.accent)
                             
                             
                         }

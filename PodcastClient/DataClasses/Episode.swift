@@ -157,14 +157,69 @@ class Episode: Equatable, Hashable{
         self.lastPlayed = Date()
     }
     
+    
+    
+    
     func postProcessingAfterDownload() async{
         print("postProcessing")
         await updateDuration()
+        if image == nil, cover == nil{
+            cover = await extractCoverImage()
+        }
         await updateChapters()
+        
+    }
+    
+    func extractCoverImage() async -> Data? {
+       
+        
+        
+        if let audioTracks = try? await avAsset?.loadTracks(withMediaType: .audio){
+            
+            if let audioTrack = audioTracks.first {
+                if let formatDescriptions = try? await audioTrack.load(.formatDescriptions){
+                    
+                    for formatDescription in formatDescriptions {
+                        guard let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription ) else {
+                            continue
+                        }
+                        
+                        let audioFormatID = audioStreamBasicDescription.pointee.mFormatID
+                        
+                        if audioFormatID == kAudioFormatMPEGLayer3 {
+                           
+                        } else if audioFormatID == kAudioFormatMPEG4AAC {
+                            do{
+                                if let metadata = try await avAsset?.load(.commonMetadata){
+                                    
+                                    for item in metadata {
+                                        if let key = item.commonKey, key == AVMetadataKey.commonKeyArtwork {
+                                            if let data = try await item.load(.value) as? Data {
+                                                return data
+                                            }
+                                        }
+                                    }
+                                }
+                            }catch{
+                                print(error)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        
+        
+        
+        
         
         
 
+        
+        return nil
     }
+
     
     func updateChapters() async{
         let embeddedChapterCount = chapters?.filter({ $0.type == .embedded }).count ?? 0
@@ -185,7 +240,7 @@ class Episode: Equatable, Hashable{
         
         if let chapters, chapters.count > 0{
 
-            var chapterGrouped = Dictionary(grouping: chapters, by: { $0.type })
+            let chapterGrouped = Dictionary(grouping: chapters, by: { $0.type })
             
             for group in chapterGrouped{
                 print("enhancing \(group.key.rawValue) chapters")
@@ -315,13 +370,14 @@ class Episode: Equatable, Hashable{
 
         link = URL(string: details["link"] as? String ?? "")
         pubDate = Date.dateFromRFC1123(dateString: details["pubDate"] as? String ?? "")
-        image = URL(string: details["itunes:image"] as? String ?? "")
+        if let url = details["itunes:image"] as? String{
+            image = URL(string: url)
+        }
+        
         number = details["itunes:episode"] as? String
         
         type = EpisodeType(rawValue: details["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
         
-
-      
         for assetDetails in details["enclosure"] as? [[String:Any]] ?? []{
             
             assetLink = URL(string: assetDetails["url"] as? String ?? "")// the original URL of the asset
@@ -342,6 +398,12 @@ class Episode: Equatable, Hashable{
         
         if guid == nil || guid == ""{
             guid = assetLink?.absoluteString ?? id.uuidString
+        }
+        
+        
+        
+        if image == nil{
+            cover = await extractCoverImage()
         }
         
     }

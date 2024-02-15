@@ -11,7 +11,8 @@ import BackgroundTasks
 
 
 @main
-  struct PodcastClientApp: App {
+
+struct PodcastClientApp: App {
     @Environment(\.scenePhase) private var phase
 
       var sharedModelContainer: ModelContainer

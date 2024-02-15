@@ -40,6 +40,7 @@ struct PlayerControlsView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                             .tint(.teal)
                             .scaleEffect(x: 1, y: 10, anchor: .center)
+
                         
                         HStack(alignment: .bottom){
                     

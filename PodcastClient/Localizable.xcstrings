@@ -959,6 +959,9 @@
         }
       }
     },
+    "Jump back" : {
+
+    },
     "Last Attempt" : {
       "localizations" : {
         "de" : {
@@ -1154,6 +1157,9 @@
           }
         }
       }
+    },
+    "Mark as played" : {
+
     },
     "Mark as Played" : {
       "localizations" : {
@@ -1971,6 +1977,9 @@
         }
       }
     },
+    "Show Bookmarks" : {
+
+    },
     "Show Details" : {
       "localizations" : {
         "de" : {
@@ -1998,6 +2007,9 @@
           }
         }
       }
+    },
+    "Show Skips" : {
+
     },
     "Skip back" : {
       "localizations" : {

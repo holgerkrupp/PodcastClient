@@ -162,7 +162,10 @@ extension DownloadManager: FileManagerDelegate {
             
             do{
                 try filemanager.moveItem(at: url, to: newlocation)
-                
+                var resourceValues = URLResourceValues()
+                resourceValues.isExcludedFromBackup = true
+                var url = url
+                try url.setResourceValues(resourceValues)
 
             }catch{
                 print(error)
@@ -203,7 +206,7 @@ extension DownloadManager: FileManagerDelegate {
     
     func fileManager(_ fileManager: FileManager, shouldProceedAfterError error: Error, movingItemAt srcURL: URL, to dstURL: URL) -> Bool {
         print("shouldProceedAfterError")
-        print(error)
+        createDirectory(at: dstURL.deletingLastPathComponent())
         return true
     }
 

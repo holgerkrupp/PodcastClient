@@ -186,7 +186,8 @@ class Podcast: Equatable, Hashable{
                     let container =  PersistanceManager.shared.sharedModelContainer
                     let context = modelContext ?? ModelContext(container)
                     let episode = await Episode(details: episodeDetails, podcast: self)
-                    
+                    episodes?.append(episode)
+                   /*
                     context.insert(episode)
                     do{
                         try context.save()
@@ -195,6 +196,7 @@ class Podcast: Equatable, Hashable{
                     }catch{
                         print(error)
                     }
+                    */
                 }
                 
             }
@@ -284,13 +286,13 @@ class Podcast: Equatable, Hashable{
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = await feedUpdated()
         lastAttempt = Date()
-        
+        /*
         do{
             try modelContext?.save()
         }catch{
             print(error)
         }
-        
+        */
         if updated != false{ // could be true (feed file updated) or nil (no last modified day)
             
                 if let data = await feedData(){

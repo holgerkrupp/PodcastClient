@@ -226,7 +226,7 @@ import SwiftData
         
         if let oldEpisode = currentPlaylist.ordered.first?.episode{
             setCurrentEpisode(episode: oldEpisode, playDirectly: false)
-            
+           
         }
 
         do{
@@ -433,6 +433,8 @@ import SwiftData
             return .commandFailed
         }
         
+        
+        
         // Add handler for Pause Command
         RCC.pauseCommand.isEnabled = true
         RCC.pauseCommand.addTarget { _ in
@@ -464,6 +466,23 @@ import SwiftData
         }
         
         RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: settings.skipBack.float)]
+        
+        
+        RCC.bookmarkCommand.isEnabled = true
+        RCC.bookmarkCommand.addTarget { event in
+            self.bookmark()
+            return.success
+        }
+        
+        RCC.changePlaybackPositionCommand.isEnabled = true
+        RCC.changePlaybackPositionCommand.addTarget { event in
+            if let event = event as? MPChangePlaybackPositionCommandEvent {
+                let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000)
+                self.jumpTo(time: time)
+            }
+            return .success
+        }
+        
 
     }
     

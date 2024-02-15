@@ -25,7 +25,16 @@ struct ListofEpisodesView: View {
                     } label: {
                         Label("Delete", systemImage: "trash.fill")
                     }
-                }        
+                }
+                .swipeActions(edge: .leading){
+                    Button(role: .none) {
+                        episode.markAsPlayed()
+                        
+                    } label: {
+                        Label("Mark as played", systemImage: "circle.fill")
+                    }
+                }
+                .tint(.accent)
                 .contextMenu {
                     Button {
                         episode.playNow()

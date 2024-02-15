@@ -15,9 +15,10 @@ struct EpisodeView: View {
 
     @Environment(\.modelContext) var modelContext
 
-    var episode: Episode?
+    @State var episode: Episode?
     
-   
+    @State var showBookmarks:Bool = false
+    @State var showSkips:Bool  = false
     
     
     var body: some View {
@@ -67,6 +68,56 @@ struct EpisodeView: View {
                 Spacer()
                 EpisodeControlView(episode: episode)
                 
+                HStack{
+                    if let events = episode.events?.filter({ $0.type == .bookmark}).sorted(by: {$0.date < $1.date}), events.count > 0{
+                        Button {
+                            showBookmarks.toggle()
+                        } label: {
+                            Label {
+                                Text("Show Bookmarks")
+                            } icon: {
+                                Image(systemName: "bookmark.circle")
+                                    .tint(.primary)
+                            }
+                            .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.bordered)
+                        .sheet(isPresented: $showBookmarks, content: {
+                            
+                            SkipAndBookmarkListView(events: events)
+                                .presentationDragIndicator(.visible)
+                                .presentationBackground(.thinMaterial)
+                                
+                            
+                        })
+                    }
+                    Spacer()
+                    if let events = episode.events?.filter({ $0.type == .skip}).sorted(by: {$0.date < $1.date}), events.count > 0{
+                        Button {
+                            showSkips.toggle()
+                        } label: {
+                            Label {
+                                Text("Show Skips")
+                            } icon: {
+                                Image(systemName: "arrow.uturn.backward.circle")
+                                    .tint(.primary)
+                            }
+                            .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.bordered)
+                        .sheet(isPresented: $showSkips, content: {
+                            
+                            SkipAndBookmarkListView(events: events)
+                                .presentationDragIndicator(.visible)
+                                .presentationBackground(.thinMaterial)
+                       
+                            
+                        })
+                    }
+                }
+
+                
+                
                 let desciption = episode.content ?? episode.desc ?? ""
                 
                 HTMLView(htmlString: desciption)
@@ -103,6 +154,8 @@ struct EpisodeView: View {
         }
     }
     
+    
+    
 }
 
 struct EpisodeMiniView: View {
@@ -114,7 +167,7 @@ struct EpisodeMiniView: View {
     var formatStyle = Date.RelativeFormatStyle()
  
    // var model: EpisodeListItemModel
-    var episode: Episode
+   @State  var episode: Episode
     
     
     var body: some View {
@@ -165,9 +218,11 @@ struct EpisodeMiniView: View {
                         HStack{
                             Text(episode.pubDate?.formatted(formatStyle) ?? "--")
                             Spacer()
+                            /*
                             Text(episode.duration?.secondsToHoursMinutesSeconds ?? "")
                                 .monospacedDigit()
-                        }
+                        */
+                             }
                         .font(.caption)
                         .foregroundColor(.secondary)
                     }
@@ -179,10 +234,10 @@ struct EpisodeMiniView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
-                if episode.playPosition > 0.0{
+              //  if episode.playPosition > 0.0{
                     EpisodePlayProgressView(episode: episode)
                         .frame(maxWidth: .infinity, maxHeight: 30)
-                }
+           //     }
                 
             }
             
@@ -256,7 +311,7 @@ struct EpisodePlayProgressView:View{
             HStack{
                 ProgressView(value: episode.progress, total: 1.0)
                         .progressViewStyle(.linear)
-                if let duration = episode.duration, episode.playPosition > 0.0{
+                if let duration = episode.duration {
                     
                     if (duration - episode.playPosition) > 0.9{
                         
