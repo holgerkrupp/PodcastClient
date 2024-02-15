@@ -27,7 +27,7 @@ struct EpisodeControlView: View {
             }
             .buttonStyle(.bordered)
             Spacer()
-            Button {
+          /*  Button {
                 Task{
                     await episode.postProcessingAfterDownload()
 
@@ -35,7 +35,7 @@ struct EpisodeControlView: View {
             } label: {
                 Text("Postprocess")
             }
-
+*/
             Spacer()
             
             if episode.isAvailableLocally{

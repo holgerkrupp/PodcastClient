@@ -24,7 +24,13 @@ struct InboxView: View {
 
             NavigationStack {
                 List{
-                    ForEach(episodes.filter({$0.playlists?.count ?? 0 < 1}), id:\.self) { episode in
+                    
+                    if episodes.filter({$0.playlists?.count ?? 0 < 1}).count == 0{
+                        Text("Pull down to refresh")
+
+                    }else{
+                    
+                        ForEach(episodes.filter({$0.playlists?.count ?? 0 < 1}), id:\.self) { episode in
                             EpisodeMiniView(episode: episode)
                                 .modelContext(modelContext)
                                 .swipeActions(edge: .trailing){
@@ -57,6 +63,7 @@ struct InboxView: View {
                                         Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
                                     }
                                 }
+                        }
                     }
                 }
                 .refreshable {

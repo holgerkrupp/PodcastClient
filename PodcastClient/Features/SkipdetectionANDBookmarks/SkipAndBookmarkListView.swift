@@ -14,37 +14,53 @@ struct SkipAndBookmarkListView: View {
     var body: some View {
         List{
             ForEach(events){ event in
-                HStack{
-                    VStack{
-                        Text(event.start?.secondsToHoursMinutesSeconds ?? "")
-                            .monospacedDigit()
-                        
-                        if event.type == .skip{
-                        Text(event.end?.secondsToHoursMinutesSeconds ?? "")
-                            .monospacedDigit()
+                ZStack(alignment: Alignment(horizontal: .center, vertical: .center)) {
+                   
+                    if event.direction == .back{
+                        Image(systemName: "chevron.backward.2")
+                            .resizable()
+                            .frame(width: 80, height: 80)
+                            .foregroundColor(.gray.opacity(0.2))
                             
-                        Image(systemName: event.directionImage)
-                           
-                        }
-                        
-                        
+                    }else{
+                        Image(systemName: "chevron.forward.2")
+                            .resizable()
+                            .frame(width: 80, height: 80)
+                            .foregroundColor(.gray.opacity(0.2))
                     }
                     
-                    Spacer()
-                    VStack{
-                        Text(event.date.formatted())
-                            .foregroundStyle(.secondary)
-                        Text(event.description)
-                    }
-                    Spacer()
-                    Button {
-                        if let start = event.start, let episode = event.episode{
-                            episode.playPosition = start
-                            Player.shared.setCurrentEpisode(episode: episode, playDirectly: true)
+                    
+                    HStack{
+                        VStack{
+                            Text(event.start?.secondsToHoursMinutesSeconds ?? "")
+                                .monospacedDigit()
+                            
+                            if event.type == .skip{
+                                Text(event.end?.secondsToHoursMinutesSeconds ?? "")
+                                    .monospacedDigit()
+                                
+                                Image(systemName: event.directionImage)
+                                
+                            }
+                            
                             
                         }
                         
-                    }
+                        Spacer()
+                        VStack{
+                            Text(event.date.formatted())
+                                .foregroundStyle(.secondary)
+                            Text(event.description)
+                        }
+                        Spacer()
+                        Button {
+                            if let start = event.start, let episode = event.episode{
+                                episode.playPosition = start
+                                Player.shared.setCurrentEpisode(episode: episode, playDirectly: true)
+                                
+                            }
+                            
+                        }
                     label: {
                         Label {
                             Text("Jump back")
@@ -54,9 +70,11 @@ struct SkipAndBookmarkListView: View {
                         .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.bordered)
-                    
-
+                        
+                        
                     }
+                }
+                
                 .swipeActions(edge: .trailing){
                     Button(role: .destructive) {
                         withAnimation {

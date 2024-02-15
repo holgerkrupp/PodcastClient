@@ -29,8 +29,10 @@ struct PodcastClientApp: App {
     var body: some Scene {
         WindowGroup {
             TabBarView()
+                .accentColor(.accent)
         }
         .modelContainer(sharedModelContainer)
+        
         .onChange(of: phase, {
             switch phase {
             case .background: scheduleAppRefresh()
@@ -40,6 +42,7 @@ struct PodcastClientApp: App {
         .backgroundTask(.appRefresh("feedRefresh")) {
             await SubscriptionManager.shared.refreshall()
         }
+        
      
     }
     

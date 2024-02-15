@@ -21,6 +21,12 @@
             "value" : ""
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -44,6 +50,12 @@
           }
         },
         "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@"
+          }
+        },
+        "it" : {
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "%@"
@@ -77,6 +89,12 @@
             "value" : "%@ Episodes"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ Episodi"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -103,6 +121,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "%@ Podcasts"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ Podcast"
           }
         },
         "ko" : {
@@ -133,6 +157,12 @@
             "value" : "%@ secondes"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ secondi"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -142,7 +172,38 @@
       }
     },
     "%@:" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@:"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ :"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@:"
+          }
+        }
+      }
     },
     "%@x" : {
       "localizations" : {
@@ -159,6 +220,12 @@
           }
         },
         "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@x"
+          }
+        },
+        "it" : {
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "%@x"
@@ -192,6 +259,12 @@
             "value" : "%lld Bookmarks détectés"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld Segnalibri rilevati"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -218,6 +291,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "%lld Skips détectés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%lld Salti rilevati"
           }
         },
         "ko" : {
@@ -248,6 +327,12 @@
             "value" : "A propos de cette application"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Informazioni su questa applicazione"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -274,6 +359,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Activer le Sleeptimer"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attiva il Sleeptimer"
           }
         },
         "ko" : {
@@ -304,6 +395,12 @@
             "value" : "Régler la vitesse de lecture"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Regola la velocità di riproduzione"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -330,6 +427,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Régler la minuterie de sommeil"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Regola il timer del sonno"
           }
         },
         "ko" : {
@@ -360,6 +463,12 @@
             "value" : "déjà inscrit"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "già iscritto"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -386,6 +495,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "au début"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "all'inizio"
           }
         },
         "ko" : {
@@ -416,6 +531,12 @@
             "value" : "à la fin"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "alla fine"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -442,6 +563,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Télécharger automatiquement les nouveaux épisodes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Scarica automaticamente i nuovi episodi"
           }
         },
         "ko" : {
@@ -472,6 +599,12 @@
             "value" : "Gestion du chapitre"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gestione del capitolo"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -481,7 +614,6 @@
       }
     },
     "Contact" : {
-      "comment" : "My Mastodon",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -500,6 +632,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Contact"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contatto"
           }
         },
         "ko" : {
@@ -530,6 +668,12 @@
             "value" : "Compteur"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contatore"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -556,6 +700,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Créer un signet"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Crea un segnalibro"
           }
         },
         "ko" : {
@@ -586,6 +736,12 @@
             "value" : "Coupe à partir de l'extrémité"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tagliare dall'estremità"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -612,6 +768,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Couper à partir de l'avant"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tagliare dalla parte anteriore"
           }
         },
         "ko" : {
@@ -642,6 +804,12 @@
             "value" : "Zone de danger"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zona di pericolo"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -670,6 +838,12 @@
             "value" : "Supprimer"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Elimina"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -696,6 +870,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Supprimer toutes les entrées de la base de données"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Elimina tutte le voci del database"
           }
         },
         "ko" : {
@@ -727,6 +907,12 @@
             "value" : "développé par Holger Krupp"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "sviluppato da Holger Krupp"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -753,6 +939,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "ne rien faire"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "non fare nulla"
           }
         },
         "ko" : {
@@ -783,6 +975,12 @@
             "value" : "Gestion des épisodes"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gestione degli episodi"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -809,6 +1007,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "erreur de chargement d'un épisode"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "errore di caricamento dell'episodio"
           }
         },
         "ko" : {
@@ -839,6 +1043,12 @@
             "value" : "Prolonge la minuterie de mise en veille de %@ minutes"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Prolunga il timer del sonno di %@ minuti"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -865,6 +1075,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Importation"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Importazione"
           }
         },
         "ko" : {
@@ -895,6 +1111,12 @@
             "value" : "Importation et exportation"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Importazione ed esportazione"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -921,6 +1143,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Gestion des importations"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gestione delle importazioni"
           }
         },
         "ko" : {
@@ -951,6 +1179,12 @@
             "value" : "Boîte de réception"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Posta in arrivo"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -960,7 +1194,38 @@
       }
     },
     "Jump back" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zurückspringen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Saltar atrás"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Retourne en arrière"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta indietro"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "뒤로 이동"
+          }
+        }
+      }
     },
     "Last Attempt" : {
       "localizations" : {
@@ -980,6 +1245,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Dernière tentative"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ultimo tentativo"
           }
         },
         "ko" : {
@@ -1010,6 +1281,12 @@
             "value" : "Date de la dernière construction"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Data dell'ultima costruzione"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1036,6 +1313,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Dernier code d'état HTTP"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ultimo codice di stato HTTP"
           }
         },
         "ko" : {
@@ -1066,6 +1349,12 @@
             "value" : "Dernière modification"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ultima modifica"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1092,6 +1381,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Dernier rafraîchissement"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ultimo aggiornamento"
           }
         },
         "ko" : {
@@ -1122,6 +1417,12 @@
             "value" : "Dernière version : %@"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ultimo rilascio: %@"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1150,6 +1451,12 @@
             "value" : "Marquer tout comme joué"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Segna tutti come giocati"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1159,7 +1466,38 @@
       }
     },
     "Mark as played" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Als gespielt markieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Marcar como jugado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Marquer comme joué"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Segna come giocato"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "재생됨으로 표시"
+          }
+        }
+      }
     },
     "Mark as Played" : {
       "localizations" : {
@@ -1179,6 +1517,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Marquer comme joué"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Segna come giocato"
           }
         },
         "ko" : {
@@ -1209,6 +1553,12 @@
             "value" : "Marquer les épisodes existants comme joués"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Segna gli episodi esistenti come giocati"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1235,6 +1585,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Maximiser"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Massimizza"
           }
         },
         "ko" : {
@@ -1265,6 +1621,12 @@
             "value" : "Nouveaux épisodes"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nuovi episodi"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1291,6 +1653,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "nouveaux podcasts"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "nuovi Podcast"
           }
         },
         "ko" : {
@@ -1321,6 +1689,12 @@
             "value" : "PAS DE DÉPENDANCES"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "NESSUNA DIPENDENZA"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1347,6 +1721,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "aucun podcast n'est chargé"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "nessun podcast caricato"
           }
         },
         "ko" : {
@@ -1377,6 +1757,12 @@
             "value" : "La touche Play réactive la minuterie de sommeil pendant %@ minutes après l'arrêt de la lecture."
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Il pulsante Play riattiva lo sleep timer per %@ minuti dopo aver interrotto la riproduzione."
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1403,6 +1789,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Jouer le chapitre"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riproduci il capitolo"
           }
         },
         "ko" : {
@@ -1433,6 +1825,12 @@
             "value" : "Joue en dernier"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gioca per ultimo"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1459,6 +1857,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Jouer la suite"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gioca il prossimo"
           }
         },
         "ko" : {
@@ -1489,6 +1893,12 @@
             "value" : "Joue maintenant"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gioca ora"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1515,6 +1925,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Gestion de la lecture"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gestione della riproduzione"
           }
         },
         "ko" : {
@@ -1545,6 +1961,12 @@
             "value" : "Vitesse de lecture"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Velocità di riproduzione"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1571,6 +1993,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Paramètres du podcast"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impostazioni del podcast"
           }
         },
         "ko" : {
@@ -1601,6 +2029,12 @@
             "value" : "Podcasts"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Podcast"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1610,6 +2044,7 @@
       }
     },
     "Postprocess" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1629,10 +2064,50 @@
             "value" : "Post-traitement"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Postprocesso"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "포스트 프로세스"
+          }
+        }
+      }
+    },
+    "Pull down to refresh" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zum Aktualisieren nach unten ziehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tira hacia abajo para actualizar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tire vers le bas pour rafraîchir"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tira giù per aggiornare"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "아래로 당겨 새로 고침"
           }
         }
       }
@@ -1655,6 +2130,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Placer les nouveaux éléments dans la file d'attente suivante"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Metti nuovi elementi nella coda di riproduzione successiva"
           }
         },
         "ko" : {
@@ -1685,6 +2166,12 @@
             "value" : "rafraîchir"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "rinfrescare"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1711,6 +2198,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Rafraîchir"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiorna"
           }
         },
         "ko" : {
@@ -1741,6 +2234,12 @@
             "value" : "Supprimer de la liste"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Rimuovi dall'elenco"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1767,6 +2266,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Recherche"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ricerca"
           }
         },
         "ko" : {
@@ -1797,6 +2302,12 @@
             "value" : "Recherche ou saisis l'URL"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cerca o inserisci l'URL"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1823,6 +2334,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Sélectionne un fichier OPML pour importer tes abonnements de podcasts à partir de différentes applications de podcast."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Seleziona un file OPML per importare gli abbonamenti ai podcast da diverse applicazioni podcast."
           }
         },
         "ko" : {
@@ -1853,6 +2370,12 @@
             "value" : "Sélectionne le fichier à importer"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Seleziona il file da importare"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1879,6 +2402,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Paramètres"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impostazioni"
           }
         },
         "ko" : {
@@ -1909,6 +2438,12 @@
             "value" : "Paramètres pour sauter des chapitres par mot-clé"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impostazioni per saltare i capitoli per parola chiave"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1918,7 +2453,6 @@
       }
     },
     "Settings.MoreApps" : {
-      "comment" : "MoreApps",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -1939,6 +2473,12 @@
             "value" : "Settings.MoreApps"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impostazioni.AltreApp"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1948,7 +2488,6 @@
       }
     },
     "Settings.MyWebsite" : {
-      "comment" : "My Website",
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -1969,6 +2508,12 @@
             "value" : "Settings.MyWebsite"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impostazioni.MioSito"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -1978,7 +2523,38 @@
       }
     },
     "Show Bookmarks" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Lesezeichen anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mostrar marcadores"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Afficher les signets"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mostra segnalibri"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "북마크 표시"
+          }
+        }
+      }
     },
     "Show Details" : {
       "localizations" : {
@@ -2000,6 +2576,12 @@
             "value" : "Afficher les détails"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mostra dettagli"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2009,7 +2591,38 @@
       }
     },
     "Show Skips" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Überspringen anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mostrar saltos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Afficher les sauts"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mostra salti"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "건너뛰기 표시"
+          }
+        }
+      }
     },
     "Skip back" : {
       "localizations" : {
@@ -2029,6 +2642,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Retourner en arrière"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta indietro"
           }
         },
         "ko" : {
@@ -2059,6 +2678,12 @@
             "value" : "Retourner en arrière"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta indietro"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2085,6 +2710,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Saute en arrière 45 secondes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta indietro di 45 secondi"
           }
         },
         "ko" : {
@@ -2115,6 +2746,12 @@
             "value" : "Sauter en avant"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta in avanti"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2141,6 +2778,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Avance de 45 secondes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta in avanti di 45 secondi"
           }
         },
         "ko" : {
@@ -2171,6 +2814,12 @@
             "value" : "Minuterie de mise en veille"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Timer del sonno"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2180,7 +2829,38 @@
       }
     },
     "Sleep Timer Voice Feedback Text" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sleep Timer Sprachrückmeldung Text"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Temporizador de sueño Texto de respuesta por voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Minuterie de mise en veille Texte de rétroaction vocale"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Timer del sonno Feedback vocale Testo"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "수면 타이머 음성 피드백 텍스트"
+          }
+        }
+      }
     },
     "Sleeptimer" : {
       "localizations" : {
@@ -2197,6 +2877,12 @@
           }
         },
         "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sleeptimer"
+          }
+        },
+        "it" : {
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Sleeptimer"
@@ -2230,6 +2916,12 @@
             "value" : "Stream Now"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Streaming ora"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2256,6 +2948,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "S'abonner"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Iscriviti"
           }
         },
         "ko" : {
@@ -2286,6 +2984,12 @@
             "value" : "S'abonner à tous les podcasts %lld"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Iscriviti a tutti i podcast di %lld"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2314,6 +3018,12 @@
             "value" : "Podcasts abonnés"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Podcast sottoscritti"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2323,7 +3033,38 @@
       }
     },
     "Test Sleep Timer Voice Feedback" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Test Sleep Timer Sprachrückmeldung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Prueba del temporizador de reposo Respuesta de voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Test Sleep Timer Voice Feedback"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Test del timer del sonno Feedback vocale"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "수면 타이머 음성 피드백 테스트"
+          }
+        }
+      }
     },
     "These Settings are applied when a feed is subscribed" : {
       "localizations" : {
@@ -2343,6 +3084,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Ces paramètres sont appliqués lorsqu'un flux est souscrit"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Queste impostazioni vengono applicate quando un feed viene sottoscritto"
           }
         },
         "ko" : {
@@ -2373,6 +3120,12 @@
             "value" : "Ces paramètres sont appliqués lorsqu'un nouvel épisode est chargé dans le lecteur et modifient le comportement de la lecture"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Queste impostazioni vengono applicate quando un nuovo episodio viene caricato nel lettore e modificano il comportamento della riproduzione."
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2399,6 +3152,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Ces réglages sont appliqués lorsque des chapitres sont détectés dans un épisode"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Queste impostazioni vengono applicate quando vengono rilevati dei capitoli in un episodio."
           }
         },
         "ko" : {
@@ -2429,6 +3188,12 @@
             "value" : "Ces paramètres modifient la façon dont les nouveaux épisodes des podcasts sont gérés."
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Queste impostazioni modificano la gestione dei nuovi episodi dei Podcast."
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2455,6 +3220,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Annuler Sauter"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Annulla il salto"
           }
         },
         "ko" : {
@@ -2485,6 +3256,12 @@
             "value" : "Se désabonner"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Annullamento dell'iscrizione"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2513,6 +3290,12 @@
             "value" : "UpNext"
           }
         },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Avanti"
+          }
+        },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
@@ -2522,7 +3305,38 @@
       }
     },
     "Voice Feedback when sleep timer is extended" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sprachrückmeldung, wenn der Sleep-Timer verlängert wird"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Respuesta de voz cuando se amplía el temporizador de desconexión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Rétroaction vocale lorsque le délai de sommeil est prolongé"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Feedback vocale quando il timer del sonno viene prolungato"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "절전 타이머 연장 시 음성 피드백"
+          }
+        }
+      }
     },
     "When a sleep timer ends, you can press play / the air pod button to reactivate it. Here you can customize the behaviour" : {
       "localizations" : {
@@ -2542,6 +3356,12 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Lorsqu'une minuterie de sommeil se termine, tu peux appuyer sur play / le bouton air pod pour la réactiver. Ici, tu peux personnaliser le comportement"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Quando uno sleep timer termina, puoi premere il pulsante play / air pod per riattivarlo. Qui puoi personalizzare il comportamento"
           }
         },
         "ko" : {

@@ -141,13 +141,17 @@ extension DownloadManager: FileManagerDelegate {
     }
     
     func createDirectory(at url: URL){
-        print("create directory at \(url.absoluteString)")
-        let filemanager = FileManager.default
-        filemanager.delegate = self
-        do{
-            try filemanager.createDirectory(at: url, withIntermediateDirectories: true)
-        }catch{
-            print(error)
+        if !directoryExistsAtPath(url.absoluteString){
+            print("create directory at \(url.absoluteString)")
+            let filemanager = FileManager.default
+            filemanager.delegate = self
+            do{
+                try filemanager.createDirectory(at: url, withIntermediateDirectories: true)
+            }catch{
+                print(error)
+            }
+        }else{
+            print(" directory at \(url.absoluteString) exists")
         }
     }
     
@@ -211,7 +215,11 @@ extension DownloadManager: FileManagerDelegate {
     }
 
     
-  
+    fileprivate func directoryExistsAtPath(_ path: String) -> Bool {
+        var isdirectory : ObjCBool = true
+        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isdirectory)
+        return exists
+    }
 
     
 }

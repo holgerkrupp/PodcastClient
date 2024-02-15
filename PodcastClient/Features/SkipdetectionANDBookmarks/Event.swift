@@ -42,23 +42,35 @@ class Event {
         self.type = type
     }
     
+    enum Direction {
+        case back, forward
+    }
+    
+    @Transient var direction:Direction{
+        if self.start ?? 0 > self.end ?? 0{
+            return .back
+        }else{
+            return .forward
+        }
+    }
+    
     @Transient var duration:Double{
         return abs((start ?? 0) - (end ?? 0))
     }
     
     @Transient var directionImage:String{
-        if self.start ?? 0 > self.end ?? 0{
+        if direction == .back{
             return "arrow.backward"
         }else{
             return "arrow.forward"
         }
     }
         @Transient var description:String{
-            if type == .skip{
-                if self.start ?? 0 > self.end ?? 0{
-                    return "Skip of \(duration.secondsToHoursMinutesSeconds) back detected"
+            if type == .skip, let durationText = duration.secondsToHoursMinutesSeconds{
+                if direction == .back{
+                    return "Skiped back \(durationText)"
                 }else{
-                    return "Skip of \(duration.secondsToHoursMinutesSeconds) forwward detected"
+                    return "Skiped forward \(durationText)"
                 }
             }else{
                 return type?.description ?? ""
