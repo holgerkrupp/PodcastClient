@@ -111,10 +111,12 @@ import SwiftData
                 let newSkip = Event(start: oldValue, end: playPosition, type: .skip)
                 currentEpisode?.events?.append(newSkip)
                 
+            }else{
+                // no skip detected. Let's update the maxPlayposition
+                currentEpisode?.maxPlayposition = playPosition
             }
-                
-                
-                currentEpisode?.playPosition = playPosition
+            
+            currentEpisode?.playPosition = playPosition
             
         }
     }
@@ -396,10 +398,15 @@ import SwiftData
     func updateMPMediaPlayer(){
         
      //   let image =  ?? ImageWithData(currentEpisode?.podcast?.cover ?? ImageWithURL(currentEpisode?.image) ?? UIImage())
-        let mediaArtwort = MPMediaItemArtwork(image: currentEpisode?.uiimage ?? UIImage())
+       
+        var mediaArtwort:MPMediaItemArtwork?
+        
+        if let image = currentEpisode?.uiimage{
+            mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        }
         playcenter.nowPlayingInfo = [
             
-            MPMediaItemPropertyArtwork: mediaArtwort,
+            MPMediaItemPropertyArtwork: mediaArtwort ?? UIImage(named: "AppIcon") ?? UIImage(),
             
             MPMediaItemPropertyTitle : currentEpisode?.title ?? "",
             MPMediaItemPropertyPlaybackDuration: currentEpisode?.duration ?? avplayer.currentItem?.duration ?? 0.0,
@@ -412,6 +419,9 @@ import SwiftData
         currentEpisode?.events?.append(bookmark)
     }
     
+    func setLockScreenSlider(){
+        MPRemoteCommandCenter.shared().changePlaybackPositionCommand.isEnabled = settings.enableLockscreenSlider
+    }
     
     
     func initRemoteCommandCenter(){
@@ -474,13 +484,16 @@ import SwiftData
             return.success
         }
         
-        RCC.changePlaybackPositionCommand.isEnabled = true
+        RCC.changePlaybackPositionCommand.isEnabled = settings.enableLockscreenSlider
         RCC.changePlaybackPositionCommand.addTarget { event in
-            if let event = event as? MPChangePlaybackPositionCommandEvent {
-                let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000)
-                self.jumpTo(time: time)
+            if self.settings.enableLockscreenSlider{
+                if let event = event as? MPChangePlaybackPositionCommandEvent {
+                    let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000)
+                    self.jumpTo(time: time)
+                    return .success
+                }
             }
-            return .success
+            return .commandFailed
         }
         
 

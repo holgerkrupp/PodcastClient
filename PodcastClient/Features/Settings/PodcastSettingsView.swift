@@ -15,6 +15,20 @@ struct PodcastSettingsView: View {
         List{
             
             Section {
+                Toggle(isOn: $settings.enableLockscreenSlider) {
+                    Text("Enable Progress slider on lock screen")
+                }.onSubmit {
+                    print("enableLockscreenSlider - changed")
+                    Player.shared.setLockScreenSlider()// this needs to be done here, as the player is not automatically updated when settings change.
+                }
+                
+            }header: {
+                Text("General Settings")
+            }footer:{
+                Text("General Settings that are applied in different areas")
+            }
+            
+            Section {
                 
                 Toggle(isOn: $settings.markAsPlayedAfterSubscribe) {
                     Text("Mark existing episodes as played")

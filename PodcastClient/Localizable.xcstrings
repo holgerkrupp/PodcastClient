@@ -955,6 +955,9 @@
         }
       }
     },
+    "Enable Progress slider on lock screen" : {
+
+    },
     "Episode Management" : {
       "localizations" : {
         "de" : {
@@ -1056,6 +1059,12 @@
           }
         }
       }
+    },
+    "General Settings" : {
+
+    },
+    "General Settings that are applied in different areas" : {
+
     },
     "Import" : {
       "localizations" : {

@@ -31,7 +31,8 @@ class PodcastSettings {
     // Secret Settings that should only be applied on global way:
     var markAsPlayedAfterSubscribe: Bool = true
     var playSumAdjustedbyPlayspeed: Bool = false
-    
+    var enableLockscreenSlider:Bool = true
+
     var sleepTimerAddMinutes: Double = 10 // 10 minutes
     var sleepTimerDurationToReactivate: Double = 300 // 5 minutes * 60 seconds
     var sleepTimerVoiceFeedbackEnabled: Bool = true

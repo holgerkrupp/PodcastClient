@@ -66,6 +66,7 @@ class Episode: Equatable, Hashable{
     var lastPlayed: Date?
     var finishedPlaying: Bool? = false
     var duration:Double?
+    var maxPlayposition:Double? = 0.0
     
     
     var isAvailableLocally:Bool = false
