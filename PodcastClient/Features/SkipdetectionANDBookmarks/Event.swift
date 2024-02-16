@@ -68,9 +68,9 @@ class Event {
         @Transient var description:String{
             if type == .skip, let durationText = duration.secondsToHoursMinutesSeconds{
                 if direction == .back{
-                    return "Skiped back \(durationText)"
+                    return "Skipped back \(durationText)"
                 }else{
-                    return "Skiped forward \(durationText)"
+                    return "Skipped forward \(durationText)"
                 }
             }else{
                 return type?.description ?? ""

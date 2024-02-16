@@ -1,5 +1,6 @@
 # PodcastClient
-An Open Source Podcast client.
+An Open Source Podcast client. 
+[I've released a first alpha version. It still has a lot of bugs. See my announcement in the discussion area.](https://github.com/holgerkrupp/PodcastClient/discussions/16)
 
 ## Alpha min Requiremets
 
@@ -22,6 +23,11 @@ An Open Source Podcast client.
 - [x] skip forward / backward
 - - [x] make time adjustable
 - [x] jump to chapter
+- [ ] Chapter marks
+- - [x] PSC
+- - [x] m4a
+- - [ ] mp3
+- - [x] extracted from shownotes
 - [ ] include chapter art for mp3/m4a
 - [ ] include chapter links for mp3/m4a
 - [x] download images during postprocessing
@@ -45,7 +51,8 @@ An Open Source Podcast client.
 - [x] skip manually selected chapters
 - [x] sleep timer
 - [x] play next queue
-- [x] set playbackspeed (per podcast)
+- [x] set playbackspeed
+- - [ ] (per podcast)
 
 
 
@@ -54,11 +61,13 @@ An Open Source Podcast client.
 ### Miscellaneous
 - [ ] nice UI
 - [ ] nice Logo
-- [ ] nice name
+- [ ] nice name - Raúl
+- [ ] CarPlay
 
 ### Subscription Management
 - [ ] OPML export
 - [ ] Fyyd Directory Search
+- [ ] Fyyd recomendations
 - [ ] accept opml from share sheet
 - [ ] accept rss / xml from share sheet 
 - [ ] accept any URL that could be a feed
@@ -85,7 +94,7 @@ An Open Source Podcast client.
 ### Refresh and Downloads
 
 ### Player
-- [ ] CarPlay
+
 - [ ] custom playlists
 
 
@@ -94,27 +103,3 @@ An Open Source Podcast client.
 - [ ] Apple Watch App
 - [ ] remove tracking information from URLs
 - [ ] share little videos from episodes for social media
-
-
--------
-
-# Known Bugs and current items to work on
-
-## Import
-- [x] Sometimes duplicate items are put into a dictionary that crashes the app. No idea why.
-
-> Fatal error: Duplicate keys of type 'Canonical' were found in a Dictionary.
-> This usually means either that the type violates Hashable's requirements, or
-> that members of such a dictionary were mutated after insertion.
-
-- [x] Mark all as played after import takes long time
-
-## Download
-- [x] Images shall be downloaded when a new episode is downloaded (to avoid saving all images from old episodes)
-
-## Player
-- [ ] Undo a skip creates a new skip entry
-- [x] Cover Image changes size depening if chapter bar is visible or not
-- [ ] mp3 chapers not working
-- [x] Player starts playing when starting the app (??)
-
