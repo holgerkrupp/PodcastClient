@@ -128,7 +128,7 @@ struct ImportExportView: View {
                 return false
             }
         }).sorted(by: {$0.title ?? "" < $1.title ?? ""}).concurrentForEach { newFeed in
-            await  newFeed.subscribe()
+            await newFeed.subscribe()
         }
         
 

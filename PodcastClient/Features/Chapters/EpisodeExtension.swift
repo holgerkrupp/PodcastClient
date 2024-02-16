@@ -56,7 +56,6 @@ extension Episode{
     
     
     func extractM4AChapters(from asset: AVAsset) async -> [Chapter]?{
-        let chapterLocalesKey = "availableChapterLocales"
         var chapters: [Chapter] = []
         let metadata = try? await asset.load(.metadata)
         if (metadata != nil){
@@ -79,12 +78,12 @@ extension Episode{
                     
                     // Validate the time fields for NaN and negative values
                     let correctedStart = (start.isNaN || start < 0) ? 0 : start
-                    let correctedEnd = (end.isNaN || end < 0) ? 0 : end
                     let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
                     
                     let newChaper = Chapter()
                     newChaper.title = title
                     newChaper.start = correctedStart
+                    
                     newChaper.duration = correctedDuration
                     newChaper.type = .embedded
                     newChaper.imageData = artworkData
@@ -113,9 +112,9 @@ extension Episode{
             }
             
             // Extract chapter information based on your specific ID3v2 structure
-            let chapters = parseChapterFrames(data: data)
+           // let chapters = parseChapterFrames(data: data)
             
-            return chapters
+            return nil //chapters
         } catch {
             print("Error extracting chapter marks: \(error.localizedDescription)")
             return nil
@@ -123,7 +122,7 @@ extension Episode{
 
         
     }
-    
+    /*
     func parseChapterFrames(data: Data) -> [Chapter] {
         var chapters: [Chapter] = []
         
@@ -144,8 +143,6 @@ extension Episode{
             }
             
             if let title = String(bytes: titleData, encoding: .utf8) {
-                print("\(startTime.secondsToHoursMinutesSeconds) - \(title)")
-
                 chapters.append(Chapter(start: startTime, title: title, type: .embedded))           
             } else {
                 print("Unable to decode title from bytes: \(titleData)")
@@ -159,7 +156,7 @@ extension Episode{
         return chapters
     }
     
-    
+    */
     
     
     //MARK: Create Chapters from Episode Description

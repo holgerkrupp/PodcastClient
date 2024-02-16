@@ -102,11 +102,9 @@ class Episode: Equatable, Hashable{
  
     
     @Transient lazy var avAsset:AVAsset? = {
-        print("avAsset read - \(localFile?.absoluteString) - \(isAvailableLocally)")
         if let url = localFile, isAvailableLocally{
             return AVAsset(url: url)
         }else{
-            print("avAsset remote - \(assetLink?.absoluteString)")
             if let remoteURL = assetLink{
                 return AVAsset(url: remoteURL)
             }

@@ -25,7 +25,7 @@ class PodcastFeed{
             subscribing = true
             if let url{
                 Task{
-                    var subscriptionManager = SubscriptionManager.shared
+                    let subscriptionManager = SubscriptionManager.shared
                     subscribing = true
                     status = try? await url.status()
                     print("\(status?.statusCode?.formatted() ?? "STATUSCODE") - \(status?.doctype ?? "DOCTYPE")")
@@ -237,7 +237,7 @@ actor SubscriptionManager:NSObject{
         for url in urls {
             if let url{
                 print("start subscribe for \(url.absoluteString)")
-                await subscribe(to: url)
+                let _ = await subscribe(to: url)
                 print("end subscribe for \(url.absoluteString)")
 
             }
@@ -251,8 +251,41 @@ actor SubscriptionManager:NSObject{
      //   newPodcasts.forEach { $0.subscribing = true }
         for podcast in newPodcasts {
             
-            await podcast.subscribe()
+            let _ = await podcast.subscribe()
             
+        }
+    }
+    
+    
+    //MARK: Background
+    //the next functions are for background refresh activites. but could be also used in outher occations
+    
+    func bgcheckIfFeedsShouldRefresh() async -> Bool{
+        // this can run regularly and should be low weight
+        // check only those that are not marked as updated during the last run
+        print("bgcheckIfFeedsShouldRefresh")
+        var shouldRefresh = false
+        fetchData()
+        for podcast in podcasts.sorted(by: { lhs, rhs in
+            lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
+        }).filter({$0.feedUpdated != true}){
+            let new = await podcast.feedUpdated()
+            if new == true{
+                shouldRefresh = true
+            }
+        }
+
+        return shouldRefresh
+    }
+    
+    func bgupdateFeeds() async{
+        // this updates the feeds. It takes more time
+        // check only those that are not marked as old during the last run
+        fetchData()
+        for podcast in podcasts.sorted(by: { lhs, rhs in
+            lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
+        }).filter({$0.feedUpdated != false}){
+            await podcast.refresh()
         }
     }
     

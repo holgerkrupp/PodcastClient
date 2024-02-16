@@ -49,8 +49,8 @@
             filePath = "PodcastClient/PodcastClientApp.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "58"
-            endingLineNumber = "58"
+            startingLineNumber = "86"
+            endingLineNumber = "86"
             landmarkName = "scheduleAppRefresh()"
             landmarkType = "7">
             <Locations>

@@ -73,8 +73,8 @@ struct PodcastView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(maxHeight: 20)
-                                .rotationEffect(.degrees(podcast.isUpdating ?? false ? 360 : 0))
-                                .animation(.easeInOut(duration: 1), value: podcast.isUpdating ?? false)
+                                .rotationEffect(.degrees(podcast.isUpdating ? 360 : 0))
+                                .animation(.easeInOut(duration: 1), value: podcast.isUpdating )
                         }
                         .labelStyle(.iconOnly)
                         

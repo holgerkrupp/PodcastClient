@@ -90,14 +90,16 @@ class DownloadManager: NSObject, ObservableObject {
         
         guard episode.assetLink != nil else { return }
         if let fileURL = episode.assetLink{
-            guard downloads[fileURL] == nil else { return }
+            guard downloads[fileURL] == nil else { 
+                downloads[fileURL]?.resume()
+                return }
             let download = Download(url: fileURL, downloadSession: downloadSession)
             downloads[fileURL] = download
             episode.downloadStatus.isDownloading = true
             for await event in download.events {
                 await process(event, for: episode)
             }
-            downloads[fileURL] = nil
+         //   downloads[fileURL] = nil
         }else{
             return
         }
@@ -174,20 +176,27 @@ extension DownloadManager: FileManagerDelegate {
             }catch{
                 print(error)
                 episode.downloadStatus.isDownloading = false
-
+                if let fileURL = episode.assetLink{
+                    downloads.removeValue(forKey: fileURL)
+                }
              
             }
             
             if filemanager.fileExists(atPath: newlocation.path){
                 episode.isAvailableLocally = true
                 episode.downloadStatus.isDownloading = false
-                
+                if let fileURL = episode.assetLink{
+                    downloads.removeValue(forKey: fileURL)
+                }
                 Task{
                     await episode.postProcessingAfterDownload()
                 }
             }else{
                 episode.isAvailableLocally = false
                 episode.downloadStatus.isDownloading = false
+                if let fileURL = episode.assetLink{
+                    downloads.removeValue(forKey: fileURL)
+                }
             }
 
         }

@@ -155,8 +155,6 @@ struct PlayerView: View {
 
                         
                     Spacer()
-                    Image(systemName: "gear")
-                    Spacer()
                     
                     if let skip = (player.currentEpisode?.events?.last(where: { event in
                         event.date < Date().addingTimeInterval(60*5) &&
@@ -165,18 +163,31 @@ struct PlayerView: View {
                         Button{
                             player.undo(skip: skip)
                         } label: {
-                        
-                        Label {
-                            Text("Undo Skip")
-                        } icon: {
-                            Image(systemName: "arrow.uturn.backward")
-                                .tint(.primary)
+                            
+                            Label {
+                                Text("Undo Skip")
+                            } icon: {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .tint(.primary)
+                            }
+                            .labelStyle(.iconOnly)
+                            
+                            
                         }
-                        .labelStyle(.iconOnly)
-                        
-                        
                     }
+                    
+                    
+
+
+                    Spacer()
+                    
+                    if let link = player.currentEpisode?.link{
+                        ShareLink(item: link) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                                .labelStyle(.iconOnly)
+                        }
                     }
+
                     Spacer()
                     Button{
                         player.bookmark()

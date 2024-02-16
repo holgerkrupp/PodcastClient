@@ -23,7 +23,6 @@ struct PlaylistView: View {
         
         //     Text("\(playlist.ordered.count.description) - Playlist entries")
         let playlist = playListEntries.first?.playlist
-        let adjust = SettingsManager.shared.defaultSettings.markAsPlayedAfterSubscribe
       
   
             //    Text("\(episodes.count) Episodes")
@@ -31,7 +30,7 @@ struct PlaylistView: View {
                 List{
                     
                     ForEach(playListEntries.filter({$0.episode != nil}), id:\.self) { item in
-                        let episodeSpeed = item.episode?.podcast?.settings?.playbackSpeed ?? SettingsManager.shared.defaultSettings.playbackSpeed
+                     
                         VStack{
                             EpisodeMiniView(episode: item.episode!)
                                 .modelContext(modelContext)

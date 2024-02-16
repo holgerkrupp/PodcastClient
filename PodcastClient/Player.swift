@@ -98,9 +98,9 @@ import SwiftData
     var playPosition: Double = 0.0{
         didSet{
             
-            if let undo = currentEpisode?.events?.first(where: { event in
+            if currentEpisode?.events?.first(where: { event in
                 event.start == playPosition
-            }){
+            }) != nil{
                 print("skip undo detected")
                 currentEpisode?.events?.removeAll(where: { event in
                     event.start == playPosition
@@ -172,7 +172,6 @@ import SwiftData
     func setCurrentEpisode(episode: Episode, playDirectly: Bool = true){
         currentEpisode = episode
         currentPlaylist.add(episode: episode, to: .front)
-        print("current Episode Duration: \(currentEpisode?.duration?.description)")
         
         if let asset = currentEpisode?.avAsset{
             let playerItem = AVPlayerItem(asset: asset)

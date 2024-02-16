@@ -35,23 +35,51 @@ struct PodcastClientApp: App {
         
         .onChange(of: phase, {
             switch phase {
-            case .background: scheduleAppRefresh()
+            case .background: 
+            //    scheduleAppRefresh()
+                bgNewAppRefresh()
             default: break
             }
         })
         .backgroundTask(.appRefresh("feedRefresh")) {
-            await SubscriptionManager.shared.refreshall()
+          //  await SubscriptionManager.shared.refreshall()
+            await SubscriptionManager.shared.bgupdateFeeds()
         }
+        .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
+            let shouldRefresh = await SubscriptionManager.shared.bgcheckIfFeedsShouldRefresh()
+                
+            if shouldRefresh == true{
+                scheduleAppRefresh()
+            }
+            
+          
+            
+            
+        }
+        
         
      
     }
     
     
+    func bgNewAppRefresh(){
+        // this should replace scheduleAppRefresh
+        print("went to background started bgNewAppRefresh")
+        let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
+        
+        do{
+            try BGTaskScheduler.shared.submit(request)
+            
+        }catch{
+            print(error)
+        }
+    }
+    
     
     func scheduleAppRefresh() {
         print("went to background will schedule AppRefresh")
         let request = BGProcessingTaskRequest(identifier: "feedRefresh")
-        request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
+//        request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
 
         do{
             try BGTaskScheduler.shared.submit(request)

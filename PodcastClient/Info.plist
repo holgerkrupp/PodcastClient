@@ -5,6 +5,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>feedRefresh</string>
+		<string>checkFeedUpdates</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

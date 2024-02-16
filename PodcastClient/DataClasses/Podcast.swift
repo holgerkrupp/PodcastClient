@@ -41,8 +41,9 @@ class Podcast: Equatable, Hashable{
     
     var DEBUGAttemptCount: Int = 0
     
-    
-    
+    // these properties are supposed to be used for background refresh checks
+    var feedUpdated:Bool? // has the feed been updated and should refresh?
+    var feedUpdateCheckDate:Date? // when has feedUpdated been set? 
     
     
     @Transient var isUpdating:Bool = false
@@ -59,32 +60,35 @@ class Podcast: Equatable, Hashable{
     }
     
 
-    
+    @MainActor
     func feedUpdated() async ->Bool?{
         
-    
-
+  //      feedUpdated = nil
+        feedUpdateCheckDate = Date()
         if let lastRefresh{
             if let serverLastModified = try? await feed?.status()?.lastModified {
                 print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
       
                 if serverLastModified > lastRefresh{
                     print("feed is new")
-                    // feed on server is new
+                    feedUpdated = true
                     return true
                 }else{
                     // feed on server is old
                     print("feed is old")
+                    feedUpdated = false
                     return false
                 }
             }else{
                 // server is not answering with a lastmodified Date
                 print("no last modified date")
+                
                 return nil
             }
         }else{
             // feed has never been fetched before, no last modified date is set.
             print("feed is very new")
+            feedUpdated = true
             return true
         }
     }
@@ -156,10 +160,16 @@ class Podcast: Equatable, Hashable{
 
     }
     
+    func resetBackgroundCheck(){
+        feedUpdated = nil
+        feedUpdateCheckDate = nil
+    }
     
+    @MainActor
     func update(details: [String: Any]) async {
         
- 
+        resetBackgroundCheck() // when there is an update, the 
+
         let guids =
             (details["episodes"] as? [[String:Any]]).map { episodes in
                 episodes.map { episode in
@@ -184,19 +194,9 @@ class Podcast: Equatable, Hashable{
             if let newEpisodes{
                 for episodeDetails in newEpisodes {
                     let container =  PersistanceManager.shared.sharedModelContainer
-                    let context = modelContext ?? ModelContext(container)
                     let episode = await Episode(details: episodeDetails, podcast: self)
                     episodes?.append(episode)
-                   /*
-                    context.insert(episode)
-                    do{
-                        try context.save()
-                        episodes?.append(episode)
-                        //          print("Episode inserted")
-                    }catch{
-                        print(error)
-                    }
-                    */
+
                 }
                 
             }
@@ -259,16 +259,13 @@ class Podcast: Equatable, Hashable{
     }
     
     func contains(episodeDetails: [String: Any]) -> Bool{
-        let testURL = (episodeDetails["enclosure"] as? [[String:Any]])?.first?["url"] as? String
         
         let guid = episodeDetails["guid"] as? String ?? (episodeDetails["enclosure"] as? [[String:Any]])?.first?["url"] as? String
         
-     //   print("contains: \(testURL ?? "")")
-      //  let first = episodes.first(where: { $0.assetLink == URL(string: testURL ?? "de.holgerkrupp.teststring") })
+ 
         
         let first = episodes?.first(where: { $0.guid == guid })
 
-    //    print("\(first?.title ?? "-") contains \(guid ?? "")")
         
         if (first == nil){
             return false
@@ -280,19 +277,13 @@ class Podcast: Equatable, Hashable{
         
     }
     
-    
+    @MainActor
     func refresh() async{
         isUpdating = true
         DEBUGAttemptCount = DEBUGAttemptCount + 1
         let updated = await feedUpdated()
         lastAttempt = Date()
-        /*
-        do{
-            try modelContext?.save()
-        }catch{
-            print(error)
-        }
-        */
+
         if updated != false{ // could be true (feed file updated) or nil (no last modified day)
             
                 if let data = await feedData(){
@@ -328,33 +319,7 @@ class Podcast: Equatable, Hashable{
         
     }
     
-    func save(){
-        if let moc = self.modelContext {
-            do{
-                try moc.save()
-            }catch{
-                print(error)
-            }
-        }
-    }
-   /*
-    static func ==(lhs: Podcast, rhs: Podcast) -> Bool {
-        
-        if lhs.id == rhs.id{
-            return true
-        }else if lhs.feed == rhs.feed, lhs.feed != nil{
-            return true
-        }else{
-            return false
-        }
-        
-    }
-    
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(feed)
-        hasher.combine(id)
-    }
-    */
+
 
     
     

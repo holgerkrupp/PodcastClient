@@ -32,10 +32,9 @@ class FyydSearchManager{
                 
                 print(requestURL)
                 
-                var request = URLRequest(url: requestURL)
+                let request = URLRequest(url: requestURL)
                 let session = URLSession.shared
                 
-                let decoder = JSONDecoder()
                 do {
                     let (responseData, _) = try await session.data(for: request)
                     
@@ -53,7 +52,7 @@ class FyydSearchManager{
                         
                         for podcast in podcasts {
                            
-                            var newFeed = FyydFeed()
+                            let newFeed = FyydFeed()
                             newFeed.artist = podcast["artistName"] as? String
                             newFeed.title = podcast["collectionName"] as? String
                             newFeed.url = URL(string: podcast["feedUrl"]  as? String ?? "")

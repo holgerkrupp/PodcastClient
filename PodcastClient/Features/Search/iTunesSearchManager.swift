@@ -18,10 +18,9 @@ class iTunesSearchManager {
                 
                 print(requestURL)
                 
-                var request = URLRequest(url: requestURL)
+                let request = URLRequest(url: requestURL)
                 let session = URLSession.shared
 
-                let decoder = JSONDecoder()
                 do {
                     let (responseData, _) = try await session.data(for: request)
                   
@@ -40,7 +39,7 @@ class iTunesSearchManager {
                         
                         for podcast in podcasts {
                            
-                            var newFeed = ITunesFeed()
+                            let newFeed = ITunesFeed()
                             newFeed.artist = podcast["artistName"] as? String
                             newFeed.title = podcast["collectionName"] as? String
                             newFeed.url = URL(string: podcast["feedUrl"]  as? String ?? "")
