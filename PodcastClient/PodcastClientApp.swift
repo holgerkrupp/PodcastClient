@@ -19,7 +19,7 @@ struct PodcastClientApp: App {
 
      
       init() {
-          let pm = PersistanceManager.shared
+          let pm = PersistenceManager.shared
           
           self.sharedModelContainer = pm.sharedModelContainer
           UserDefaults.standard.register(defaults: ["UserAgent" : "Raúl Podcatcher"])

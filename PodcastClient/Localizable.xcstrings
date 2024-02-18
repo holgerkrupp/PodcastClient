@@ -1239,6 +1239,9 @@
         }
       }
     },
+    "Language" : {
+
+    },
     "Last Attempt" : {
       "localizations" : {
         "de" : {
@@ -2123,6 +2126,9 @@
           }
         }
       }
+    },
+    "Pull to refresh" : {
+
     },
     "Put new Elements to Play Next Queue" : {
       "localizations" : {
@@ -3352,6 +3358,9 @@
           }
         }
       }
+    },
+    "What others are listening" : {
+
     },
     "When a sleep timer ends, you can press play / the air pod button to reactivate it. Here you can customize the behaviour" : {
       "localizations" : {

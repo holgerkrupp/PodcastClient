@@ -66,6 +66,11 @@ struct InboxView: View {
                         }
                     }
                 }
+                .background {
+                    Image(systemName: "arrow.down")
+                    Text("Pull to refresh")
+                    
+                }
                 .refreshable {
                     await SubscriptionManager.shared.refreshall()
                 }

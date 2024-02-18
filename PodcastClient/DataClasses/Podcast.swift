@@ -193,7 +193,7 @@ class Podcast: Equatable, Hashable{
             
             if let newEpisodes{
                 for episodeDetails in newEpisodes {
-                    let container =  PersistanceManager.shared.sharedModelContainer
+                    let container =  PersistenceManager.shared.sharedModelContainer
                     let episode = await Episode(details: episodeDetails, podcast: self)
                     episodes?.append(episode)
 

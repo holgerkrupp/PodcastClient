@@ -12,7 +12,7 @@ import SwiftData
 
 actor SubscriptionManager:NSObject{
     
-    var modelContext: ModelContext? = ModelContext(PersistanceManager.shared.sharedModelContainer)
+    var modelContext: ModelContext? = ModelContext(PersistenceManager.shared.sharedModelContainer)
     
     var podcasts : [Podcast] = []
     var opmlParser = OPMLParser()

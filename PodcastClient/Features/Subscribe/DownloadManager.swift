@@ -158,7 +158,7 @@ extension DownloadManager: FileManagerDelegate {
     }
     
     func saveFile(for episode: Episode, at url: URL) {
-        let modelContext = ModelContext(PersistanceManager.shared.sharedModelContainer)
+        let modelContext = ModelContext(PersistenceManager.shared.sharedModelContainer)
    //     guard let episode: Episode = modelContext.model(for: oldepisode.persistentModelID) as? Episode else { return  }
         
         
@@ -170,7 +170,7 @@ extension DownloadManager: FileManagerDelegate {
             filemanager.delegate = self
             
             
-            let data = try? Data(contentsOf: url)
+            let data = try? Data(contentsOf: url) // this shouldn't be needed. But somehow moving didn't work as the temp file disappeared very quickly
             var resourceValues = URLResourceValues()
             resourceValues.isExcludedFromBackup = true
             var newlocation = newlocation

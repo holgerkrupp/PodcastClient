@@ -34,6 +34,7 @@
 		489346F22B4C4D8700DF4D82 /* DoubleExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */; };
 		48AA18972B2C59B8007558FC /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AA18962B2C59B8007558FC /* ImageLoader.swift */; };
 		48ACE8C12B824EF100B40C53 /* BackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48ACE8C02B824EF100B40C53 /* BackgroundView.swift */; };
+		48ACE8C32B82907800B40C53 /* SuggestionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48ACE8C22B82907800B40C53 /* SuggestionsView.swift */; };
 		48BF0D152B72579E00EAF0B0 /* LocalNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BF0D142B72579E00EAF0B0 /* LocalNotificationManager.swift */; };
 		48BF0D172B726B0300EAF0B0 /* FyydSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BF0D162B726B0200EAF0B0 /* FyydSearchManager.swift */; };
 		48BF0D192B727EC000EAF0B0 /* ArrayExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48BF0D182B727EC000EAF0B0 /* ArrayExtensions.swift */; };
@@ -46,7 +47,7 @@
 		48C7267A2B6CF067007AF19E /* EpisodeExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48C726792B6CF067007AF19E /* EpisodeExtension.swift */; };
 		48D525602B7020B9001FF830 /* iTunesSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */; };
 		48D525622B702617001FF830 /* SearchResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D525612B702617001FF830 /* SearchResultView.swift */; };
-		48DC0B5D2B5E996F00A6A0D0 /* PersistanceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */; };
+		48DC0B5D2B5E996F00A6A0D0 /* PersistenceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B5C2B5E996F00A6A0D0 /* PersistenceManager.swift */; };
 		48DC0B5F2B5FA19300A6A0D0 /* PlayerChapterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B5E2B5FA19300A6A0D0 /* PlayerChapterView.swift */; };
 		48DC0B612B5FA50F00A6A0D0 /* ChapterListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B602B5FA50F00A6A0D0 /* ChapterListView.swift */; };
 		48DC0B632B659C9500A6A0D0 /* InboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48DC0B622B659C9500A6A0D0 /* InboxView.swift */; };
@@ -98,6 +99,7 @@
 		489346F12B4C4D8700DF4D82 /* DoubleExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleExtensions.swift; sourceTree = "<group>"; };
 		48AA18962B2C59B8007558FC /* ImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageLoader.swift; sourceTree = "<group>"; };
 		48ACE8C02B824EF100B40C53 /* BackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundView.swift; sourceTree = "<group>"; };
+		48ACE8C22B82907800B40C53 /* SuggestionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuggestionsView.swift; sourceTree = "<group>"; };
 		48BF0D142B72579E00EAF0B0 /* LocalNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationManager.swift; sourceTree = "<group>"; };
 		48BF0D162B726B0200EAF0B0 /* FyydSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FyydSearchManager.swift; sourceTree = "<group>"; };
 		48BF0D182B727EC000EAF0B0 /* ArrayExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArrayExtensions.swift; sourceTree = "<group>"; };
@@ -111,7 +113,7 @@
 		48C726792B6CF067007AF19E /* EpisodeExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeExtension.swift; sourceTree = "<group>"; };
 		48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iTunesSearchManager.swift; sourceTree = "<group>"; };
 		48D525612B702617001FF830 /* SearchResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchResultView.swift; sourceTree = "<group>"; };
-		48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistanceManager.swift; sourceTree = "<group>"; };
+		48DC0B5C2B5E996F00A6A0D0 /* PersistenceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceManager.swift; sourceTree = "<group>"; };
 		48DC0B5E2B5FA19300A6A0D0 /* PlayerChapterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerChapterView.swift; sourceTree = "<group>"; };
 		48DC0B602B5FA50F00A6A0D0 /* ChapterListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChapterListView.swift; sourceTree = "<group>"; };
 		48DC0B622B659C9500A6A0D0 /* InboxView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = InboxView.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 				48D5255F2B7020B9001FF830 /* iTunesSearchManager.swift */,
 				48D525612B702617001FF830 /* SearchResultView.swift */,
 				48BF0D162B726B0200EAF0B0 /* FyydSearchManager.swift */,
+				48ACE8C22B82907800B40C53 /* SuggestionsView.swift */,
 			);
 			path = Search;
 			sourceTree = "<group>";
@@ -272,7 +275,7 @@
 		48DC0B662B67D2B600A6A0D0 /* Features */ = {
 			isa = PBXGroup;
 			children = (
-				48DC0B5C2B5E996F00A6A0D0 /* PersistanceManager.swift */,
+				48DC0B5C2B5E996F00A6A0D0 /* PersistenceManager.swift */,
 				48043EC02B7B65CA00D6CCB4 /* Playlists */,
 				48BF0D132B72578200EAF0B0 /* Notification */,
 				48C726762B6CC311007AF19E /* Subscribe */,
@@ -466,8 +469,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				48C043922B2F2E160006C352 /* SettingsView.swift in Sources */,
-				48DC0B5D2B5E996F00A6A0D0 /* PersistanceManager.swift in Sources */,
+				48DC0B5D2B5E996F00A6A0D0 /* PersistenceManager.swift in Sources */,
 				48BF0D152B72579E00EAF0B0 /* LocalNotificationManager.swift in Sources */,
+				48ACE8C32B82907800B40C53 /* SuggestionsView.swift in Sources */,
 				48DC0B652B67CA4800A6A0D0 /* Event.swift in Sources */,
 				48C7267A2B6CF067007AF19E /* EpisodeExtension.swift in Sources */,
 				489346EF2B4C316700DF4D82 /* ListofEpisodesView.swift in Sources */,

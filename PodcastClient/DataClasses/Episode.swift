@@ -232,6 +232,10 @@ class Episode: Equatable, Hashable{
 
     
     func updateChapters() async{
+        
+        
+       
+        
         let embeddedChapterCount = chapters?.filter({ $0.type == .embedded }).count ?? 0
         if embeddedChapterCount == 0{
             if let localFile{
@@ -255,7 +259,7 @@ class Episode: Equatable, Hashable{
             for group in chapterGrouped{
                 print("enhancing \(group.key.rawValue) chapters")
                 var lastEnd = duration ?? 100
-                for chapter in group.value.sorted(by: {$0.start ?? 0.0 > $1.start ?? duration ?? 100}){
+                for chapter in group.value.sorted(by: {$0.start ?? 0.0 > $1.start ?? duration ?? 100}){ 
                     if chapter.duration == nil{
                         chapter.duration = lastEnd - (chapter.start ?? 0.0)
                         lastEnd = chapter.start ?? 0.0

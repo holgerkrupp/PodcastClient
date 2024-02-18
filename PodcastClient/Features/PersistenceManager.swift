@@ -8,8 +8,8 @@
 import Foundation
 import SwiftData
 
-class PersistanceManager{
-    static let shared = PersistanceManager()
+class PersistenceManager{
+    static let shared = PersistenceManager()
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([

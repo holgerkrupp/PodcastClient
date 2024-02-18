@@ -17,7 +17,7 @@ struct SubscribeToView: View{
     var body: some View{
         VStack{
             Text(newPodcastFeed.title ?? "").font(.title3)
-            
+
             
             HStack{
                 if let image = newPodcastFeed.artworkURL{
@@ -64,7 +64,11 @@ struct SubscribeToView: View{
                 }
             }
             Text(newPodcastFeed.url?.absoluteString ?? "").font(.caption)
-
+            if let desc = newPodcastFeed.description{
+                Text(desc)
+                    .font(.body)
+                    .padding()
+            }
 
         }
     }

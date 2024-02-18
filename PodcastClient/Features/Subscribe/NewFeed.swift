@@ -18,6 +18,10 @@ class PodcastFeed: Hashable{
     }
     
     var title: String?
+    var subtitle: String?
+    var description: String?
+
+
     var url: URL?
     var existing: Bool = false
     var added: Bool = false

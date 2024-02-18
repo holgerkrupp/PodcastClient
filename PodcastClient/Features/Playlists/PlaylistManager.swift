@@ -13,7 +13,7 @@ import SwiftData
 class PlaylistManager:NSObject{
     
     static let shared = PlaylistManager()
-    var modelContext: ModelContext? = PersistanceManager.shared.sharedContext
+    var modelContext: ModelContext? = PersistenceManager.shared.sharedContext
     
     public let playNextQueueTitel = "de.holgerkrupp.podbay.queue"
     
@@ -46,7 +46,7 @@ class PlaylistManager:NSObject{
     private override init() {
         super.init()
         
-        modelContext = PersistanceManager.shared.sharedContext
+        modelContext = PersistenceManager.shared.sharedContext
     }
     
     

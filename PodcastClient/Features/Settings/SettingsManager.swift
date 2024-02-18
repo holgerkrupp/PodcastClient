@@ -14,7 +14,7 @@ import SwiftData
 class SettingsManager:NSObject{
     
     static let shared = SettingsManager()
-    var modelContext: ModelContext? = PersistanceManager.shared.sharedContext
+    var modelContext: ModelContext? = PersistenceManager.shared.sharedContext
     let configuration = ModelConfiguration(isStoredInMemoryOnly: false, allowsSave: true)
     
     var defaultSettings: PodcastSettings {
