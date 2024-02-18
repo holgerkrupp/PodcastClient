@@ -91,7 +91,7 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "A8CCDCE4-65A1-4061-8600-2043718F1C53"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "PodcastClient/Views/ElementaryViews/PlayerProgressSliderView.swift"

@@ -135,9 +135,14 @@ struct EpisodeView: View {
                  */
                 
             }
+
           
             /*
             
+             .onAppear{
+             _ = episode.UpdateisAvailableLocally()
+             }
+             
             if let chapters = episode.chapters{
                 ChapterListView(chapters: chapters)
             }
@@ -267,6 +272,23 @@ struct EpisodeMiniView: View {
     }
 }
 
+
+struct EpisodeMetaDataView: View{
+    
+    var episode: Episode
+    
+    var body: some View {
+        VStack{
+            HStack{
+                Text("Download?")
+            }
+            
+        }
+    }
+}
+
+
+
 @Observable
 class EpisodeListItemModel {
     var episode: Episode
@@ -285,7 +307,7 @@ struct EpisodeStatusIcon:View{
     
     
     var body: some View {
-        if episode.isAvailableLocally{
+        if episode.isAvailableLocally ?? false{
             Image(systemName: "externaldrive.badge.checkmark")
                 .scaledToFit()
                 .frame(width: 10, height: 10)
@@ -309,13 +331,13 @@ struct EpisodePlayProgressView:View{
 
     var body: some View {
             HStack{
-                ProgressView(value: episode.progress, total: 1.0)
+                ProgressView(value: episode.progress, total: episode.duration ?? 500)
                         .progressViewStyle(.linear)
                 if let duration = episode.duration {
                     
-                    if (duration - episode.playPosition) > 0.9{
+                    if (duration - (episode.playPosition ?? 0)) > 0.9{
                         
-                        Text("\((duration - episode.playPosition).secondsToHoursMinutesSeconds ?? "")")
+                        Text("\((duration - (episode.playPosition ?? 0)).secondsToHoursMinutesSeconds ?? "")")
                             .monospacedDigit()
                             .font(.caption)
                             .foregroundColor(.secondary)

@@ -88,9 +88,10 @@ class DownloadManager: NSObject, ObservableObject {
     //@MainActor
     func download(_ episode: Episode) async throws {
         
-        guard episode.assetLink != nil else { return }
+       
         if let fileURL = episode.assetLink{
-            guard downloads[fileURL] == nil else { 
+
+            guard downloads[fileURL] == nil else {
                 downloads[fileURL]?.resume()
                 return }
             let download = Download(url: fileURL, downloadSession: downloadSession)
@@ -99,7 +100,6 @@ class DownloadManager: NSObject, ObservableObject {
             for await event in download.events {
                 await process(event, for: episode)
             }
-         //   downloads[fileURL] = nil
         }else{
             return
         }
@@ -143,7 +143,7 @@ extension DownloadManager: FileManagerDelegate {
     }
     
     func createDirectory(at url: URL){
-        if !directoryExistsAtPath(url.absoluteString){
+        if !directoryExistsAtPath(url.path()){
             print("create directory at \(url.absoluteString)")
             let filemanager = FileManager.default
             filemanager.delegate = self
@@ -158,19 +158,32 @@ extension DownloadManager: FileManagerDelegate {
     }
     
     func saveFile(for episode: Episode, at url: URL) {
-
+        let modelContext = ModelContext(PersistanceManager.shared.sharedModelContainer)
+   //     guard let episode: Episode = modelContext.model(for: oldepisode.persistentModelID) as? Episode else { return  }
+        
+        
+        
         if let newlocation = episode.localFile{
             print("saving File \(url)")
             print("saving File to \(newlocation)")
             let filemanager = FileManager.default
             filemanager.delegate = self
-            createDirectory(at: newlocation.deletingLastPathComponent())
             
+            
+            let data = try? Data(contentsOf: url)
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            var newlocation = newlocation
+            
+            filemanager.createFile(atPath: newlocation.path, contents: data, attributes: nil)
+            try? newlocation.setResourceValues(resourceValues)
+         //   createDirectory(at: newlocation.deletingLastPathComponent())
+            /*
             do{
                 try filemanager.moveItem(at: url, to: newlocation)
                 var resourceValues = URLResourceValues()
                 resourceValues.isExcludedFromBackup = true
-                var url = url
+                var url = newlocation
                 try url.setResourceValues(resourceValues)
 
             }catch{
@@ -181,8 +194,10 @@ extension DownloadManager: FileManagerDelegate {
                 }
              
             }
-            
+            */
             if filemanager.fileExists(atPath: newlocation.path){
+                print("available")
+                
                 episode.isAvailableLocally = true
                 episode.downloadStatus.isDownloading = false
                 if let fileURL = episode.assetLink{
@@ -192,11 +207,7 @@ extension DownloadManager: FileManagerDelegate {
                     await episode.postProcessingAfterDownload()
                 }
             }else{
-                episode.isAvailableLocally = false
-                episode.downloadStatus.isDownloading = false
-                if let fileURL = episode.assetLink{
-                    downloads.removeValue(forKey: fileURL)
-                }
+                print("does not exist")
             }
 
         }
@@ -204,22 +215,15 @@ extension DownloadManager: FileManagerDelegate {
     }
     
     func fileManager(_ fileManager: FileManager, shouldMoveItemAt srcURL: URL, to dstURL: URL) -> Bool {
-        if fileManager.fileExists(atPath: dstURL.path()){
-            print("shouldMoveItemAt")
-            do{
-                try fileManager.removeItem(at: dstURL)
-            }catch{
-                print(error)
-                return false
-            }
-        }
+
         
         return true
     }
     
     func fileManager(_ fileManager: FileManager, shouldProceedAfterError error: Error, movingItemAt srcURL: URL, to dstURL: URL) -> Bool {
         print("shouldProceedAfterError")
-        createDirectory(at: dstURL.deletingLastPathComponent())
+        print(error)
+      
         return true
     }
 

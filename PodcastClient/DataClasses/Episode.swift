@@ -58,7 +58,7 @@ class Episode: Equatable, Hashable{
  
     
    // var playpostion: Double = 0.0
-    var playPosition:Double  = 0.0{
+    var playPosition:Double?  = 0.0{
         didSet{
             updateLastPlayed()
         }
@@ -69,7 +69,7 @@ class Episode: Equatable, Hashable{
     var maxPlayposition:Double? = 0.0
     
     
-    var isAvailableLocally:Bool = false
+    var isAvailableLocally:Bool? = false
   
  
     //MARK: values that don't need to be stored
@@ -87,14 +87,25 @@ class Episode: Equatable, Hashable{
         return documentsDirectoryUrl?.appendingPathComponent(fileName).standardizedFileURL
     }()
     
-    func UpdateisAvailableLocally() -> Bool?{
-        
+    func UpdateisAvailableLocally() -> Bool{
         if let localFile = localFile?.path() {
             let manager = FileManager()
-            isAvailableLocally = true
-            return  manager.fileExists(atPath: localFile)
+            if manager.fileExists(atPath: localFile) {
+                downloadStatus.isDownloading = false
+                isAvailableLocally = true
+                print("UpdateisAvailableLocally \(isAvailableLocally?.description ?? "--")")
+
+                return true
+            }else{
+                isAvailableLocally = false
+                print("UpdateisAvailableLocally \(isAvailableLocally?.description ?? "--")")
+
+                return false
+            }
         }else{
             isAvailableLocally = false
+            print("UpdateisAvailableLocally 2 \(isAvailableLocally?.description ?? "--")")
+
             return false
         }
     }
@@ -102,7 +113,7 @@ class Episode: Equatable, Hashable{
  
     
     @Transient lazy var avAsset:AVAsset? = {
-        if let url = localFile, isAvailableLocally{
+        if let url = localFile, isAvailableLocally ?? false{
             return AVAsset(url: url)
         }else{
             if let remoteURL = assetLink{
@@ -147,7 +158,7 @@ class Episode: Equatable, Hashable{
     
     @Transient  var progress:Double {
         if let duration{
-            return ((playPosition) / duration)
+            return ((playPosition ?? 0) / duration)
         }
         return 0.0
     }

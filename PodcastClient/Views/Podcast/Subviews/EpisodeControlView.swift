@@ -17,7 +17,7 @@ struct EpisodeControlView: View {
                 episode.playNow()
                 
             } label: {
-                if episode.isAvailableLocally {
+                if episode.isAvailableLocally ?? false {
                     Image(systemName: "play")
                         .resizable()
                         .scaledToFit()
@@ -38,15 +38,13 @@ struct EpisodeControlView: View {
 */
             Spacer()
             
-            if episode.isAvailableLocally{
+            if episode.isAvailableLocally == true{
                 Button {
                     episode.removeFile()
                 } label: {
                     Image(systemName: "trash")
                         .resizable()
                         .scaledToFit()
-                    
-                    
                 }
                 .buttonStyle(.bordered)
             }else if episode.downloadStatus.isDownloading{
@@ -55,6 +53,7 @@ struct EpisodeControlView: View {
                   
             }else{
                 Button {
+                    
                     episode.download()
                 } label: {
                     Image(systemName: "icloud.and.arrow.down")

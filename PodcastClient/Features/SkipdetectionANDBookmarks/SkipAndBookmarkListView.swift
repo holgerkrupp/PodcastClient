@@ -15,20 +15,16 @@ struct SkipAndBookmarkListView: View {
         List{
             ForEach(events){ event in
                 ZStack(alignment: Alignment(horizontal: .center, vertical: .center)) {
-                   
-                    if event.direction == .back{
-                        Image(systemName: "chevron.backward.2")
-                            .resizable()
-                            .frame(width: 80, height: 80)
-                            .foregroundColor(.gray.opacity(0.2))
+
                             
-                    }else{
-                        Image(systemName: "chevron.forward.2")
-                            .resizable()
-                            .frame(width: 80, height: 80)
-                            .foregroundColor(.gray.opacity(0.2))
-                    }
-                    
+        
+                            
+                            Image(systemName: event.direction == .back ? "chevron.backward.2" : "chevron.forward.2" )
+                                .resizable()
+                                .frame(width: 80, height: 80)
+                                .foregroundColor(.gray.opacity(0.2))
+                            
+
                     
                     HStack{
                         VStack{
@@ -74,6 +70,9 @@ struct SkipAndBookmarkListView: View {
                         
                     }
                 }
+                .listRowInsets(EdgeInsets())
+                .padding()
+                .background(event.direction == .back ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
                 
                 .swipeActions(edge: .trailing){
                     Button(role: .destructive) {

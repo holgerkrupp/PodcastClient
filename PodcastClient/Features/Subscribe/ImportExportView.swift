@@ -141,45 +141,7 @@ struct ImportExportView: View {
 
 
 
-struct SubscribeToView: View{
-    
-    var newPodcastFeed: PodcastFeed
-    
-    @State private var subscribing = false
-    
-    var body: some View{
-        HStack{
-            VStack(alignment: .leading){
-                Text(newPodcastFeed.title ?? "").font(.title3)
-                Text(newPodcastFeed.url?.absoluteString ?? "").font(.caption)
-                if newPodcastFeed.status != nil {
-                    Text(newPodcastFeed.status?.statusCode?.formatted() ?? "")
-                }
-            }
-            Spacer()
-            if newPodcastFeed.existing == false{
-                if newPodcastFeed.added == true{
-                    Image(systemName: "checkmark.circle")
-                }else{
-                    if newPodcastFeed.subscribing == true{
-                        ProgressView()
-                    }else{
-                        Button {
-                            
-                            Task{
-                                await newPodcastFeed.subscribe()
-                            }
-                        } label: {
 
-                            Text("Subscribe")
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-            }
-        }
-    }
-}
 
 
 

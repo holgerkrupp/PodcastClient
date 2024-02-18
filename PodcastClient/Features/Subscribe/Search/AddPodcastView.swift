@@ -12,7 +12,7 @@ struct AddPodcastView: View {
 
     @State var newFeed:String = ""
     @State private var updateing = false
-    @State private var iTunesResults:[ITunesFeed]?
+    @State private var iTunesResults:[PodcastFeed]?
     
     var parserDelegate = PodcastParser()
     var subscriptionManager = SubscriptionManager.shared
@@ -68,7 +68,7 @@ struct AddPodcastView: View {
                 
                 if let iTunesResults{
                     Section{
-                        ITunesResultView(iTunesResults: iTunesResults).id(UUID())
+                        SearchResultView(searchResults: iTunesResults).id(UUID())
                     }
                     
                 }

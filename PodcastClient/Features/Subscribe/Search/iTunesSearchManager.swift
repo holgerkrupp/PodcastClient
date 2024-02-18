@@ -11,7 +11,7 @@ class iTunesSearchManager {
     
     var endpointURL = "https://itunes.apple.com/search?term=$SEARCHTERM&media=podcast"
     
-    func search(for term: String) async -> [ITunesFeed]?{
+    func search(for term: String) async -> [PodcastFeed]?{
         if term != "" {
             
             if let requestURL = URL(string: endpointURL.replacingOccurrences(of: "$SEARCHTERM", with: term)){
@@ -32,14 +32,14 @@ class iTunesSearchManager {
                     }
 
 
-                    var iTunesFeeds:[ITunesFeed] = []
+                    var iTunesFeeds:[PodcastFeed] = []
      
                     
                     if let podcasts = json["results"] as? [[String: Any]]{
                         
                         for podcast in podcasts {
                            
-                            let newFeed = ITunesFeed()
+                            let newFeed = PodcastFeed()
                             newFeed.artist = podcast["artistName"] as? String
                             newFeed.title = podcast["collectionName"] as? String
                             newFeed.url = URL(string: podcast["feedUrl"]  as? String ?? "")

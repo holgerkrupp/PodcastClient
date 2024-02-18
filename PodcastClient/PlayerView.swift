@@ -129,8 +129,10 @@ struct PlayerView: View {
                         Label {
                             Text("Playback Speed")
                         } icon: {
-                            Image(systemName: "dial.medium")
-                                .tint(.primary)
+                            
+                                Image(systemName: "dial.medium")
+                                    .tint(.primary)
+                               
                         }
                         .labelStyle(.iconOnly)
                         
@@ -138,14 +140,15 @@ struct PlayerView: View {
                     }
                     .sheet(isPresented: $showSpeedSetting, content: {
                         VStack{
+                            
                             Text("Adjust Playback Speed")
                             Stepper(value: $player.rate, in: 0.1...3.0, step: 0.1) {
                                 Text("\(player.settings.playbackSpeed.formatted())x")
                             }
-                            .padding()
-                        }
+                            
+                        }.padding()
                         .presentationDragIndicator(.visible)
-                        .presentationBackground(.thinMaterial)
+                        .presentationBackground(.ultraThinMaterial)
                         .presentationDetents([.fraction(0.2)])
                       
                     })
@@ -232,7 +235,7 @@ struct PlayerView: View {
                             
                         }.padding()
                         .presentationDragIndicator(.visible)
-                        .presentationBackground(.thinMaterial)
+                        .presentationBackground(.ultraThinMaterial)
                         .presentationDetents([.fraction(0.2)])
                       
                     })

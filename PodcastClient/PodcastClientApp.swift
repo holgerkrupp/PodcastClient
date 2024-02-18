@@ -80,7 +80,7 @@ struct PodcastClientApp: App {
         print("went to background will schedule AppRefresh")
         let request = BGProcessingTaskRequest(identifier: "feedRefresh")
 //        request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
-
+        request.requiresNetworkConnectivity = true
         do{
             try BGTaskScheduler.shared.submit(request)
             

@@ -74,24 +74,7 @@ class Playlist{
            
         }
         }
-        
-    /*
-        if let existingItem = items?.first(where: { item in
-            item.episode == episode
-        }){
-            existingItem.order = newPosition
-        }
-        else if let nE: Episode = modelContext?.model(for: episode.persistentModelID) as? Episode{
-            print("ModelContext same? \(modelContext == nE.modelContext)")
-            let newEntry = PlaylistEntry(episode: nE, order: newPosition)
-            items?.append(newEntry)
 
-        }else{
-            print("could not find Episode in Playlist ModelContext")
-        }
-     
-     episode.download()
-*/
         
 
 

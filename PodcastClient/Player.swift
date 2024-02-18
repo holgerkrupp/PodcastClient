@@ -207,7 +207,7 @@ import SwiftData
             let tolerance = CMTime(seconds: 0, preferredTimescale: 1)
             let zero = CMTime(seconds: 0, preferredTimescale: 0)
             
-            avplayer.seek(to: currentEpisode?.playPosition.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
+            avplayer.seek(to: currentEpisode?.playPosition?.CMTime ?? zero, toleranceBefore: tolerance, toleranceAfter: tolerance)
             updateCurrentChapter()
             if playDirectly == true{
                 play()
@@ -400,14 +400,19 @@ import SwiftData
        
         var mediaArtwort:MPMediaItemArtwork?
         
-        if let image = currentEpisode?.uiimage{
+        
+        if let chapterCover = currentChapter?.imageData{
+            if let image = UIImage(data: chapterCover){
+                mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            }
+        }else if let image = currentEpisode?.uiimage{
             mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
         playcenter.nowPlayingInfo = [
             
             MPMediaItemPropertyArtwork: mediaArtwort ?? UIImage(named: "AppIcon") ?? UIImage(),
-            
             MPMediaItemPropertyTitle : currentEpisode?.title ?? "",
+            MPMediaItemPropertyArtist : currentEpisode?.podcast?.title ?? "",
             MPMediaItemPropertyPlaybackDuration: currentEpisode?.duration ?? avplayer.currentItem?.duration ?? 0.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: avplayer.currentTime().seconds,
             MPNowPlayingInfoPropertyPlaybackRate: avplayer.rate]
@@ -470,7 +475,7 @@ import SwiftData
         RCC.skipBackwardCommand.addTarget { event in
             
             let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.jumpPlaypostion(by: seconds)
+            self.jumpPlaypostion(by: -seconds)
             return.success
         }
         
