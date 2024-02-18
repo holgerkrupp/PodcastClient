@@ -401,6 +401,11 @@ import SwiftData
         var mediaArtwort:MPMediaItemArtwork?
         
         
+      //  print("DEBUG - \(currentEpisode?.duration?.formatted()) vs. \(avplayer.currentItem?.duration.seconds.formatted())")
+        
+        
+        
+        
         if let chapterCover = currentChapter?.imageData{
             if let image = UIImage(data: chapterCover){
                 mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
@@ -408,12 +413,17 @@ import SwiftData
         }else if let image = currentEpisode?.uiimage{
             mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         }
+        
+  
+        
+        
+        
         playcenter.nowPlayingInfo = [
             
             MPMediaItemPropertyArtwork: mediaArtwort ?? UIImage(named: "AppIcon") ?? UIImage(),
             MPMediaItemPropertyTitle : currentEpisode?.title ?? "",
             MPMediaItemPropertyArtist : currentEpisode?.podcast?.title ?? "",
-            MPMediaItemPropertyPlaybackDuration: currentEpisode?.duration ?? avplayer.currentItem?.duration ?? 0.0,
+            MPMediaItemPropertyPlaybackDuration: currentEpisode?.duration ?? avplayer.currentItem?.duration.seconds ?? 0.0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: avplayer.currentTime().seconds,
             MPNowPlayingInfoPropertyPlaybackRate: avplayer.rate]
     }

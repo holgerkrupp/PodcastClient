@@ -10,11 +10,29 @@ import SwiftUI
 struct ChapterListView: View {
     var player = Player.shared
     @State var chapters: [Chapter]
+    
+    var chaptersByType: [ChapterType: [Chapter]] {
+        Dictionary(grouping: chapters, by: { $0.type })
+    }
+    
+    @State private var selectedType: ChapterType?
+
+
+    
     var body: some View {
         ScrollView{
-            ForEach($chapters.sorted(by: {$0.start.wrappedValue ?? 0 < $1.start.wrappedValue ?? 1})){ chapter in
-          
-                    Text(chapter.wrappedValue.type.rawValue).foregroundStyle(.secondary)
+       /*
+            Picker("Select Chapter Type", selection: $selectedType) {
+                ForEach(chaptersByType.keys.sorted(), id: \.self) { type in
+                    Text(type.desc).tag(type)
+                }
+            }
+            .pickerStyle(.inline)
+            
+            ForEach($chapters.sorted(by: {$0.start.wrappedValue ?? 0 < $1.start.wrappedValue ?? 1}).filter({$0.type.wrappedValue == selectedType ?? ChapterType.embedded})){ chapter in
+            */
+                ForEach($chapters.sorted(by: {$0.start.wrappedValue ?? 0 < $1.start.wrappedValue ?? 1})){ chapter in
+
                     
                     HStack(alignment: .center){
                         Button {

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ImageWithURL: View {
     
-    @ObservedObject var imageLoader: ImageLoaderAndCache
+   @ObservedObject var imageLoader: ImageLoaderAndCache
     
     init(_ url: URL) {
         imageLoader = ImageLoaderAndCache(imageURL: url)

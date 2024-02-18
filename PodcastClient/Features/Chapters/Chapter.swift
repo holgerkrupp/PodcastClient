@@ -8,14 +8,36 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-enum ChapterType: String, Codable{
+enum ChapterType: String, Codable, Comparable{
+    static func < (lhs: ChapterType, rhs: ChapterType) -> Bool {
+        lhs.desc < rhs.desc
+    }
+    
     case podlove
     case embedded
     case extracted
     case unknown
+    
+    var desc:String{
+        
+        switch self {
+        case .podlove:
+            "Podlove"
+       
+        case .embedded:
+            "File"
+        case .extracted:
+            "Shownotes"
+        case .unknown:
+            "unknown"
+        }
+        
+    }
+    
+    
 }
 @Model
-class Chapter: Equatable, Hashable{
+class Chapter: Identifiable, Equatable, Hashable{
     
     
     var id = UUID()
