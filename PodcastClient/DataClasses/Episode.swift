@@ -256,8 +256,11 @@ class Episode: Equatable, Hashable{
                 print("enhancing \(group.key.rawValue) chapters")
                 var lastEnd = duration ?? 100
                 for chapter in group.value.sorted(by: {$0.start ?? 0.0 > $1.start ?? duration ?? 100}){
-                    chapter.duration = lastEnd - (chapter.start ?? 0.0)
-                    lastEnd = chapter.start ?? 0.0
+                    if chapter.duration == nil{
+                        chapter.duration = lastEnd - (chapter.start ?? 0.0)
+                        lastEnd = chapter.start ?? 0.0
+                    }
+                    
                 }
             }
             

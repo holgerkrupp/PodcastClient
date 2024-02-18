@@ -22,8 +22,14 @@ struct TabBarView: View {
     @State private var miniplayerHeight:CGFloat = 30.0
     var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 120
     var minPlayerHeight:CGFloat = 30.0
+
+    var percent:Double {
+        max(0.2, 1.0 - ((miniplayerHeight - minPlayerHeight)/(maxPlayerHeight - minPlayerHeight)))
+    }
+    
     var body: some View {
         ZStack(alignment: .bottom){
+
             TabView(selection: $selectedTab){
              
             
@@ -69,6 +75,7 @@ struct TabBarView: View {
                 
                 
             }
+          
             .onChange(of: selectedTab) {
                 if selectedTab != .none{
                     withAnimation{
@@ -82,26 +89,21 @@ struct TabBarView: View {
                     selectedTab = .none
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-           /*
-            if miniplayerHeight == maxPlayerHeight{
-                Spacer()
-                  //  .foregroundColor(.green)
-                 //   .background(.ultraThinMaterial)
-                    .frame(width: UIScreen.main.bounds.width, height: 50)
-                    .onTapGesture {
-                        withAnimation{
-                            miniplayerHeight = 30.0
-                        }
-                    }
-            }
-            */
+            .clipShape(RoundedRectangle(cornerRadius: 30))
+            .opacity(percent)
+            .shadow(color: .black, radius: 5)
+
 
                 
-        }.ignoresSafeArea()
+        }
+        .ignoresSafeArea()
+        
         if Player.shared.currentEpisode != nil{
             PlayerControlsView(miniPlayerHeight: $miniplayerHeight, maxPlayerHeight: maxPlayerHeight, minPlayerHeight: minPlayerHeight)
                 .frame(height: miniplayerHeight)
+                
+              
+
         }
 
     }

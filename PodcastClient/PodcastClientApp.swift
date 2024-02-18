@@ -28,11 +28,12 @@ struct PodcastClientApp: App {
 
     var body: some Scene {
         WindowGroup {
-            TabBarView()
-                .accentColor(.accent)
+               
+               TabBarView()
+                    .accentColor(.accent)
+            
         }
         .modelContainer(sharedModelContainer)
-        
         .onChange(of: phase, {
             switch phase {
             case .background: 

@@ -243,9 +243,10 @@ import SwiftData
                
                 playPosition = avplayer.currentTime().seconds
                 updateCurrentChapter()
-                updateMPMediaPlayer()
+
                 
             }
+            updateMPMediaPlayer()
             if sleeptimer.activated == true, let end = sleeptimer.end, end <= Date(){
                 pause()
                 sleeptimer.lastFinish = Date()

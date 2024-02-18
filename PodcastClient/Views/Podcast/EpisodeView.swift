@@ -69,7 +69,7 @@ struct EpisodeView: View {
                 EpisodeControlView(episode: episode)
                 
                 HStack{
-                    if let events = episode.events?.filter({ $0.type == .bookmark}).sorted(by: {$0.date < $1.date}), events.count > 0{
+                    if let events = episode.events?.filter({ $0.type == .bookmark}).sorted(by: {$0.date > $1.date}), events.count > 0{
                         Button {
                             showBookmarks.toggle()
                         } label: {
@@ -92,7 +92,7 @@ struct EpisodeView: View {
                         })
                     }
                     Spacer()
-                    if let events = episode.events?.filter({ $0.type == .skip}).sorted(by: {$0.date < $1.date}), events.count > 0{
+                    if let events = episode.events?.filter({ $0.type == .skip}).sorted(by: {$0.date > $1.date}), events.count > 0{
                         Button {
                             showSkips.toggle()
                         } label: {
