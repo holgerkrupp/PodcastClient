@@ -23,7 +23,7 @@ struct PlayerControlsView: View {
     var body: some View {
 
                 
-                if miniPlayerHeight == maxPlayerHeight{
+                if miniPlayerHeight >= maxPlayerHeight{
                     
                     
                     if player.currentEpisode != nil{

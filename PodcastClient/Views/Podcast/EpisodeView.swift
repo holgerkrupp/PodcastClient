@@ -194,6 +194,13 @@ struct EpisodeMiniView: View {
                         Spacer()
                         EpisodeStatusIcon(episode: episode)
                         Spacer()
+                        
+                        if episode.transcriptData != nil{
+                           
+                                    Image(systemName: "captions.bubble")
+                                      
+                            }
+                        
                     }
                     
                     if let data = episode.cover{

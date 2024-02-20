@@ -57,9 +57,7 @@ struct SubscribeToView: View{
                             }
                             .buttonStyle(.bordered)
                         }
-                        if newPodcastFeed.status != nil {
-                            Text(newPodcastFeed.status?.statusCode?.formatted() ?? "")
-                        }
+
                     }
                 }
             }
@@ -68,6 +66,10 @@ struct SubscribeToView: View{
                 Text(desc)
                     .font(.body)
                     .padding()
+            }
+            if newPodcastFeed.status != nil {
+                Text(newPodcastFeed.status?.statusCode?.formatted() ?? "")
+                Text(newPodcastFeed.error?.description ?? "")
             }
 
         }

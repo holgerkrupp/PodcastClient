@@ -52,7 +52,10 @@ class Playlist{
     }
     
     func add(episode:Episode, to: Position = .end){
-        episode.download()
+        if episode.isAvailableLocally != true{
+            episode.download()
+        }
+        
         var newPosition = 0
         switch to {
         case .front:

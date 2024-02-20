@@ -12,7 +12,9 @@ struct InboxView: View {
     @Environment(\.modelContext) var modelContext
     
     
-   
+    @AppStorage("LastBackgroundRefresh") private var lastBackgroundRefreshString: String = ""
+    
+
     @Query(filter: #Predicate<Episode> {$0.finishedPlaying != true },
            sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
     
@@ -65,12 +67,9 @@ struct InboxView: View {
                                 }
                         }
                     }
+                    Text(lastBackgroundRefreshString)
                 }
-                .background {
-                    Image(systemName: "arrow.down")
-                    Text("Pull to refresh")
-                    
-                }
+
                 .refreshable {
                     await SubscriptionManager.shared.refreshall()
                 }

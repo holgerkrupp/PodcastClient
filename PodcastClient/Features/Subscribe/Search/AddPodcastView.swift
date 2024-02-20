@@ -13,7 +13,7 @@ struct AddPodcastView: View {
     @State var newFeed:String = ""
     @State private var updateing = false
     @State private var searchResults:[PodcastFeed]?
-    
+    @State private var error:Error?
     var parserDelegate = PodcastParser()
     var subscriptionManager = SubscriptionManager.shared
     
@@ -40,9 +40,12 @@ struct AddPodcastView: View {
                             Text("Search or enter URL")
                         }.disabled(updateing)
                             .onSubmit {
+                                error = nil
                                 search()
                             }
-                        
+                        if let subError = error as? SubscriptionManager.SubscribeError{
+                            Text(subError.description).font(.caption)
+                        }
                         
                         Button {
                             search()
@@ -85,11 +88,19 @@ struct AddPodcastView: View {
         updateing = true
         if let feed, newFeed.isValidURL {
             Task{
-                let finished = await subscriptionManager.subscribe(to: feed)
-                if finished == true{
-                    newFeed = ""
+                
+                do {
+                    let result = try await subscriptionManager.subscribe(to: feed)
+                    newFeed = ""// handle success case
+                    updateing = false
+                    error = nil
+                } catch {
+                    let errorString = "Error: \(error)"
+                    self.error = error
+                    updateing = false
+                    print(errorString)
                 }
-                updateing = false
+                
             }
         }else{
             Task{

@@ -24,9 +24,11 @@ class PodcastFeed: Hashable{
 
     var url: URL?
     var existing: Bool = false
+    
     var added: Bool = false
     var subscribing: Bool = false
     var status: URLstatus?
+    var error: SubscriptionManager.SubscribeError?
     
     var artist: String?
     var artworkURL: URL?
@@ -46,18 +48,43 @@ class PodcastFeed: Hashable{
                 print("\(status?.statusCode?.formatted() ?? "STATUSCODE") - \(status?.doctype ?? "DOCTYPE")")
                 switch status?.statusCode {
                 case 200:
-                    added = await subscriptionManager.subscribe(to: url)
+                    
+                    do {
+                        let result = try await subscriptionManager.subscribe(to: url)
+                        added = true // handle success case
+                    } catch {
+                        let errorString = "Error: \(error)"
+                        self.error = error as? SubscriptionManager.SubscribeError
+                        print(errorString)
+                    }
                 case 404:
                     added = false
                 case 410:
-                    if let newURL = status?.newURL{
-                        added = await subscriptionManager.subscribe(to: newURL)
+                    if let newURL = self.status?.newURL{
+                        
+                        do {
+                            let result = try await subscriptionManager.subscribe(to: newURL)
+                            added = true // handle success case
+                        } catch {
+                            let errorString = "Error: \(error)"
+                            print(errorString)
+                            self.error = error as? SubscriptionManager.SubscribeError
+                            // Handle failure case or print the error string
+                        }
+                        
                     }else{
                         added = false
                     }
                     
                 default:
-                    added = await subscriptionManager.subscribe(to: url)
+                    do {
+                        let result = try await subscriptionManager.subscribe(to: url)
+                        added = true // handle success case
+                    } catch {
+                        let errorString = "Error: \(error)"
+                        self.error = error as? SubscriptionManager.SubscribeError
+                        print(errorString)
+                    }
                 }
                 
                 

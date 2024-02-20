@@ -124,15 +124,15 @@ import SwiftData
    
     
     var remaining: Double?{
-        if let duration = avplayer.currentItem?.duration{
-            return duration.seconds - playPosition
+        if let duration = currentEpisode?.duration{ // avplayer.currentItem?.duration.seconds ??
+            return duration - playPosition
         }else{
-            return nil
+            return  nil
         }
     }
     
     var duration:Double?{
-        avplayer.currentItem?.duration.seconds
+        currentEpisode?.duration
     }
     
     

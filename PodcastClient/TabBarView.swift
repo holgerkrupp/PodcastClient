@@ -22,7 +22,7 @@ struct TabBarView: View {
     @State private var miniplayerHeight:CGFloat = 30.0
     var maxPlayerHeight:CGFloat = UIScreen.main.bounds.height - 120
     var minPlayerHeight:CGFloat = 30.0
-
+    @State private var dragOffset: CGSize = .zero
     var percent:Double {
         max(0.2, 1.0 - ((miniplayerHeight - minPlayerHeight)/(maxPlayerHeight - minPlayerHeight)))
     }
@@ -75,7 +75,19 @@ struct TabBarView: View {
                 
                 
             }
-          
+            /*
+            .gesture(DragGesture()
+                .onChanged { gesture in
+                    // Update the drag offset
+                    
+                    self.dragOffset = gesture.translation
+                }
+                .onEnded { gesture in
+                    self.miniplayerHeight -= self.dragOffset.height
+                    self.dragOffset = .zero
+                }
+            )*/
+            
             .onChange(of: selectedTab) {
                 if selectedTab != .none{
                     withAnimation{
@@ -97,6 +109,7 @@ struct TabBarView: View {
                 
         }
         .ignoresSafeArea()
+
         
         if Player.shared.currentEpisode != nil{
             PlayerControlsView(miniPlayerHeight: $miniplayerHeight, maxPlayerHeight: maxPlayerHeight, minPlayerHeight: minPlayerHeight)

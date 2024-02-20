@@ -1956,7 +1956,11 @@
         }
       }
     },
+    "Playback Settings" : {
+
+    },
     "Playback Speed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2126,9 +2130,6 @@
           }
         }
       }
-    },
-    "Pull to refresh" : {
-
     },
     "Put new Elements to Play Next Queue" : {
       "localizations" : {
@@ -2645,6 +2646,9 @@
         }
       }
     },
+    "Show Transcript" : {
+
+    },
     "Skip back" : {
       "localizations" : {
         "de" : {
@@ -2884,6 +2888,7 @@
       }
     },
     "Sleeptimer" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

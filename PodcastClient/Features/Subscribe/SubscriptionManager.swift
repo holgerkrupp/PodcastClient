@@ -114,8 +114,23 @@ actor SubscriptionManager:NSObject{
     }
     
 
+    enum SubscribeError: Error {
+        case existing, parsing, loadfeed
+        
+        var description:String{
+            switch self {
+            case .existing:
+                "Podcast already subscribed to"
+            case .parsing:
+                "Could not parse feed"
+            case .loadfeed:
+                "Could not load feed"
+            }
+        }
+        
+    }
     
-    func subscribe(to url: URL) async -> Bool{
+    func subscribe(to url: URL) async throws -> Podcast{
         print("SM subscribe to: \(url.absoluteString)")
         if !contains(url: url){
             if let data = await url.feedData(){
@@ -134,34 +149,29 @@ actor SubscriptionManager:NSObject{
                         podcast.feed = url
                         if !podcasts.contains(podcast){
                             modelContext?.insert(podcast)
-                         /*
-                            do{
-                                try modelContext?.save()
-                                print("podcast inserted")
-                                fetchData()
-                            }catch{
-                                print(error)
-                            }
-                        */
+
                           }else{
-                            print("podcast \(podcast.title) alreads existing")
-                            return false
+                            print("podcast \(podcast.title) already existing")
+                              throw SubscribeError.existing
                         }
                         
                         
-                        return true
+                    return podcast
                     
                     
+                }else{
+                    print("could not parse feed")
+                    throw SubscribeError.parsing
                 }
+            }else{
+                throw SubscribeError.loadfeed
             }
         }else{
             print("\(url.absoluteString) already subscribed")
-            return true
+            throw SubscribeError.existing
         }
         
         
-
-        return false
     }
     
     func deleteAll(){
@@ -187,7 +197,14 @@ actor SubscriptionManager:NSObject{
         for url in urls {
             if let url{
                 print("start subscribe for \(url.absoluteString)")
-                let _ = await subscribe(to: url)
+                do {
+                    let result = try await subscribe(to: url)
+                    
+                } catch {
+                    let errorString = "Error: \(error)"
+                    print(errorString)
+                }
+                
                 print("end subscribe for \(url.absoluteString)")
 
             }
@@ -217,7 +234,7 @@ actor SubscriptionManager:NSObject{
         var shouldRefresh = false
         fetchData()
         for podcast in podcasts.sorted(by: { lhs, rhs in
-            lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
+            lhs.feedUpdateCheckDate ?? Date() < rhs.feedUpdateCheckDate ?? Date()
         }).filter({$0.feedUpdated != true}){
             let new = await podcast.feedUpdated()
             if new == true{
@@ -233,7 +250,7 @@ actor SubscriptionManager:NSObject{
         // check only those that are not marked as old during the last run
         fetchData()
         for podcast in podcasts.sorted(by: { lhs, rhs in
-            lhs.lastAttempt ?? Date() < rhs.lastAttempt ?? Date()
+            lhs.feedUpdateCheckDate ?? Date() < rhs.feedUpdateCheckDate ?? Date()
         }).filter({$0.feedUpdated != false}){
             await podcast.refresh()
         }

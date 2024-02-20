@@ -43,29 +43,32 @@ struct PodcastClientApp: App {
             }
         })
         .backgroundTask(.appRefresh("feedRefresh")) {
-          //  await SubscriptionManager.shared.refreshall()
+            
             await SubscriptionManager.shared.bgupdateFeeds()
         }
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
+            bgNewAppRefresh()
+            setLastRefreshDate()
+            scheduleAppRefresh()
             let shouldRefresh = await SubscriptionManager.shared.bgcheckIfFeedsShouldRefresh()
-                
+                /*
             if shouldRefresh == true{
                 scheduleAppRefresh()
-            }
-            
-          
-            
+            }*/
             
         }
         
-        
-     
     }
     
+    func setLastRefreshDate(){
+        UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundRefresh")
+    }
     
     func bgNewAppRefresh(){
+        
         // this should replace scheduleAppRefresh
         print("went to background started bgNewAppRefresh")
+       
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
         
         do{
@@ -80,7 +83,6 @@ struct PodcastClientApp: App {
     func scheduleAppRefresh() {
         print("went to background will schedule AppRefresh")
         let request = BGProcessingTaskRequest(identifier: "feedRefresh")
-//        request.earliestBeginDate = .now.addingTimeInterval(1 * 3600)
         request.requiresNetworkConnectivity = true
         do{
             try BGTaskScheduler.shared.submit(request)
@@ -102,3 +104,10 @@ extension Bundle {
     }
 }
 
+/*
+ 
+ e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"checkFeedUpdates"]
+
+ e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateExpirationForTaskWithIdentifier:@"checkFeedUpdates"]
+
+ */

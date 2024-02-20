@@ -127,10 +127,10 @@ struct PlayerView: View {
                     } label: {
                         
                         Label {
-                            Text("Playback Speed")
+                            Text("Playback Settings")
                         } icon: {
                             
-                                Image(systemName: "dial.medium")
+                                Image(systemName: "gear")
                                     .tint(.primary)
                                
                         }
@@ -141,6 +141,17 @@ struct PlayerView: View {
                     .sheet(isPresented: $showSpeedSetting, content: {
                         VStack{
                             
+                            Text("Adjust Sleeptimer")
+                            Toggle(isOn: $player.sleeptimer.activated) {
+                                Text("Activate Sleeptimer")
+                            }
+                            Stepper(value: $player.sleeptimer.minutes, in: 1...60, step: 1) {
+                                Text(player.sleeptimer.secondsLeft?.secondsToHoursMinutesSeconds ?? "00:00")
+                            }
+                            .disabled(!player.sleeptimer.activated)
+                            
+                            
+                            
                             Text("Adjust Playback Speed")
                             Stepper(value: $player.rate, in: 0.1...3.0, step: 0.1) {
                                 Text("\(player.settings.playbackSpeed.formatted())x")
@@ -149,7 +160,7 @@ struct PlayerView: View {
                         }.padding()
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.ultraThinMaterial)
-                        .presentationDetents([.fraction(0.2)])
+                        .presentationDetents([.fraction(0.5)])
                       
                     })
                     
@@ -205,22 +216,25 @@ struct PlayerView: View {
                         .labelStyle(.iconOnly)
                     }
                     Spacer()
-                    Button {
-                        
-                        showSleeptimerSetting = true
-                        
-                    } label: {
-                        
-                        Label {
-                            Text("Sleeptimer")
-                        } icon: {
-                            Image(systemName: "moon.zzz")
-                                .tint(.primary)
+                    if player.currentEpisode?.transcriptData != nil{
+                        Button {
+                            
+                            showTranscripts.toggle()
+                            
+                        } label: {
+                            
+                            Label {
+                                Text("Show Transcript")
+                            } icon: {
+                                Image(systemName: showTranscripts == false ? "captions.bubble" : "captions.bubble.fill")
+                                    .tint(.primary)
+                            }
+                            .labelStyle(.iconOnly)
+                            
+                            
                         }
-                        .labelStyle(.iconOnly)
-                        
-                        
                     }
+                    /*
                     .sheet(isPresented: $showSleeptimerSetting, content: {
                         VStack{
                             Text("Adjust Sleeptimer")
@@ -239,7 +253,7 @@ struct PlayerView: View {
                         .presentationDetents([.fraction(0.2)])
                       
                     })
-                    
+                    */
                     
                     
                 }
