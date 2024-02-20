@@ -369,12 +369,14 @@ class Episode: Equatable, Hashable{
     //MARK: INIT
     init(details: [String: Any], podcast:Podcast?) async {
         
-      
+        
         
         guid = details["guid"] as? String
         title = details["itunes:title"] as? String ?? details["title"] as? String
         subtitle = details["itunes:subtitle"] as? String
-
+        
+        print("init Episode: \(title)")
+        
         desc = details["description"] as? String
         
         content = details["content"] as? String
@@ -418,10 +420,11 @@ class Episode: Equatable, Hashable{
         }
         
         
-        
+        /*
         if image == nil{
             cover = await extractCoverImage()
         }
+         */
         
     }
 

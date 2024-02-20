@@ -97,11 +97,11 @@ class Podcast: Equatable, Hashable{
     
     // MARK: init
     init(details: [String: Any]) async {
-
+       
 
         title = details["title"] as? String ?? ""
         
-
+        print("init Podcast: \(title)")
         
         
         subtitle = details["itunes:subtitle"] as? String
@@ -121,6 +121,7 @@ class Podcast: Equatable, Hashable{
         
         coverURL = URL(string: (details["coverImage"] as? String) ?? (details["image"] as? [String:Any])?["url"] as? String ?? "")
         
+        
         if let coverURL{
             cover = await coverURL.downloadData()
         }
@@ -129,7 +130,7 @@ class Podcast: Equatable, Hashable{
         for episodeDetails in details["episodes"] as? [[String:Any]] ?? []{
 
             let episode = await Episode(details: episodeDetails, podcast: self)
-                
+           
     
             if SettingsManager.shared.defaultSettings.markAsPlayedAfterSubscribe == true{
                 episode.markAsPlayed()

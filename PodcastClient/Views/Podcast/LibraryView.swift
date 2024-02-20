@@ -13,45 +13,36 @@ struct LibraryView: View {
     
 
     @Query(sort: [SortDescriptor(\Podcast.title, order: .forward)] ) var podcasts: [Podcast]
-    
+    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)] ) var episodes: [Episode]
 
+    @State private var listSelection:Selection = .podcast
+
+    
+    enum Selection {
+        case podcast, episode
+    }
     
     var body: some View {
 
             NavigationStack {
-                
-                    List{
-                        ForEach(podcasts, id:\.self) { podcast in
-                            
-                            NavigationLink {
-                                
-                                PodcastView(podcast: podcast)
-                                    .modelContext(modelContext)
-                                
-                            }label:{
-                                PodcastMiniView(podcast: podcast)
-                                    .swipeActions(edge: .trailing){
-                                        Button(role: .destructive) {
-                                            modelContext.delete(podcast)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash.fill")
-                                        }
-                                    }
-                                    .swipeActions(edge: .leading){
-                                        Button {
-                                            
-                                            Task{
-                                                await podcast.refresh()
-                                            }
-                                        } label: {
-                                            Label("refresh", systemImage: "arrow.clockwise")
-                                        }
-                                    }
-                            }
-                            
-                            
-                        }
+                Picker(selection: $listSelection) {
+                    Text("Podcasts").tag(Selection.podcast)
+                    Text("Episodes").tag(Selection.episode)
+
+                } label: {
+                    Text("Show")
+                }
+                .pickerStyle(.segmented)
+
+                List{
+                    if listSelection == .podcast{
+                        ListofPodcastsView(podcasts: podcasts)
+                            .modelContext(modelContext)
+                    }else{
+                        ListofEpisodesView(episodes: episodes)
+                            .modelContext(modelContext)
                     }
+                }
                     
                 
                 .refreshable {

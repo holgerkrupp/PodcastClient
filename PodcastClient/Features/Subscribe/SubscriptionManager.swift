@@ -141,6 +141,8 @@ actor SubscriptionManager:NSObject{
                 parser.shouldResolveExternalEntities = true
                 parser.delegate = podcastParser
                 if parser.parse(){
+                    print("parser Did end")
+                    
                      let feedDetail =  podcastParser.podcastDictArr
                         
                        

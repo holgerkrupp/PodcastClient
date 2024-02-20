@@ -52,7 +52,7 @@ struct TabBarView: View {
                     .modelContext(modelContext)
                     .tag(Tab.podcastlist)
                     .tabItem {
-                        Label("Podcasts", systemImage: "list.bullet")
+                        Label("Library", systemImage: "books.vertical")
                         
                     }
                 

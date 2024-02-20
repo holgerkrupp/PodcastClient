@@ -19,11 +19,11 @@ struct ListofEpisodesView: View {
             EpisodeMiniView(episode: episode)
                 .modelContext(modelContext)
                 .swipeActions(edge: .trailing){
-                    Button(role: .destructive) {
+                    Button(role: .none) {
                         
                         episode.removeFile()
                     } label: {
-                        Label("Delete", systemImage: "trash.fill")
+                        Label("Delete File", systemImage: "externaldrive.badge.xmark")
                     }
                 }
                 .swipeActions(edge: .leading){

@@ -886,6 +886,9 @@
         }
       }
     },
+    "Delete File" : {
+
+    },
     "developed by Holger Krupp" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -994,6 +997,9 @@
           }
         }
       }
+    },
+    "Episodes" : {
+
     },
     "error loading episode" : {
       "localizations" : {
@@ -1445,6 +1451,9 @@
           }
         }
       }
+    },
+    "Library" : {
+
     },
     "Mark All As Played" : {
       "localizations" : {
@@ -2542,6 +2551,9 @@
       }
     },
     "Share" : {
+
+    },
+    "Show" : {
 
     },
     "Show Bookmarks" : {

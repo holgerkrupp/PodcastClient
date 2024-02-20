@@ -59,6 +59,7 @@ class PodcastFeed: Hashable{
                     }
                 case 404:
                     added = false
+                    self.error = SubscriptionManager.SubscribeError.loadfeed
                 case 410:
                     if let newURL = self.status?.newURL{
                         
@@ -74,6 +75,7 @@ class PodcastFeed: Hashable{
                         
                     }else{
                         added = false
+                        self.error = SubscriptionManager.SubscribeError.loadfeed
                     }
                     
                 default:
@@ -92,7 +94,7 @@ class PodcastFeed: Hashable{
                 return added
             }
         }else{
-            
+            self.error = SubscriptionManager.SubscribeError.loadfeed
             subscribing = false
             return nil
         }
