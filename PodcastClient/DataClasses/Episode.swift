@@ -169,7 +169,7 @@ class Episode: Equatable, Hashable{
     
     
     
-    
+    @MainActor
     func postProcessingAfterDownload() async{
         print("postProcessing")
         await updateDuration()
@@ -234,7 +234,7 @@ class Episode: Equatable, Hashable{
     func updateChapters() async{
         
         
-       
+    
         
         let embeddedChapterCount = chapters?.filter({ $0.type == .embedded }).count ?? 0
         if embeddedChapterCount == 0{
@@ -320,15 +320,23 @@ class Episode: Equatable, Hashable{
     
     func download(){
         print("episode download")
-        
-        Task{
-            do{
-                try await DownloadManager.shared.download(self)
-            }catch{
-                print(error)
+        if let localFile = localFile?.path() {
+            let manager = FileManager()
+            if manager.fileExists(atPath: localFile) {
+                downloadStatus.isDownloading = false
+                isAvailableLocally = true
+                
+            }else{
+                Task{
+                    do{
+                        try await DownloadManager.shared.download(self)
+                    }catch{
+                        print(error)
+                    }
+                    await downloadTranscript()
+                    await downloadCover()
+                }
             }
-            await downloadTranscript()
-            await downloadCover()
         }
     }
     
@@ -375,7 +383,6 @@ class Episode: Equatable, Hashable{
         title = details["itunes:title"] as? String ?? details["title"] as? String
         subtitle = details["itunes:subtitle"] as? String
         
-        print("init Episode: \(title)")
         
         desc = details["description"] as? String
         

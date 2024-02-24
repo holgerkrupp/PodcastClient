@@ -47,6 +47,17 @@ class Chapter: Identifiable, Equatable, Hashable{
     var imageData:Data?
     var start: Double?
     var duration: TimeInterval?
+    
+    @Transient var end:Double? {
+        let end = ((start ?? 0) + (duration ?? 0))
+        if end > 0{
+            return end
+        }else{
+            return nil
+        }
+    }
+    
+    
     var type : ChapterType = ChapterType.unknown
     
     var episode: Episode?
@@ -68,6 +79,7 @@ class Chapter: Identifiable, Equatable, Hashable{
     init(details: [String: Any]) {
         title = details["title"] as? String ?? ""
         start = (details["start"] as? String)?.durationAsSeconds
+        
         link = URL(string: details["href"] as? String ?? "")
         image = URL(string: details["image"] as? String ?? "")
         type = .podlove

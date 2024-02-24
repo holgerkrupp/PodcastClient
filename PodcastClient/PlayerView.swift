@@ -284,9 +284,8 @@ struct PlayButtonView : View {
             }
         }) {
             
-            Image(systemName: playerPaused ? "play.fill" : "pause.fill")
-                .resizable()
-                .aspectRatio(1.0, contentMode: .fit)
+            player.playPauseButton
+                
 
             
             

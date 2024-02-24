@@ -101,7 +101,6 @@ class Podcast: Equatable, Hashable{
 
         title = details["title"] as? String ?? ""
         
-        print("init Podcast: \(title)")
         
         
         subtitle = details["itunes:subtitle"] as? String

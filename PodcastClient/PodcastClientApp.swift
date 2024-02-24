@@ -104,6 +104,16 @@ extension Bundle {
     }
 }
 
+
+/*
+struct CarPlayScene: Scene {
+    var body: some Scene {
+        WindowGroup {
+            CarPlayUpNextView()
+        }
+    }
+}
+*/
 /*
  
  e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"checkFeedUpdates"]

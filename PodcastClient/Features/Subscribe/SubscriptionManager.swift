@@ -258,5 +258,33 @@ actor SubscriptionManager:NSObject{
         }
     }
     
+    
+    func generateOPML() -> String {
+        print("generate OPML")
+        var opmlString = """
+    <?xml version="1.0" encoding="UTF-8"?>\n
+    <opml version="1.1">\n
+        <head>\n
+            <title>Raúl Podcasts</title>\n
+        </head>\n
+        <body>\n
+    """
+        
+        for podcast in podcasts {
+            opmlString += """
+            <outline text="\(podcast.title)" type="rss" xmlUrl="\(podcast.feed?.absoluteString ?? "")" />\n
+        """
+        }
+        
+        opmlString += """
+        </body>\n
+    </opml>\n
+    """
+        
+        return opmlString
+    }
+    
+
+
 
 }

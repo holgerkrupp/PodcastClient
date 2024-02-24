@@ -14,7 +14,7 @@ An Open Source Podcast client.
 - - [x] show download progress
 - - [x] delete files
 - - [x] update UI after file deleted
-- - [ ] implement background downloads
+- - [ ] implement automatic background downloads
 - [ ] remove all files when one episode is deleted (including downloaded images)
 - [x] if Playlist contains episode, move it to the front/end instead of adding another copy
 
@@ -61,13 +61,13 @@ An Open Source Podcast client.
 ### Miscellaneous
 - [ ] nice UI
 - [ ] nice Logo
-- [ ] nice name - Raúl
-- [ ] CarPlay
+- [x] nice name - Raúl
+- [x] CarPlay
 
 ### Subscription Management
-- [ ] OPML export
-- [ ] Fyyd Directory Search
-- [ ] Fyyd recomendations
+- [x] OPML export
+- [x] Fyyd Directory Search
+- [x] Fyyd recomendations
 - [ ] accept opml from share sheet
 - [ ] accept rss / xml from share sheet 
 - [ ] accept any URL that could be a feed
@@ -81,7 +81,10 @@ An Open Source Podcast client.
 
 ### Player
 - [x] skip detection
-- [ ] share Episode (including Playposition if possible)
+- [x] share Episode
+- - [x] from play now screen
+- - [x] from episode view screen
+- - [ ] (including Playposition if possible)
 
 
 

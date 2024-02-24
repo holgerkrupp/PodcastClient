@@ -1035,6 +1035,15 @@
         }
       }
     },
+    "Export" : {
+
+    },
+    "Export Podcasts" : {
+
+    },
+    "Export your subscriptions as OMPL file." : {
+
+    },
     "Extend Sleep Timer by %@ minutes" : {
       "localizations" : {
         "de" : {
@@ -2589,6 +2598,9 @@
           }
         }
       }
+    },
+    "Show Chapters" : {
+
     },
     "Show Details" : {
       "localizations" : {

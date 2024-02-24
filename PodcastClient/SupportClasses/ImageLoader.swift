@@ -4,9 +4,12 @@ struct ImageWithURL: View {
     
    @ObservedObject var imageLoader: ImageLoaderAndCache
     
+    
     init(_ url: URL) {
         imageLoader = ImageLoaderAndCache(imageURL: url)
     }
+    
+    
     
     var body: some View {
         Image(uiImage: (UIImage(data: self.imageLoader.imageData) ?? UIImage()))

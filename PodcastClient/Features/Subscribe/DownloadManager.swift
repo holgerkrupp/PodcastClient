@@ -90,7 +90,6 @@ class DownloadManager: NSObject, ObservableObject {
         
        
         if let fileURL = episode.assetLink{
-
             guard downloads[fileURL] == nil else {
                 downloads[fileURL]?.resume()
                 return }

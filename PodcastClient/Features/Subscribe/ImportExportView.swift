@@ -17,6 +17,8 @@ struct ImportExportView: View {
 
     @State private var subBaseline = 0
     
+    @State private var fileURL:URL?
+    
     var body: some View {
         List{
             Section{
@@ -42,6 +44,20 @@ struct ImportExportView: View {
                 Text("Select a OPML file to import your podcasts subscriptions from different podcast apps")
             }
             
+            
+            Section{
+                ShareLink("Export Podcasts", item: fileURL ?? URL(fileURLWithPath: ""))
+                    .onAppear(){
+                        Task{
+                            await sharePodcasts()
+                        }
+                    }
+
+            }header: {
+                Text("Export")
+            }footer: {
+                Text("Export your subscriptions as OMPL file.")
+            }
             
             if newPodcasts.filter({ newPod in
                 if newPod.existing == false && newPod.added == false {
@@ -133,6 +149,31 @@ struct ImportExportView: View {
         
 
     }
+    @MainActor
+    func sharePodcasts() async{
+        print("share")
+        
+            fileURL = try? await saveToTemporaryFile(content: subscriptionManager.generateOPML(), fileName: "Podcasts.opml")
+        
+                // Use ShareLink to share the file URL
+            //   return ShareLink("Export Podcasts", item: fileURL)
+        
+    }
+    
+    func saveToTemporaryFile(content: String, fileName: String) throws -> URL {
+        print("save")
+        let tempDirectoryURL = FileManager.default.temporaryDirectory
+        let fileURL = tempDirectoryURL.appendingPathComponent(fileName)
+        do{
+            try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        }catch{
+            print(error)
+        }
+        print(fileURL)
+        return fileURL
+    }
+    
+    
 }
 
 #Preview {

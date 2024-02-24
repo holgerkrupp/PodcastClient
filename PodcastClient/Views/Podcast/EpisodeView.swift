@@ -19,7 +19,7 @@ struct EpisodeView: View {
     
     @State var showBookmarks:Bool = false
     @State var showSkips:Bool  = false
-    
+    @State var showChapters:Bool = false
     
     var body: some View {
         if let episode{
@@ -69,6 +69,40 @@ struct EpisodeView: View {
                 EpisodeControlView(episode: episode)
                 
                 HStack{
+                    
+                    
+                    if let chapters = episode.chapters, chapters.count > 0{
+                        Button {
+                            showChapters.toggle()
+                        } label: {
+                            Label {
+                                Text("Show Chapters")
+                            } icon: {
+                                Image(systemName: "list.bullet")
+                                    .tint(.primary)
+                            }
+                            .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.bordered)
+                        .sheet(isPresented: $showChapters, content: {
+                            
+                            ChapterListView(chapters: chapters)
+                                .presentationDragIndicator(.visible)
+                                .presentationBackground(.thinMaterial)
+                            
+                            
+                        })
+                    }
+                    
+                    if let link = episode.link{
+                        ShareLink(item: link) {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                                .labelStyle(.iconOnly)
+                        }
+                    }
+                    
+                    
+                    
                     if let events = episode.events?.filter({ $0.type == .bookmark}).sorted(by: {$0.date > $1.date}), events.count > 0{
                         Button {
                             showBookmarks.toggle()
@@ -135,6 +169,7 @@ struct EpisodeView: View {
                  */
                 
             }
+            .padding()
 
           
             /*
@@ -212,7 +247,10 @@ struct EpisodeMiniView: View {
                         ImageWithURL(imageULR)
                             .scaledToFit()
                             .frame(width: 50, height: 50)
-                        
+                    }else  if let data = episode.podcast?.cover{
+                        ImageWithData(data)
+                            .scaledToFit()
+                            .frame(width: 50, height: 50)
                     }else if let imageULR = episode.podcast?.coverURL{
                         ImageWithURL(imageULR)
                             .scaledToFit()
@@ -338,7 +376,7 @@ struct EpisodePlayProgressView:View{
 
     var body: some View {
             HStack{
-                ProgressView(value: episode.progress, total: episode.duration ?? 500)
+                ProgressView(value: episode.playPosition, total: episode.duration ?? 500)
                         .progressViewStyle(.linear)
                 if let duration = episode.duration {
                     

@@ -20,9 +20,7 @@ class PlaylistManager:NSObject{
     
     
     var playnext: Playlist {
-        
-        
-        
+
         var playNextQueue = FetchDescriptor<Playlist>(predicate: #Predicate { playlist in
             playlist.title == playNextQueueTitel
         })

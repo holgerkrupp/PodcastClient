@@ -56,5 +56,22 @@
 			</dict>
 		</dict>
 	</array>
+	<key>UIApplicationSupportsMultipleScenes</key>
+	<false/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 </dict>
 </plist>
