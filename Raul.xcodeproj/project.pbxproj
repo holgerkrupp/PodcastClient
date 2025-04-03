@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		487F5C902D9D518000056D08 /* fyyd-swift in Frameworks */ = {isa = PBXBuildFile; productRef = 487F5C8F2D9D518000056D08 /* fyyd-swift */; };
-		487F5C952D9D598C00056D08 /* FyydSearchManager in Frameworks */ = {isa = PBXBuildFile; productRef = 487F5C942D9D598C00056D08 /* FyydSearchManager */; };
+		487F5C982D9D59D000056D08 /* fyyd-swift in Frameworks */ = {isa = PBXBuildFile; productRef = 487F5C972D9D59D000056D08 /* fyyd-swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,8 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				487F5C952D9D598C00056D08 /* FyydSearchManager in Frameworks */,
-				487F5C902D9D518000056D08 /* fyyd-swift in Frameworks */,
+				487F5C982D9D59D000056D08 /* fyyd-swift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -40,6 +38,7 @@
 			isa = PBXGroup;
 			children = (
 				487F5C712D9D4F0C00056D08 /* Raul */,
+				487F5C962D9D59D000056D08 /* Frameworks */,
 				487F5C702D9D4F0C00056D08 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +49,13 @@
 				487F5C6F2D9D4F0C00056D08 /* Raul.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		487F5C962D9D59D000056D08 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -72,8 +78,7 @@
 			);
 			name = Raul;
 			packageProductDependencies = (
-				487F5C8F2D9D518000056D08 /* fyyd-swift */,
-				487F5C942D9D598C00056D08 /* FyydSearchManager */,
+				487F5C972D9D59D000056D08 /* fyyd-swift */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -350,13 +355,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		487F5C8F2D9D518000056D08 /* fyyd-swift */ = {
+		487F5C972D9D59D000056D08 /* fyyd-swift */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 487F5C8E2D9D518000056D08 /* XCLocalSwiftPackageReference "../fyyd-swift" */;
 			productName = "fyyd-swift";
-		};
-		487F5C942D9D598C00056D08 /* FyydSearchManager */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = FyydSearchManager;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

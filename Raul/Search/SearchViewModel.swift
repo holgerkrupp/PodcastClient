@@ -5,9 +5,18 @@ import fyyd_swift
 @MainActor
 class PodcastSearchViewModel: ObservableObject {
     @Published var searchText = ""
-    @Published var results: [Podcast] = []
+    @Published var results: [FyydPodcast] = []
     @Published var isLoading = false
-    @Published var hotPodcasts: [Podcast] = []
+    @Published var hotPodcasts: [FyydPodcast] = []
+    @Published var languages: [String] = [] // Store languages
+    @Published var selectedLanguage: String = "en" {
+        didSet {
+            Task {
+                await fyydManager.setLanguage(selectedLanguage)
+                await loadHotPodcasts() // Reload podcasts when language changes
+            }
+        }
+    }
     
     private var cancellables = Set<AnyCancellable>()
     private let fyydManager = FyydSearchManager()
@@ -22,8 +31,8 @@ class PodcastSearchViewModel: ObservableObject {
             .store(in: &cancellables)
         
         Task {
-            print("init")
             await loadHotPodcasts() // Load hot podcasts on initialization
+            await loadLanguages()
         }
     }
 
@@ -35,19 +44,27 @@ class PodcastSearchViewModel: ObservableObject {
 
         isLoading = true
         Task {
-            let podcasts = await fyydManager.search(for: searchText) ?? []
+            let podcasts = await fyydManager.searchPodcasts(query: searchText) ?? []
             await MainActor.run {
                 results = podcasts
                 isLoading = false
             }
         }
     }
+    
+    func loadLanguages() async {
+        if let fetchedLanguages = await fyydManager.getLanguages() {
+            await MainActor.run {
+                self.languages = fetchedLanguages
+            }
+        }
+    }
 
     // Fetch hot podcasts
     private func loadHotPodcasts() async {
-        print("loadHotPodcasts")
+        print("Loading hot podcasts")
         isLoading = true
-        let hotPodcastsList = await fyydManager.getHotPodcasts()
+        let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage)
         await MainActor.run {
             hotPodcasts = hotPodcastsList ?? []
             isLoading = false
