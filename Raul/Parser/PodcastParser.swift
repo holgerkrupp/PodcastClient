@@ -20,8 +20,6 @@ struct Transcript:Codable{
 
 class PodcastParser:NSObject, XMLParserDelegate{
 
-
-    
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
     var transcriptArray = [Any]()

@@ -14,18 +14,6 @@ struct PodcastSearchView: View {
     var body: some View {
         VStack {
             
-            if !viewModel.languages.isEmpty {
-                Picker("Language", selection: $viewModel.selectedLanguage) {
-                    ForEach(viewModel.languages, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .padding()
-            } else {
-                ProgressView("Loading languages...") // Show loading indicator if needed
-            }
-            
             // Search bar
             TextField("Search for podcasts...", text: $viewModel.searchText)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -38,13 +26,8 @@ struct PodcastSearchView: View {
                     Text(podcast.title)
                 }
 
-                Text("Hot Podcasts")
-                    .font(.headline)
-                    .padding(.top)
+           
                 
-                List(viewModel.hotPodcasts , id: \.id) { podcast in
-                    Text(podcast.title)
-                }
             }
         }
      

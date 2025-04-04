@@ -16,6 +16,7 @@ struct RaulApp: App {
         WindowGroup {
             ContentView()
                 .modelContainer(modelContainerManager.container)
+                .accentColor(.accent)
         }
     }
 }
