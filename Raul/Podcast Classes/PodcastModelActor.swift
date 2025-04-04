@@ -36,10 +36,12 @@ actor PodcastModelActor {
             
             // Update episodes
             if let episodesData = podcastParser.podcastDictArr["episodes"] as? [[String: Any]] {
-                var newEpisodes: [Episode] = []
+                let existingEpisodes = podcast.episodes
+                var updatedEpisodes: [Episode] = []
                 
                 for episodeData in episodesData {
                     if let title = episodeData["title"] as? String,
+                       let guid = episodeData["guid"] as? String,
                        let urlString = episodeData["enclosure"] as? [[String: Any]],
                        let firstEnclosure = urlString.first,
                        let urlString = firstEnclosure["url"] as? String,
@@ -49,17 +51,21 @@ actor PodcastModelActor {
                         
                         let episode = Episode(
                             id: UUID(),
+                            guid: guid,
                             title: title,
                             publishDate: pubDate,
                             url: url,
                             podcast: podcast
                         )
-                        newEpisodes.append(episode)
+                        updatedEpisodes.append(episode)
                     }
                 }
                 
+                // Add any remaining existing episodes that weren't updated
+                updatedEpisodes.append(contentsOf: existingEpisodes)
+                
                 // Update episodes array
-                podcast.episodes = newEpisodes
+                podcast.episodes = updatedEpisodes
             }
 
             try modelContext.save()

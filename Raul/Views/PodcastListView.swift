@@ -35,6 +35,12 @@ struct PodcastListView: View {
                     }
                     .disabled(viewModel.isLoading)
                 }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    NavigationLink(destination: AddPodcastView()) {
+                        Image(systemName: "plus")
+                                    }
+                    .disabled(viewModel.isLoading)
+                }
             }
             .overlay {
                 if viewModel.isLoading {

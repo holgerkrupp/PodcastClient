@@ -164,32 +164,20 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         switch isHeader{
         case true:
-
-            
             if currentDepth > 3, currentElements[2] == "image"{
-                
                 tempDict.updateValue(currentValue, forKey: elementName)
-                
             }else if currentDepth == 3, elementName == "image"{
                 podcastDictArr.updateValue(tempDict, forKey: currentElement)
                 tempDict.removeAll()
-           
             }else{
                 podcastDictArr.updateValue(currentValue, forKey: currentElement)
             }
             
         case false:
             // we are not in the header but somewhere deep in the elements belonging to an episode
-            
-
-                
-                
-                switch qName ?? elementName{
-              
-                    
+            switch qName ?? elementName{
                 case "item":
                     //PodcastEpisode finished
-                    //   isHeader = true // go back to header Level
                     episodeDict.updateValue(transcriptArray, forKey: "transcripts")
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
@@ -201,19 +189,16 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 case "encoded", "content:encoded":
                     // the content of the blogpost is in the item "content:encoded" to make it better readable, I'm using a dedicated case
                     episodeDict.updateValue(currentValue, forKey: "content")
-                case "enclosure":
-                    episodeDict.updateValue(enclosureArray, forKey: currentElement)
-
+                case "guid":
+                    // Extract the GUID
+                    episodeDict.updateValue(currentValue, forKey: "guid")
                 default:
                     // add the value of the current Element to the Episode
                     episodeDict.updateValue(currentValue, forKey: currentElement)
-                    
-                }
-            
+            }
         }
         if currentElements.count > 0{
             currentElements.removeLast()
-
         }
     }
     

@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		487F5C982D9D59D000056D08 /* fyyd-swift in Frameworks */ = {isa = PBXBuildFile; productRef = 487F5C972D9D59D000056D08 /* fyyd-swift */; };
+		484EDCC42DA064680093137A /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 484EDCC32DA064680093137A /* fyyd_swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,7 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				487F5C982D9D59D000056D08 /* fyyd-swift in Frameworks */,
+				484EDCC42DA064680093137A /* fyyd_swift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -91,7 +91,7 @@
 			);
 			name = Raul;
 			packageProductDependencies = (
-				487F5C972D9D59D000056D08 /* fyyd-swift */,
+				484EDCC32DA064680093137A /* fyyd_swift */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -122,7 +122,7 @@
 			mainGroup = 487F5C662D9D4F0C00056D08;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				487F5C8E2D9D518000056D08 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
+				484EDCC02DA0634A0093137A /* XCLocalSwiftPackageReference "../fyyd-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -365,17 +365,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		487F5C8E2D9D518000056D08 /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
+		484EDCC02DA0634A0093137A /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../fyyd-swift";
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		487F5C972D9D59D000056D08 /* fyyd-swift */ = {
+		484EDCC32DA064680093137A /* fyyd_swift */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 487F5C8E2D9D518000056D08 /* XCLocalSwiftPackageReference "../fyyd-swift" */;
-			productName = "fyyd-swift";
+			productName = fyyd_swift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
