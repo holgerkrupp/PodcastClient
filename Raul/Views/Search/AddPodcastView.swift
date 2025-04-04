@@ -13,24 +13,24 @@ struct AddPodcastView: View {
     }
     @State private var listSelection:Selection = .search
     var body: some View {
-    
+        NavigationStack{
             Picker(selection: $listSelection) {
                 Text("Search").tag(Selection.search)
                 Text("Hot").tag(Selection.hot)
-
+                
             } label: {
                 Text("Show")
             }
             .pickerStyle(.segmented)
-
-         
-                if listSelection == .search{
-                    PodcastSearchView()
-                }else{
-                   HotPodcastView()
-                }
             
-               
+            
+            if listSelection == .search{
+                PodcastSearchView()
+            }else{
+                HotPodcastView()
+            }
+            
+        }
     }
 }
 

@@ -10,6 +10,7 @@ import fyyd_swift
 
 struct PodcastSearchView: View {
     @StateObject private var viewModel = PodcastSearchViewModel()
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         VStack {
@@ -23,7 +24,8 @@ struct PodcastSearchView: View {
                 ProgressView()
             } else {
                 List(viewModel.results, id: \.id) { podcast in
-                    Text(podcast.title)
+                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                        .modelContext(context)
                 }
 
            

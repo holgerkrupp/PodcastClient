@@ -23,7 +23,7 @@ struct PodcastListView: View {
                     }
                 }
             }
-            .navigationTitle("My Podcasts")
+            .navigationTitle("Podcasts")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
@@ -61,40 +61,42 @@ struct PodcastRowView: View {
     let podcast: Podcast
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                if let imageURL = podcast.coverImageURL {
-                    ImageWithURL(imageURL)
-                        .frame(width: 50, height: 50)
-                        .cornerRadius(8)
-                }
-                
-                VStack(alignment: .leading) {
-                    Text(podcast.title)
-                        .font(.headline)
+        NavigationLink(destination: EpisodeListView(podcast: podcast)) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    if let imageURL = podcast.coverImageURL {
+                        ImageWithURL(imageURL)
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(8)
+                    }
                     
-                    if let author = podcast.author {
-                        Text(author)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .leading) {
+                        Text(podcast.title)
+                            .font(.headline)
+                        
+                        if let author = podcast.author {
+                            Text(author)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
+                
+                if let desc = podcast.desc {
+                    Text(desc)
+                        .font(.caption)
+                        .lineLimit(2)
+                        .foregroundColor(.secondary)
+                }
+                
+                if let lastBuildDate = podcast.lastBuildDate {
+                    Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
-            
-            if let desc = podcast.desc {
-                Text(desc)
-                    .font(.caption)
-                    .lineLimit(2)
-                    .foregroundColor(.secondary)
-            }
-            
-            if let lastBuildDate = podcast.lastBuildDate {
-                Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
     }
 }
 

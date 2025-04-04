@@ -13,7 +13,7 @@ class PodcastSearchViewModel: ObservableObject {
         didSet {
             Task {
                 await fyydManager.setLanguage(selectedLanguage)
-                await loadHotPodcasts() // Reload podcasts when language changes
+                await loadHotPodcasts()
             }
         }
     }
@@ -31,7 +31,7 @@ class PodcastSearchViewModel: ObservableObject {
             .store(in: &cancellables)
         
         Task {
-            await loadHotPodcasts() // Load hot podcasts on initialization
+            await loadHotPodcasts()
             await loadLanguages()
         }
     }
@@ -62,7 +62,7 @@ class PodcastSearchViewModel: ObservableObject {
 
     // Fetch hot podcasts
     private func loadHotPodcasts() async {
-        print("Loading hot podcasts")
+     
         isLoading = true
         let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage)
         await MainActor.run {

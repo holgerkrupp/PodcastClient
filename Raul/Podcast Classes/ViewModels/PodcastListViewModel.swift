@@ -11,8 +11,8 @@ class PodcastListViewModel: ObservableObject {
     private var podcastActor: PodcastModelActor
     
     init(modelContainer: ModelContainer) {
-        this.modelContainer = modelContainer
-        this.podcastActor = PodcastModelActor(modelContainer: modelContainer)
+        self.modelContainer = modelContainer
+        self.podcastActor = PodcastModelActor(modelContainer: modelContainer)
     }
     
     func loadPodcasts() {
