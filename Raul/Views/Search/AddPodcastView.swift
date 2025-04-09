@@ -8,8 +8,10 @@
 import SwiftUI
 
 struct AddPodcastView: View {
+    @Environment(\.modelContext) private var context
+
     enum Selection {
-        case search, hot
+        case search, hot, importexport
     }
     @State private var listSelection:Selection = .search
     var body: some View {
@@ -17,18 +19,25 @@ struct AddPodcastView: View {
             Picker(selection: $listSelection) {
                 Text("Search").tag(Selection.search)
                 Text("Hot").tag(Selection.hot)
-                
+                Text("Import").tag(Selection.importexport)
             } label: {
                 Text("Show")
             }
             .pickerStyle(.segmented)
             
-            
-            if listSelection == .search{
+            switch listSelection {
+            case .search:
                 PodcastSearchView()
-            }else{
+            case .hot:
                 HotPodcastView()
+          
+            case .importexport:
+                ImportExportView()
+                    .modelContext(context)
             }
+            
+            
+            
             
         }
     }

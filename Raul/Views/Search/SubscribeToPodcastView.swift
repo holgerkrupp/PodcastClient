@@ -10,32 +10,48 @@ import fyyd_swift
 import SwiftData
 
 struct SubscribeToPodcastView: View {
-    var newPodcastFeed: FyydPodcast
     var formatStyle = Date.RelativeFormatStyle()
     @Environment(\.modelContext) private var context
     
     @State private var errorMessage: String?
-    @Query private var existingPodcasts: [Podcast]
+    @State private var isSubscribed: Bool = false
+    @Query private var allPodcasts: [Podcast]
     
-    init(newPodcastFeed: FyydPodcast) {
-        self.newPodcastFeed = newPodcastFeed
-        let predicate: Predicate<Podcast>?
-        if let xmlURL = newPodcastFeed.xmlURL, let url = URL(string: xmlURL) {
-            predicate = #Predicate<Podcast> { $0.feed == url }
-        } else {
-            predicate = nil
-        }
-        _existingPodcasts = Query(filter: predicate)
+    private var title: String
+    private var xmlURL: String
+    private var imgURL: String?
+    private var author: String?
+    private var lastpub: Date?
+    private var description: String?
+    
+    init(fyydPodcastFeed: FyydPodcast) {
+        title =  fyydPodcastFeed.title
+        xmlURL =  fyydPodcastFeed.xmlURL ?? ""
+        imgURL =  fyydPodcastFeed.imgURL
+        lastpub = ISO8601DateFormatter().date(from: (fyydPodcastFeed.lastpub))
+        author =  fyydPodcastFeed.author
+        description =  fyydPodcastFeed.description
+        _allPodcasts = Query()
     }
     
-    var body: some View{
-        VStack{
-            Text(newPodcastFeed.title).font(.title3)
+    init(newPodcastFeed: PodcastFeed) {
+        title =  newPodcastFeed.title ?? ""
+        xmlURL =  newPodcastFeed.url?.absoluteString ?? ""
+        imgURL =  newPodcastFeed.artworkURL?.absoluteString ?? ""
+        lastpub =  newPodcastFeed.lastRelease
+        author =  newPodcastFeed.artist
+        description =  newPodcastFeed.description
+        _allPodcasts = Query()
+    }
+    
+    var body: some View {
+        VStack {
+         Text(title).font(.title3)
 
-            if existingPodcasts.isEmpty {
+            if !isSubscribed {
                 Button("Add Podcast") {
                     Task {
-                        guard let url = URL(string: newPodcastFeed.xmlURL ?? "") else {
+                        guard let url = URL(string: xmlURL) else {
                             errorMessage = "Invalid URL"
                             return
                         }
@@ -43,6 +59,7 @@ struct SubscribeToPodcastView: View {
                         let actor = PodcastModelActor(modelContainer: context.container)
                         do {
                             _ = try await actor.createPodcast(from: url)
+                            isSubscribed = true
                         } catch {
                             errorMessage = error.localizedDescription
                         }
@@ -53,37 +70,43 @@ struct SubscribeToPodcastView: View {
                     .foregroundStyle(.secondary)
             }
             
-            HStack{
-               
-                if let image = newPodcastFeed.imgURL, let image = URL(string: image){
+            HStack {
+                if let image = imgURL, let image = URL(string: image) {
                     ImageWithURL(image)
                         .scaledToFit()
                         .frame(width: 50, height: 50)
                 }
                 
-                VStack(alignment: .leading){
-                    if let artist = newPodcastFeed.author{
+                VStack(alignment: .leading) {
+                    if let artist = author {
                         Text(artist)
                             .font(.caption)
                     }
-                    if let date = ISO8601DateFormatter().date(from: (newPodcastFeed.lastpub)){
+                    if let date = lastpub {
                         Text("Last Release: \(date.formatted(formatStyle))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-
                 }
                 Spacer()
-
             }
-         //   Text(newPodcastFeed.xmlURL ?? "").font(.caption)
-            if let desc = newPodcastFeed.description{
+            
+            if let desc = description {
                 ExpandableTextView(text: desc)
                     .font(.caption2)
                     .lineLimit(2)
             }
-
-
+            
+            if let error = errorMessage {
+                Text(error)
+                    .foregroundColor(.red)
+                    .font(.caption)
+            }
+        }
+        .onAppear {
+            if let url = URL(string: xmlURL) {
+                isSubscribed = allPodcasts.contains { $0.feed == url }
+            }
         }
     }
 }

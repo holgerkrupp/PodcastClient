@@ -37,10 +37,10 @@ struct PodcastListView: View {
                     .disabled(viewModel.isLoading)
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: AddPodcastView()) {
+                    NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
                         Image(systemName: "plus")
                     }
-                    .disabled(viewModel.isLoading)
+                 //   .disabled(viewModel.isLoading)
                 }
             }
             .overlay {

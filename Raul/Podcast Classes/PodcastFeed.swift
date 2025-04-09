@@ -7,7 +7,7 @@
 
 import Foundation
 @Observable
-class PodcastFeed: Hashable{
+ class PodcastFeed: Hashable, @unchecked  Sendable{
     static func == (lhs: PodcastFeed, rhs: PodcastFeed) -> Bool {
         return lhs.url == rhs.url
     }

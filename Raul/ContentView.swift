@@ -16,6 +16,7 @@ struct ContentView: View {
     }
     
     @State private var selectedTab: Tab = .inbox
+    @ObservedObject private var manager = DownloadManager.shared
     
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -38,12 +39,13 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "headphones")
                 }
                 .tag(Tab.podcasts)
-            AllDownloadsView()
-                .tabItem {
-                    Label("Downloads", systemImage: "arrow.down.circle.fill")
-                }
-                .tag(Tab.downloads)
-            
+            if !manager.downloads.isEmpty {
+                AllDownloadsView()
+                    .tabItem {
+                        Label("Downloads", systemImage: "arrow.down.circle.fill")
+                    }
+                    .tag(Tab.downloads)
+            }
 
         }
     }

@@ -15,7 +15,7 @@ final class Podcast {
     var desc: String?
     var author: String?
     var feed: URL?
-    var episodes: [Episode] = []
+    @Relationship(deleteRule: .cascade) var episodes: [Episode] = []
     var lastBuildDate: Date?
     var coverImageURL: URL?
     @Relationship(deleteRule: .cascade) var metaData: PodcastMetaData?

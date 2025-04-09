@@ -24,7 +24,7 @@ struct PodcastSearchView: View {
                 ProgressView()
             } else {
                 List(viewModel.results, id: \.id) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                    SubscribeToPodcastView(fyydPodcastFeed: podcast)
                         .modelContext(context)
                 }
 

@@ -39,8 +39,8 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ## Beta min Requirement
 
 ### Subscription Management
-- [ ] OPML import
-- - [ ] to be validated with big file
+- [x] OPML import
+- - [x] to be validated with big file
 - - [ ] Show import progress
 - - [ ] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
 - [x] podcast directory search
@@ -66,11 +66,11 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ### Miscellaneous
 - [ ] nice UI
 - [ ] nice Logo
-- [x] nice name - Raúl
+- [ ] nice name - Raúl
 - [ ] CarPlay
 
 ### Subscription Management
-- [ ] OPML export
+- [x] OPML export
 
 - [ ] accept opml from share sheet
 - [ ] accept rss / xml from share sheet 

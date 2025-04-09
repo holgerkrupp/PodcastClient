@@ -40,7 +40,7 @@ struct HotPodcastView: View {
                     .padding(.top)
                 
                 List(viewModel.hotPodcasts , id: \.id) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                    SubscribeToPodcastView(fyydPodcastFeed: podcast)
                         .modelContext(context)
                     
                 }
