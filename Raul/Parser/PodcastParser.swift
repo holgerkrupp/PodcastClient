@@ -1,9 +1,3 @@
-//
-//  SubscriptionManager.swift
-//  PodcastClient
-//
-//  Created by Holger Krupp on 02.12.23.
-//
 
 import Foundation
 import SwiftData
@@ -12,13 +6,10 @@ enum elements:String, CaseIterable{
     case title, link, description, lastBuildDate, language, trash, pubDate
 }
 
-struct Transcript:Codable{
-    let url:String
-    let type:String
-    let source:String
-}
+
 
 class PodcastParser:NSObject, XMLParserDelegate{
+    
 
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
@@ -95,16 +86,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         if currentElement == "psc:chapters"{
             chapterArray.removeAll()
         }
-        /*
-        if currentElement == "podcast:transcript"{
-            if let url = attributeDict["url"] , let type = attributeDict["type"]{
-                let newTranscript = Transcript(url: url, type: type, source: "feed")
-                transcriptArray.append(newTranscript)
-            
-            }
-            
-        }
-        */
+
         if currentDepth > 3, currentElements[2] == "image"{
             tempDict.updateValue(currentValue, forKey: currentElement)
         }
@@ -164,20 +146,32 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         switch isHeader{
         case true:
+
+            
             if currentDepth > 3, currentElements[2] == "image"{
+                
                 tempDict.updateValue(currentValue, forKey: elementName)
+                
             }else if currentDepth == 3, elementName == "image"{
                 podcastDictArr.updateValue(tempDict, forKey: currentElement)
                 tempDict.removeAll()
+           
             }else{
                 podcastDictArr.updateValue(currentValue, forKey: currentElement)
             }
             
         case false:
             // we are not in the header but somewhere deep in the elements belonging to an episode
-            switch qName ?? elementName{
+            
+
+                
+                
+                switch qName ?? elementName{
+              
+                    
                 case "item":
                     //PodcastEpisode finished
+                    //   isHeader = true // go back to header Level
                     episodeDict.updateValue(transcriptArray, forKey: "transcripts")
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
@@ -189,16 +183,19 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 case "encoded", "content:encoded":
                     // the content of the blogpost is in the item "content:encoded" to make it better readable, I'm using a dedicated case
                     episodeDict.updateValue(currentValue, forKey: "content")
-                case "guid":
-                    // Extract the GUID
-                    episodeDict.updateValue(currentValue, forKey: "guid")
+                case "enclosure":
+                    episodeDict.updateValue(enclosureArray, forKey: currentElement)
+
                 default:
                     // add the value of the current Element to the Episode
                     episodeDict.updateValue(currentValue, forKey: currentElement)
-            }
+                    
+                }
+            
         }
         if currentElements.count > 0{
             currentElements.removeLast()
+
         }
     }
     

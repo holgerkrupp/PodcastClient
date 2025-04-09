@@ -7,6 +7,7 @@
 
 import SwiftUI
 import fyyd_swift
+import SwiftData
 
 struct SubscribeToPodcastView: View {
     var newPodcastFeed: FyydPodcast
@@ -14,28 +15,43 @@ struct SubscribeToPodcastView: View {
     @Environment(\.modelContext) private var context
     
     @State private var errorMessage: String?
+    @Query private var existingPodcasts: [Podcast]
+    
+    init(newPodcastFeed: FyydPodcast) {
+        self.newPodcastFeed = newPodcastFeed
+        let predicate: Predicate<Podcast>?
+        if let xmlURL = newPodcastFeed.xmlURL, let url = URL(string: xmlURL) {
+            predicate = #Predicate<Podcast> { $0.feed == url }
+        } else {
+            predicate = nil
+        }
+        _existingPodcasts = Query(filter: predicate)
+    }
     
     var body: some View{
         VStack{
             Text(newPodcastFeed.title).font(.title3)
 
-            
-            Button("Add Podcast") {
-                Task {
-                    guard let url = URL(string: newPodcastFeed.xmlURL ?? "") else {
-                        errorMessage = "Invalid URL"
-                        return
-                    }
+            if existingPodcasts.isEmpty {
+                Button("Add Podcast") {
+                    Task {
+                        guard let url = URL(string: newPodcastFeed.xmlURL ?? "") else {
+                            errorMessage = "Invalid URL"
+                            return
+                        }
 
-                    let actor = PodcastModelActor(modelContainer: context.container)
-                    do {
-                        _ = try await actor.createPodcast(from: url)
-                    } catch {
-                        errorMessage = error.localizedDescription
+                        let actor = PodcastModelActor(modelContainer: context.container)
+                        do {
+                            _ = try await actor.createPodcast(from: url)
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
                     }
                 }
+            } else {
+                Text("Already subscribed")
+                    .foregroundStyle(.secondary)
             }
-            
             
             HStack{
                

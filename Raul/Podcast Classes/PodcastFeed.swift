@@ -33,10 +33,4 @@ class PodcastFeed: Hashable{
     var artworkURL: URL?
     var lastRelease: Date?
 }
-struct URLstatus{
-    var statusCode: Int?
-    var newURL: URL?
-    var lastModified:Date?
-    var lastRequest:Date
-    var doctype:String?
-}
+

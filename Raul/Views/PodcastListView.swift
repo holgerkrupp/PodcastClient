@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct PodcastListView: View {
+    @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @StateObject private var viewModel: PodcastListViewModel
     @Environment(\.modelContext) private var modelContext
     
@@ -12,13 +13,13 @@ struct PodcastListView: View {
     var body: some View {
         NavigationView {
             List {
-                ForEach(viewModel.podcasts) { podcast in
+                ForEach(podcasts) { podcast in
                     PodcastRowView(podcast: podcast)
                 }
                 .onDelete { indexSet in
                     Task {
                         for index in indexSet {
-                            await viewModel.deletePodcast(viewModel.podcasts[index])
+                            await viewModel.deletePodcast(podcasts[index])
                         }
                     }
                 }
@@ -38,7 +39,7 @@ struct PodcastListView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: AddPodcastView()) {
                         Image(systemName: "plus")
-                                    }
+                    }
                     .disabled(viewModel.isLoading)
                 }
             }
@@ -56,9 +57,6 @@ struct PodcastListView: View {
                     Text(errorMessage)
                 }
             }
-        }
-        .onAppear {
-            viewModel.loadPodcasts()
         }
     }
 }

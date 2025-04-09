@@ -10,11 +10,50 @@ import Foundation
 
 @ModelActor
 actor PodcastModelActor {
+    
+    func checkIfFeedHasBeenUpdated(_ podcastID: PersistentIdentifier) async ->Bool?{
+        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return nil}
+
+        podcast.metaData?.feedUpdateCheckDate = Date()
+        if let lastRefresh = podcast.metaData?.lastRefresh{
+            if let serverLastModified = try? await podcast.feed?.status()?.lastModified {
+                print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
+      
+                if serverLastModified > lastRefresh{
+                    print("feed is new")
+                    podcast.metaData?.feedUpdated = true
+                    return true
+                }else{
+                    // feed on server is old
+                    print("feed is old")
+                    podcast.metaData?.feedUpdated = false
+                    return false
+                }
+            }else{
+                // server is not answering with a lastmodified Date
+                print("no last modified date")
+                
+                return nil
+            }
+        }else{
+            // feed has never been fetched before, no last modified date is set.
+            print("feed is very new")
+            podcast.metaData?.feedUpdated = true
+            return true
+        }
+    }
 
     func updatePodcast(_ podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
         guard let feedURL = podcast.feed else { return }
-
+        
+       guard await checkIfFeedHasBeenUpdated(podcastID) != false else { return }
+        if podcast.metaData == nil {
+            podcast.metaData = PodcastMetaData()
+        }
+        podcast.metaData?.lastRefresh = Date()
+        try modelContext.save()
+        
         let (data, _) = try await URLSession.shared.data(from: feedURL)
         
         let parser = XMLParser(data: data)
@@ -36,48 +75,56 @@ actor PodcastModelActor {
             
             // Update episodes
             if let episodesData = podcastParser.podcastDictArr["episodes"] as? [[String: Any]] {
-                let existingEpisodes = podcast.episodes
-                var updatedEpisodes: [Episode] = []
                 
+                
+                
+                
+                var newEpisodes: [Episode] = []
+               
                 for episodeData in episodesData {
-                    if let title = episodeData["title"] as? String,
-                       let guid = episodeData["guid"] as? String,
-                       let urlString = episodeData["enclosure"] as? [[String: Any]],
-                       let firstEnclosure = urlString.first,
-                       let urlString = firstEnclosure["url"] as? String,
-                       let url = URL(string: urlString),
-                       let pubDateString = episodeData["pubDate"] as? String,
-                       let pubDate = Date.dateFromRFC1123(dateString: pubDateString) {
-                        
-                        let episode = Episode(
-                            id: UUID(),
-                            guid: guid,
-                            title: title,
-                            publishDate: pubDate,
-                            url: url,
-                            podcast: podcast
-                        )
-                        updatedEpisodes.append(episode)
+                    
+                    
+                    if let episode = Episode(from: episodeData, podcast: podcast) {
+                        do{
+                            newEpisodes.append(episode)
+                            try modelContext.save()
+                        }catch{
+                            print("Episode already exists or failed to save: \(error)")
+                        }
+                    }else{
+                        print("Episode already exists")
+
                     }
                 }
                 
-                // Add any remaining existing episodes that weren't updated
-                updatedEpisodes.append(contentsOf: existingEpisodes)
-                
-                // Update episodes array
-                podcast.episodes = updatedEpisodes
             }
 
-            try modelContext.save()
+            
         } else {
             throw parser.parserError ?? NSError(domain: "ParserError", code: -1, userInfo: nil)
         }
     }
     
+
+    
+    
     func createPodcast(from url: URL) async throws -> PersistentIdentifier {
+        // Check if podcast with this feed URL already exists
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feed == url }
+        )
+        
+        if let existingPodcasts = try? modelContext.fetch(descriptor),
+           let existingPodcast = existingPodcasts.first {
+            // If podcast exists, update it and return its ID
+            try await updatePodcast(existingPodcast.persistentModelID)
+            return existingPodcast.persistentModelID
+        }
+        
+        // Create new podcast if it doesn't exist
         let podcast = Podcast(feed: url)
         modelContext.insert(podcast)
-        
+        try modelContext.save()
         do {
             try await updatePodcast(podcast.persistentModelID)
         } catch {

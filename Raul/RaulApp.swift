@@ -12,6 +12,10 @@ import SwiftData
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager()
 
+    init() {
+        _ = Player.shared
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

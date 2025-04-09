@@ -12,13 +12,19 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     
     enum Tab: Int {
-        case library, inbox
+        case player, podcasts, inbox, downloads
     }
     
-    @State private var selectedTab: Tab = .library
+    @State private var selectedTab: Tab = .inbox
     
     var body: some View {
         TabView(selection: $selectedTab) {
+            PlayerView()
+                .tabItem {
+                    Label("Player", systemImage: "play.circle.fill")
+                }
+                .tag(Tab.player)
+            
             EpisodeListView()
                 .tabItem {
                     Label("Inbox", systemImage: "tray.fill")
@@ -31,7 +37,14 @@ struct ContentView: View {
                 .tabItem {
                     Label("Podcasts", systemImage: "headphones")
                 }
-                .tag(Tab.library)
+                .tag(Tab.podcasts)
+            AllDownloadsView()
+                .tabItem {
+                    Label("Downloads", systemImage: "arrow.down.circle.fill")
+                }
+                .tag(Tab.downloads)
+            
+
         }
     }
 }

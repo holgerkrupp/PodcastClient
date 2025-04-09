@@ -7,10 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		484EDCC42DA064680093137A /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 484EDCC32DA064680093137A /* fyyd_swift */; };
+		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
+		4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */; };
+		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
+		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Entitlements.plist; sourceTree = "<group>"; };
+		4827FCD32DA5AC0500FA6778 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		487F5C6F2D9D4F0C00056D08 /* Raul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Raul.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -40,7 +45,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				484EDCC42DA064680093137A /* fyyd_swift in Frameworks */,
+				4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */,
+				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -50,6 +56,8 @@
 		487F5C662D9D4F0C00056D08 = {
 			isa = PBXGroup;
 			children = (
+				4827FCD32DA5AC0500FA6778 /* README.md */,
+				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				487F5C962D9D59D000056D08 /* Frameworks */,
 				487F5C702D9D4F0C00056D08 /* Products */,
@@ -91,7 +99,8 @@
 			);
 			name = Raul;
 			packageProductDependencies = (
-				484EDCC32DA064680093137A /* fyyd_swift */,
+				48B3BA072DA06825005B40B8 /* fyyd_swift */,
+				4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -105,7 +114,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1620;
-				LastUpgradeCheck = 1620;
+				LastUpgradeCheck = 1630;
 				TargetAttributes = {
 					487F5C6E2D9D4F0C00056D08 = {
 						CreatedOnToolsVersion = 16.2;
@@ -122,7 +131,8 @@
 			mainGroup = 487F5C662D9D4F0C00056D08;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				484EDCC02DA0634A0093137A /* XCLocalSwiftPackageReference "../fyyd-swift" */,
+				48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
+				4827FC7D2DA5A31500FA6778 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -139,6 +149,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4827FCD42DA5AC0500FA6778 /* README.md in Resources */,
+				4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -189,7 +201,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 46D3VYP253;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -252,7 +266,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 46D3VYP253;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -281,13 +297,15 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
-				DEVELOPMENT_TEAM = 46D3VYP253;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Raul/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -297,7 +315,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.Raul;
+				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -315,13 +333,15 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 10;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
-				DEVELOPMENT_TEAM = 46D3VYP253;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Raul/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -331,7 +351,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.Raul;
+				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -365,14 +385,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		484EDCC02DA0634A0093137A /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
+		4827FC7D2DA5A31500FA6778 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../mp3ChapterReader;
+		};
+		48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../fyyd-swift";
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		484EDCC32DA064680093137A /* fyyd_swift */ = {
+		4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = mp3ChapterReader;
+		};
+		48B3BA072DA06825005B40B8 /* fyyd_swift */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = fyyd_swift;
 		};

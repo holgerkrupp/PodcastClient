@@ -28,8 +28,30 @@ struct EpisodeListView: View {
         List {
             ForEach(episodes) { episode in
                 EpisodeRowView(episode: episode)
+                    .swipeActions(edge: .trailing){
+                        if episode.metaData?.finishedPlaying == true {
+                            Button(role: .none) {
+                                episode.metaData?.finishedPlaying = false
+                                
+                            } label: {
+                                Label("Mark as not played", systemImage: "circle")
+                            }
+                        }else{
+                            Button(role: .none) {
+                                episode.metaData?.finishedPlaying = true
+                                
+                            } label: {
+                                Label("Mark as played", systemImage: "checkmark.circle")
+                            }
+                        }
+                       
+                    }
+                    .tint(.accent)
+               
             }
         }
+       
+        
         .navigationTitle(podcast?.title ?? "All Episodes")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -78,31 +100,54 @@ struct EpisodeListView: View {
     }
 }
 
+
 struct EpisodeRowView: View {
+    @Environment(\.modelContext) private var modelContext
+
     let episode: Episode
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(episode.title)
-                .font(.headline)
-            
-           
-            Text(episode.podcast?.title ?? "-")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            
-            
-            Text("Published: \(episode.publishDate.formatted(.relative(presentation: .named)))")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
+            HStack {
+                if let imageULR = episode.imageURL{
+                    ImageWithURL(imageULR)
+                        .scaledToFit()
+                        .frame(width: 50, height: 50)
+                    
+                }
+                VStack{
+                    Text(episode.title)
+                        .font(.headline)
+                    
+                    
+                    Text(episode.podcast?.title ?? "-")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    
+                    Text("Published: \(episode.publishDate?.formatted(.relative(presentation: .named)) ?? "")")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
             Button(action: {
-                    UIApplication.shared.open(episode.url)
+                Player.shared.playEpisode(episode)
                 
             }) {
-                Label("Play Episode", systemImage: "play.circle.fill")
-                    .font(.caption)
+                
+                if episode.metaData?.finishedPlaying == true {
+                    Image("custom.play.circle.badge.checkmark")
+                }else{
+                    Image(systemName: "play.circle")
+                }
+                
             }
+            .buttonStyle(.plain)
+
+      
+            EpisodeControlView(episode: episode)
+                .modelContainer(modelContext.container)
+            
         }
         .padding(.vertical, 4)
     }
