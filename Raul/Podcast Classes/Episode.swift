@@ -8,6 +8,8 @@ import SwiftData
 import Foundation
 import SwiftUI
 
+
+
 struct Transcript:Codable{
     let url:String
     let type:String
@@ -110,10 +112,22 @@ class EpisodeDownloadStatus{
         }else if let podcastcover = podcast?.coverImageURL{
             return AnyView(ImageWithURL(podcastcover))
         }else{
-            return AnyView(Image(systemName: "mic.fill"))
+            return AnyView(EmptyView())
         }
          
     }()
+    
+    @Transient var preferredChapters: [Chapter] {
+
+        let preferredOrder: [ChapterType] = [.mp3, .embedded, .podlove, .extracted]
+
+        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
+        
+        return categoryGroups.values.flatMap { group in
+            let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
+            return group.filter { $0.type == highestCategory }
+        }
+    }
 
 
     init(id: UUID, guid:String? = nil, title: String, publishDate: Date? = nil, url: URL, podcast: Podcast, duration:Double? = nil, author: String? = nil) {
@@ -222,7 +236,9 @@ class EpisodeDownloadStatus{
         Task {
             let actor = EpisodeActor(modelContainer: container)
             await actor.downloadTranscript(modelID)
+            await actor.extractMP3Chapters(modelID)
         }
+        
     }
     
     func deleteFile(){

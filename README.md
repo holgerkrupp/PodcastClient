@@ -25,14 +25,14 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [x] play / pause
 - [ ] skip forward / backward
 - - [ ] make time adjustable
-- [ ] jump to chapter
-- [ ] Chapter marks
+- [x] jump to chapter
+- [x] Chapter marks
 - - [x] PSC
-- - [ ] m4a
-- - [ ] mp3
+- - [x] m4a
+- - [x] mp3
 - - [ ] extracted from shownotes
 - [ ] include chapter art for mp3/m4a
-- [ ] include chapter links for mp3/m4a
+- [?] include chapter links for mp3/m4a
 - [ ] download images during postprocessing
 - [ ] save last played episode and reload when opening the app
 

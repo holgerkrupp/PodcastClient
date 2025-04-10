@@ -18,6 +18,8 @@ struct ContentView: View {
     @State private var selectedTab: Tab = .inbox
     @ObservedObject private var manager = DownloadManager.shared
     
+    @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
+    
     var body: some View {
         TabView(selection: $selectedTab) {
             PlayerView()
@@ -48,7 +50,9 @@ struct ContentView: View {
             }
 
         }
+  
     }
+        
 }
 
 #Preview {

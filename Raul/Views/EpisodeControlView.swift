@@ -17,6 +17,15 @@ struct EpisodeControlView: View {
 
     var body: some View {
         HStack {
+            
+            Button {
+                episode.markEpisodeAvailable()
+            } label: {
+                Text("Postprocess")
+            }
+            .buttonStyle(.plain)
+
+            
             if episode.chapters.count > 0 {
                 Image(systemName: "list.bullet")
             }

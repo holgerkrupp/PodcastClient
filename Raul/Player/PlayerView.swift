@@ -9,6 +9,7 @@ struct PlayerView: View {
             
     
         VStack {
+            if let episode = player.currentEpisode {
             ZStack(alignment: .top){
                 Color.clear  // <- this is a stupid hack to macke the ZStack align the image on the top. if anyone from apple reads this: WHY ?????????
                 
@@ -19,27 +20,25 @@ struct PlayerView: View {
                     .onTapGesture(perform: {
                         showTranscripts.toggle()
                     })
+                    .overlay(alignment: .bottom) {
+                        if let vttFileContent = player.currentEpisode?.transcriptData, player.playPosition.isNormal, showTranscripts{
+                            NavigationLink(destination: TranscriptListView(vttContent: vttFileContent), label: {
+                                TranscriptView(vttContent: vttFileContent, currentTime: $player.playPosition)
+                                    .frame(maxWidth: .infinity)
+                            })
+                        }
+                    }
                     
 
             }
             .frame(height: UIScreen.main.bounds.width) // Set height to match the width
-            .overlay(alignment: .bottom) {
-                if let vttFileContent = player.currentEpisode?.transcriptData, player.playPosition.isNormal, showTranscripts{
-                    NavigationLink(destination: TranscriptListView(vttContent: vttFileContent), label: {
-                        TranscriptView(vttContent: vttFileContent, currentTime: $player.playPosition)
-                            .frame(maxWidth: .infinity)
-                    })
-                }
-            }
+
           
-    
+                PlayerChapterView()
             
-            if let episode = player.currentEpisode {
-                Text("Now Playing: \(episode.title)")
-                Slider(value: Binding(
-                    get: { player.playPosition },
-                    set: { player.jumpTo(time: $0) }
-                ), in: 0...(episode.duration ?? 1.0))
+            
+                Text("\(episode.title)")
+   
                 
                 VStack{
                     
@@ -50,7 +49,7 @@ struct PlayerView: View {
                         Text(player.playPosition.secondsToHoursMinutesSeconds ?? "00:00:00")
                             .monospacedDigit()
                         Spacer()
-                        Text(player.remaining?.secondsToHoursMinutesSeconds ?? "-")
+                        Text(player.remaining?.secondsToHoursMinutesSeconds ?? player.currentEpisode?.duration?.secondsToHoursMinutesSeconds ?? "")
                             .monospacedDigit()
                     }
                 }

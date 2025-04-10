@@ -17,13 +17,15 @@ enum ChapterType: String, Codable, Comparable{
     case embedded
     case extracted
     case unknown
+    case mp3
     
     var desc:String{
         
         switch self {
         case .podlove:
             "Podlove"
-       
+        case .mp3:
+            "mp3"
         case .embedded:
             "File"
         case .extracted:
@@ -47,6 +49,7 @@ class Chapter: Identifiable, Equatable, Hashable{
     var imageData:Data?
     var start: Double?
     var duration: TimeInterval?
+    var progress:Double?
     
     @Transient var end:Double? {
         let end = ((start ?? 0) + (duration ?? 0))
@@ -62,6 +65,8 @@ class Chapter: Identifiable, Equatable, Hashable{
     
     var episode: Episode?
     var shouldPlay:Bool = true
+    
+    
     @Transient var didSkip:Bool = false
     
     
@@ -80,11 +85,12 @@ class Chapter: Identifiable, Equatable, Hashable{
         
     }
     
-    init(start: Double, title: String, type: ChapterType, imageData: Data? = nil){
+    init(start: Double, title: String, type: ChapterType? = .unknown, imageData: Data? = nil, duration: TimeInterval? = nil){
         self.start = start
         self.title = title
-        self.type = type
+        self.type = type ?? .unknown
         self.imageData = imageData
+        self.duration = duration
         print("init Chapter \(title)")
     }
     

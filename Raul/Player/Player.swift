@@ -13,9 +13,33 @@ class Player: NSObject {
     private var playbackRate: Float = 1.0
 
     var playPosition: Double = 0.0
-    var currentEpisode: Episode?
+    var currentEpisode: Episode? 
     var isPlaying: Bool = false
     
+    var chapterProgress: Double?
+    var currentChapter: Chapter?
+    var nextChapter: Chapter?
+    var previousChapter: Chapter?
+    
+    private func updateCurrentChapter(){
+        
+        let playingChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
+        
+        if currentChapter != playingChapter {
+            currentChapter = playingChapter
+     
+            nextChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+        }
+        
+    }
+    
+    private func updateChapterProgress(){
+        guard let currentChapter = currentChapter else { return }
+        let chapterEnd = currentChapter.end ?? nextChapter?.start ?? currentEpisode?.duration ?? 1.0
+        chapterProgress = (playPosition - (currentChapter.start ?? 0)) / ((chapterEnd) - (currentChapter.start ?? 0))
+        
+    }
+        
     func setCurrentEpisode(episode: Episode, playDirectly: Bool = false) {
         self.currentEpisode = episode
         Task{
@@ -33,6 +57,22 @@ class Player: NSObject {
         }
     }
     
+    func playEpisode(_ episode: Episode) {
+        currentEpisode = episode
+
+        let item = AVPlayerItem(url: episode.url)
+        Task {
+            await engine.replaceCurrentItem(with: item)
+            if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
+                print("last position: \(lastPlayPosition)")
+                jumpTo(time: lastPlayPosition)
+            }else{
+                print("no last position")
+            }
+            play()
+        }
+    }
+    
     var coverImage: some View{
         if let playing = currentEpisode{
             
@@ -40,7 +80,7 @@ class Player: NSObject {
              
              
         }else{
-            return AnyView(Image(systemName: "photo").resizable())
+            return AnyView(EmptyView())
         }
     }
     
@@ -73,26 +113,7 @@ class Player: NSObject {
     
 
 
-    func playEpisode(_ episode: Episode) {
-        currentEpisode = episode
-
-
-
-        let item = AVPlayerItem(url: episode.url)
-        Task {
-            await engine.replaceCurrentItem(with: item)
-            if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
-                print("last position: \(lastPlayPosition)")
-                jumpTo(time: lastPlayPosition)
-            }else{
-                print("no last position")
-            }
-            await engine.play()
-            isPlaying = true
-        }
-
-        startPlaybackUpdates()
-    }
+ 
     
     func play(){
         Task { 
@@ -131,10 +152,14 @@ class Player: NSObject {
             for await time in await engine.playbackPositionStream() {
                 playPosition = time
                 updateEpisodeProgress(to: time)
+                updateLastPlayed()
             }
 
             handlePlaybackFinished()
         }
+    }
+    func updateLastPlayed()  {
+        currentEpisode?.metaData?.lastPlayed = Date()
     }
 
     private func stopPlaybackUpdates() {
@@ -143,29 +168,47 @@ class Player: NSObject {
     }
 
     private var progressUpdateCounter = 0
-    private let progressUpdateInterval = 10  // 0.5 seconds * 10 = 5 seconds
+    private let progressSaveInterval = 10  // 0.5 seconds * 10 = 5 seconds
     
     private func updateEpisodeProgress(to time: Double) {
-    
-         guard let episode = currentEpisode else { return }
+        guard let episode = currentEpisode else { return }
+        
+        // Update UI-related properties on main thread
         if time > episode.metaData?.maxPlayposition ?? 0.0 {
             episode.metaData?.maxPlayposition = time
         }
-
         episode.metaData?.playPosition = time
+        updateCurrentChapter()
+        updateChapterProgress()
         
-        // Increment the progress update counter
-         progressUpdateCounter += 1
-         // Save every 5 seconds (10 * 0.5 seconds)
-         if progressUpdateCounter >= progressUpdateInterval {
-             do {
-                 try episode.modelContext?.save()
-                 progressUpdateCounter = 0  // Reset counter after saving
-             } catch {
-                 print("Failed to save context: \(error.localizedDescription)")
-             }
-         }
-         
+        // Move database operations to background thread
+        progressUpdateCounter += 1
+        if progressUpdateCounter >= progressSaveInterval {
+            Task.detached(priority: .background) {
+                do {
+                    try episode.modelContext?.save()
+                    await MainActor.run {
+                        self.progressUpdateCounter = 0
+                    }
+                } catch {
+                    print("Failed to save context: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func skipTo(chapter: Chapter){
+        
+        if chapter.episode == currentEpisode{
+            if let start = chapter.start{
+                
+                jumpTo(time: start)
+            }
+        }else{
+            if let newEpisode = chapter.episode{
+                setCurrentEpisode(episode: newEpisode, playDirectly: true)
+            }
+        }
     }
 
     private func handlePlaybackFinished() {

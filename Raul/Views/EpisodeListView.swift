@@ -12,16 +12,13 @@ struct EpisodeListView: View {
         self.podcast = podcast
         let predicate: Predicate<Episode>?
         if let id = podcast?.persistentModelID {
-          
             predicate = #Predicate<Episode> { $0.podcast?.persistentModelID == id }
-            
-            
         } else {
             predicate = nil
         }
 
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
-        _episodes = Query(filter: predicate, sort: [sortDescriptor])
+        _episodes = Query(filter: predicate, sort: [sortDescriptor], animation: .default)
     }
     
     var body: some View {
@@ -31,23 +28,23 @@ struct EpisodeListView: View {
                     .swipeActions(edge: .trailing){
                         if episode.metaData?.finishedPlaying == true {
                             Button(role: .none) {
-                                episode.metaData?.finishedPlaying = false
-                                
+                                Task { @MainActor in
+                                    episode.metaData?.finishedPlaying = false
+                                }
                             } label: {
                                 Label("Mark as not played", systemImage: "circle")
                             }
-                        }else{
+                        } else {
                             Button(role: .none) {
-                                episode.metaData?.finishedPlaying = true
-                                
+                                Task { @MainActor in
+                                    episode.metaData?.finishedPlaying = true
+                                }
                             } label: {
                                 Label("Mark as played", systemImage: "checkmark.circle")
                             }
                         }
-                       
                     }
                     .tint(.accent)
-               
             }
         }
        
@@ -93,10 +90,14 @@ struct EpisodeListView: View {
                 try await actor.refreshAllPodcasts()
             }
         } catch {
-            errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"
+            await MainActor.run {
+                errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"
+            }
         }
         
-        isLoading = false
+        await MainActor.run {
+            isLoading = false
+        }
     }
 }
 
