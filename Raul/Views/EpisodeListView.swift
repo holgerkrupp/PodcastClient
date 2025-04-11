@@ -47,8 +47,6 @@ struct EpisodeListView: View {
                     .tint(.accent)
             }
         }
-       
-        
         .navigationTitle(podcast?.title ?? "All Episodes")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -101,11 +99,11 @@ struct EpisodeListView: View {
     }
 }
 
-
 struct EpisodeRowView: View {
     @Environment(\.modelContext) private var modelContext
 
     let episode: Episode
+    @State private var isExtended: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -115,42 +113,48 @@ struct EpisodeRowView: View {
                         .scaledToFit()
                         .frame(width: 50, height: 50)
                     
+                }else if let imageULR = episode.podcast?.coverImageURL{
+                    ImageWithURL(imageULR)
+                        .scaledToFit()
+                        .frame(width: 50, height: 50)
                 }
                 VStack{
+                    HStack(){
+                        Text(episode.podcast?.title ?? "")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                     Text(episode.title)
                         .font(.headline)
-                    
-                    
-                    Text(episode.podcast?.title ?? "-")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    
-                    Text("Published: \(episode.publishDate?.formatted(.relative(presentation: .named)) ?? "")")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
-            Button(action: {
-                Player.shared.playEpisode(episode)
-                
-            }) {
-                
-                if episode.metaData?.finishedPlaying == true {
-                    Image("custom.play.circle.badge.checkmark")
-                }else{
-                    Image(systemName: "play.circle")
-                }
-                
-            }
-            .buttonStyle(.plain)
 
-      
-            EpisodeControlView(episode: episode)
-                .modelContainer(modelContext.container)
-            
+            if isExtended {
+                Button(action: {
+                    Player.shared.playEpisode(episode)
+                }) {
+                    if episode.metaData?.finishedPlaying == true {
+                        Image("custom.play.circle.badge.checkmark")
+                    }else{
+                        Image(systemName: "play.circle")
+                    }
+                }
+                .buttonStyle(.plain)
+
+                EpisodeControlView(episode: episode)
+                    .modelContainer(modelContext.container)
+            }
         }
         .padding(.vertical, 4)
+        .onTapGesture {
+            withAnimation {
+                isExtended.toggle()
+            }
+        }
     }
 }
 

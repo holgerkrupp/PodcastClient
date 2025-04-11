@@ -22,7 +22,7 @@ struct ContentView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            PlayerView()
+            TimelineView()
                 .tabItem {
                     Label("Player", systemImage: "play.circle.fill")
                 }

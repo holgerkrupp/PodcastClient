@@ -10,7 +10,7 @@ struct PlayerView: View {
     
         VStack {
             if let episode = player.currentEpisode {
-            ZStack(alignment: .top){
+            ZStack(){
                 Color.clear  // <- this is a stupid hack to macke the ZStack align the image on the top. if anyone from apple reads this: WHY ?????????
                 
                 
@@ -31,7 +31,7 @@ struct PlayerView: View {
                     
 
             }
-            .frame(height: UIScreen.main.bounds.width) // Set height to match the width
+          //  .frame(height: UIScreen.main.bounds.width/4) // Set height to match the width
 
           
                 PlayerChapterView()
