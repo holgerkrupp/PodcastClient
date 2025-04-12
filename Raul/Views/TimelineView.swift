@@ -114,7 +114,7 @@ struct TimelineView: View {
     @ViewBuilder
     func playerView(fullSize: Bool) -> some View {
         VStack {
-            PlayerView()
+            PlayerView(fullSize: fullSize)
                 .frame(height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
                 .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
         }
