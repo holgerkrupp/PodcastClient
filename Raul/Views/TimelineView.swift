@@ -15,11 +15,12 @@ struct TimelineView: View {
     private var player = Player.shared
     
     @State private var showMiniPlayer = false
-    
+    @State private var isScrollingUp = false
+    @State private var lastScrollPosition: CGFloat = 0
     @Namespace private var playerNamespace
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack(alignment: isScrollingUp ? .bottom : .top) {
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 16) {
@@ -40,7 +41,7 @@ struct TimelineView: View {
                         Divider()
                         
                         // Player section
-                        if !showMiniPlayer {
+                        
                             playerView(fullSize: true)
                                 .id("player")
                                 .padding(.horizontal)
@@ -52,15 +53,19 @@ struct TimelineView: View {
                                         }
                                     }
                                 }
-                        }
                         
-                        // Optimized GeometryReader for miniplayer detection
+                        
+                        // Player position tracker
                         GeometryReader { geo in
                             Color.clear
-                                .onChange(of: geo.frame(in: .global).minY) { _, minY in
+                                .onChange(of: geo.frame(in: .global).minY) { oldValue, newValue in
                                     let screenHeight = UIScreen.main.bounds.height
                                     let buffer: CGFloat = 50
-                                    let isVisible = minY > buffer && minY < (screenHeight - buffer)
+                                    let isVisible = newValue > buffer && newValue < (screenHeight - buffer)
+                                    
+                                    // Detect scroll direction
+                                    isScrollingUp = newValue > oldValue
+                                    lastScrollPosition = newValue
                                     
                                     if showMiniPlayer != !isVisible {
                                         withAnimation(.spring()) {
@@ -97,7 +102,7 @@ struct TimelineView: View {
             if showMiniPlayer {
                 playerView(fullSize: false)
                     .padding()
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.move(edge: isScrollingUp ? .bottom : .top).combined(with: .opacity))
                     .zIndex(1)
             }
         }
@@ -108,7 +113,7 @@ struct TimelineView: View {
         VStack {
             PlayerView()
                 .frame(height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
-                .matchedGeometryEffect(id: "playerView", in: playerNamespace)
+                .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
         }
         .background(
             RoundedRectangle(cornerRadius: 12)

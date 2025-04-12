@@ -15,7 +15,7 @@ struct ContentView: View {
         case player, podcasts, inbox, downloads
     }
     
-    @State private var selectedTab: Tab = .inbox
+    @State private var selectedTab: Tab = .player
     @ObservedObject private var manager = DownloadManager.shared
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
