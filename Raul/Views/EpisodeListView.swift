@@ -23,7 +23,7 @@ struct EpisodeListView: View {
     ) {
         if let predicate = predicate {
             _allEpisodes = Query(filter: predicate, sort: sort, order: order)
-        } 
+        }
     }
     
     var body: some View {

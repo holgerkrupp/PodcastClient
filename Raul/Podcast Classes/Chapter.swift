@@ -49,6 +49,7 @@ class Chapter: Identifiable, Equatable, Hashable{
     var imageData:Data?
     var start: Double?
     var duration: TimeInterval?
+    
     var progress:Double?
     
     @Transient var end:Double? {
@@ -78,9 +79,13 @@ class Chapter: Identifiable, Equatable, Hashable{
     init(details: [String: Any]) {
         title = details["title"] as? String ?? ""
         start = (details["start"] as? String)?.durationAsSeconds
-        
+        duration = (details["endTime"] as? Double ?? 0) - (start ?? 0)
         link = URL(string: details["href"] as? String ?? "")
         image = URL(string: details["image"] as? String ?? "")
+        if let imagedata = (details["APIC"] as? [String:Any])?["Data"] as? Data{
+            print("ImageChapter with Image data")
+            imageData = imagedata
+        }
         type = .podlove
         
     }

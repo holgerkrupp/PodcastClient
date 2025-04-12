@@ -126,6 +126,7 @@ class Player: NSObject {
             await engine.play()
             isPlaying = true
         }
+        updateLastPlayed()
         startPlaybackUpdates()
     }
     
@@ -136,6 +137,7 @@ class Player: NSObject {
             await engine.pause()
             isPlaying = false
         }
+        updateLastPlayed()
         stopPlaybackUpdates()
     }
 
@@ -158,7 +160,7 @@ class Player: NSObject {
             for await time in await engine.playbackPositionStream() {
                 playPosition = time
                 updateEpisodeProgress(to: time)
-                updateLastPlayed()
+               
             }
 
             handlePlaybackFinished()
@@ -166,6 +168,10 @@ class Player: NSObject {
     }
     func updateLastPlayed()  {
         currentEpisode?.metaData?.lastPlayed = Date()
+        if playPosition > currentEpisode?.metaData?.maxPlayposition ?? 0.0 {
+            currentEpisode?.metaData?.maxPlayposition = playPosition
+        }
+        currentEpisode?.metaData?.playPosition = playPosition
     }
 
     private func stopPlaybackUpdates() {
@@ -174,16 +180,13 @@ class Player: NSObject {
     }
 
     private var progressUpdateCounter = 0
-    private let progressSaveInterval = 10  // 0.5 seconds * 10 = 5 seconds
+    private let progressSaveInterval = 20  // 0.5 seconds * 20 = 10 seconds
     
     private func updateEpisodeProgress(to time: Double) {
         guard let episode = currentEpisode else { return }
         
         // Update UI-related properties on main thread
-        if time > episode.metaData?.maxPlayposition ?? 0.0 {
-            episode.metaData?.maxPlayposition = time
-        }
-        episode.metaData?.playPosition = time
+
         updateCurrentChapter()
         updateChapterProgress()
         
@@ -220,6 +223,7 @@ class Player: NSObject {
     private func handlePlaybackFinished() {
         print("Playback finished.")
      //   currentEpisode?.finishedPlaying = true
+        updateLastPlayed()
         stopPlaybackUpdates()
 /*
         currentPlaylist.items?.removeAll(where: { $0.episode == currentEpisode })

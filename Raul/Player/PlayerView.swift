@@ -41,7 +41,7 @@ struct PlayerView: View {
                         }
                     }
                     
-                    if fullSize {
+                    if fullSize, episode.transcriptData != nil {
                         HStack {
                             if showTranscripts{
                                 Image("custom.quote.bubble.slash")

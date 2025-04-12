@@ -189,6 +189,14 @@ class EpisodeDownloadStatus{
                 chapter.episode = self
                 self.chapters.append(chapter)
             }
+            chapters.sort { $0.start ?? 0.0 < $1.start ?? 0.0 }
+           for i in 0..<chapters.count{
+               if chapters[i].duration == nil{
+                   if i+1 <= chapters.count, let nexStart = chapters[i+1].start{
+                       chapters[i].duration = nexStart - (chapters[i].start ?? 0.0)
+                   }
+               }
+            }
         }
         
         if self.metaData == nil {

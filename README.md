@@ -33,6 +33,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [ ] extracted from shownotes
 - [ ] include chapter art for mp3/m4a
 - [?] include chapter links for mp3/m4a
+- [x] postprocess chapters to find duration/end if no value is given ( chapter[n].end = chapter[n+1].start ? episode.end)
 - [ ] download images during postprocessing
 - [ ] save last played episode and reload when opening the app
 
