@@ -60,16 +60,19 @@ struct TimelineView: View {
                             Color.clear
                                 .onChange(of: geo.frame(in: .global).minY) { oldValue, newValue in
                                     let screenHeight = UIScreen.main.bounds.height
-                                    let buffer: CGFloat = 50
+                                    let buffer: CGFloat = 100 // Increased buffer for better timing
                                     let isVisible = newValue > buffer && newValue < (screenHeight - buffer)
                                     
                                     // Detect scroll direction
                                     isScrollingUp = newValue > oldValue
                                     lastScrollPosition = newValue
                                     
+                                    // Add a small delay to prevent flickering
                                     if showMiniPlayer != !isVisible {
-                                        withAnimation(.spring()) {
-                                            showMiniPlayer = !isVisible
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            withAnimation(.spring()) {
+                                                showMiniPlayer = !isVisible
+                                            }
                                         }
                                     }
                                 }
