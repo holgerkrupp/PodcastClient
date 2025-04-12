@@ -10,8 +10,8 @@ import SwiftData
 
 struct TimelineView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(filter: #Predicate<Episode> { $0.metaData?.lastPlayed != nil }, sort: \.metaData?.lastPlayed, order: .forward) var topItems: [Episode]
-    @Query(filter: #Predicate<Episode> { $0.metaData?.lastPlayed == nil }, sort: \.publishDate, order: .reverse) var bottomItems: [Episode]
+
+
     private var player = Player.shared
     
     @State private var showMiniPlayer = false
@@ -25,19 +25,12 @@ struct TimelineView: View {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 16) {
                         // Top items section
-                        ForEach(topItems) { item in
-                            if item.id != player.currentEpisode?.id {
-                                EpisodeRowView(episode: item)
-                                    .id(item.id)
-                                    .padding(.horizontal)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color(.systemGray6))
-                                            .shadow(radius: 2)
-                                    )
-                            }
-                        }
                         
+                           EpisodeListView(predicate: #Predicate<Episode> { episode in
+                                episode.metaData?.lastPlayed != nil
+                           }, sort: \.metaData?.lastPlayed, order: .forward)
+                         
+                       // EpisodeListView()
                         Divider()
                         
                         // Player section
@@ -58,14 +51,19 @@ struct TimelineView: View {
                         // Player position tracker
                         GeometryReader { geo in
                             Color.clear
-                                .onChange(of: geo.frame(in: .global).minY) { oldValue, newValue in
+                                .onChange(of: geo.frame(in: .global)) { oldValue, newValue in
                                     let screenHeight = UIScreen.main.bounds.height
                                     let buffer: CGFloat = 100 // Increased buffer for better timing
-                                    let isVisible = newValue > buffer && newValue < (screenHeight - buffer)
+                                    
+                                    
+                                    isScrollingUp = newValue.minY > oldValue.minY
+                                    
+                                    let position = isScrollingUp ? newValue.minY : newValue.maxY
+                                    let isVisible = position > buffer && position < (screenHeight - buffer)
                                     
                                     // Detect scroll direction
-                                    isScrollingUp = newValue > oldValue
-                                    lastScrollPosition = newValue
+                                    
+                                    lastScrollPosition = position
                                     
                                     // Add a small delay to prevent flickering
                                     if showMiniPlayer != !isVisible {
@@ -74,24 +72,21 @@ struct TimelineView: View {
                                                 showMiniPlayer = !isVisible
                                             }
                                         }
-                                    }
+                                   }
                                 }
                         }
                         .frame(height: 1) // Minimize the GeometryReader's impact
                         
                         Divider()
+                        //EpisodeListView()
+                        
                         
                         // Bottom items section
-                        ForEach(bottomItems) { item in
-                            EpisodeRowView(episode: item)
-                                .id(item.id)
-                                .padding(.horizontal)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color(.systemGray6))
-                                        .shadow(radius: 2)
-                                )
-                        }
+                        
+                        EpisodeListView(predicate: #Predicate<Episode> { episode in
+                            episode.metaData?.lastPlayed == nil
+                        }, sort: \.publishDate, order: .reverse)
+                         
                     }
                     .padding(.vertical)
                 }
@@ -115,7 +110,7 @@ struct TimelineView: View {
     func playerView(fullSize: Bool) -> some View {
         VStack {
             PlayerView(fullSize: fullSize)
-                .frame(height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
+                .frame(width: UIScreen.main.bounds.width * 0.9, height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
                 .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
         }
         .background(
@@ -125,6 +120,7 @@ struct TimelineView: View {
         )
     }
 }
+
 
 
 #Preview {

@@ -2,11 +2,12 @@ import SwiftUI
 
 struct PlayerView: View {
     @State private var player = Player.shared
-    @State private var showTranscripts: Bool = true
+    @State private var showTranscripts: Bool = false
+    @State private var showFullTranscripts: Bool = false
     let fullSize: Bool
 
     var body: some View {
-        NavigationStack {
+        
             VStack {
                 if let episode = player.currentEpisode {
                     ZStack() {
@@ -16,19 +17,48 @@ struct PlayerView: View {
                             player.coverImage
                                 .scaledToFit()
                                 .frame(maxWidth: .infinity)
-                                .onTapGesture(perform: {
-                                    showTranscripts.toggle()
-                                })
+                               
                                 .overlay(alignment: .bottom) {
                                     if let vttFileContent = player.currentEpisode?.transcriptData,
-                                       player.playPosition.isNormal,
-                                       showTranscripts {
-                                        NavigationLink(destination: TranscriptListView(vttContent: vttFileContent), label: {
-                                            TranscriptView(vttContent: vttFileContent, currentTime: $player.playPosition)
-                                                .frame(maxWidth: .infinity)
-                                        })
+                                       player.playPosition.isNormal, showTranscripts {
+                                       
+                                            
+                                      
+                                        TranscriptView(vttContent: vttFileContent, currentTime: $player.playPosition)
+                                               
+
+                                       
+                                        .background(.ultraThinMaterial)
+                                       
                                     }
                                 }
+                                .sheet(isPresented: $showFullTranscripts) {
+                                    if let vttFileContent = player.currentEpisode?.transcriptData {
+                                        TranscriptListView(vttContent: vttFileContent)
+                                            .presentationDetents([.large])
+                                    }
+                                }
+                        }
+                    }
+                    
+                    if fullSize {
+                        HStack {
+                            if showTranscripts{
+                                Image("custom.quote.bubble.slash")
+                                    .onTapGesture(perform: {
+                                        showTranscripts.toggle()
+                                    })
+                            }else{
+                                Image(systemName: "quote.bubble")
+                                    .onTapGesture(perform: {
+                                        showTranscripts.toggle()
+                                    })
+                            }
+                            Spacer()
+                            Image("custom.quote.bubble.rectangle.portrait")
+                                .onTapGesture(perform: {
+                                    showFullTranscripts.toggle()
+                                })
                         }
                     }
                     
@@ -52,6 +82,7 @@ struct PlayerView: View {
                                     .monospacedDigit()
                             }
                         }
+                        
                     }
                     
                     Button(action: {
@@ -68,7 +99,9 @@ struct PlayerView: View {
                 }
             }
             .padding()
-        }
+           
+        
+       
     }
 }
 
@@ -77,4 +110,5 @@ struct PlayerView: View {
     let _: () = Player.shared.currentEpisode = episode
     
     PlayerView(fullSize: true)
+
 }

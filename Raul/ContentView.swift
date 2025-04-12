@@ -28,7 +28,7 @@ struct ContentView: View {
                 }
                 .tag(Tab.player)
             
-            EpisodeListView()
+            InboxView()
                 .tabItem {
                     Label("Inbox", systemImage: "tray.fill")
                 }

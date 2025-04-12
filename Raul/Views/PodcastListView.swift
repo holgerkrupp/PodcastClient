@@ -65,7 +65,7 @@ struct PodcastRowView: View {
     let podcast: Podcast
     
     var body: some View {
-        NavigationLink(destination: EpisodeListView(podcast: podcast)) {
+        NavigationLink(destination: InboxView(podcast: podcast)) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     if let imageURL = podcast.coverImageURL {
