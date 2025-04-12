@@ -59,16 +59,22 @@ class Player: NSObject {
     
     func playEpisode(_ episode: Episode) {
         currentEpisode = episode
-
-        let item = AVPlayerItem(url: episode.url)
+        
         Task {
+            // Load the AVPlayerItem asynchronously
+            let item = await Task.detached {
+                AVPlayerItem(url: episode.url)
+            }.value
+            
             await engine.replaceCurrentItem(with: item)
+            
             if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
                 print("last position: \(lastPlayPosition)")
-                jumpTo(time: lastPlayPosition)
-            }else{
+                await engine.seek(to: CMTime(seconds: lastPlayPosition, preferredTimescale: 600))
+            } else {
                 print("no last position")
             }
+            
             play()
         }
     }

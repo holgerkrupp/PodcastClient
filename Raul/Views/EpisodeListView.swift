@@ -101,25 +101,29 @@ struct EpisodeListView: View {
 
 struct EpisodeRowView: View {
     @Environment(\.modelContext) private var modelContext
-
     let episode: Episode
     @State private var isExtended: Bool = false
+    @State private var image: Image?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if let imageULR = episode.imageURL{
-                    ImageWithURL(imageULR)
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
-                    
-                }else if let imageULR = episode.podcast?.coverImageURL{
-                    ImageWithURL(imageULR)
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
+                Group {
+                    if let image = image {
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Color.gray.opacity(0.2)
+                    }
                 }
-                VStack{
-                    HStack(){
+                .frame(width: 50, height: 50)
+                .task {
+                    await loadImage()
+                }
+                
+                VStack(alignment: .leading) {
+                    HStack {
                         Text(episode.podcast?.title ?? "")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -130,6 +134,7 @@ struct EpisodeRowView: View {
                     }
                     Text(episode.title)
                         .font(.headline)
+                        .lineLimit(2)
                 }
             }
 
@@ -139,7 +144,7 @@ struct EpisodeRowView: View {
                 }) {
                     if episode.metaData?.finishedPlaying == true {
                         Image("custom.play.circle.badge.checkmark")
-                    }else{
+                    } else {
                         Image(systemName: "play.circle")
                     }
                 }
@@ -155,6 +160,43 @@ struct EpisodeRowView: View {
                 isExtended.toggle()
             }
         }
+    }
+    
+    private func loadImage() async {
+        if let imageURL = episode.imageURL ?? episode.podcast?.coverImageURL {
+            if let uiImage = await ImageLoader.shared.loadImage(from: imageURL) {
+                await MainActor.run {
+                    self.image = Image(uiImage: uiImage)
+                }
+            }
+        }
+    }
+}
+
+// Add this class to handle image loading
+actor ImageLoader {
+    static let shared = ImageLoader()
+    private var cache = NSCache<NSString, UIImage>()
+    
+    private init() {}
+    
+    func loadImage(from url: URL) async -> UIImage? {
+        let key = url.absoluteString as NSString
+        
+        if let cached = cache.object(forKey: key) {
+            return cached
+        }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = UIImage(data: data) {
+                cache.setObject(image, forKey: key)
+                return image
+            }
+        } catch {
+            print("Error loading image: \(error)")
+        }
+        return nil
     }
 }
 

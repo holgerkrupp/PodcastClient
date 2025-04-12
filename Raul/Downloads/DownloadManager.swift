@@ -99,7 +99,7 @@ class DownloadManager: NSObject, ObservableObject, URLSessionDelegate, URLSessio
         Task {
             if let task = await storage.getTask(for: url) {
                 task.suspend()
-                var downloadItem = downloads[url]
+                let downloadItem = downloads[url]
                 downloadItem?.isDownloading = false
             }
         }
@@ -109,7 +109,7 @@ class DownloadManager: NSObject, ObservableObject, URLSessionDelegate, URLSessio
         Task {
             if let task = await storage.getTask(for: url) {
                 task.resume()
-                var downloadItem = downloads[url]
+                let downloadItem = downloads[url]
                 downloadItem?.isDownloading = true
             }
         }
