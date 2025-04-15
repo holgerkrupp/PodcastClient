@@ -20,6 +20,11 @@ struct EpisodeRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                Text("DEBUG")
+                Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+            }
+            .font(.caption)
+            HStack {
                 Group {
                     if let image = image {
                         image

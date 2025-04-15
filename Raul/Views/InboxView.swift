@@ -14,7 +14,7 @@ struct InboxView: View {
         if let id = podcast?.persistentModelID {
             predicate = #Predicate<Episode> { $0.podcast?.persistentModelID == id }
         } else {
-            predicate = nil
+            predicate = #Predicate<Episode> { $0.metaData?.isArchived != true }
         }
 
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)

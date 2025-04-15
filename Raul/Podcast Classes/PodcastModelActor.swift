@@ -127,11 +127,38 @@ actor PodcastModelActor {
         try modelContext.save()
         do {
             try await updatePodcast(podcast.persistentModelID)
+            try await archiveEpisodes(of: podcast.persistentModelID)
+            if let lastEpisode = podcast.episodes.sorted(by: { $0.publishDate ?? Date.distantPast < $1.publishDate ?? Date.distantPast }).last {
+                try await unarchiveEpisode(lastEpisode.persistentModelID)
+            }
         } catch {
             print("Could not update podcast: \(error)")
         }
         
         return podcast.persistentModelID
+    }
+    
+    func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {
+        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        
+        for episode in podcast.episodes {
+            if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
+            episode.metaData?.isArchived = true
+        }
+        try modelContext.save()
+        do {
+            try await updatePodcast(podcast.persistentModelID)
+        } catch {
+            print("Could not update podcast: \(error)")
+        }
+        
+        try modelContext.save()
+    }
+    
+    func unarchiveEpisode(_ episodeID: PersistentIdentifier) async throws {
+        guard var episode = modelContext.model(for: episodeID) as? Episode else { return }
+        episode.metaData?.isArchived = false
+        try modelContext.save()
     }
     
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {

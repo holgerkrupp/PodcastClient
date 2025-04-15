@@ -272,6 +272,7 @@ class EpisodeDownloadStatus{
     var maxPlayposition:Double? = 0.0
     var playPosition:Double? = 0.0
     
+    var isArchived: Bool? = false
    
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?

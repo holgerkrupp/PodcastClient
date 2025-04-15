@@ -27,7 +27,7 @@ struct EpisodeListView: View {
     }
     
     var body: some View {
-        ForEach(episodes) { episode in
+        ForEach(allEpisodes) { episode in
             if episode.id != player.currentEpisode?.id {
                 EpisodeRowView(episode: episode)
                     .id(episode.id)
