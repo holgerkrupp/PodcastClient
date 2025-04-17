@@ -21,12 +21,10 @@ actor PodcastModelActor {
       
                 if serverLastModified > lastRefresh{
                     print("feed is new")
-                    podcast.metaData?.feedUpdated = true
                     return true
                 }else{
                     // feed on server is old
                     print("feed is old")
-                    podcast.metaData?.feedUpdated = false
                     return false
                 }
             }else{
@@ -38,7 +36,6 @@ actor PodcastModelActor {
         }else{
             // feed has never been fetched before, no last modified date is set.
             print("feed is very new")
-            podcast.metaData?.feedUpdated = true
             return true
         }
     }
@@ -85,12 +82,7 @@ actor PodcastModelActor {
                     
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
-                        do{
-                            newEpisodes.append(episode)
-                            try modelContext.save()
-                        }catch{
-                            print("Episode already exists or failed to save: \(error)")
-                        }
+                        newEpisodes.append(episode)
                     }else{
                         print("Episode already exists")
 
@@ -99,7 +91,14 @@ actor PodcastModelActor {
                 
             }
 
+            do {
+                try modelContext.save()
+            } catch {
+                print("could not save modelContext")
+            }
             
+            podcast.metaData?.feedUpdated = true
+
         } else {
             throw parser.parserError ?? NSError(domain: "ParserError", code: -1, userInfo: nil)
         }

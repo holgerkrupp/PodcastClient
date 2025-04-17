@@ -147,6 +147,7 @@ class EpisodeDownloadStatus{
     }
     
 
+
     
     func updateEpisodeData(from episodeData: [String: Any]) {
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
