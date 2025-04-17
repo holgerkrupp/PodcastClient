@@ -16,7 +16,7 @@ struct ContentView: View {
     }
     
     @State private var selectedTab: Tab = .player
-    @ObservedObject private var manager = DownloadManager.shared
+   // @ObservedObject private var manager = DownloadManager.shared
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
     
@@ -41,6 +41,7 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "headphones")
                 }
                 .tag(Tab.podcasts)
+            /*
             if !manager.downloads.isEmpty {
                 AllDownloadsView()
                     .tabItem {
@@ -48,6 +49,7 @@ struct ContentView: View {
                     }
                     .tag(Tab.downloads)
             }
+            */
 
         }
   

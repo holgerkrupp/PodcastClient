@@ -10,7 +10,7 @@ import SwiftUI
 
 struct EpisodeControlView: View {
     @State var episode: Episode
-    @StateObject private var manager = DownloadManager.shared
+ //   @StateObject private var manager = DownloadManager.shared
     @Environment(\.modelContext) private var modelContext
     @State private var downloadProgress: Double = 0.0
     @State private var isDownloading: Bool = false
@@ -62,7 +62,11 @@ struct EpisodeControlView: View {
                         .scaledToFit()
                 }
                 .buttonStyle(.bordered)
-            } else if manager.downloads[episode.url] != nil {
+            }
+            
+            DownloadControllView(episode: episode, url: episode.url)
+            /*
+            else if manager.downloads[episode.url] != nil {
                 VStack(alignment: .trailing) {
                     ProgressView(value: downloadProgress)
                         .progressViewStyle(.linear)
@@ -92,13 +96,14 @@ struct EpisodeControlView: View {
                         // Keep observing
                     }
                 }
-            } else {
+            }
+            else {
                 Button {
                     Task { 
                         if let localFile = episode.localFile {
                             let url = episode.url  // Capture URL before async context
                             episode.downloadStatus.isDownloading = true
-                             manager.download(from: url, saveTo: localFile)
+                            await manager.download(from: url, saveTo: localFile)
                             
                             // Wait for download completion
                             for await _ in AsyncStream<Void>(unfolding: {
@@ -129,15 +134,19 @@ struct EpisodeControlView: View {
                 .buttonStyle(.bordered)
                 .disabled(episode.downloadStatus.isDownloading)
             }
+            */
         }
         .frame(maxWidth: .infinity, maxHeight: 30)
+        /*
         .onAppear {
-
-            if let item = manager.downloads[episode.url] {
-                print("   Download status: \(item.isDownloading)")
-                print("   Progress: \(item.progress)")
+            Task{
+                if let item = await manager.downloads[episode.url] {
+                    print("   Download status: \(item.isDownloading)")
+                    print("   Progress: \(item.progress)")
+                }
             }
         }
+        */
     }
 }
 

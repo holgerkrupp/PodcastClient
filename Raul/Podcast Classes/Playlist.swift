@@ -50,7 +50,7 @@ class Playlist{
         return playTimes
     }
     
-    @MainActor func add(episodeID: PersistentIdentifier, to: Position = .end){
+    @MainActor func add(episodeID: PersistentIdentifier, to: Position = .end) async{
         guard let episode = modelContext?.model(for: episodeID) as? Episode else { return }
         if episode.metaData?.isAvailableLocally != true{
             
@@ -58,7 +58,7 @@ class Playlist{
                 let url = episode.url  // Capture URL before async context
                 episode.downloadStatus.isDownloading = true
                 var manager = DownloadManager.shared
-                manager.download(from: url, saveTo: localFile)
+                await manager.download(from: url, saveTo: localFile)
             }
             
             var newPosition = 0

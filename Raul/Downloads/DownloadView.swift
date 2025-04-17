@@ -14,8 +14,8 @@ struct DownloadView: View {
 
     var body: some View {
         VStack(alignment: .leading) {
-            Text(downloadItem.episode?.title ?? url.lastPathComponent)
-                .font(.headline)
+  //         Text($downloadItem.episode.title ?? url.lastPathComponent)
+          //      .font(.headline)
 
           
                 ProgressView(value: downloadItem.progress)
@@ -38,8 +38,10 @@ struct DownloadView: View {
                     
                     Button {
                         print("⏸️ Pausing download for: \(url)")
-                        DownloadManager.shared.pauseDownload(for: url)
-                    } label: {
+                        Task{
+                         //   await DownloadManager.shared.pauseDownload(for: url)
+                        }
+                        } label: {
                         Image(systemName: "pause.circle")
                             .resizable()
                             .scaledToFit()
@@ -49,7 +51,9 @@ struct DownloadView: View {
                     
                     Button {
                         print("▶️ Resuming download for: \(url)")
-                        DownloadManager.shared.resumeDownload(for: url)
+                        Task{
+                       //   await   DownloadManager.shared.resumeDownload(for: url)
+                        }
                     } label: {
                         Image(systemName: "arrow.down.circle")
                             .resizable()
