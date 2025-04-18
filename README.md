@@ -16,7 +16,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [x] download episodes
 - - [x] show download progress
 - - [x] delete files
-- - [x] update UI after file deleted
+- - [ ] update UI after file deleted
 - - [ ] implement automatic background downloads
 - [ ] remove all files when one episode is deleted (including downloaded images)
 - [ ] if Playlist contains episode, move it to the front/end instead of adding another copy
@@ -57,7 +57,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] skip manually selected chapters
 - [ ] sleep timer
 - [ ] play next queue
-- [ ] set playbackspeed
+- [x] set playbackspeed
 - - [ ] (per podcast)
 
 

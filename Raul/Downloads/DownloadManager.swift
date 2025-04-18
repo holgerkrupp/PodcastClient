@@ -7,6 +7,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     private var downloads: [URL: DownloadItem] = [:]
     private var urlToTask: [URL: URLSessionDownloadTask] = [:]
     private var destinations: [URL: URL] = [:]
+    private var episodes: [URL: PersistentIdentifier] = [:]
+    
 
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -28,6 +30,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
         downloads[url] = item
         destinations[url] = finalDestination
+        episodes[url] = episode?.persistentModelID
 
         let task = session.downloadTask(with: url)
         urlToTask[url] = task
@@ -47,6 +50,21 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             }
         }
         return nil
+    }
+    
+    func cancelDownload(for url: URL)  {
+        urlToTask[url]?.cancel()
+        urlToTask[url] = nil
+        downloads[url] = nil
+        destinations[url] = nil
+    }
+    
+    func pauseDownload(for url: URL) {
+        urlToTask[url]?.suspend()
+    }
+    
+    func resumeDownload(for url: URL) {
+        urlToTask[url]?.resume()
     }
 
     private func defaultDestination(for url: URL) -> URL {
@@ -111,7 +129,12 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             try? FileManager.default.removeItem(at: tempCopy)
 
             if let item = await DownloadManager.shared.getItem(for: url) {
-                await MainActor.run { item.isDownloading = false }
+                await MainActor.run {
+                    item.isDownloading = false
+                    item.isFinished = true
+                    print("Download finished for: \(url), isFinished set to true")
+
+                }
             }
 
             await DownloadManager.shared.cleanUp(url: url)
@@ -126,10 +149,15 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         return destinations[url]
     }
 
-    private func cleanUp(url: URL) {
-        downloads[url] = nil
-        urlToTask[url] = nil
-        destinations[url] = nil
+    private func cleanUp(url: URL) async {
+        
+        downloads.removeValue(forKey: url)
+        urlToTask.removeValue(forKey: url)
+        destinations.removeValue(forKey: url)
+        
+        print("downloads: \(downloads.count) - destinations: \(destinations.count) - urlToTask: \(urlToTask.count)")
+        print("\(url.lastPathComponent) in downloads: \(await downloads[url]?.progress ?? 0)")
     }
+    
 }
 

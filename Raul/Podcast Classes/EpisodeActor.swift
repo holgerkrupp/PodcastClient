@@ -90,13 +90,9 @@ actor EpisodeActor {
 
     func markEpisodeAvailable(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
-        episode.downloadStatus.isDownloading = false
+        episode.markEpisodeAvailable()
         try? modelContext.save()
-           
-               
-        await self.downloadTranscript(episode.persistentModelID)
-            
-        
+    
     }
     
     func createChapters(_ episodeID: PersistentIdentifier) async {

@@ -10,7 +10,11 @@ class Player: NSObject {
 
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
-    private var playbackRate: Float = 1.0
+    var playbackRate: Float = 1.0 {
+        didSet {
+            Task { await engine.setRate(playbackRate) }
+        }
+    }
 
     var playPosition: Double = 0.0
     var currentEpisode: Episode? 
@@ -63,7 +67,14 @@ class Player: NSObject {
         Task {
             // Load the AVPlayerItem asynchronously
             let item = await Task.detached {
-                AVPlayerItem(url: episode.url)
+                
+                if episode.metaData?.calculatedIsAvailableLocally ?? false, let localFile = episode.localFile {
+                    AVPlayerItem(url: localFile)
+                }else{
+                    AVPlayerItem(url: episode.url)
+                }
+                
+                
             }.value
             
             await engine.replaceCurrentItem(with: item)

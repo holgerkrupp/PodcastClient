@@ -146,8 +146,16 @@ class EpisodeDownloadStatus{
         self.metaData = metadata
     }
     
-
-
+    /*
+    static func ==(lhs: Episode, rhs: Episode) -> Bool {
+        
+        if lhs.guid == rhs.guid {
+            return true
+        }else{
+            return false
+        }
+    }
+*/
     
     func updateEpisodeData(from episodeData: [String: Any]) {
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
@@ -236,7 +244,7 @@ class EpisodeDownloadStatus{
     
     func markEpisodeAvailable()  {
         downloadStatus.isDownloading = false
-        
+        metaData?.isAvailableLocally = true
         // Capture the values we need before starting the Task
         guard let container = self.modelContext?.container else { return }
         
@@ -245,7 +253,7 @@ class EpisodeDownloadStatus{
         Task {
             let actor = EpisodeActor(modelContainer: container)
             await actor.downloadTranscript(modelID)
-            await actor.extractMP3Chapters(modelID)
+            await actor.createChapters(modelID)
         }
         
     }
@@ -253,7 +261,7 @@ class EpisodeDownloadStatus{
     func deleteFile(){
         if let file = localFile{
             try? FileManager.default.removeItem(at: file)
-            refresh.toggle()
+            metaData?.isAvailableLocally = false
         }
     }
     
@@ -261,13 +269,15 @@ class EpisodeDownloadStatus{
 
 
 @Model final class EpisodeMetaData{
-    var isAvailableLocally: Bool {
+    
+    var calculatedIsAvailableLocally: Bool {
         guard let url = episode?.localFile else {
-            print("local file not set for \(episode?.title ?? "unknown episode")")
             return false
         }
         return FileManager.default.fileExists(atPath: url.path)
     }
+     
+    var isAvailableLocally: Bool = false
     var lastPlayed: Date?
     var finishedPlaying: Bool? = false
     var maxPlayposition:Double? = 0.0

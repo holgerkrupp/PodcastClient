@@ -49,7 +49,7 @@ struct InboxView: View {
         }
         .navigationTitle(podcast?.title ?? "All Episodes")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .topBarTrailing) {
                 Button(action: {
                     Task {
                         await refreshEpisodes()
@@ -59,7 +59,19 @@ struct InboxView: View {
                 }
                 .disabled(isLoading)
             }
+            if let podcast {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: {
+                        Task {
+                            try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)
+                        }
+                    }) {
+                        Image(systemName: "archivebox")
+                    }
+                }
+            }
         }
+
         .overlay {
             if isLoading {
                 ProgressView()

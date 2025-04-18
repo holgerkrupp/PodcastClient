@@ -22,6 +22,12 @@ struct EpisodeRowView: View {
             HStack {
                 Text("DEBUG")
                 Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                Image(systemName: episode.metaData?.isAvailableLocally ?? false ? "document.fill" : "document")
+                    .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
+                    .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                    
+
             }
             .font(.caption)
             HStack {
@@ -52,6 +58,17 @@ struct EpisodeRowView: View {
                     Text(episode.title)
                         .font(.headline)
                         .lineLimit(2)
+                    if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
+                            Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }else{
+                            Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                  
                 }
             }
 

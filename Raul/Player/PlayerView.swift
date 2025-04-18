@@ -4,12 +4,63 @@ struct PlayerView: View {
     @State private var player = Player.shared
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
+    @State var showSpeedSetting:Bool = false
+
     let fullSize: Bool
 
     var body: some View {
         
             VStack {
                 if let episode = player.currentEpisode {
+                    if fullSize {
+                        HStack {
+                            Spacer()
+                            Button {
+                                
+                                showSpeedSetting = true
+                                
+                            } label: {
+                                
+                                Label {
+                                    Text("Playback Settings")
+                                } icon: {
+                                    
+                                        Image(systemName: "gear")
+                                            .tint(.primary)
+                                       
+                                }
+                                .labelStyle(.iconOnly)
+                                
+                               
+                            }
+                            .sheet(isPresented: $showSpeedSetting, content: {
+                                VStack{
+                                    /*
+                                    Text("Adjust Sleeptimer")
+                                    Toggle(isOn: $player.sleeptimer.activated) {
+                                        Text("Activate Sleeptimer")
+                                    }
+                                    Stepper(value: $player.sleeptimer.minutes, in: 1...60, step: 1) {
+                                        Text(player.sleeptimer.secondsLeft?.secondsToHoursMinutesSeconds ?? "00:00")
+                                    }
+                                    .disabled(!player.sleeptimer.activated)
+                                    */
+                                    
+                                    
+                                    Text("Adjust Playback Speed")
+                                    Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
+                                        Text("\(player.playbackRate.formatted())x")
+                                    }
+                                    
+                                }.padding()
+                                .presentationDragIndicator(.visible)
+                                .presentationBackground(.ultraThinMaterial)
+                                .presentationDetents([.fraction(0.5)])
+                              
+                            })
+                            Spacer()
+                        }
+                    }
                     ZStack() {
                         Color.clear
                         

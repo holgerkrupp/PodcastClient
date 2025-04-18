@@ -15,6 +15,7 @@ actor PodcastModelActor {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return nil}
 
         podcast.metaData?.feedUpdateCheckDate = Date()
+        
         if let lastRefresh = podcast.metaData?.lastRefresh{
             if let serverLastModified = try? await podcast.feed?.status()?.lastModified {
                 print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
@@ -80,6 +81,8 @@ actor PodcastModelActor {
                
                 for episodeData in episodesData {
                     
+                    guard  checkIfEpisodeExists(episodeData["guid"] as? String ?? "") ?? 0 < 1 else { print("episode exists"); continue }
+                    
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
                         newEpisodes.append(episode)
@@ -105,7 +108,13 @@ actor PodcastModelActor {
     }
     
 
-    
+    private func checkIfEpisodeExists(_ guid: String) -> Int? {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.guid == guid  }
+        )
+        
+        return try? modelContext.fetch(descriptor).count
+    }
     
     func createPodcast(from url: URL) async throws -> PersistentIdentifier {
         // Check if podcast with this feed URL already exists

@@ -14,7 +14,10 @@ import SwiftData
 final class DownloadItem: ObservableObject, Identifiable {
     let id = UUID()
     let url: URL
+    
     var episodeID: PersistentIdentifier?
+    
+    @Published var isFinished: Bool = false
 
     @Published var isDownloading = false
     @Published var progress: Double = 0.0
@@ -24,6 +27,7 @@ final class DownloadItem: ObservableObject, Identifiable {
     init(url: URL, episodeID: PersistentIdentifier? = nil) {
         self.url = url
         self.episodeID = episodeID
+        
     }
 
     func update(bytesWritten: Int64, totalBytes: Int64) {
@@ -31,6 +35,10 @@ final class DownloadItem: ObservableObject, Identifiable {
         self.downloadedBytes = bytesWritten
         self.totalBytes = totalBytes
         self.progress = totalBytes > 0 ? Double(bytesWritten) / Double(totalBytes) : 0
-        print("\(progress) \(url.lastPathComponent)")
+        
+    }
+    
+    func setDownloading(_ downloading: Bool) {
+        self.isDownloading = downloading
     }
 }

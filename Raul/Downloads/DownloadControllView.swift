@@ -6,28 +6,36 @@
 //
 
 import SwiftUI
+import Combine
 
 struct DownloadControllView: View {
-    @StateObject var viewModel = DownloadViewModel()
+    @ObservedObject var viewModel = DownloadViewModel()
     let episode: Episode
-    let url: URL
+    @State private var updateUI: Bool = false
+
 
     var body: some View {
         VStack {
             if let item = viewModel.item {
-                DownloadProgressView(item: item)
+                VStack{
+                    DownloadProgressView(item: item)
+                        .progressViewStyle(CircularProgressViewStyle())
+                }
 
             } else {
-                Button("Download") {
-                    viewModel.startDownload(for: episode, to: url)
+
+                Button {
+                    viewModel.startDownload(for: episode)
+                    updateUI.toggle()
+                } label: {
+                    Image(systemName: "arrow.down.circle")
                 }
+
             }
         }
         .onAppear {
             viewModel.observeDownload(for: episode)
-        }
-        .onReceive(viewModel.$item) { item in
-            print("item update")
+       
         }
     }
 }
@@ -36,10 +44,15 @@ struct DownloadProgressView: View {
     @ObservedObject var item: DownloadItem
 
     var body: some View {
-        VStack {
-            ProgressView(value: item.progress)
-                .progressViewStyle(.linear)
-            Text("\(Int(item.progress * 100))%")
+        if !item.isFinished {
+            VStack {
+                ProgressView(value: item.progress)
+                    .progressViewStyle(.linear)
+                Text("\(Int(item.progress * 100))%")
+
+            }
+            
         }
+
     }
 }

@@ -18,14 +18,6 @@ struct EpisodeControlView: View {
     var body: some View {
         HStack {
             
-            Button {
-                episode.markEpisodeAvailable()
-            } label: {
-                Text("Postprocess")
-            }
-            .buttonStyle(.plain)
-
-            
             if episode.chapters.count > 0 {
                 Image(systemName: "list.bullet")
             }
@@ -40,18 +32,7 @@ struct EpisodeControlView: View {
             
                 Spacer()
             
-            if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                    Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                        .font(.caption)
-                }else{
-                    Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                        .font(.caption)
-                }
-            
-
-
-            Spacer()
-          
+   
             
             if episode.metaData?.isAvailableLocally == true {
                 Button {
@@ -64,89 +45,11 @@ struct EpisodeControlView: View {
                 .buttonStyle(.bordered)
             }
             
-            DownloadControllView(episode: episode, url: episode.url)
-            /*
-            else if manager.downloads[episode.url] != nil {
-                VStack(alignment: .trailing) {
-                    ProgressView(value: downloadProgress)
-                        .progressViewStyle(.linear)
-                        .frame(width: 100)
-                    Text("\(Int(downloadProgress * 100))%")
-                        .font(.caption)
-                }
-                .task {
-                    // Start observing download progress
-                    let url = episode.url  // Capture URL before async context
-                    for await _ in AsyncStream<Void>(unfolding: {
-                        if let item = await manager.downloads[url] {
-                            await MainActor.run {
-                                downloadProgress = item.progress
-                                isDownloading = item.isDownloading
-                                if let totalBytes = item.totalBytes, totalBytes > 0 {
-                                    episode.downloadStatus.update(
-                                        currentBytes: Int64(item.progress * Double(totalBytes)),
-                                        totalBytes: totalBytes
-                                    )
-                                }
-                            }
-                        }
-                        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                        return ()
-                    }) {
-                        // Keep observing
-                    }
-                }
-            }
-            else {
-                Button {
-                    Task { 
-                        if let localFile = episode.localFile {
-                            let url = episode.url  // Capture URL before async context
-                            episode.downloadStatus.isDownloading = true
-                            await manager.download(from: url, saveTo: localFile)
-                            
-                            // Wait for download completion
-                            for await _ in AsyncStream<Void>(unfolding: {
-                                if await manager.downloads[url] == nil {
-                                    await MainActor.run {
-                                       
-                                        if FileManager.default.fileExists(atPath: localFile.path) {
-                                            
-                                                episode.markEpisodeAvailable()
-                                            
-                                            
-                                        }
-                                    }
-                                    return nil
-                                }
-                                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                                return ()
-                            }) {
-                                // Keep waiting
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "icloud.and.arrow.down")
-                        .resizable()
-                        .scaledToFit()
-                }
-                .buttonStyle(.bordered)
-                .disabled(episode.downloadStatus.isDownloading)
-            }
-            */
+            DownloadControllView(episode: episode)
+
         }
         .frame(maxWidth: .infinity, maxHeight: 30)
-        /*
-        .onAppear {
-            Task{
-                if let item = await manager.downloads[episode.url] {
-                    print("   Download status: \(item.isDownloading)")
-                    print("   Progress: \(item.progress)")
-                }
-            }
-        }
-        */
+
     }
 }
 

@@ -41,15 +41,7 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "headphones")
                 }
                 .tag(Tab.podcasts)
-            /*
-            if !manager.downloads.isEmpty {
-                AllDownloadsView()
-                    .tabItem {
-                        Label("Downloads", systemImage: "arrow.down.circle.fill")
-                    }
-                    .tag(Tab.downloads)
-            }
-            */
+
 
         }
   
