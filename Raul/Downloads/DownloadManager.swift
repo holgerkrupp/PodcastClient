@@ -7,7 +7,6 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     private var downloads: [URL: DownloadItem] = [:]
     private var urlToTask: [URL: URLSessionDownloadTask] = [:]
     private var destinations: [URL: URL] = [:]
-    private var episodes: [URL: PersistentIdentifier] = [:]
     
 
     private lazy var session: URLSession = {
@@ -17,20 +16,19 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     private override init() {}
 
-    func download(from url: URL, saveTo destination: URL? = nil, episode: Episode? = nil) async -> DownloadItem {
+    func download(from url: URL, saveTo destination: URL? = nil, episodeID: UUID? = nil) async -> DownloadItem {
         if let existing = downloads[url] {
             return existing
         }
 
         let finalDestination = destination ?? defaultDestination(for: url)
-        let episodeID = episode?.persistentModelID
+        
         let item = await MainActor.run {
             
             DownloadItem(url: url, episodeID: episodeID)
         }
         downloads[url] = item
         destinations[url] = finalDestination
-        episodes[url] = episode?.persistentModelID
 
         let task = session.downloadTask(with: url)
         urlToTask[url] = task
@@ -39,8 +37,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         return item
     }
 
-    /// 🔄 Fix: This version hops to main actor to safely compare `episodeID`
-    func item(for episodeID: PersistentIdentifier) async -> DownloadItem? {
+    func item(for episodeID: UUID) async -> DownloadItem? {
         let allItems = Array(downloads.values)
         for item in allItems {
             if await MainActor.run(resultType: Bool.self, body: {
@@ -108,7 +105,6 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             return
         }
 
-        // Now you're safe to suspend or async call
         Task {
             guard let destination = await DownloadManager.shared.getDestination(for: url) else { return }
 
@@ -125,7 +121,6 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 print("❌ Save error: \(error)")
             }
 
-            // Clean up temp copy
             try? FileManager.default.removeItem(at: tempCopy)
 
             if let item = await DownloadManager.shared.getItem(for: url) {
@@ -135,7 +130,38 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                     print("Download finished for: \(url), isFinished set to true")
 
                 }
-            }
+                if let episodeID = await MainActor.run(resultType: UUID?.self, body: { item.episodeID }) {
+                    Task.detached {
+                        let container = ModelContainerManager().container
+                        let modelContext = ModelContext(container)
+                   //     let episodeActor = EpisodeActor(modelContainer: container)
+                   //     await episodeActor.markEpisodeAvailable(episodeID)
+                        
+                        let predicate = #Predicate<EpisodeMetaData> { metadata in
+                            // Direct comparison of the episode's persistentModelID
+                            metadata.episode?.id == episodeID
+                        }
+
+                                do {
+                                    let results = try modelContext.fetch(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
+                                    guard let metadata = results.first else {
+                                        print("❌ No metadata found for episode ID: \(episodeID)")
+                                        return
+                                    }
+
+                                    metadata.isAvailableLocally = true
+                                    try modelContext.save()
+                                    print("✅ Metadata updated")
+                                } catch {
+                                    print("❌ Error fetching or saving metadata: \(error)")
+                                }
+                    }
+                        
+                    }
+                }
+            
+            
+
 
             await DownloadManager.shared.cleanUp(url: url)
         }
@@ -157,6 +183,9 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         
         print("downloads: \(downloads.count) - destinations: \(destinations.count) - urlToTask: \(urlToTask.count)")
         print("\(url.lastPathComponent) in downloads: \(await downloads[url]?.progress ?? 0)")
+        
+
+        
     }
     
 }

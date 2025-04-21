@@ -56,9 +56,8 @@ class Playlist{
             
             if let localFile = episode.localFile {
                 let url = episode.url  // Capture URL before async context
-                episode.downloadStatus.isDownloading = true
-                var manager = DownloadManager.shared
-                await manager.download(from: url, saveTo: localFile)
+                let manager = DownloadManager.shared
+                episode.downloadItem = await manager.download(from: url, saveTo: localFile)
             }
             
             var newPosition = 0

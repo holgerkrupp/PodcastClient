@@ -74,8 +74,12 @@ class EpisodeDownloadStatus{
 
     
     // temporary values that don't need to survive an app restart
-    @Transient var downloadStatus = EpisodeDownloadStatus()
     @Transient @Published var refresh: Bool = false
+    @Transient var downloadItem: DownloadItem? = nil {
+        didSet {
+            print("downloadItem changed")
+        }
+    }
     
     var remainingTime: Double? {
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
@@ -243,7 +247,6 @@ class EpisodeDownloadStatus{
 
     
     func markEpisodeAvailable()  {
-        downloadStatus.isDownloading = false
         metaData?.isAvailableLocally = true
         // Capture the values we need before starting the Task
         guard let container = self.modelContext?.container else { return }

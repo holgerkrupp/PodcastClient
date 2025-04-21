@@ -30,7 +30,7 @@ struct EpisodeListView: View {
         ForEach(allEpisodes) { episode in
             if episode.id != player.currentEpisode?.id {
                 EpisodeRowView(episode: episode)
-                    .id(episode.id)
+                    .id(episode.metaData?.id ?? episode.id)
                     .padding(.horizontal)
                     .background(.ultraThinMaterial)
             }

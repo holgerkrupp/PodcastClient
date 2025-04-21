@@ -9,27 +9,19 @@ final class DownloadViewModel: ObservableObject {
 
     func observeDownload(for episode: Episode) {
         Task {
-            if let found = await DownloadManager.shared.item(for: episode.persistentModelID) {
+            if let found = await DownloadManager.shared.item(for: episode.id) {
                 self.item = found
             }
         }
-//        Task { @MainActor in
-//            if let item = item {
-//                item.objectWillChange
-//                    .sink { [weak self] in
-//                        if item.isFinished {
-//                            self?.item = nil
-//                        }
-//                    }
-//                    .store(in: &self.cancellables)
-//            }
-//        }
+
     }
 
     func startDownload(for episode: Episode) {
         Task {
-            let item = await DownloadManager.shared.download(from: episode.url, saveTo: episode.localFile, episode: episode)
+            let item = await DownloadManager.shared.download(from: episode.url, saveTo: episode.localFile, episodeID: episode.id)
             self.item = item
+          //  print("started download for \(episode.title)")
+            
         }
     }
     

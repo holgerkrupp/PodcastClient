@@ -8,7 +8,7 @@
 import SwiftUI
 import SwiftData
 import BackgroundTasks
-
+import DeviceInfo
 
 @main
 struct RaulApp: App {
@@ -25,6 +25,7 @@ struct RaulApp: App {
             ContentView()
                 .modelContainer(modelContainerManager.container)
                 .accentColor(.accent)
+                .withDeviceStyle()
         }
         .onChange(of: phase, {
             switch phase {
@@ -49,7 +50,9 @@ struct RaulApp: App {
             
         }
     }
-    
+
+
+
     
     func setLastRefreshDate(){
         UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundRefresh")
@@ -88,4 +91,19 @@ struct RaulApp: App {
   
     }
     
+}
+extension DeviceUIStyle {
+    var sfSymbolName: String {
+        switch self {
+        case .iphoneHomeButton: return "iphone.gen1.badge.play"
+        case .iphoneNotch: return "iphone.gen2.badge.play"
+        case .iphoneDynamicIsland: return "iphone.gen3.badge.play"
+        case .ipadHomeButton: return "ipad.gen1.badge.play"
+        case .ipadNoHomeButton: return "ipad.gen2.badge.play"
+        case .macLaptop: return "macbook"
+        case .macMini: return "macmini"
+        case .macPro: return "macpro.gen3"
+        case .macDesktop: return "desktopcomputer"
+        }
+    }
 }

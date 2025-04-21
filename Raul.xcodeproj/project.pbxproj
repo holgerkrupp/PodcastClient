@@ -11,6 +11,8 @@
 		4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
 		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
+		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
+		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +49,8 @@
 			files = (
 				4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */,
 				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
+				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
+				48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -101,6 +105,8 @@
 			packageProductDependencies = (
 				48B3BA072DA06825005B40B8 /* fyyd_swift */,
 				4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */,
+				48C078062DB410D000D6DD9C /* DeviceInfo */,
+				48C078082DB4111500D6DD9C /* DeviceInfo */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -133,6 +139,7 @@
 			packageReferences = (
 				48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
 				4827FC7D2DA5A31500FA6778 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
+				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -393,6 +400,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../fyyd-swift";
 		};
+		48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../DeviceInfo;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -403,6 +414,14 @@
 		48B3BA072DA06825005B40B8 /* fyyd_swift */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = fyyd_swift;
+		};
+		48C078062DB410D000D6DD9C /* DeviceInfo */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DeviceInfo;
+		};
+		48C078082DB4111500D6DD9C /* DeviceInfo */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DeviceInfo;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -15,7 +15,7 @@ final class DownloadItem: ObservableObject, Identifiable {
     let id = UUID()
     let url: URL
     
-    var episodeID: PersistentIdentifier?
+    public var episodeID: UUID?
     
     @Published var isFinished: Bool = false
 
@@ -24,7 +24,7 @@ final class DownloadItem: ObservableObject, Identifiable {
     @Published var totalBytes: Int64?
     @Published var downloadedBytes: Int64 = 0
 
-    init(url: URL, episodeID: PersistentIdentifier? = nil) {
+    init(url: URL, episodeID: UUID? = nil) {
         self.url = url
         self.episodeID = episodeID
         

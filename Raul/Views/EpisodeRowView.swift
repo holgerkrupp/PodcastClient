@@ -13,6 +13,9 @@ struct EpisodeRowView: View {
         lhs.episode.metaData?.lastPlayed == rhs.episode.metaData?.lastPlayed
     }
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.deviceUIStyle) var style
+    
+    
     let episode: Episode
     @State private var isExtended: Bool = false
     @State private var image: Image?
@@ -26,7 +29,13 @@ struct EpisodeRowView: View {
                     .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
                 Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
                     .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
-                    
+               
+                if episode.downloadItem?.isDownloading ?? false {
+                    Image(systemName: "arrow.down")
+
+                        .id(episode.downloadItem?.id ?? UUID())
+                }
+              
 
             }
             .font(.caption)
@@ -79,7 +88,12 @@ struct EpisodeRowView: View {
                     if episode.metaData?.finishedPlaying == true {
                         Image("custom.play.circle.badge.checkmark")
                     } else {
-                        Image(systemName: "play.circle")
+                        if episode.metaData?.calculatedIsAvailableLocally == true {
+                            Image(systemName: style.sfSymbolName)
+                        }else{
+                            Image("custom.cloud.badge.play")
+                        }
+                      //  Image(systemName: "play.circle")
                     }
                 }
                 .buttonStyle(.plain)

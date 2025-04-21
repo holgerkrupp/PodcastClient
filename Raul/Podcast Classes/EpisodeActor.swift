@@ -9,90 +9,28 @@ import Foundation
 import mp3ChapterReader
 import AVFoundation
 
-// Sendable struct for temporary chapter data
-private struct SendableChapterData: Sendable {
-    let title: String
-    let start: Double
-    let duration: Double?
-    let imageData: Data?
-}
 
-// Sendable struct for audio format information
-private struct AudioFormatInfo: Sendable {
-    let formatID: AudioFormatID
-}
-
-// Helper type to handle AVFoundation operations
-private struct MetadataLoader {
-    static func loadChapters(from url: URL) async throws -> [SendableChapterData] {
-        let asset = AVURLAsset(url: url)
-        let metadata = try await asset.load(.metadata)
-        guard !metadata.isEmpty else { return [] }
-        
-        let languages = Locale.preferredLanguages
-        let chapterMetadataGroups = try await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages)
-        
-        var chapters: [SendableChapterData] = []
-        
-        for group in chapterMetadataGroups {
-            guard let titleItem = group.items.first(where: { $0.commonKey == .commonKeyTitle }),
-                  let title = try? await titleItem.load(.value) as? String else {
-                continue
-            }
-            
-            let artworkData = try? await group.items.first(where: { $0.commonKey == .commonKeyArtwork })?.load(.value) as? Data
-            
-            let timeRange = group.timeRange
-            let start = timeRange.start.seconds
-            let duration = timeRange.duration.seconds
-            
-            // Validate the time fields for NaN and negative values
-            let correctedStart = (start.isNaN || start < 0) ? 0 : start
-            let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
-            
-            let chapter = SendableChapterData(
-                title: title,
-                start: correctedStart,
-                duration: correctedDuration,
-                imageData: artworkData
-            )
-            chapters.append(chapter)
-        }
-        
-        return chapters
-    }
-
-    static func getAudioFormat(from url: URL) async throws -> AudioFormatInfo? {
-        let asset = AVURLAsset(url: url)
-        
-        if let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
-           let audioTrack = audioTracks.first,
-           let formatDescriptions = try? await audioTrack.load(.formatDescriptions) {
-            
-            for formatDescription in formatDescriptions {
-                guard let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
-                    continue
-                }
-                
-                let audioFormatID = audioStreamBasicDescription.pointee.mFormatID
-                return AudioFormatInfo(formatID: audioFormatID)
-            }
-        }
-        return nil
-    }
-}
 
 @ModelActor
 actor EpisodeActor {
-    
-    
 
 
     func markEpisodeAvailable(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
-        episode.markEpisodeAvailable()
-        try? modelContext.save()
-    
+        do {
+            if let episode = modelContext.model(for: episodeID) as? Episode {
+                if let metadata = episode.metaData {
+                    metadata.isAvailableLocally = true
+                    try modelContext.save()
+                    print("✅ Updated metadata for episode")
+                } else {
+                    print("❌ Episode has no metadata")
+                }
+            } else {
+                print("❌ Episode not found for ID \(episodeID)")
+            }
+        } catch {
+            print("❌ Error updating episode: \(error)")
+        }
     }
     
     func createChapters(_ episodeID: PersistentIdentifier) async {
@@ -231,5 +169,74 @@ actor EpisodeActor {
             }
         }
         return
+    }
+}
+private struct SendableChapterData: Sendable {
+    let title: String
+    let start: Double
+    let duration: Double?
+    let imageData: Data?
+}
+
+private struct AudioFormatInfo: Sendable {
+    let formatID: AudioFormatID
+}
+
+private struct MetadataLoader {
+    static func loadChapters(from url: URL) async throws -> [SendableChapterData] {
+        let asset = AVURLAsset(url: url)
+        let metadata = try await asset.load(.metadata)
+        guard !metadata.isEmpty else { return [] }
+        
+        let languages = Locale.preferredLanguages
+        let chapterMetadataGroups = try await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: languages)
+        
+        var chapters: [SendableChapterData] = []
+        
+        for group in chapterMetadataGroups {
+            guard let titleItem = group.items.first(where: { $0.commonKey == .commonKeyTitle }),
+                  let title = try? await titleItem.load(.value) as? String else {
+                continue
+            }
+            
+            let artworkData = try? await group.items.first(where: { $0.commonKey == .commonKeyArtwork })?.load(.value) as? Data
+            
+            let timeRange = group.timeRange
+            let start = timeRange.start.seconds
+            let duration = timeRange.duration.seconds
+            
+            // Validate the time fields for NaN and negative values
+            let correctedStart = (start.isNaN || start < 0) ? 0 : start
+            let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
+            
+            let chapter = SendableChapterData(
+                title: title,
+                start: correctedStart,
+                duration: correctedDuration,
+                imageData: artworkData
+            )
+            chapters.append(chapter)
+        }
+        
+        return chapters
+    }
+
+    static func getAudioFormat(from url: URL) async throws -> AudioFormatInfo? {
+        let asset = AVURLAsset(url: url)
+        
+        if let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
+           let audioTrack = audioTracks.first,
+           let formatDescriptions = try? await audioTrack.load(.formatDescriptions) {
+            
+            for formatDescription in formatDescriptions {
+                guard let audioStreamBasicDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
+                    continue
+                }
+                
+                let audioFormatID = audioStreamBasicDescription.pointee.mFormatID
+                return AudioFormatInfo(formatID: audioFormatID)
+            }
+        }
+        return nil
     }
 }
