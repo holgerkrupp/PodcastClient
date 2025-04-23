@@ -9,6 +9,8 @@
 import SwiftUI
 
 struct EpisodeControlView: View {
+    @Environment(\.deviceUIStyle) var style
+
     @State var episode: Episode
  //   @StateObject private var manager = DownloadManager.shared
     @Environment(\.modelContext) private var modelContext
@@ -17,6 +19,16 @@ struct EpisodeControlView: View {
 
     var body: some View {
         HStack {
+            
+            if episode.metaData?.finishedPlaying == true {
+                Image("custom.play.circle.badge.checkmark")
+            } else {
+                if episode.metaData?.isAvailableLocally == true {
+                    Image(systemName: style.sfSymbolName)
+                }else{
+                    Image(systemName: "cloud")
+                }
+            }
             
             if episode.chapters.count > 0 {
                 Image(systemName: "list.bullet")

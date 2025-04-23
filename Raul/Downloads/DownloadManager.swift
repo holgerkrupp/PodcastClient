@@ -134,8 +134,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                     Task.detached {
                         let container = ModelContainerManager().container
                         let modelContext = ModelContext(container)
-                   //     let episodeActor = EpisodeActor(modelContainer: container)
-                   //     await episodeActor.markEpisodeAvailable(episodeID)
+                        let episodeActor = EpisodeActor(modelContainer: container)
+                        await episodeActor.markEpisodeAvailable(episodeID: episodeID)
                         
                         let predicate = #Predicate<EpisodeMetaData> { metadata in
                             // Direct comparison of the episode's persistentModelID

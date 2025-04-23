@@ -15,22 +15,29 @@ import AVFoundation
 actor EpisodeActor {
 
 
-    func markEpisodeAvailable(_ episodeID: PersistentIdentifier) async {
-        do {
-            if let episode = modelContext.model(for: episodeID) as? Episode {
-                if let metadata = episode.metaData {
-                    metadata.isAvailableLocally = true
-                    try modelContext.save()
-                    print("✅ Updated metadata for episode")
-                } else {
-                    print("❌ Episode has no metadata")
-                }
-            } else {
-                print("❌ Episode not found for ID \(episodeID)")
-            }
-        } catch {
-            print("❌ Error updating episode: \(error)")
+
+    
+    func markEpisodeAvailable(episodeID: UUID) async{
+        let predicate = #Predicate<Episode> { episode in
+            // Direct comparison of the episode's persistentModelID
+            episode.id == episodeID
         }
+
+                do {
+                    let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+                    guard let episode = results.first else {
+                        print("❌ No metadata found for episode ID: \(episodeID)")
+                        return
+                    }
+
+                    episode.metaData?.isAvailableLocally = true
+                    await createChapters(episode.persistentModelID)
+                    try modelContext.save()
+                    print("✅ Metadata updated")
+                } catch {
+                    print("❌ Error fetching or saving metadata: \(error)")
+                }
+        
     }
     
     func createChapters(_ episodeID: PersistentIdentifier) async {

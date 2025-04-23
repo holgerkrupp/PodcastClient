@@ -246,20 +246,7 @@ class EpisodeDownloadStatus{
     
 
     
-    func markEpisodeAvailable()  {
-        metaData?.isAvailableLocally = true
-        // Capture the values we need before starting the Task
-        guard let container = self.modelContext?.container else { return }
-        
-              let modelID = self.persistentModelID
-        
-        Task {
-            let actor = EpisodeActor(modelContainer: container)
-            await actor.downloadTranscript(modelID)
-            await actor.createChapters(modelID)
-        }
-        
-    }
+
     
     func deleteFile(){
         if let file = localFile{

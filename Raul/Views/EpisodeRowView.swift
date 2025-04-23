@@ -13,7 +13,6 @@ struct EpisodeRowView: View {
         lhs.episode.metaData?.lastPlayed == rhs.episode.metaData?.lastPlayed
     }
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.deviceUIStyle) var style
     
     
     let episode: Episode
@@ -39,6 +38,8 @@ struct EpisodeRowView: View {
 
             }
             .font(.caption)
+            
+            
             HStack {
                 Group {
                     if let image = image {
@@ -48,6 +49,7 @@ struct EpisodeRowView: View {
                     } else {
                         Color.gray.opacity(0.2)
                     }
+
                 }
                 .frame(width: 50, height: 50)
                 .task {
@@ -82,24 +84,20 @@ struct EpisodeRowView: View {
             }
 
             if isExtended {
+                
+                EpisodeControlView(episode: episode)
+                    .modelContainer(modelContext.container)
+                
                 Button(action: {
                     Player.shared.playEpisode(episode)
                 }) {
-                    if episode.metaData?.finishedPlaying == true {
-                        Image("custom.play.circle.badge.checkmark")
-                    } else {
-                        if episode.metaData?.calculatedIsAvailableLocally == true {
-                            Image(systemName: style.sfSymbolName)
-                        }else{
-                            Image("custom.cloud.badge.play")
-                        }
-                      //  Image(systemName: "play.circle")
-                    }
+                    Image(systemName: "play.circle")
+                        .resizable()
                 }
                 .buttonStyle(.plain)
+                .frame(width: 50, height: 50)
 
-                EpisodeControlView(episode: episode)
-                    .modelContainer(modelContext.container)
+          
             }
         }
         .padding(.vertical, 4)

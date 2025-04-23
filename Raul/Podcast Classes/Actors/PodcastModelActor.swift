@@ -81,7 +81,7 @@ actor PodcastModelActor {
                
                 for episodeData in episodesData {
                     
-                    guard  checkIfEpisodeExists(episodeData["guid"] as? String ?? "") ?? 0 < 1 else { print("episode exists"); continue }
+                    guard  checkIfEpisodeExists(episodeData["guid"] as? String ?? "") ?? 0 < 1 else { continue }
                     
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
@@ -171,6 +171,9 @@ actor PodcastModelActor {
     
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        if let episodeFolder = podcast.directoryURL {
+            try? FileManager.default.removeItem(at: episodeFolder)
+        }
         modelContext.delete(podcast)
         try modelContext.save()
     }

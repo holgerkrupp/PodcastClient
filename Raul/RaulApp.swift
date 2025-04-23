@@ -95,11 +95,11 @@ struct RaulApp: App {
 extension DeviceUIStyle {
     var sfSymbolName: String {
         switch self {
-        case .iphoneHomeButton: return "iphone.gen1.badge.play"
-        case .iphoneNotch: return "iphone.gen2.badge.play"
-        case .iphoneDynamicIsland: return "iphone.gen3.badge.play"
-        case .ipadHomeButton: return "ipad.gen1.badge.play"
-        case .ipadNoHomeButton: return "ipad.gen2.badge.play"
+        case .iphoneHomeButton: return "iphone.gen1"
+        case .iphoneNotch: return "iphone.gen2"
+        case .iphoneDynamicIsland: return "iphone.gen3"
+        case .ipadHomeButton: return "ipad.gen1"
+        case .ipadNoHomeButton: return "ipad.gen2"
         case .macLaptop: return "macbook"
         case .macMini: return "macmini"
         case .macPro: return "macpro.gen3"
