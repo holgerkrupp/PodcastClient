@@ -46,17 +46,18 @@ actor EpisodeActor {
             print("no local file")
             return
         }
-        
-        do {
-            if let formatInfo = try await MetadataLoader.getAudioFormat(from: url) {
-                if formatInfo.formatID == kAudioFormatMPEGLayer3 {
-                    await extractMP3Chapters(episode.persistentModelID)
-                } else if formatInfo.formatID == kAudioFormatMPEG4AAC {
-                    await extractM4AChapters(episode.persistentModelID)
+        if episode.chapters.isEmpty {
+            do {
+                if let formatInfo = try await MetadataLoader.getAudioFormat(from: url) {
+                    if formatInfo.formatID == kAudioFormatMPEGLayer3 {
+                        await extractMP3Chapters(episode.persistentModelID)
+                    } else if formatInfo.formatID == kAudioFormatMPEG4AAC {
+                        await extractM4AChapters(episode.persistentModelID)
+                    }
                 }
+            } catch {
+                print("Error determining audio format: \(error)")
             }
-        } catch {
-            print("Error determining audio format: \(error)")
         }
     }
     

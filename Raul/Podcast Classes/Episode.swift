@@ -121,6 +121,8 @@ class EpisodeDownloadStatus{
          
     }()
     
+
+    
     @Transient var preferredChapters: [Chapter] {
 
         let preferredOrder: [ChapterType] = [.mp3, .embedded, .podlove, .extracted]
@@ -266,14 +268,16 @@ class EpisodeDownloadStatus{
         }
         return FileManager.default.fileExists(atPath: url.path)
     }
-     
     var isAvailableLocally: Bool = false
+    
+    
     var lastPlayed: Date?
     var finishedPlaying: Bool? = false
     var maxPlayposition:Double? = 0.0
     var playPosition:Double? = 0.0
     
     var isArchived: Bool? = false
+    var isHistory: Bool? = false
    
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?

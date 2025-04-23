@@ -88,14 +88,36 @@ struct EpisodeRowView: View {
                 EpisodeControlView(episode: episode)
                     .modelContainer(modelContext.container)
                 
-                Button(action: {
-                    Player.shared.playEpisode(episode)
-                }) {
-                    Image(systemName: "play.circle")
-                        .resizable()
+                HStack{
+                    Button(action: {
+                        Player.shared.playEpisode(episode)
+                    }) {
+                        Image(systemName: "play.circle")
+                            .resizable()
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 50, height: 50)
+                    
+                    Spacer()
+                    
+                    Button {
+                        
+                        
+                    } label: {
+                        Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                        
+                        
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 50, height: 50)
+                    Button {
+                        
+                    } label: {
+                        Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 50, height: 50)
                 }
-                .buttonStyle(.plain)
-                .frame(width: 50, height: 50)
 
           
             }

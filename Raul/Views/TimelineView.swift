@@ -82,11 +82,12 @@ struct TimelineView: View {
                         
                         
                         // Bottom items section
-                        
+                        PlaylistView(playlist: PlaylistManager.shared.playnext, container: modelContext.container)
+                  /*
                         EpisodeListView(predicate: #Predicate<Episode> { episode in
                             episode.metaData?.lastPlayed == nil
                         }, sort: \.publishDate, order: .reverse)
-                         
+                    */
                     }
                     .padding(.vertical)
                 }

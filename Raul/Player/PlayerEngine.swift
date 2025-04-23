@@ -5,10 +5,15 @@ actor PlayerEngine {
     private var avPlayer = AVPlayer()
     private var endObserver: Any?
     private var playbackEndedContinuation: AsyncStream<Double>.Continuation?
-    
+    private let session = AVAudioSession.sharedInstance()
+
     init() {
         avPlayer = AVPlayer()
-  
+        do{
+            try session.setCategory(.playback, mode: .spokenAudio)
+        }catch{
+            print(error)
+        }
       }
     
     func setRate(_ newRate: Float) async {
@@ -27,7 +32,7 @@ actor PlayerEngine {
             NotificationCenter.default.removeObserver(observer)
             endObserver = nil
         }
-
+        try? session.setActive(true)
         // Observe end of playback
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -44,7 +49,13 @@ actor PlayerEngine {
     }
 
     func play() {
-        avPlayer.play()
+        do{
+            try session.setActive(true)
+        }catch{
+            print(error)
+
+        }
+            avPlayer.play()
     }
 
     func pause() {

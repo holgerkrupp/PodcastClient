@@ -44,49 +44,41 @@ class Player: NSObject {
         
     }
         
-    func setCurrentEpisode(episode: Episode, playDirectly: Bool = false) {
-        self.currentEpisode = episode
-        Task{
-            self.playbackRate = await engine.getRate()
-        }
-        
-        if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
-            jumpTo(time: lastPlayPosition)
-        }
-        
-        updateNowPlayingInfo(for: episode)
-        
-        if playDirectly {
-            play()
-        }
-    }
     
-    func playEpisode(_ episode: Episode) {
+    func playEpisode(_ episode: Episode, playDirectly: Bool = true) {
         currentEpisode = episode
         
         Task {
             // Load the AVPlayerItem asynchronously
-            let item = await Task.detached {
+            let item = await Task {
                 
                 if episode.metaData?.calculatedIsAvailableLocally ?? false, let localFile = episode.localFile {
+               
                     AVPlayerItem(url: localFile)
                 }else{
+                
                     AVPlayerItem(url: episode.url)
                 }
                 
                 
             }.value
             
+            
             await engine.replaceCurrentItem(with: item)
             
             if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
                 print("last position: \(lastPlayPosition)")
-                await engine.seek(to: CMTime(seconds: lastPlayPosition, preferredTimescale: 600))
+                jumpTo(time: lastPlayPosition)
             } else {
                 print("no last position")
             }
             
-            play()
+            updateNowPlayingInfo(for: episode)
+            
+            if playDirectly {
+                play()
+                initRemoteCommandCenter()
+            }
         }
     }
     
@@ -226,7 +218,7 @@ class Player: NSObject {
             }
         }else{
             if let newEpisode = chapter.episode{
-                setCurrentEpisode(episode: newEpisode, playDirectly: true)
+                playEpisode(newEpisode, playDirectly: true)
             }
         }
     }
@@ -270,20 +262,93 @@ class Player: NSObject {
     }
     
     func updateNowPlayingInfo(for episode: Episode)  {
-        let info: [String: Any] =  [
+        var info: [String: Any] =  [
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist: episode.author ?? episode.podcast?.title ?? episode.podcast?.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
-/*
-        if let image = episode.coverImage.asUIImage(),
-           let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image } {
-            info[MPMediaItemPropertyArtwork] = artwork
+        
+       
+            
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        
+    }
+    
+    func initRemoteCommandCenter(){
+        let RCC = MPRemoteCommandCenter.shared()
+        
+        RCC.bookmarkCommand.isEnabled = true
+        RCC.bookmarkCommand.addTarget { _ in
+           // self.bookmark()
+            return .success
         }
-*/
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        
+        RCC.playCommand.isEnabled = true
+        RCC.playCommand.addTarget { _ in
+            
+            if !self.isPlaying {
+                self.play()
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        
+        
+        // Add handler for Pause Command
+        RCC.pauseCommand.isEnabled = true
+        RCC.pauseCommand.addTarget { _ in
+            
+            if self.isPlaying{
+                self.pause()
+                return .success
+            }
+            return .commandFailed
+        }
+        
+        RCC.skipForwardCommand.isEnabled = true
+        RCC.skipForwardCommand.addTarget { event in
+            
+            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
+            self.jumpTo(time: seconds)
+            return.success
+        }
+        RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: 30)]
+        
+        
+        // <<
+        RCC.skipBackwardCommand.isEnabled = true
+        RCC.skipBackwardCommand.addTarget { event in
+            
+            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
+            self.jumpTo(time: -seconds)
+            return.success
+        }
+        
+        RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        
+        
+        RCC.bookmarkCommand.isEnabled = true
+        RCC.bookmarkCommand.addTarget { event in
+         //   self.bookmark()
+            return.success
+        }
+        
+        RCC.changePlaybackPositionCommand.isEnabled = true
+        RCC.changePlaybackPositionCommand.addTarget { event in
+            
+                if let event = event as? MPChangePlaybackPositionCommandEvent {
+                    let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000).seconds
+                    self.jumpTo(time: time)
+                    return .success
+                }
+            
+            return .commandFailed
+        }
+        
+        
     }
     
     private var nowPlayingInfoTimer: Timer?

@@ -15,7 +15,7 @@ class ModelContainerManager: ObservableObject {
         )
         
         do {
-            container = try ModelContainer(for: Podcast.self, Episode.self, configurations: configuration)
+            container = try ModelContainer(for: Podcast.self, Episode.self, Playlist.self, PlaylistEntry.self, Chapter.self, configurations: configuration)
         } catch {
             fatalError("Failed to initialize ModelContainer: \(error)")
         }

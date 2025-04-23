@@ -23,7 +23,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Player
 - [x] play / pause
-- [ ] skip forward / backward
+- [x] skip forward / backward
 - - [ ] make time adjustable
 - [x] jump to chapter
 - [x] Chapter marks
