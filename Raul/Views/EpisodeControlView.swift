@@ -55,9 +55,10 @@ struct EpisodeControlView: View {
                         .scaledToFit()
                 }
                 .buttonStyle(.bordered)
+            }else{
+                DownloadControllView(episode: episode)
             }
             
-            DownloadControllView(episode: episode)
 
         }
         .frame(maxWidth: .infinity, maxHeight: 30)

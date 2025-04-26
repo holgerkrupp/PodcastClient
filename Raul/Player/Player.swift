@@ -17,13 +17,35 @@ class Player: NSObject {
     }
 
     var playPosition: Double = 0.0
-    var currentEpisode: Episode? 
+    
+    
+    var currentEpisode: Episode?
+    var currentEpisodeID: UUID?
+    
+    
     var isPlaying: Bool = false
     
     var chapterProgress: Double?
     var currentChapter: Chapter?
     var nextChapter: Chapter?
     var previousChapter: Chapter?
+    var episodeActor: EpisodeActor
+    
+    override init() {
+        episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
+        super.init()
+        //loadEpisode()
+
+        
+        if let currentEpisode {
+            playEpisode(currentEpisode, playDirectly: false)
+            
+        }
+    }
+    
+
+    
+
     
     private func updateCurrentChapter(){
         
@@ -170,11 +192,12 @@ class Player: NSObject {
         }
     }
     func updateLastPlayed()  {
-        currentEpisode?.metaData?.lastPlayed = Date()
-        if playPosition > currentEpisode?.metaData?.maxPlayposition ?? 0.0 {
-            currentEpisode?.metaData?.maxPlayposition = playPosition
+        if let currentEpisode {
+            Task{
+                await episodeActor.setLastPlayed(currentEpisode.id)
+                await episodeActor.setPlayPosition(episodeID: currentEpisode.id, position: playPosition)
+            }
         }
-        currentEpisode?.metaData?.playPosition = playPosition
     }
 
     private func stopPlaybackUpdates() {

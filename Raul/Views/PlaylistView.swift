@@ -12,41 +12,58 @@ import SwiftData
 
 struct PlaylistView: View {
     @StateObject private var viewModel: PlaylistViewModel
-    @Query private var entries: [PlaylistEntry]
     private var playlistname: String
-    
+    @State private var entries:  [PlaylistEntry] = []
+
     init(playlist: Playlist, container: ModelContainer) {
-        playlistname = playlist.title
         _viewModel = StateObject(wrappedValue: PlaylistViewModel(playlist: playlist, container: container))
-        _entries = Query(filter: #Predicate<PlaylistEntry> {
-            $0.dateAdded != nil
-            /*
-            if let playlistID = $0.playlist  {
-                return playlistID.id == playlist.id
-            }else{
-                return false
-            }
-            */
-        })
+        self.playlistname = playlist.title
     }
 
     var body: some View {
-        Text(playlistname)
-        List {
-            ForEach(entries.sorted(by: { $0.order < $1.order })) { entry in
-                Text(entry.episode?.title ?? "Untitled")
-            }
-            .onMove { indices, newOffset in
-                Task {
-                    if let from = indices.first {
-                        await viewModel.moveEntry(from: from, to: newOffset)
+
+        
+                ForEach(entries.sorted(by: { $0.order < $1.order }), id: \.id) { entry in
+                    if let episode = entry.episode {
+                        EpisodeRowView(episode: episode)
+                            .id(episode.metaData?.id ?? episode.id)
+                            .padding(.horizontal)
+                            .background(.ultraThinMaterial)
+                        
+                    }
+                    
+                }
+                
+                .onMove { indices, newOffset in
+                    Task {
+                        if let from = indices.first {
+                            await viewModel.moveEntry(from: from, to: newOffset)
+                        }
                     }
                 }
+                
+                
+            
+            
+            
+        
+        .onChange(of: viewModel.entries) { oldValue, newValue in
+        print("loaded \(newValue.count) entries. Previously loaded: (\(oldValue.count))")
+        entries = viewModel.entries
+    }
+        .onAppear {
+            Task {
+                await viewModel.loadEntries()
+                print("Rendering entries manually:")
+                for entry in viewModel.entries {
+                    print("Entry: \(entry.id), order: \(entry.order), episode title: \(entry.episode?.title ?? "nil")")
+                }
+               
             }
-        }
-        .toolbar {
-            EditButton()
+
         }
     }
+
 }
+
 

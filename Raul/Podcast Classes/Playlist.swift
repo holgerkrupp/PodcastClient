@@ -54,8 +54,8 @@ class Playlist{
 }
 
 @Model
-class PlaylistEntry: Equatable{
-
+class PlaylistEntry: Equatable, Identifiable{
+    var id: UUID = UUID()
     var episode: Episode?
     var dateAdded: Date?
     var order:Int = 0

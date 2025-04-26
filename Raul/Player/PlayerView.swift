@@ -150,7 +150,7 @@ struct PlayerView: View {
                 }
             }
             .padding()
-           
+            .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
         
        
     }

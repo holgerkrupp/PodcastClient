@@ -29,6 +29,7 @@ final class Podcast {
     
     init(feed: URL) {
         self.feed = feed
+        self.title = feed.absoluteString
         self.metaData = PodcastMetaData()
     }
 }

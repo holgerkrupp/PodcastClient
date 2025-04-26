@@ -37,6 +37,7 @@ struct ContentView: View {
 
                 
             PodcastListView(modelContainer: modelContext.container)
+
                 .tabItem {
                     Label("Podcasts", systemImage: "headphones")
                 }

@@ -10,6 +10,7 @@ import SwiftData
 
 struct TimelineView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.editMode) private var editMode
 
 
     private var player = Player.shared
@@ -22,33 +23,53 @@ struct TimelineView: View {
     var body: some View {
         ZStack(alignment: isScrollingUp ? .bottom : .top) {
             ScrollViewReader { proxy in
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 16) {
-                        // Top items section
+                List {
+                //ScrollView(.vertical) {
+                    //LazyVStack(spacing: 16) {
                         
-                           EpisodeListView(predicate: #Predicate<Episode> { episode in
-                                episode.metaData?.lastPlayed != nil
-                           }, sort: \.metaData?.lastPlayed, order: .forward)
-                         
-                       // EpisodeListView()
-                        Divider()
+                    Section{
+                        EpisodeListView(predicate: #Predicate<Episode> { episode in
+                            episode.metaData?.isHistory == true
+                        }, sort: \.metaData?.lastPlayed, order: .forward)
+                        .listRowSeparator(.hidden)
+                        //}
+                    }
+                    Section{
+                        HStack {
+                            Spacer()
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Text("Recently played")
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.up.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Spacer()
+                        }
+                        .foregroundStyle(Color(.tertiaryLabel))
+                        .font(.caption)
+                        .listRowSeparator(.hidden)
                         
-                        // Player section
-                        
-                            playerView(fullSize: true)
-                                .id("player")
-                                .padding(.horizontal)
-                                .onAppear {
-                                    // Animate into mini when it's off-screen
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        withAnimation {
-                                            proxy.scrollTo("player", anchor: .center)
-                                        }
+                    }
+                    Section {
+                        playerView(fullSize: true)
+                            .id("player")
+                            .padding(.horizontal)
+                            .onAppear {
+                                // Animate into mini when it's off-screen
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    withAnimation {
+                                        proxy.scrollTo("player", anchor: .center)
                                     }
                                 }
+                            }
                         
-                        
-                        // Player position tracker
                         GeometryReader { geo in
                             Color.clear
                                 .onChange(of: geo.frame(in: .global)) { oldValue, newValue in
@@ -72,25 +93,54 @@ struct TimelineView: View {
                                                 showMiniPlayer = !isVisible
                                             }
                                         }
-                                   }
+                                    }
                                 }
                         }
-                        .frame(height: 1) // Minimize the GeometryReader's impact
-                        
-                        Divider()
-                        //EpisodeListView()
-                        
-                        
-                        // Bottom items section
-                        PlaylistView(playlist: PlaylistManager.shared.playnext, container: modelContext.container)
-                  /*
-                        EpisodeListView(predicate: #Predicate<Episode> { episode in
-                            episode.metaData?.lastPlayed == nil
-                        }, sort: \.publishDate, order: .reverse)
-                    */
+                        .frame(height: 0)
+                        .listRowSeparator(.hidden)
                     }
-                    .padding(.vertical)
-                }
+                    Section {
+                       
+                        HStack {
+                            Spacer()
+                            Image(systemName: "arrowtriangle.down.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.down.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.down.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Text("Up next")
+                            Image(systemName: "arrowtriangle.down.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.down.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Image(systemName: "arrowtriangle.down.fill")
+                                .symbolRenderingMode(.monochrome)
+                            Spacer()
+                        }
+                        .foregroundStyle(Color(.tertiaryLabel))
+                        .font(.caption)
+                        .listRowSeparator(.hidden)
+                       
+                    }
+         
+                      
+                    Section{
+                        PlaylistView(playlist: PlaylistManager.shared.playnext, container: modelContext.container)
+                            .listRowSeparator(.hidden)
+                    }
+                
+                    }
+                .listStyle(PlainListStyle())
+                .padding(.top, 0) // Optionally reduce padding to make it look cleaner
+               
+                .environment(\.editMode, .constant(.active))  // Force edit mode active for the entire List
+                   
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            EditButton()
+                        }
+                    }
                 .onAppear {
                     DispatchQueue.main.async {
                         proxy.scrollTo("player", anchor: .center)
@@ -111,7 +161,7 @@ struct TimelineView: View {
     func playerView(fullSize: Bool) -> some View {
         VStack {
             PlayerView(fullSize: fullSize)
-                .frame(width: UIScreen.main.bounds.width * 0.9, height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
+              //  .frame(width: UIScreen.main.bounds.width * 0.9, height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
                 .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
         }
         .background(

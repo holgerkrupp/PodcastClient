@@ -49,7 +49,6 @@ actor PodcastModelActor {
         if podcast.metaData == nil {
             podcast.metaData = PodcastMetaData()
         }
-        podcast.metaData?.lastRefresh = Date()
         try modelContext.save()
         
         let (data, _) = try await URLSession.shared.data(from: feedURL)
@@ -95,6 +94,8 @@ actor PodcastModelActor {
             }
 
             do {
+                podcast.metaData?.lastRefresh = Date()
+
                 try modelContext.save()
             } catch {
                 print("could not save modelContext")

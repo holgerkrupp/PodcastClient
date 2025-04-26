@@ -13,34 +13,98 @@ import AVFoundation
 
 @ModelActor
 actor EpisodeActor {
-
-
-
     
-    func markEpisodeAvailable(episodeID: UUID) async{
+    func fetchEpisode(byID episodeID: UUID) async -> Episode? {
         let predicate = #Predicate<Episode> { episode in
-            // Direct comparison of the episode's persistentModelID
             episode.id == episodeID
         }
 
-                do {
-                    let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
-                    guard let episode = results.first else {
-                        print("❌ No metadata found for episode ID: \(episodeID)")
-                        return
-                    }
-
-                    episode.metaData?.isAvailableLocally = true
-                    await createChapters(episode.persistentModelID)
-                    try modelContext.save()
-                    print("✅ Metadata updated")
-                } catch {
-                    print("❌ Error fetching or saving metadata: \(error)")
-                }
-        
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for episode ID: \(episodeID), Error: \(error)")
+            return nil
+        }
     }
     
-    func createChapters(_ episodeID: PersistentIdentifier) async {
+    func getLastPlayedEpisode() async -> Episode? {
+        guard let episodeID = await getLastPlayedEpisodeID() else { return nil }
+        return await fetchEpisode(byID: episodeID)
+    }
+    
+    func getLastPlayedEpisodeID() async -> UUID? {
+        let predicate = #Predicate<Episode> { episode in
+            episode.metaData?.isHistory == false
+        }
+        let sortDescriptors: [SortDescriptor<Episode>] = [
+            SortDescriptor(\Episode.metaData?.lastPlayed, order: .reverse)
+        ]
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate, sortBy: sortDescriptors))
+
+            return results.first?.id
+        } catch {
+            print("❌ Error fetching or saving metadata: \(error)")
+        }
+        return nil
+
+    }
+    
+    func setLastPlayed(_ episodeID: UUID, to date: Date = Date()) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        
+        episode.metaData?.lastPlayed = date
+        try? modelContext.save()
+    }
+    
+    func setPlayPosition(episodeID: UUID, position: TimeInterval) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        if position > episode.metaData?.maxPlayposition ?? 0.0 {
+            episode.metaData?.maxPlayposition = position
+            
+        }
+        episode.metaData?.playPosition = position
+        try? modelContext.save()
+
+    }
+    
+    func archiveEpisode(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        
+        episode.metaData?.isArchived?.toggle()
+        try? modelContext.save()
+    }
+    
+    
+    func download(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+
+        if let localFile = episode.localFile {
+            _ = await DownloadManager.shared.download(from: episode.url, saveTo: localFile, episodeID: episode.id)
+            print("✅ Episode download started")
+        }
+    }
+
+    func markEpisodeHistory(episodeID: UUID, value: Bool) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+
+        episode.metaData?.isHistory = value
+        try? modelContext.save()
+        print("✅ Metadata updated")
+    }
+
+    
+    func markEpisodeAvailable(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+
+        episode.metaData?.isAvailableLocally = true
+        await createChapters(episode.persistentModelID)
+        try? modelContext.save()
+        print("✅ Metadata updated")
+    }
+    
+   private func createChapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         guard let url = episode.localFile else {
             print("no local file")
@@ -61,7 +125,7 @@ actor EpisodeActor {
         }
     }
     
-    func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
+  private  func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
         print("extractMP3Chapters")
        
@@ -134,7 +198,7 @@ actor EpisodeActor {
         return try await item.load(.value)
     }
 
-    func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
+   private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         guard let url = episode.localFile else {
             print("no local file")

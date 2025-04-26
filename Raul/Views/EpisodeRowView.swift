@@ -18,6 +18,7 @@ struct EpisodeRowView: View {
     let episode: Episode
     @State private var isExtended: Bool = false
     @State private var image: Image?
+     var playlistViewModel = PlaylistViewModel(playlist: PlaylistManager.shared.playnext, container: ModelContainerManager().container)
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -92,8 +93,16 @@ struct EpisodeRowView: View {
                     Button(action: {
                         Player.shared.playEpisode(episode)
                     }) {
-                        Image(systemName: "play.circle")
+                        Image(systemName: "play.fill")
                             .resizable()
+                            .scaledToFit()
+                            .padding(12)
+                            .clipShape(Circle())
+                            .foregroundColor(.background)
+                            .background(
+                                Circle()
+                                    .fill(.foreground)
+                            )
                     }
                     .buttonStyle(.plain)
                     .frame(width: 50, height: 50)
@@ -101,22 +110,74 @@ struct EpisodeRowView: View {
                     Spacer()
                     
                     Button {
-                        
-                        
+                        Task{
+                            await playlistViewModel.addEpisode(episode, to: .front)
+                        }
                     } label: {
-                        Label("Play next", systemImage: "text.line.first.and.arrowtriangle.forward")
-                        
+                        Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                            .symbolRenderingMode(.hierarchical)
+                            
+                            .resizable()
+                            .scaledToFit()
+                            .padding(12)
+                            .foregroundColor(.background)
+                            .background(
+                                Circle()
+                                    .fill(.foreground)
+                            )
+                            
                         
                     }
                     .buttonStyle(.plain)
                     .frame(width: 50, height: 50)
                     Button {
-                        
+                        Task{
+                            await playlistViewModel.addEpisode(episode, to: .end)
+                        }
                     } label: {
-                        Label("Play last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                        Image(systemName: "text.line.last.and.arrowtriangle.forward")
+                            .symbolRenderingMode(.hierarchical)
+
+                            .resizable()
+                            .scaledToFit()
+                            .padding(12)
+                            .foregroundColor(.background)
+                            .background(
+                                Circle()
+                                    .fill(.foreground)
+                            )
+                            
+                           
+                        
                     }
                     .buttonStyle(.plain)
                     .frame(width: 50, height: 50)
+                   
+                    Spacer()
+                    
+                    Button {
+                        Task{
+                            await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                        }
+                    } label: {
+                        Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                            .symbolRenderingMode(.hierarchical)
+                            .resizable()
+                            .scaledToFit()
+                            .padding(12)
+                            .foregroundColor(.background)
+                            .background(
+                                Circle()
+                                    .fill(.foreground)
+                            )
+                            
+                           
+                        
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 50, height: 50)
+                   
+                    
                 }
 
           
