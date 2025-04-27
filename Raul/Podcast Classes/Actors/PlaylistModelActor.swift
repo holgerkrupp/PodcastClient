@@ -39,8 +39,32 @@ actor PlaylistModelActor : ModelActor {
                 }
     }
     
-  
+    public init(modelContainer: ModelContainer, playlistTitle: String) {
+      let modelContext = ModelContext(modelContainer)
+      modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
+      self.modelContainer = modelContainer
+        
+        
+        let predicate = #Predicate<Playlist> { playlist in
+            playlist.title == playlistTitle
+        }
 
+                do {
+                    let results = try modelContext.fetch(FetchDescriptor<Playlist>(predicate: predicate))
+                    guard let playlist = results.first else {
+                        self.playlist = Playlist()
+                        return
+                    }
+                    self.playlist = playlist
+                } catch {
+                    self.playlist = Playlist()
+                }
+    }
+    
+  
+    func orderedEpisodes() -> [Episode] {
+        return playlist.ordered.compactMap { $0.episode }
+    }
     // Add an episode to the playlist
     func add(episodeID: UUID, to position: Playlist.Position = .end) async {
         

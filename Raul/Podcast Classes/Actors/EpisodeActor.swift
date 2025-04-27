@@ -73,6 +73,9 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         
         episode.metaData?.isArchived?.toggle()
+        let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer, playlistTitle: "de.holgerkrupp.podbay.queue")
+        await PlaylistmodelActor.remove(episodeID: episodeID)
+        await deleteFile(episodeID: episodeID)
         try? modelContext.save()
     }
     
@@ -83,6 +86,15 @@ actor EpisodeActor {
         if let localFile = episode.localFile {
             _ = await DownloadManager.shared.download(from: episode.url, saveTo: localFile, episodeID: episode.id)
             print("✅ Episode download started")
+        }
+    }
+    
+    func deleteFile(episodeID: UUID) async{
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+
+        if let file = episode.localFile{
+            try? FileManager.default.removeItem(at: file)
+            episode.metaData?.isAvailableLocally = false
         }
     }
 

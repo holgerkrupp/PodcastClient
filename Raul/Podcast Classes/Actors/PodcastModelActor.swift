@@ -7,6 +7,7 @@
 
 import SwiftData
 import Foundation
+import BasicLogger
 
 @ModelActor
 actor PodcastModelActor {
@@ -50,6 +51,8 @@ actor PodcastModelActor {
             podcast.metaData = PodcastMetaData()
         }
         try modelContext.save()
+        
+        await BasicLogger.shared.log("Updating Podcast \(podcast.title)")
         
         let (data, _) = try await URLSession.shared.data(from: feedURL)
         

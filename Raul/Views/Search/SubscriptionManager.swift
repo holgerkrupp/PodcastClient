@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import BasicLogger
 
 
 @ModelActor
@@ -136,12 +137,12 @@ actor SubscriptionManager:NSObject{
     
     
     //MARK: Background
-    //the next functions are for background refresh activites. but could be also used in outher occations
+    //the next functions are for background refresh activites. but could be also used in other occations
     
     func bgcheckIfFeedsShouldRefresh() async -> Bool{
         // this can run regularly and should be low weight
         // check only those that are not marked as updated during the last run
-        print("bgcheckIfFeedsShouldRefresh")
+        await BasicLogger.shared.log("bgcheckIfFeedsShouldRefresh")
         var shouldRefresh = false
         fetchData()
         for podcast in podcasts.sorted(by: { lhs, rhs in
@@ -160,9 +161,12 @@ actor SubscriptionManager:NSObject{
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
         fetchData()
+        await BasicLogger.shared.log("bgupdateFeeds")
+
         for podcast in podcasts.sorted(by: { lhs, rhs in
             lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
         }).filter({$0.metaData?.feedUpdated != false}){
+            await BasicLogger.shared.log("updating \(podcast.title)")
             try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
         }
     }

@@ -131,6 +131,7 @@ class EpisodeDownloadStatus{
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
+            print(highestCategory?.rawValue ?? "no category")
             return group.filter { $0.type == highestCategory }
         }
     }
@@ -163,7 +164,7 @@ class EpisodeDownloadStatus{
     }
 */
     
-    func updateEpisodeData(from episodeData: [String: Any]) {
+    private func updateEpisodeData(from episodeData: [String: Any]) {
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
         self.author = episodeData["itunes:author"] as? String
         self.guid = episodeData["guid"] as? String ?? (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String
@@ -246,16 +247,6 @@ class EpisodeDownloadStatus{
     }
     
     
-
-    
-
-    
-    func deleteFile(){
-        if let file = localFile{
-            try? FileManager.default.removeItem(at: file)
-            metaData?.isAvailableLocally = false
-        }
-    }
     
 }
 

@@ -33,6 +33,7 @@ struct PlayerView: View {
                                 
                                
                             }
+                            .buttonStyle(.plain)
                             .sheet(isPresented: $showSpeedSetting, content: {
                                 VStack{
                                     /*
@@ -145,6 +146,7 @@ struct PlayerView: View {
                     }) {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     }
+                    .buttonStyle(.plain)
                 } else {
                     Text("No episode playing.")
                 }

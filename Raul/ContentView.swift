@@ -7,12 +7,13 @@
 
 import SwiftUI
 import SwiftData
+import BasicLogger
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     
     enum Tab: Int {
-        case player, podcasts, inbox, downloads
+        case player, podcasts, inbox, downloads, logger
     }
     
     @State private var selectedTab: Tab = .player
@@ -42,7 +43,15 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "headphones")
                 }
                 .tag(Tab.podcasts)
-            
+            #if DEBUG
+            NavigationStack {
+                LogView()
+            }
+                .tabItem {
+                    Label("Log", systemImage: "text.bubble")
+                }
+                .tag(Tab.logger)
+#endif
 
 
         }

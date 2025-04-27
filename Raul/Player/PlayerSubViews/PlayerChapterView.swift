@@ -22,7 +22,7 @@ struct PlayerChapterView: View {
                         .aspectRatio(contentMode: .fit)
                         .tint(.primary)
                 }
-                
+                .buttonStyle(.plain)
                 
                 
                 Spacer()
@@ -39,7 +39,7 @@ struct PlayerChapterView: View {
                             .foregroundStyle(Color.primary)
                           
                     }
-                    
+                    .buttonStyle(.plain)
                     .sheet(isPresented: $presentingModal, content: {
                         ChapterListView(chapters: chapters)
                             .presentationDragIndicator(.visible)
@@ -61,7 +61,7 @@ struct PlayerChapterView: View {
                         .aspectRatio(contentMode: .fit)
                         .tint(.primary)
                 }
-                
+                    .buttonStyle(.plain)
                 
                 Spacer()
                     .frame(width: 50)

@@ -31,6 +31,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [x] m4a
 - - [x] mp3
 - - [ ] extracted from shownotes
+- - [ ] Update Chapter View more snappy
 - [ ] include chapter art for mp3/m4a
 - [?] include chapter links for mp3/m4a
 - [x] postprocess chapters to find duration/end if no value is given ( chapter[n].end = chapter[n+1].start ? episode.end)

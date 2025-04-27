@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import BackgroundTasks
 import DeviceInfo
+import BasicLogger
 
 @main
 struct RaulApp: App {
@@ -36,16 +37,21 @@ struct RaulApp: App {
             default: break
             }
         })
-        .backgroundTask(.appRefresh("feedRefresh")) {
+        .backgroundTask(.appRefresh("feedRefresh")) { task in
+            await BasicLogger.shared.log("started feedRefresh in Background")
+
             await setLastprocessDate()
-       //     await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
+            await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
         }
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
+            await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
             await setLastRefreshDate()
             await scheduleAppRefresh()
-     //       let shouldRefresh = await SubscriptionManager(modelContainer: modelContainerManager.container).bgcheckIfFeedsShouldRefresh()
-                
+            let shouldRefresh = await SubscriptionManager(modelContainer: ModelContainerManager().container).bgcheckIfFeedsShouldRefresh()
+            if shouldRefresh {
+                await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
+            }
            
             
         }
@@ -65,13 +71,12 @@ struct RaulApp: App {
     func bgNewAppRefresh(){
         
         // this should replace scheduleAppRefresh
-        print("went to background started bgNewAppRefresh")
-       
+        BasicLogger.shared.log("going to background will schedule bgNewAppRefresh")
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
         
         do{
             try BGTaskScheduler.shared.submit(request)
-            
+
         }catch{
             print(error)
         }
@@ -79,16 +84,15 @@ struct RaulApp: App {
     
     
     func scheduleAppRefresh() {
-        print("went to background will schedule AppRefresh")
+        BasicLogger.shared.log("going to background will schedule AppRefresh")
         let request = BGProcessingTaskRequest(identifier: "feedRefresh")
         request.requiresNetworkConnectivity = true
         do{
             try BGTaskScheduler.shared.submit(request)
-            
         }catch{
             print(error)
         }
-  
+
     }
     
 }
@@ -105,5 +109,12 @@ extension DeviceUIStyle {
         case .macPro: return "macpro.gen3"
         case .macDesktop: return "desktopcomputer"
         }
+    }
+}
+extension Bundle {
+    /// Application name shown under the application icon.
+    var applicationName: String? {
+        object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ??
+        object(forInfoDictionaryKey: "CFBundleName") as? String
     }
 }

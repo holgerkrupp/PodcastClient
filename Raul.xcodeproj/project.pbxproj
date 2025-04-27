@@ -13,6 +13,7 @@
 		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
 		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
+		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +50,7 @@
 			files = (
 				4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */,
 				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
+				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
 				48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */,
 			);
@@ -107,6 +109,7 @@
 				4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */,
 				48C078062DB410D000D6DD9C /* DeviceInfo */,
 				48C078082DB4111500D6DD9C /* DeviceInfo */,
+				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -140,6 +143,7 @@
 				48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
 				4827FC7D2DA5A31500FA6778 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
 				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
+				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -404,6 +408,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../DeviceInfo;
 		};
+		48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../BasicLogger;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -422,6 +430,10 @@
 		48C078082DB4111500D6DD9C /* DeviceInfo */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = DeviceInfo;
+		};
+		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BasicLogger;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

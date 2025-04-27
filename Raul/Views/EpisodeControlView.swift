@@ -46,16 +46,7 @@ struct EpisodeControlView: View {
             
    
             
-            if episode.metaData?.isAvailableLocally == true {
-                Button {
-                    episode.deleteFile()
-                } label: {
-                    Image(systemName: "trash")
-                        .resizable()
-                        .scaledToFit()
-                }
-                .buttonStyle(.bordered)
-            }else{
+            if episode.metaData?.isAvailableLocally != true {
                 DownloadControllView(episode: episode)
             }
             

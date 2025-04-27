@@ -221,6 +221,7 @@ class Player: NSObject {
         if progressUpdateCounter >= progressSaveInterval {
             Task.detached(priority: .background) {
                 do {
+                    await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
                     try episode.modelContext?.save()
                     await MainActor.run {
                         self.progressUpdateCounter = 0

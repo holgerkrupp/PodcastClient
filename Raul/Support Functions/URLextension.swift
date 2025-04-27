@@ -26,7 +26,7 @@ extension URL{
                     var request = URLRequest(url: self)
                     request.httpMethod = "HEAD"
         
-        if let appName = Bundle.main.bundleIdentifier{
+        if let appName = Bundle.main.applicationName{
                         request.setValue(appName, forHTTPHeaderField: "User-Agent")
                     }
         
@@ -65,7 +65,7 @@ extension URL{
         let session = URLSession.shared
         
         var request = URLRequest(url: self)
-        if let appName = Bundle.main.bundleIdentifier{
+        if let appName = Bundle.main.applicationName{
             request.setValue(appName, forHTTPHeaderField: "User-Agent")
         }
         do{
