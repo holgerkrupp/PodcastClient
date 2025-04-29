@@ -91,7 +91,9 @@ struct EpisodeRowView: View {
                 
                 HStack{
                     Button(action: {
-                        Player.shared.playEpisode(episode)
+                        Task{
+                          await Player.shared.playEpisode(episode.id)
+                        }
                     }) {
                         Image(systemName: "play.fill")
                             .resizable()

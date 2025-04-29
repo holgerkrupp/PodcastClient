@@ -2,16 +2,20 @@ import Foundation
 import SwiftUI
 import AVFoundation
 import MediaPlayer
+import SwiftData
 
 @Observable
 @MainActor
 class Player: NSObject {
     static let shared = Player()
+  //  private let modelContext = ModelContainerManager().container.mainContext
 
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
     var playbackRate: Float = 1.0 {
         didSet {
+            UserDefaults.standard.set(playbackRate, forKey: "playbackRate")
+
             Task { await engine.setRate(playbackRate) }
         }
     }
@@ -22,6 +26,7 @@ class Player: NSObject {
     var currentEpisode: Episode?
     var currentEpisodeID: UUID?
     
+    var podcastCover: Image?
     
     var isPlaying: Bool = false
     
@@ -31,21 +36,57 @@ class Player: NSObject {
     var previousChapter: Chapter?
     var episodeActor: EpisodeActor
     
-    override init() {
+    override init()  {
         episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
         super.init()
-        //loadEpisode()
+        loadLastPlayedEpisode()
+        loadPlayBackSpeed()
 
-        
-        if let currentEpisode {
-            playEpisode(currentEpisode, playDirectly: false)
+    }
+    
+    private func loadLastPlayedEpisode() {
+        if let episodeIDString = UserDefaults.standard.string(forKey: "lastPlayedEpisodeID"),
+           let episodeUUID = UUID(uuidString: episodeIDString) {
             
+            Task {  @MainActor in
+                if let episode = await fetchEpisode(with: episodeUUID) {
+                    print("loading last episode: \(episode.title)")
+                    currentEpisode = episode
+                    currentEpisodeID = episode.id
+                    await playEpisode(episode.id, playDirectly: false)
+                    if let cover = episode.podcast?.coverImageURL{
+                        let imagedata = ImageLoaderAndCache(imageURL: cover).imageData
+                        podcastCover = ImageWithData(imagedata).image
+                    }
+                }
+            }
         }
     }
     
-
+    private func loadPlayBackSpeed() {
+        // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
+        
+        let savedPlaybackRate = UserDefaults.standard.float(forKey: "playbackRate")
+        if savedPlaybackRate > 0 {
+            playbackRate = savedPlaybackRate
+            Task {
+                await engine.setRate(playbackRate)
+                 pause()
+            }
+        }
+        
+    }
     
-
+    func fetchEpisode(with id: UUID) async -> Episode? {
+        print("fetching episode \(id)")
+        do {
+            let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.id == id })
+            return try  episodeActor.modelContainer.mainContext.fetch(descriptor).first
+        } catch {
+            print("Failed to fetch episode: \(error)")
+            return nil
+        }
+    }
     
     private func updateCurrentChapter(){
         
@@ -66,10 +107,38 @@ class Player: NSObject {
         
     }
         
+    private func unloadEpisode(episodeUUID: UUID) async{
+        guard let episode = await fetchEpisode(with: episodeUUID) else { return }
+        if episode.remainingTime ?? 200 < 10 {
+            episode.metaData?.isHistory? = true
+            print("moving episode \(episode.title) to history")
+        }else{
+            let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+            await playlistModelActor.add(episodeID: episodeUUID, to: .front)
+            print("moving episode \(episode.title) back to playlist")
+
+        }
+    }
     
-    func playEpisode(_ episode: Episode, playDirectly: Bool = true) {
-        currentEpisode = episode
+    
+    
+    func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true) async {
+        guard let episode = await fetchEpisode(with: episodeUUID) else { return }
+        if let currentEpisodeID, episodeUUID != currentEpisodeID{
+            await unloadEpisode(episodeUUID: currentEpisodeID)
+        }
         
+
+        
+        currentEpisode = episode
+        currentEpisodeID = episode.id
+        updateCurrentChapter()
+        
+        let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+        await playlistModelActor.remove(episodeID: episodeUUID)
+        
+        UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
+
         Task {
             // Load the AVPlayerItem asynchronously
             let item = await Task {
@@ -147,7 +216,8 @@ class Player: NSObject {
  
     
     func play(){
-        Task { 
+        Task {
+            await engine.setRate(playbackRate)
             await engine.play()
             isPlaying = true
         }
@@ -233,7 +303,7 @@ class Player: NSObject {
         }
     }
     
-    func skipTo(chapter: Chapter){
+    func skipTo(chapter: Chapter) async{
         
         if chapter.episode == currentEpisode{
             if let start = chapter.start{
@@ -242,7 +312,7 @@ class Player: NSObject {
             }
         }else{
             if let newEpisode = chapter.episode{
-                playEpisode(newEpisode, playDirectly: true)
+                await playEpisode(newEpisode.id, playDirectly: true)
             }
         }
     }

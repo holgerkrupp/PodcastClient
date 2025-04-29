@@ -164,11 +164,7 @@ struct TimelineView: View {
               //  .frame(width: UIScreen.main.bounds.width * 0.9, height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
                 .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
         }
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.thinMaterial)
-                .shadow(radius: 3)
-        )
+
     }
 }
 

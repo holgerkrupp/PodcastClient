@@ -49,10 +49,11 @@ struct RaulApp: App {
             await setLastRefreshDate()
             await scheduleAppRefresh()
             let shouldRefresh = await SubscriptionManager(modelContainer: ModelContainerManager().container).bgcheckIfFeedsShouldRefresh()
+         /*
             if shouldRefresh {
                 await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
             }
-           
+           */
             
         }
     }
@@ -71,7 +72,7 @@ struct RaulApp: App {
     func bgNewAppRefresh(){
         
         // this should replace scheduleAppRefresh
-        BasicLogger.shared.log("going to background will schedule bgNewAppRefresh")
+        BasicLogger.shared.log("going to background will schedule checkFeedUpdates")
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
         
         do{
@@ -79,18 +80,21 @@ struct RaulApp: App {
 
         }catch{
             print(error)
+            BasicLogger.shared.log(error.localizedDescription)
         }
     }
     
     
     func scheduleAppRefresh() {
-        BasicLogger.shared.log("going to background will schedule AppRefresh")
+        BasicLogger.shared.log("going to background will schedule feedRefresh")
         let request = BGProcessingTaskRequest(identifier: "feedRefresh")
         request.requiresNetworkConnectivity = true
         do{
             try BGTaskScheduler.shared.submit(request)
         }catch{
             print(error)
+            BasicLogger.shared.log(error.localizedDescription)
+
         }
 
     }

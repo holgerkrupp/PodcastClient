@@ -43,8 +43,9 @@ class CarPlayPlayNext {
             listItem.handler = { [weak self] item, completion in
                 guard let self = self else { return }
                 if let episode = item.userInfo as? Episode {
-                    self.player.playEpisode(episode, playDirectly: true)
-                    
+                    Task{
+                        await self.player.playEpisode(episode.id, playDirectly: true)
+                    }
                     self.interfaceController?.pushTemplate(CarPlayNowPlaying().template, animated: true, completion: { success, error in
                         if let error = error {
                             print("❌ Error pushing NowPlaying template: \(error)")

@@ -5,6 +5,13 @@ I've started the development of an open source Podcast client that doesn't rely 
 
 I'm, currently building the base functionallity, reimplementing what I have and focus on a modern design later. My first approach was to mimic a existing app that was no longer maintained. As that app now has a new owner and receives updates, I will use my own design approach.
 
+### Next Steps
+- [ ] remove PlaylistManager and integrate needed functions in PlaylistModelActor
+- [ ] add "Subscribe all" of OPML Import
+- [ ] remove Episodes from Inbox if they are in a Playlist
+- [ ] Make PlaylistView update quicker
+
+
 ## Alpha min Requiremets
 
 ### Subscription Management
@@ -19,7 +26,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [ ] update UI after file deleted
 - - [ ] implement automatic background downloads
 - [ ] remove all files when one episode is deleted (including downloaded images)
-- [ ] if Playlist contains episode, move it to the front/end instead of adding another copy
+- [x] if Playlist contains episode, move it to the front/end instead of adding another copy
 
 ### Player
 - [x] play / pause
@@ -36,7 +43,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [?] include chapter links for mp3/m4a
 - [x] postprocess chapters to find duration/end if no value is given ( chapter[n].end = chapter[n+1].start ? episode.end)
 - [ ] download images during postprocessing
-- [ ] save last played episode and reload when opening the app
+- [x] save last played episode and reload when opening the app
 
 ## Beta min Requirement
 

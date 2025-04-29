@@ -130,6 +130,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                     print("Download finished for: \(url), isFinished set to true")
 
                 }
+                let container = ModelContainerManager().container
+                
+                let episodeActor = EpisodeActor(modelContainer: container)
+                await episodeActor.markEpisodeAvailable(fileURL: url)
+                /*
                 if let episodeID = await MainActor.run(resultType: UUID?.self, body: { item.episodeID }) {
                     Task.detached {
                         let container = ModelContainerManager().container
@@ -158,6 +163,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                     }
                         
                     }
+                */
                 }
             
             
@@ -174,6 +180,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     private func getDestination(for url: URL) -> URL? {
         return destinations[url]
     }
+    
+    
 
     private func cleanUp(url: URL) async {
         

@@ -28,6 +28,20 @@ actor EpisodeActor {
         }
     }
     
+    func fetchEpisode(byURL fileURL: URL) async -> Episode? {
+        let predicate = #Predicate<Episode> { episode in
+            episode.url == fileURL
+        }
+
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for file URL: \(fileURL.absoluteString), Error: \(error)")
+            return nil
+        }
+    }
+    
     func getLastPlayedEpisode() async -> Episode? {
         guard let episodeID = await getLastPlayedEpisodeID() else { return nil }
         return await fetchEpisode(byID: episodeID)
@@ -73,7 +87,8 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         
         episode.metaData?.isArchived?.toggle()
-        let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer, playlistTitle: "de.holgerkrupp.podbay.queue")
+        let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer)
+        
         await PlaylistmodelActor.remove(episodeID: episodeID)
         await deleteFile(episodeID: episodeID)
         try? modelContext.save()
@@ -106,12 +121,22 @@ actor EpisodeActor {
         print("✅ Metadata updated")
     }
 
+    func markEpisodeAvailable(fileURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+
+        episode.metaData?.isAvailableLocally = true
+        await createChapters(episode.persistentModelID)
+        await downloadTranscript(episode.persistentModelID)
+        try? modelContext.save()
+        print("✅ Metadata updated")
+    }
     
     func markEpisodeAvailable(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
 
         episode.metaData?.isAvailableLocally = true
         await createChapters(episode.persistentModelID)
+        await downloadTranscript(episode.persistentModelID)
         try? modelContext.save()
         print("✅ Metadata updated")
     }

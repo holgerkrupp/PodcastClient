@@ -25,9 +25,21 @@ class PlaylistViewModel: ObservableObject {
             await loadEntries()
         }
     }
+    
+    init (playlistID: UUID, container: ModelContainer) {
+        self.playlistID = playlistID
+        self.context = ModelContext(container)
+        self.actor = PlaylistModelActor(modelContainer: container, playlistID: playlistID)
+        
+        Task {
+            await loadEntries()
+        }
+    }
+    
+
 
     func loadEntries() async {
-        let localPlaylistID = playlistID  // capture value cleanly
+        let localPlaylistID = playlistID
         let descriptor = FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate { entry in
                 entry.playlist?.id == localPlaylistID

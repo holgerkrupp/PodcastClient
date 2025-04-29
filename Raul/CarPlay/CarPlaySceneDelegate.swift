@@ -8,7 +8,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate, CPI
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
         
         self.interfaceController = interfaceController
-        let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container, playlistID: PlaylistManager.shared.playnext.id)
+        let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
         self.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: playListModelActor).template, animated: false, completion: nil)
     }
     

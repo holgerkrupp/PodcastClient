@@ -19,25 +19,35 @@ actor PodcastModelActor {
         
         if let lastRefresh = podcast.metaData?.lastRefresh{
             if let serverLastModified = try? await podcast.feed?.status()?.lastModified {
+                
                 print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
-      
+                await BasicLogger.shared.log("\(podcast.title) Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
                 if serverLastModified > lastRefresh{
                     print("feed is new")
+                    podcast.metaData?.feedUpdated = true
+                    try? modelContext.save()
                     return true
                 }else{
                     // feed on server is old
                     print("feed is old")
+                    podcast.metaData?.feedUpdated = false
+                    try? modelContext.save()
+
                     return false
                 }
             }else{
                 // server is not answering with a lastmodified Date
                 print("no last modified date")
-                
+                podcast.metaData?.feedUpdated = nil
+                try? modelContext.save()
+
                 return nil
             }
         }else{
             // feed has never been fetched before, no last modified date is set.
             print("feed is very new")
+            podcast.metaData?.feedUpdated = true
+            try? modelContext.save()
             return true
         }
     }
@@ -104,7 +114,7 @@ actor PodcastModelActor {
                 print("could not save modelContext")
             }
             
-            podcast.metaData?.feedUpdated = true
+          
 
         } else {
             throw parser.parserError ?? NSError(domain: "ParserError", code: -1, userInfo: nil)
@@ -152,10 +162,11 @@ actor PodcastModelActor {
     
     func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
-        
+        let episodeActor = EpisodeActor(modelContainer: modelContainer)
         for episode in podcast.episodes {
-            if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
-            episode.metaData?.isArchived = true
+            await episodeActor.archiveEpisode(episodeID: episode.id)
+            //if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
+            //episode.metaData?.isArchived = true
         }
         try modelContext.save()
         do {
@@ -168,8 +179,10 @@ actor PodcastModelActor {
     }
     
     func unarchiveEpisode(_ episodeID: PersistentIdentifier) async throws {
+        
         guard var episode = modelContext.model(for: episodeID) as? Episode else { return }
         episode.metaData?.isArchived = false
+        await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
         try modelContext.save()
     }
     

@@ -39,7 +39,15 @@ actor PlaylistModelActor : ModelActor {
                 }
     }
     
-    public init(modelContainer: ModelContainer, playlistTitle: String) {
+    
+    
+    
+    
+    
+    /// - Parameters:
+    ///   - modelContainer: The ModelContainer to use
+    ///   - playlistTitle: An optional Title to use, if not set, the playNext List is used
+    public init(modelContainer: ModelContainer, playlistTitle: String = "de.holgerkrupp.podbay.queue") {
       let modelContext = ModelContext(modelContainer)
       modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
       self.modelContainer = modelContainer

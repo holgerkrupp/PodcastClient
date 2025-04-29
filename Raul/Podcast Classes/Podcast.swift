@@ -43,6 +43,7 @@ final class Podcast {
     var feedUpdated:Bool? // has the feed been updated and should refresh?
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
     
+    var isSubscribed: Bool = true
     
     @Relationship(inverse: \Podcast.metaData) var episode: Podcast?
     

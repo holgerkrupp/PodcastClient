@@ -8,10 +8,11 @@
 import SwiftUI
 
 struct PlayerChapterView: View {
-    var player = Player.shared
+    @State var player = Player.shared
     @State var presentingModal = false
     var body: some View {
         if player.currentEpisode?.preferredChapters.count ?? 0 > 0{
+           
             HStack{
                 Spacer()
                     .frame(width: 50)
@@ -35,7 +36,7 @@ struct PlayerChapterView: View {
                         
                     } label: {
                        
-                            Text(player.currentChapter?.title ?? "")
+                            Text(player.currentChapter?.title ?? "open chapter list")
                             .foregroundStyle(Color.primary)
                           
                     }

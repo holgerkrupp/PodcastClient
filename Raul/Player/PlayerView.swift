@@ -1,15 +1,17 @@
 import SwiftUI
 
+
 struct PlayerView: View {
     @State private var player = Player.shared
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
+   
 
     let fullSize: Bool
 
     var body: some View {
-        
+            
             VStack {
                 if let episode = player.currentEpisode {
                     if fullSize {
@@ -60,6 +62,8 @@ struct PlayerView: View {
                               
                             })
                             Spacer()
+
+   
                         }
                     }
                     ZStack() {
@@ -153,6 +157,11 @@ struct PlayerView: View {
             }
             .padding()
             .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .shadow(radius: 3)
+            )
         
        
     }

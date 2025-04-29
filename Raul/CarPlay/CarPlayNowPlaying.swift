@@ -38,7 +38,7 @@ class CarPlayNowPlaying {
         let listButton = CPNowPlayingImageButton(
             image: UIImage(named: "carplay.list.bullet")!
         ) { [weak self] _ in
-            let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container, playlistID: PlaylistManager.shared.playnext.id)
+            let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
             self?.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: playListModelActor).template, animated: false, completion: nil)
             
         }

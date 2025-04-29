@@ -20,9 +20,16 @@ struct ChapterListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                Text("Chapters")
-                    .font(.title)
-                    .padding()
+                HStack {
+                    Spacer()
+                    Text("Chapters")
+                        .font(.title)
+                        .padding()
+                    Spacer()
+                    Text(chapters.first?.type.rawValue ?? "Unknown")
+                }
+                .padding()
+               
                 
                 ForEach(sortedChapters, id: \.id) { chapter in
                     VStack(alignment: .leading) {
@@ -57,7 +64,9 @@ struct ChapterListView: View {
                     }
                     .padding(.horizontal)
                     .onTapGesture {
-                        player.skipTo(chapter: chapter)
+                        Task{
+                           await player.skipTo(chapter: chapter)
+                        }
                     }
                     .foregroundStyle(
                         chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accentColor : Color.primary

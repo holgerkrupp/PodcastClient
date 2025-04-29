@@ -131,7 +131,7 @@ class EpisodeDownloadStatus{
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
-            print(highestCategory?.rawValue ?? "no category")
+          //  print(highestCategory?.rawValue ?? "no category")
             return group.filter { $0.type == highestCategory }
         }
     }
