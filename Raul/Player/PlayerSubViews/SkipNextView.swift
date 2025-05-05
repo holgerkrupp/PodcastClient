@@ -77,8 +77,6 @@ struct SkipChapter: ToggleStyle {
     
     func makeBody(configuration: Configuration) -> some View {
         HStack {
-         //   configuration.label
-         //   Spacer()
             Rectangle()
                 .foregroundColor(configuration.isOn ? .accent : .secondary)
                 .frame(width: 51, height: 31, alignment: .center)

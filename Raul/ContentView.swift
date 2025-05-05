@@ -28,16 +28,19 @@ struct ContentView: View {
                     Label("Player", systemImage: "play.circle.fill")
                 }
                 .tag(Tab.player)
+           
+                InboxView()
             
-            InboxView()
                 .tabItem {
                     Label("Inbox", systemImage: "tray.fill")
                 }
                 .tag(Tab.inbox)
             
 
-                
-            PodcastListView(modelContainer: modelContext.container)
+            
+                PodcastListView(modelContainer: modelContext.container)
+            
+            
 
                 .tabItem {
                     Label("Podcasts", systemImage: "headphones")

@@ -6,10 +6,9 @@ I've started the development of an open source Podcast client that doesn't rely 
 I'm, currently building the base functionallity, reimplementing what I have and focus on a modern design later. My first approach was to mimic a existing app that was no longer maintained. As that app now has a new owner and receives updates, I will use my own design approach.
 
 ### Next Steps
-- [ ] remove PlaylistManager and integrate needed functions in PlaylistModelActor
-- [ ] add "Subscribe all" of OPML Import
-- [ ] remove Episodes from Inbox if they are in a Playlist
-- [ ] Make PlaylistView update quicker
+- [ ] Create Podcast Detail View
+- [ ] Create Episode Detail View
+- [ ] Integrate Settings (Per Podcasts and global)
 
 
 ## Alpha min Requiremets
@@ -19,13 +18,13 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Refresh and Downloads
 - [x] refresh podcast content via Button
-- [ ] refresh all with pull to refresh
+- [x] refresh all with pull to refresh
 - [x] download episodes
 - - [x] show download progress
 - - [x] delete files
 - - [ ] update UI after file deleted
 - - [ ] implement automatic background downloads
-- [ ] remove all files when one episode is deleted (including downloaded images)
+- [x] remove all files when one episode is archived 
 - [x] if Playlist contains episode, move it to the front/end instead of adding another copy
 
 ### Player
@@ -51,7 +50,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [x] OPML import
 - - [x] to be validated with big file
 - - [ ] Show import progress
-- - [ ] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
+- - [x] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
 - [x] podcast directory search
 - - [ ] iTunes Directory Search (basic)
 - - [x] Fyyd Directory Search

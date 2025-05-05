@@ -16,12 +16,22 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     private override init() {}
 
-    func download(from url: URL, saveTo destination: URL? = nil, episodeID: UUID? = nil) async -> DownloadItem {
+    func download(from url: URL, saveTo destination: URL? = nil, episodeID: UUID? = nil) async -> DownloadItem? {
         if let existing = downloads[url] {
+            print(">>> Reusing existing download for %{public}@\n", url.absoluteString)
             return existing
         }
 
+
         let finalDestination = destination ?? defaultDestination(for: url)
+        
+        print(fileExists(at: finalDestination) ? "file exists: \(finalDestination)" : "file does not exists: \(finalDestination)")
+        
+        guard !fileExists(at: finalDestination) else {
+            print("file does not exists: \(finalDestination)")
+            await markDownloaded(for: url)
+            return nil
+        }
         
         let item = await MainActor.run {
             
@@ -50,6 +60,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     }
     
     func cancelDownload(for url: URL)  {
+        print("cancel Download \(url)")
         urlToTask[url]?.cancel()
         urlToTask[url] = nil
         downloads[url] = nil
@@ -64,6 +75,16 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         urlToTask[url]?.resume()
     }
 
+    private func fileExists(at url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+    private func markDownloaded(for url: URL) async {
+        let container = ModelContainerManager().container
+        let episodeActor = EpisodeActor(modelContainer: container)
+        await episodeActor.markEpisodeAvailable(fileURL: url)
+        await episodeActor.updateDuration(fileURL: url)
+    }
+    
     private func defaultDestination(for url: URL) -> URL {
         let filename = url.lastPathComponent
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -92,6 +113,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                                  downloadTask: URLSessionDownloadTask,
                                  didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
+        print("finished Download \(url)")
 
         // Create a safe temp location to copy the file to before we suspend
         let tempCopy = FileManager.default.temporaryDirectory
@@ -128,42 +150,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                     item.isDownloading = false
                     item.isFinished = true
                     print("Download finished for: \(url), isFinished set to true")
-
+                    
                 }
-                let container = ModelContainerManager().container
                 
-                let episodeActor = EpisodeActor(modelContainer: container)
-                await episodeActor.markEpisodeAvailable(fileURL: url)
-                /*
-                if let episodeID = await MainActor.run(resultType: UUID?.self, body: { item.episodeID }) {
-                    Task.detached {
-                        let container = ModelContainerManager().container
-                        let modelContext = ModelContext(container)
-                        let episodeActor = EpisodeActor(modelContainer: container)
-                        await episodeActor.markEpisodeAvailable(episodeID: episodeID)
-                        
-                        let predicate = #Predicate<EpisodeMetaData> { metadata in
-                            // Direct comparison of the episode's persistentModelID
-                            metadata.episode?.id == episodeID
-                        }
+                await markDownloaded(for: url)
 
-                                do {
-                                    let results = try modelContext.fetch(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
-                                    guard let metadata = results.first else {
-                                        print("❌ No metadata found for episode ID: \(episodeID)")
-                                        return
-                                    }
-
-                                    metadata.isAvailableLocally = true
-                                    try modelContext.save()
-                                    print("✅ Metadata updated")
-                                } catch {
-                                    print("❌ Error fetching or saving metadata: \(error)")
-                                }
-                    }
-                        
-                    }
-                */
                 }
             
             

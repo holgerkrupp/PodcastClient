@@ -25,13 +25,13 @@ actor PodcastModelActor {
                 if serverLastModified > lastRefresh{
                     print("feed is new")
                     podcast.metaData?.feedUpdated = true
-                    try? modelContext.save()
+                    modelContext.saveIfNeeded()
                     return true
                 }else{
                     // feed on server is old
                     print("feed is old")
                     podcast.metaData?.feedUpdated = false
-                    try? modelContext.save()
+                     modelContext.saveIfNeeded()
 
                     return false
                 }
@@ -39,15 +39,16 @@ actor PodcastModelActor {
                 // server is not answering with a lastmodified Date
                 print("no last modified date")
                 podcast.metaData?.feedUpdated = nil
-                try? modelContext.save()
+                modelContext.saveIfNeeded()
 
                 return nil
             }
         }else{
             // feed has never been fetched before, no last modified date is set.
             print("feed is very new")
+            await BasicLogger.shared.log("\(podcast.title) feed has never been fetched before")
             podcast.metaData?.feedUpdated = true
-            try? modelContext.save()
+            modelContext.saveIfNeeded()
             return true
         }
     }
@@ -60,7 +61,7 @@ actor PodcastModelActor {
         if podcast.metaData == nil {
             podcast.metaData = PodcastMetaData()
         }
-        try modelContext.save()
+         modelContext.saveIfNeeded()
         
         await BasicLogger.shared.log("Updating Podcast \(podcast.title)")
         
@@ -72,9 +73,10 @@ actor PodcastModelActor {
 
         if parser.parse() {
             podcast.title = podcastParser.podcastDictArr["title"] as? String ?? ""
-            podcast.author = podcastParser.podcastDictArr["author"] as? String ?? ""
+            podcast.author = podcastParser.podcastDictArr["itunes:author"] as? String ?? ""
             podcast.desc = podcastParser.podcastDictArr["description"] as? String ?? ""
-            
+            podcast.copyright = podcastParser.podcastDictArr["copyright"] as? String ?? ""
+            podcast.link = URL(string: podcastParser.podcastDictArr["link"] as? String ?? "")
             if let imageURL = podcastParser.podcastDictArr["coverImage"] as? String {
                 podcast.coverImageURL = URL(string: imageURL)
             }
@@ -93,7 +95,10 @@ actor PodcastModelActor {
                
                 for episodeData in episodesData {
                     
-                    guard  checkIfEpisodeExists(episodeData["guid"] as? String ?? "") ?? 0 < 1 else { continue }
+                    guard  checkIfEpisodeExists(episodeData["guid"] as? String ?? "") ?? 0 < 1 else {
+                        print("Episode exists")
+                        continue
+                    }
                     
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
@@ -103,16 +108,15 @@ actor PodcastModelActor {
 
                     }
                 }
+                modelContext.saveIfNeeded()
                 
             }
 
-            do {
+          
                 podcast.metaData?.lastRefresh = Date()
 
-                try modelContext.save()
-            } catch {
-                print("could not save modelContext")
-            }
+                modelContext.saveIfNeeded()
+            
             
           
 
@@ -127,13 +131,41 @@ actor PodcastModelActor {
             predicate: #Predicate<Episode> { $0.guid == guid  }
         )
         
-        return try? modelContext.fetch(descriptor).count
+        let count = try? modelContext.fetch(descriptor).count
+        print("checking if episode exists \(guid) - count: \(count?.description ?? "nil")")
+        return count
     }
     
     func createPodcast(from url: URL) async throws -> PersistentIdentifier {
+        // Check URL STATUS
+        var feedURL = url
+        let status = try await url.status()
+        
+        switch status?.statusCode {
+        case 200:
+            feedURL = url
+        case 404:
+            throw SubscriptionManager.SubscribeError.loadfeed
+        case 410:
+            if let newURL = status?.newURL{
+                feedURL = newURL
+            }else{
+               throw SubscriptionManager.SubscribeError.loadfeed
+            }
+        default:
+            feedURL = url
+        }
+        
+        
+        
+        
+        
+        
+        
+        
         // Check if podcast with this feed URL already exists
         let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feed == url }
+            predicate: #Predicate<Podcast> { $0.feed == feedURL }
         )
         
         if let existingPodcasts = try? modelContext.fetch(descriptor),
@@ -144,15 +176,21 @@ actor PodcastModelActor {
         }
         
         // Create new podcast if it doesn't exist
-        let podcast = Podcast(feed: url)
+        
+        
+        let podcast = Podcast(feed: feedURL)
         modelContext.insert(podcast)
-        try modelContext.save()
+        modelContext.saveIfNeeded()
         do {
             try await updatePodcast(podcast.persistentModelID)
             try await archiveEpisodes(of: podcast.persistentModelID)
+            /*
+             
+             // The original idea was to keep the newest episode of a newly subscribed podcast in the Inbox, but i think this
             if let lastEpisode = podcast.episodes.sorted(by: { $0.publishDate ?? Date.distantPast < $1.publishDate ?? Date.distantPast }).last {
                 try await unarchiveEpisode(lastEpisode.persistentModelID)
             }
+             */
         } catch {
             print("Could not update podcast: \(error)")
         }
@@ -162,28 +200,37 @@ actor PodcastModelActor {
     
     func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
-        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+      
         for episode in podcast.episodes {
+           
+            if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
+            episode.metaData?.isArchived = true
+            episode.metaData?.isInbox = false
+        }
+        modelContext.saveIfNeeded()
+
+    }
+    
+    func archiveInboxEpisodes() async throws {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.metaData?.isInbox == true  }
+        )
+        let episodes = try modelContext.fetch(descriptor)
+        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+        for episode in episodes {
             await episodeActor.archiveEpisode(episodeID: episode.id)
-            //if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
-            //episode.metaData?.isArchived = true
+
         }
-        try modelContext.save()
-        do {
-            try await updatePodcast(podcast.persistentModelID)
-        } catch {
-            print("Could not update podcast: \(error)")
-        }
-        
-        try modelContext.save()
+        modelContext.saveIfNeeded()
     }
     
     func unarchiveEpisode(_ episodeID: PersistentIdentifier) async throws {
         
-        guard var episode = modelContext.model(for: episodeID) as? Episode else { return }
+        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         episode.metaData?.isArchived = false
+        episode.metaData?.isInbox = true
         await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
-        try modelContext.save()
+        modelContext.saveIfNeeded()
     }
     
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {
@@ -192,7 +239,7 @@ actor PodcastModelActor {
             try? FileManager.default.removeItem(at: episodeFolder)
         }
         modelContext.delete(podcast)
-        try modelContext.save()
+        modelContext.saveIfNeeded()
     }
     
     func refreshAllPodcasts() async throws {

@@ -35,7 +35,7 @@ struct EpisodeControlView: View {
             }
             if episode.transcripts.count > 0 {
                 
-                    Image(systemName: "text.quote")
+                Image(systemName: "quote.bubble")
                 
                
             }

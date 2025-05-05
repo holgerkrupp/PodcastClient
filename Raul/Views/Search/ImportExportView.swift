@@ -68,19 +68,19 @@ struct ImportExportView: View {
                 }
             }).count > 0{
                 
-                let notExisting = newPodcasts.filter({ newPod in
-                    if newPod.existing == false && newPod.added == false {
-                        return true
-                    }else{
-                        return false
+                Button("Subscribe to new podcasts"){
+                    Task{
+                        await SubscriptionManager(modelContainer: context.container).subscribe(all: newPodcasts.filter({ newPod in
+                            if newPod.existing == false && newPod.added == false {
+                                return true
+                            }else{
+                                return false
+                            }
+                        }))
                     }
-                }).sorted(by: {$0.title ?? "" < $1.title ?? ""})
+                }
+
             
-                   
-                
-
-
-                
                 
                 Section{
                     ForEach(newPodcasts.filter({ newPod in

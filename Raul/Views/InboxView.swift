@@ -14,7 +14,7 @@ struct InboxView: View {
         if let id = podcast?.persistentModelID {
             predicate = #Predicate<Episode> { $0.podcast?.persistentModelID == id }
         } else {
-            predicate = #Predicate<Episode> { $0.metaData?.isArchived != true }
+            predicate = #Predicate<Episode> { $0.metaData?.isInbox == true}
         }
 
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
@@ -23,24 +23,32 @@ struct InboxView: View {
     
     var body: some View {
         List {
+            if let podcast {
+                Section() {
+                    PodcastDetailView(podcast: podcast)
+                }
+            }
+            
+            
+            
             ForEach(episodes) { episode in
                 EpisodeRowView(episode: episode)
                     .swipeActions(edge: .trailing){
-                        if episode.metaData?.finishedPlaying == true {
+                        if episode.metaData?.isArchived == true {
                             Button(role: .none) {
                                 Task { @MainActor in
-                                    episode.metaData?.finishedPlaying = false
+                                    await unarchiveEpisode(episode)
                                 }
                             } label: {
-                                Label("Mark as not played", systemImage: "circle")
+                                Label("Unarchive Episode", systemImage: "archivebox")
                             }
                         } else {
                             Button(role: .none) {
                                 Task { @MainActor in
-                                    episode.metaData?.finishedPlaying = true
+                                    await archiveEpisode(episode)
                                 }
                             } label: {
-                                Label("Mark as played", systemImage: "checkmark.circle")
+                                Label("Archive Episode", systemImage: "archivebox.fill")
                             }
                         }
                     }
@@ -48,6 +56,11 @@ struct InboxView: View {
             }
         }
         .navigationTitle(podcast?.title ?? "All Episodes")
+        .refreshable {
+            Task{
+                await refreshEpisodes()
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: {
@@ -59,6 +72,7 @@ struct InboxView: View {
                 }
                 .disabled(isLoading)
             }
+
             if let podcast {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
@@ -71,6 +85,7 @@ struct InboxView: View {
                 }
             }
         }
+        
 
         .overlay {
             if isLoading {
@@ -86,6 +101,15 @@ struct InboxView: View {
                 Text(errorMessage)
             }
         }
+    }
+    
+    private func archiveEpisode(_ episode: Episode) async {
+        let episodeActor = EpisodeActor(modelContainer: modelContext.container)
+        await episodeActor.archiveEpisode(episodeID: episode.id)
+    }
+    private func unarchiveEpisode(_ episode: Episode) async {
+        let episodeActor = EpisodeActor(modelContainer: modelContext.container)
+        await episodeActor.unarchiveEpisode(episodeID: episode.id)
     }
     
     private func refreshEpisodes() async {

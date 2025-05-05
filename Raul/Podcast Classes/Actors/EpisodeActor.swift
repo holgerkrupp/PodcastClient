@@ -8,6 +8,7 @@ import SwiftData
 import Foundation
 import mp3ChapterReader
 import AVFoundation
+import BasicLogger
 
 
 
@@ -28,6 +29,8 @@ actor EpisodeActor {
         }
     }
     
+    
+    
     func fetchEpisode(byURL fileURL: URL) async -> Episode? {
         let predicate = #Predicate<Episode> { episode in
             episode.url == fileURL
@@ -46,6 +49,29 @@ actor EpisodeActor {
         guard let episodeID = await getLastPlayedEpisodeID() else { return nil }
         return await fetchEpisode(byID: episodeID)
     }
+    
+    func updateDuration(fileURL: URL) async{
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+        if episode.duration == nil{
+            if let localFile = episode.localFile, ((episode.metaData?.calculatedIsAvailableLocally) == true){
+                do{
+                    let duration = try await AVURLAsset(url: localFile).load(.duration)
+                    let seconds = CMTimeGetSeconds(duration)
+                    if !seconds.isNaN{
+                        episode.duration = seconds
+                    }
+                    modelContext.saveIfNeeded()
+                }catch{
+                    print(error)
+                }
+            }else{
+                print("no local file")
+            }
+        }
+    }
+    
+    
+
     
     func getLastPlayedEpisodeID() async -> UUID? {
         let predicate = #Predicate<Episode> { episode in
@@ -69,7 +95,7 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         
         episode.metaData?.lastPlayed = date
-        try? modelContext.save()
+        modelContext.saveIfNeeded()
     }
     
     func setPlayPosition(episodeID: UUID, position: TimeInterval) async {
@@ -79,33 +105,62 @@ actor EpisodeActor {
             
         }
         episode.metaData?.playPosition = position
-        try? modelContext.save()
+         modelContext.saveIfNeeded()
 
+    }
+    
+    func markasPlayed(_ episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        episode.metaData?.finishedPlaying = true
+        episode.metaData?.isHistory = true
+        modelContext.saveIfNeeded()
     }
     
     func archiveEpisode(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        
-        episode.metaData?.isArchived?.toggle()
+        if episode.metaData == nil {
+            episode.metaData = EpisodeMetaData()
+        }
+        episode.metaData?.isArchived = true
+        episode.metaData?.isInbox = false
+        /*
         let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer)
-        
         await PlaylistmodelActor.remove(episodeID: episodeID)
+    */
         await deleteFile(episodeID: episodeID)
-        try? modelContext.save()
+         modelContext.saveIfNeeded()
     }
     
     
     func download(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        print("download episode \(episodeID)")
+        guard let episode = await fetchEpisode(byID: episodeID) else {
+            
+            print("❌ Could not find episode \(episodeID)")
+            return }
 
         if let localFile = episode.localFile {
-            _ = await DownloadManager.shared.download(from: episode.url, saveTo: localFile, episodeID: episode.id)
-            print("✅ Episode download started")
+            if await DownloadManager.shared.download(from: episode.url, saveTo: localFile, episodeID: episode.id) != nil {
+                print("✅ Episode download started - from \(episode.url) to \(localFile)")
+
+            }else{
+                print("❌ Could not download Episode \(episodeID)")
+            }
         }
+    }
+    
+    func unarchiveEpisode(episodeID: UUID) async  {
+        
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        episode.metaData?.isArchived = false
+        episode.metaData?.isInbox = true
+        await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
+        modelContext.saveIfNeeded()
     }
     
     func deleteFile(episodeID: UUID) async{
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        guard  episode.metaData?.isAvailableLocally == true else { return }
 
         if let file = episode.localFile{
             try? FileManager.default.removeItem(at: file)
@@ -117,7 +172,7 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
 
         episode.metaData?.isHistory = value
-        try? modelContext.save()
+        modelContext.saveIfNeeded()
         print("✅ Metadata updated")
     }
 
@@ -127,7 +182,7 @@ actor EpisodeActor {
         episode.metaData?.isAvailableLocally = true
         await createChapters(episode.persistentModelID)
         await downloadTranscript(episode.persistentModelID)
-        try? modelContext.save()
+        modelContext.saveIfNeeded()
         print("✅ Metadata updated")
     }
     
@@ -137,7 +192,7 @@ actor EpisodeActor {
         episode.metaData?.isAvailableLocally = true
         await createChapters(episode.persistentModelID)
         await downloadTranscript(episode.persistentModelID)
-        try? modelContext.save()
+        modelContext.saveIfNeeded()
         print("✅ Metadata updated")
     }
     
@@ -208,7 +263,7 @@ actor EpisodeActor {
                     }
                     episode.chapters.removeAll(where: { $0.type == .mp3 })
                     episode.chapters.append(contentsOf: chapters)
-                    try? modelContext.save()
+                     modelContext.saveIfNeeded()
                 }
 
             }
@@ -258,24 +313,30 @@ actor EpisodeActor {
             
             episode.chapters.removeAll(where: { $0.type == .embedded })
             episode.chapters.append(contentsOf: chapters)
-            try? modelContext.save()
+            modelContext.saveIfNeeded()
         } catch {
             print("Error loading chapters: \(error)")
         }
     }
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+        print("downloadTranscript")
+        guard let episode = modelContext.model(for: episodeID) as? Episode else {
+            print("episode not found")
+            return }
 
         if episode.transcriptData == nil {
             if let vttFileString = episode.transcripts.first(where: {$0.type == "text/vtt"})?.url,
                let vttURL = URL(string: vttFileString) {
+                print(vttFileString)
                 if let vttData = try? await URLSession(configuration: .default).data(from: vttURL) {
                    
                     episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
-                    try? modelContext.save()
+                     modelContext.saveIfNeeded()
                 }
             }
+        }else{
+            print("transcriptData already exists")
         }
         return
     }

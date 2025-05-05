@@ -15,7 +15,11 @@ struct SubscribeToPodcastView: View {
     
     @State private var errorMessage: String?
     @State private var isSubscribed: Bool = false
+    @State private var subscribing: Bool = false
     @Query private var allPodcasts: [Podcast]
+    
+    @State var newPodcastFeed: PodcastFeed?
+    @State var fyydPodcastFeed: FyydPodcast?
     
     private var title: String
     private var xmlURL: String
@@ -23,7 +27,7 @@ struct SubscribeToPodcastView: View {
     private var author: String?
     private var lastpub: Date?
     private var description: String?
-    
+        
     init(fyydPodcastFeed: FyydPodcast) {
         title =  fyydPodcastFeed.title
         xmlURL =  fyydPodcastFeed.xmlURL ?? ""
@@ -31,6 +35,7 @@ struct SubscribeToPodcastView: View {
         lastpub = ISO8601DateFormatter().date(from: (fyydPodcastFeed.lastpub))
         author =  fyydPodcastFeed.author
         description =  fyydPodcastFeed.description
+        self.fyydPodcastFeed = fyydPodcastFeed
         _allPodcasts = Query()
     }
     
@@ -41,6 +46,7 @@ struct SubscribeToPodcastView: View {
         lastpub =  newPodcastFeed.lastRelease
         author =  newPodcastFeed.artist
         description =  newPodcastFeed.description
+        self.newPodcastFeed = newPodcastFeed
         _allPodcasts = Query()
     }
     
@@ -58,7 +64,9 @@ struct SubscribeToPodcastView: View {
 
                         let actor = PodcastModelActor(modelContainer: context.container)
                         do {
+                            subscribing = true
                             _ = try await actor.createPodcast(from: url)
+                            subscribing = false
                             isSubscribed = true
                         } catch {
                             errorMessage = error.localizedDescription
@@ -101,6 +109,11 @@ struct SubscribeToPodcastView: View {
                 Text(error)
                     .foregroundColor(.red)
                     .font(.caption)
+            }
+        }
+        .overlay {
+            if subscribing {
+                ProgressView()
             }
         }
         .onAppear {

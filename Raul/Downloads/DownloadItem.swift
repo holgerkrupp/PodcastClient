@@ -25,6 +25,7 @@ final class DownloadItem: ObservableObject, Identifiable {
     @Published var downloadedBytes: Int64 = 0
 
     init(url: URL, episodeID: UUID? = nil) {
+        print("create DownloadItem \(url)")
         self.url = url
         self.episodeID = episodeID
         
@@ -35,7 +36,7 @@ final class DownloadItem: ObservableObject, Identifiable {
         self.downloadedBytes = bytesWritten
         self.totalBytes = totalBytes
         self.progress = totalBytes > 0 ? Double(bytesWritten) / Double(totalBytes) : 0
-        
+        print("progress \(progress) for DownloadItem \(url)")
     }
     
     func setDownloading(_ downloading: Bool) {

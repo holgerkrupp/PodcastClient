@@ -31,7 +31,7 @@ struct RaulApp: App {
         .onChange(of: phase, {
             switch phase {
             case .background:
-            //    scheduleAppRefresh()
+                scheduleAppRefresh()
                 bgNewAppRefresh()
             
             default: break
@@ -59,6 +59,8 @@ struct RaulApp: App {
     }
 
 
+    
+ 
 
     
     func setLastRefreshDate(){
@@ -69,12 +71,13 @@ struct RaulApp: App {
         UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundProcess")
     }
     
-    func bgNewAppRefresh(){
+    func bgNewAppRefresh() {
         
         // this should replace scheduleAppRefresh
         BasicLogger.shared.log("going to background will schedule checkFeedUpdates")
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
-        
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 10)
+
         do{
             try BGTaskScheduler.shared.submit(request)
 
@@ -82,15 +85,20 @@ struct RaulApp: App {
             print(error)
             BasicLogger.shared.log(error.localizedDescription)
         }
+       
     }
     
     
+ 
     func scheduleAppRefresh() {
         BasicLogger.shared.log("going to background will schedule feedRefresh")
         let request = BGProcessingTaskRequest(identifier: "feedRefresh")
         request.requiresNetworkConnectivity = true
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 10)
+
         do{
             try BGTaskScheduler.shared.submit(request)
+
         }catch{
             print(error)
             BasicLogger.shared.log(error.localizedDescription)
@@ -100,6 +108,16 @@ struct RaulApp: App {
     }
     
 }
+
+struct CarPlayScene: Scene {
+    let container = ModelContainerManager().container
+    var body: some Scene {
+        WindowGroup {
+           // CarPlayPlayNext()
+        }
+    }
+}
+
 extension DeviceUIStyle {
     var sfSymbolName: String {
         switch self {

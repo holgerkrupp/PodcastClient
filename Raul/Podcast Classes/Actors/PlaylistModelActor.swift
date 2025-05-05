@@ -114,9 +114,9 @@ actor PlaylistModelActor : ModelActor {
 
                     }
                     
+                    episode.metaData?.isInbox = false
                     
-                    
-                    try modelContext.save()
+                    modelContext.saveIfNeeded()
                     print("✅ Playlist updated")
                     
                     let episodeActor = EpisodeActor(modelContainer: modelContainer)
@@ -158,7 +158,7 @@ actor PlaylistModelActor : ModelActor {
 
                     
                     
-                    try modelContext.save()
+                     modelContext.saveIfNeeded()
                     print("✅ Playlist updated")
                 } catch {
                     print("error saving Playlist \(error)")
@@ -172,7 +172,7 @@ actor PlaylistModelActor : ModelActor {
 
     // Reorder playlist entries
     func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {
-        guard var entries = playlist.items else {
+        guard let entries = playlist.items else {
             return
         }
 
@@ -189,7 +189,7 @@ actor PlaylistModelActor : ModelActor {
             entry.order = i
         }
 
-        try? modelContext.save()
+         modelContext.saveIfNeeded()
     }
     
     func normalizeOrder() {
@@ -198,6 +198,6 @@ actor PlaylistModelActor : ModelActor {
             entry.order = i
         }
 
-        try? modelContext.save()
+         modelContext.saveIfNeeded()
     }
 }

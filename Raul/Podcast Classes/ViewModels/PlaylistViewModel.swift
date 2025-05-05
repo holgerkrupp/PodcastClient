@@ -13,42 +13,32 @@ class PlaylistViewModel: ObservableObject {
     @Published var entries: [PlaylistEntry] = []
 
     private let actor: PlaylistModelActor
-    private let playlistID: UUID
+    private let playlistTitle: String
     private let context: ModelContext
 
-    init(playlist: Playlist, container: ModelContainer) {
-        self.playlistID = playlist.id
-        self.context = ModelContext(container)
-        self.actor = PlaylistModelActor(modelContainer: container, playlistID: playlistID)
 
-        Task {
-            await loadEntries()
-        }
-    }
     
-    init (playlistID: UUID, container: ModelContainer) {
-        self.playlistID = playlistID
+    init (playlistTitle: String = "de.holgerkrupp.podbay.queue", container: ModelContainer) {
+        self.playlistTitle = playlistTitle
         self.context = ModelContext(container)
-        self.actor = PlaylistModelActor(modelContainer: container, playlistID: playlistID)
+        self.actor = PlaylistModelActor(modelContainer: container)
         
         Task {
             await loadEntries()
         }
     }
-    
 
 
     func loadEntries() async {
-        let localPlaylistID = playlistID
+        let localplaylistTitle = playlistTitle
         let descriptor = FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate { entry in
-                entry.playlist?.id == localPlaylistID
+                entry.playlist?.title == localplaylistTitle
             },
             sortBy: [SortDescriptor(\.order, order: .forward)]
         )
         do {
             let result = try context.fetch(descriptor)
-            print("Fetched \(result.count) playlist entries")
             self.entries = result
         } catch {
             print("Failed to fetch entries: \(error)")

@@ -31,8 +31,8 @@ struct EpisodeListView: View {
             if episode.id != player.currentEpisode?.id {
                 EpisodeRowView(episode: episode)
                     .id(episode.metaData?.id ?? episode.id)
-                    .padding(.horizontal)
-                    .background(.ultraThinMaterial)
+                   
+
             }
         }
     }

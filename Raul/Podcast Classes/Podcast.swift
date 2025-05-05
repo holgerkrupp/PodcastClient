@@ -15,6 +15,8 @@ final class Podcast {
     var desc: String?
     var author: String?
     var feed: URL?
+    var link: URL?
+    var copyright: String?
     @Relationship(deleteRule: .cascade) var episodes: [Episode] = []
     var lastBuildDate: Date?
     var coverImageURL: URL?
@@ -29,7 +31,7 @@ final class Podcast {
     
     init(feed: URL) {
         self.feed = feed
-        self.title = feed.absoluteString
+        self.title = feed.absoluteString.removingPercentEncoding ?? "default"
         self.metaData = PodcastMetaData()
     }
 }

@@ -26,7 +26,7 @@ struct ChapterListView: View {
                         .font(.title)
                         .padding()
                     Spacer()
-                    Text(chapters.first?.type.rawValue ?? "Unknown")
+                //    Text(chapters.first?.type.rawValue ?? "Unknown")
                 }
                 .padding()
                

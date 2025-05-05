@@ -126,7 +126,7 @@ struct TimelineView: View {
          
                       
                     Section{
-                        PlaylistView(playlist: PlaylistManager.shared.playnext, container: modelContext.container)
+                        PlaylistView()
                             .listRowSeparator(.hidden)
                     }
                 

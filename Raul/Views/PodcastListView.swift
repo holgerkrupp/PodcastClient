@@ -24,6 +24,11 @@ struct PodcastListView: View {
                     }
                 }
             }
+            .refreshable {
+                Task{
+                    await viewModel.refreshPodcasts()
+                }
+            }
             .navigationTitle("Podcasts")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

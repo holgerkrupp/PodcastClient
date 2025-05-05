@@ -26,14 +26,14 @@ class CarPlayNowPlaying {
         
         
         
-        
+        /*
         let bookmarksButton = CPNowPlayingImageButton(
             image: UIImage(named: "toolbarIconBookmark")!
         ) {  _ in
             guard Player.shared.currentEpisode != nil else { return }
-          //  self.player.bookmark()
+            self.player.bookmark()
         }
-        
+        */
         
         let listButton = CPNowPlayingImageButton(
             image: UIImage(named: "carplay.list.bullet")!
@@ -44,7 +44,8 @@ class CarPlayNowPlaying {
         }
         
         
-        template.updateNowPlayingButtons([bookmarksButton, listButton])
+        template.updateNowPlayingButtons([ listButton])
+         
     }
     
 }

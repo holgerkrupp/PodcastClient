@@ -261,15 +261,14 @@ class EpisodeDownloadStatus{
     }
     var isAvailableLocally: Bool = false
     
-    
     var lastPlayed: Date?
-    var finishedPlaying: Bool? = false
     var maxPlayposition:Double? = 0.0
     var playPosition:Double? = 0.0
     
+    var finishedPlaying: Bool? = false
     var isArchived: Bool? = false
     var isHistory: Bool? = false
-   
+    var isInbox: Bool? = true
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?
     

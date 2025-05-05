@@ -3,6 +3,7 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 import SwiftData
+import BasicLogger
 
 @Observable
 @MainActor
@@ -88,14 +89,16 @@ class Player: NSObject {
         }
     }
     
-    private func updateCurrentChapter(){
+    private func updateCurrentChapter() -> Bool?{
         
         let playingChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         
         if currentChapter != playingChapter {
             currentChapter = playingChapter
-     
             nextChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+            return true
+        }else{
+            return false
         }
         
     }
@@ -110,8 +113,8 @@ class Player: NSObject {
     private func unloadEpisode(episodeUUID: UUID) async{
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if episode.remainingTime ?? 200 < 10 {
-            episode.metaData?.isHistory? = true
-            print("moving episode \(episode.title) to history")
+            await episodeActor.markasPlayed(episodeUUID)
+            
         }else{
             let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
             await playlistModelActor.add(episodeID: episodeUUID, to: .front)
@@ -128,11 +131,12 @@ class Player: NSObject {
             await unloadEpisode(episodeUUID: currentEpisodeID)
         }
         
+        episode.metaData?.isInbox = false
 
         
         currentEpisode = episode
         currentEpisodeID = episode.id
-        updateCurrentChapter()
+        _ = updateCurrentChapter()
         
         let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
         await playlistModelActor.remove(episodeID: episodeUUID)
@@ -144,10 +148,10 @@ class Player: NSObject {
             let item = await Task {
                 
                 if episode.metaData?.calculatedIsAvailableLocally ?? false, let localFile = episode.localFile {
-               
+                    
                     AVPlayerItem(url: localFile)
                 }else{
-                
+                  
                     AVPlayerItem(url: episode.url)
                 }
                 
@@ -156,6 +160,7 @@ class Player: NSObject {
             
             
             await engine.replaceCurrentItem(with: item)
+           
             
             if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
                 print("last position: \(lastPlayPosition)")
@@ -283,22 +288,36 @@ class Player: NSObject {
         
         // Update UI-related properties on main thread
 
-        updateCurrentChapter()
+        let chapterChange = updateCurrentChapter()
+ 
         updateChapterProgress()
+        
+        // Skip Chapter logic
+        if let currentChapter, currentChapter.shouldPlay && chapterChange == true {
+            if let end = currentChapter.end {
+                jumpTo(time: end)
+                BasicLogger.shared.log("Jumped to end of chapter \(currentChapter.title)")
+                Task.detached(priority: .background) {
+                    let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager().container)
+                    await chapterActor.markChapterAsSkipped(currentChapter.id)
+                }
+            }
+                
+        }
+        
         
         // Move database operations to background thread
         progressUpdateCounter += 1
+
         if progressUpdateCounter >= progressSaveInterval {
             Task.detached(priority: .background) {
-                do {
+                
                     await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
-                    try episode.modelContext?.save()
+                     episode.modelContext?.saveIfNeeded()
                     await MainActor.run {
                         self.progressUpdateCounter = 0
                     }
-                } catch {
-                    print("Failed to save context: \(error.localizedDescription)")
-                }
+               
             }
         }
     }
