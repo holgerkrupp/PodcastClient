@@ -36,7 +36,6 @@ final class DownloadItem: ObservableObject, Identifiable {
         self.downloadedBytes = bytesWritten
         self.totalBytes = totalBytes
         self.progress = totalBytes > 0 ? Double(bytesWritten) / Double(totalBytes) : 0
-        print("progress \(progress) for DownloadItem \(url)")
     }
     
     func setDownloading(_ downloading: Bool) {

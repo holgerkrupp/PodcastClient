@@ -85,6 +85,14 @@ class EpisodeDownloadStatus{
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
     }
     
+    var playProgress: Double {
+       
+        guard metaData?.playPosition != nil else { return 0.0 }
+        guard duration != 0.0 else { return 0.0 }
+        guard duration != nil else { return 0.0 }
+        return  Double(metaData?.playPosition ?? 0.0) / Double(duration ?? 1)
+    }
+    
     // calculated properties that will be generated out of existing properties.
     var localFile: URL? {
         let fileName = url.lastPathComponent

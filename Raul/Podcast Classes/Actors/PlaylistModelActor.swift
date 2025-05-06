@@ -73,6 +73,11 @@ actor PlaylistModelActor : ModelActor {
     func orderedEpisodes() -> [Episode] {
         return playlist.ordered.compactMap { $0.episode }
     }
+    
+    func nextEpisode() -> UUID? {
+        return orderedEpisodes().first?.id 
+    }
+    
     // Add an episode to the playlist
     func add(episodeID: UUID, to position: Playlist.Position = .end) async {
         

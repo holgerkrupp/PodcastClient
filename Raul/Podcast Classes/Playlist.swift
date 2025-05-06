@@ -21,7 +21,7 @@ class Playlist{
     }
     
     init(){
-        self.title = "Untitled Playlist"
+        self.title = "de.holgerkrupp.podbay.queue"
     }
     
     enum CodingKeys: CodingKey {

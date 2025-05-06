@@ -33,7 +33,7 @@ struct RaulApp: App {
             case .background:
                 scheduleAppRefresh()
                 bgNewAppRefresh()
-            
+              //  debugActions()
             default: break
             }
         })
@@ -59,7 +59,18 @@ struct RaulApp: App {
     }
 
 
-    
+    func debugActions() {
+        let sharedContainerURL :URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient")
+        // replace "group.etc.etc" above with your App Group's identifier
+        NSLog("sharedContainerURL = \(String(describing: sharedContainerURL))")
+        if let sourceURL :URL = sharedContainerURL?.appendingPathComponent("SharedDatabase.sqlite") {
+            if let destinationURL :URL = FileManager().urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("copyOfStore.sqlite") {
+                try? FileManager().removeItem(at: destinationURL)
+                try? FileManager().copyItem(at: sourceURL, to: destinationURL)
+             //   try? FileManager().replaceItemAt(destinationURL, withItemAt: sourceURL)
+            }
+        }
+    }
  
 
     

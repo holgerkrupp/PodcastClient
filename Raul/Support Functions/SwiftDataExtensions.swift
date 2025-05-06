@@ -9,19 +9,12 @@ import SwiftData
 
 extension ModelContext{
     func saveIfNeeded(){
-        
         if self.hasChanges{
-    
                 do {
                     try self.save()
-               
                 }catch{
                   print(error.localizedDescription)
                 }
-            
-            }else{
-                print("context has no changes, no need to save")
             }
-        
     }
 }

@@ -36,12 +36,14 @@ class Player: NSObject {
     var nextChapter: Chapter?
     var previousChapter: Chapter?
     var episodeActor: EpisodeActor
-    
+    var playlistActor: PlaylistModelActor
     override init()  {
         episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
+        playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
         super.init()
         loadLastPlayedEpisode()
         loadPlayBackSpeed()
+        pause()
 
     }
     
@@ -72,7 +74,7 @@ class Player: NSObject {
             playbackRate = savedPlaybackRate
             Task {
                 await engine.setRate(playbackRate)
-                 pause()
+                // pause()
             }
         }
         
@@ -112,7 +114,7 @@ class Player: NSObject {
         
     private func unloadEpisode(episodeUUID: UUID) async{
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
-        if episode.remainingTime ?? 200 < 10 {
+        if episode.playProgress > 0.95 {
             await episodeActor.markasPlayed(episodeUUID)
             
         }else{
@@ -136,6 +138,9 @@ class Player: NSObject {
         
         currentEpisode = episode
         currentEpisodeID = episode.id
+        
+        jumpTo(time: episode.metaData?.playPosition ?? 0)
+        
         _ = updateCurrentChapter()
         
         let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
@@ -169,7 +174,7 @@ class Player: NSObject {
                 print("no last position")
             }
             
-            updateNowPlayingInfo(for: episode)
+            updateNowPlayingInfo()
             
             if playDirectly {
                 play()
@@ -221,9 +226,11 @@ class Player: NSObject {
  
     
     func play(){
+        loadPlayBackSpeed()
         Task {
+           
+            await engine.play() // <- maybe i can remove this, i gues "setRate" already starts playing
             await engine.setRate(playbackRate)
-            await engine.play()
             isPlaying = true
         }
         updateLastPlayed()
@@ -247,6 +254,9 @@ class Player: NSObject {
             await engine.seek(to: cmTime)
         }
         playPosition = time
+        _ = updateCurrentChapter()
+        updateChapterProgress()
+        savePlayPosition()
     }
     
     func setRate(_ rate: Float){
@@ -260,7 +270,7 @@ class Player: NSObject {
             for await time in await engine.playbackPositionStream() {
                 playPosition = time
                 updateEpisodeProgress(to: time)
-               
+                updateNowPlayingInfo()
             }
 
             handlePlaybackFinished()
@@ -293,7 +303,7 @@ class Player: NSObject {
         updateChapterProgress()
         
         // Skip Chapter logic
-        if let currentChapter, currentChapter.shouldPlay && chapterChange == true {
+        if let currentChapter, currentChapter.shouldPlay == false && chapterChange == true {
             if let end = currentChapter.end {
                 jumpTo(time: end)
                 BasicLogger.shared.log("Jumped to end of chapter \(currentChapter.title)")
@@ -310,15 +320,18 @@ class Player: NSObject {
         progressUpdateCounter += 1
 
         if progressUpdateCounter >= progressSaveInterval {
-            Task.detached(priority: .background) {
-                
-                    await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
-                     episode.modelContext?.saveIfNeeded()
-                    await MainActor.run {
-                        self.progressUpdateCounter = 0
-                    }
-               
-            }
+            savePlayPosition()
+                   
+            progressUpdateCounter = 0
+                    
+        }
+    }
+    
+    private func savePlayPosition() {
+        guard let episode = currentEpisode else { return }
+        Task.detached(priority: .background) {
+            await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
+             episode.modelContext?.saveIfNeeded()
         }
     }
     
@@ -341,13 +354,22 @@ class Player: NSObject {
      //   currentEpisode?.finishedPlaying = true
         updateLastPlayed()
         stopPlaybackUpdates()
-/*
-        currentPlaylist.items?.removeAll(where: { $0.episode == currentEpisode })
-
-        if let next = currentPlaylist.ordered.first?.episode {
-            playEpisode(next)
+        /*
+        Task{
+            if let episodeID = currentEpisode?.id{
+                await unloadEpisode(episodeUUID: episodeID)
+                
+            }
         }
- */
+        */
+        
+        Task{
+            if let nextEpisodeID = await playlistActor.nextEpisode(){
+                await playEpisode(nextEpisodeID, playDirectly: true)
+            }
+        }
+        
+
     }
     
     
@@ -374,8 +396,9 @@ class Player: NSObject {
         remoteCommandsSetup = true
     }
     
-    func updateNowPlayingInfo(for episode: Episode)  {
-        var info: [String: Any] =  [
+    func updateNowPlayingInfo()  {
+        guard let episode = currentEpisode else { return }
+        let info: [String: Any] =  [
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist: episode.author ?? episode.podcast?.title ?? episode.podcast?.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,

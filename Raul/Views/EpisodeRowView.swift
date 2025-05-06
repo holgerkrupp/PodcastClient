@@ -23,87 +23,99 @@ struct EpisodeRowView: View {
     
     var body: some View {
       
-            VStack(alignment: .leading, spacing: 8) {
-                VStack{
-                    HStack {
-                        Text("DEBUG")
-                        Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                        Image(systemName: episode.metaData?.isInbox ?? false ? "tray.fill" : "tray")
-                        Image(systemName: episode.metaData?.isHistory ?? false ? "newspaper.fill" : "newspaper")
-                        
-                        Image(systemName: episode.metaData?.isAvailableLocally ?? false ? "document.fill" : "document")
-                            .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
-                        Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
-                            .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
-                        
-                        if episode.downloadItem?.isDownloading ?? false {
-                            Image(systemName: "arrow.down")
-                            
-                                .id(episode.downloadItem?.id ?? UUID())
-                        }
-                        
-                        
-                    }
-                    .font(.caption)
+            VStack(alignment: .leading) {
+                ZStack{
+                    GeometryReader { geometry in
+                          // Background layer
+                          Rectangle()
+                              .fill(Color.accentColor.opacity(0.5))
+                              .frame(width: geometry.size.width * episode.playProgress)
+                             // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
+                      }
+                    .padding()
                     
                     
-                    HStack {
-                        Group {
-                            if let image = image {
-                                image
-                                    .resizable()
-                                    .scaledToFit()
-                            } else {
-                                Color.gray.opacity(0.2)
+                    VStack{
+                        
+                        HStack {
+                            Text("DEBUG")
+                            Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                            Image(systemName: episode.metaData?.isInbox ?? false ? "tray.fill" : "tray")
+                            Image(systemName: episode.metaData?.isHistory ?? false ? "newspaper.fill" : "newspaper")
+                            
+                            Image(systemName: episode.metaData?.isAvailableLocally ?? false ? "document.fill" : "document")
+                                .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                            Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
+                                .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                            
+                            if episode.downloadItem?.isDownloading ?? false {
+                                Image(systemName: "arrow.down")
+                                
+                                    .id(episode.downloadItem?.id ?? UUID())
                             }
                             
+                            
                         }
-                        .frame(width: 50, height: 50)
-                        .task {
-                            await loadImage()
+                        .font(.caption)
+                        HStack {
+                            Group {
+                                if let image = image {
+                                    image
+                                        .resizable()
+                                        .scaledToFit()
+                                } else {
+                                    Color.gray.opacity(0.2)
+                                }
+                                
+                            }
+                            .frame(width: 50, height: 50)
+                            .task {
+                                await loadImage()
+                            }
+                            
+                            VStack(alignment: .leading) {
+                                HStack {
+                                    Text(episode.podcast?.title ?? "")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Text(episode.title)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                                if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
+                                    Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }else{
+                                    Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Button(action: {
+                                    showDetails.toggle()
+                                }) {
+                                    Text("details")
+                                }
+                                .buttonStyle(.plain)
+                                
+                                
+                            }
+                            
+                            
                         }
                         
-                        VStack(alignment: .leading) {
-                            HStack {
-                                Text(episode.podcast?.title ?? "")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Text(episode.title)
-                                .font(.headline)
-                                .lineLimit(2)
-                            if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                                Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }else{
-                                Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Button(action: {
-                                showDetails.toggle()
-                            }) {
-                                Text("details")
-                            }
-                            .buttonStyle(.plain)
-                            
-                            
-                        }
-                        
-                       
                     }
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                
-                .onTapGesture {
-                    withAnimation {
-                        isExtended.toggle()
+                    .padding()
+                    .background(.ultraThinMaterial)
+                    
+                    .onTapGesture {
+                        withAnimation {
+                            isExtended.toggle()
+                        }
                     }
                 }
                 

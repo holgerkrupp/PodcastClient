@@ -35,10 +35,7 @@ struct PodcastDetailView: View {
                 Text(podcast.title)
                     .font(.headline)
                     .lineLimit(2)
-                if let copyright = podcast.copyright {
-                    Text(copyright)
-                        .font(.caption)
-                }
+
                 if let podcastLink = podcast.link {
                     Link(destination: podcastLink) {
                         Text("Open in Safari")
@@ -49,6 +46,11 @@ struct PodcastDetailView: View {
               
             }
         }
+        if let copyright = podcast.copyright {
+            Text(copyright)
+                .font(.caption)
+        }
+        Divider()
         if let desc = podcast.desc {
             ExpandableTextView(text: desc)
                 .font(.caption2)

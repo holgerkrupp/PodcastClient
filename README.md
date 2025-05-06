@@ -7,8 +7,9 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 - [ ] Create Podcast Detail View
-- [ ] Create Episode Detail View
+- [?] Load Playspeed when unpausing
 - [ ] Integrate Settings (Per Podcasts and global)
+- [?] When finished Playing play next episode in line.
 
 
 ## Alpha min Requiremets
@@ -37,7 +38,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [x] m4a
 - - [x] mp3
 - - [ ] extracted from shownotes
-- - [ ] Update Chapter View more snappy
+- - [x] Update Chapter View more snappy
 - [ ] include chapter art for mp3/m4a
 - [?] include chapter links for mp3/m4a
 - [x] postprocess chapters to find duration/end if no value is given ( chapter[n].end = chapter[n+1].start ? episode.end)
@@ -61,7 +62,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] auto download/refresh feeds
 
 ### Player
-- [ ] skip manually selected chapters
+- [x] skip manually selected chapters
 - [ ] sleep timer
 - [ ] play next queue
 - [x] set playbackspeed

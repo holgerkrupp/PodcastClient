@@ -27,6 +27,7 @@ struct InboxView: View {
                 Section() {
                     PodcastDetailView(podcast: podcast)
                 }
+                .listRowSeparator(.hidden)
             }
             
             
