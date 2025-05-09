@@ -104,10 +104,6 @@ class EpisodeDownloadStatus{
         
         let uniqueURL = baseURL.appendingPathComponent("\(guid ?? id.uuidString)_\(sanitizedFileName)")
         
-        // Create the full URL
-      //  let fullURL = baseURL.appendingPathComponent(sanitizedFileName)
-        
-        // Ensure the directory exists
         try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
                                                withIntermediateDirectories: true,
                                                attributes: nil)
@@ -128,6 +124,8 @@ class EpisodeDownloadStatus{
         }
          
     }()
+    
+
     
 
     
@@ -261,6 +259,10 @@ class EpisodeDownloadStatus{
 
 @Model final class EpisodeMetaData{
     
+    enum EpisodeStatus: String, Codable{
+        case inbox, history, archived, unknown
+    }
+    
     var calculatedIsAvailableLocally: Bool {
         guard let url = episode?.localFile else {
             return false
@@ -277,6 +279,8 @@ class EpisodeDownloadStatus{
     var isArchived: Bool? = false
     var isHistory: Bool? = false
     var isInbox: Bool? = true
+    
+    var status: EpisodeStatus? = EpisodeStatus.inbox
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?
     

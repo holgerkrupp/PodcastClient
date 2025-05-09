@@ -1,20 +1,107 @@
 import Foundation
 import AVFoundation
 
+enum PlaybackInterruptionEvent {
+    case began
+    case ended
+    
+    
+    case pause
+    case resume
+
+     
+}
+
 actor PlayerEngine {
     private var avPlayer = AVPlayer()
     private var endObserver: Any?
-    private var playbackEndedContinuation: AsyncStream<Double>.Continuation?
+    private var playbackEndedContinuation: AsyncStream<Void>.Continuation?
     private let session = AVAudioSession.sharedInstance()
+    private var interruptionHandler: (@Sendable (PlaybackInterruptionEvent) -> Void)?
 
-    init() {
+
+     init() {
         avPlayer = AVPlayer()
         do{
             try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setActive(true)
         }catch{
-            print(error)
+            print("Audio session setup failed:", error)
         }
+        
+         Task {
+             await self.addEndObserver()
+             await self.addChangeObserver()
+         }
+        
       }
+    func setInterruptionHandler(_ handler: @escaping @Sendable (PlaybackInterruptionEvent) -> Void) {
+           interruptionHandler = handler
+       }
+    
+    private  func addEndObserver() {
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
+            guard let userInfo = notification.userInfo,
+                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+            switch type {
+            case .began:
+                Task{
+                    await self?.sendInterrupt(type: .began)
+                }
+            case .ended:
+                if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        Task{
+                            await self?.sendInterrupt(type: .ended)
+                        }
+                        
+                    }
+                }
+
+            @unknown default:
+                print("interrupted: unknown type: \(type)")
+                break
+            }
+        }
+    }
+    private  func addChangeObserver() {
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let userInfo = notification.userInfo,
+                  let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+            
+            if reason == .oldDeviceUnavailable {
+                // Headphones unplugged, pause playback
+                Task { await self.sendInterrupt(type: .began) }
+            }
+        }
+    }
+    
+    func sendInterrupt(type: PlaybackInterruptionEvent){
+        print("sendInterrupt type: \(type)")
+        switch type {
+        case .began:
+            try? self.session.setActive(false)
+            self.interruptionHandler?(.began)
+        case .ended:
+            break
+        case .pause:
+            //   self.avPlayer.pause()
+               try? self.session.setActive(false)
+               self.interruptionHandler?(.pause)
+        case .resume:
+            try? self.session.setActive(true)
+            self.interruptionHandler?(.resume)
+        }
+    }
+    
     
     func setRate(_ newRate: Float) async {
         avPlayer.rate = newRate
@@ -39,14 +126,12 @@ actor PlayerEngine {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            Task { await self?.handlePlaybackEnded() }
+            Task {
+            }
         }
     }
+    
 
-    private func handlePlaybackEnded() {
-        playbackEndedContinuation?.finish()
-        playbackEndedContinuation = nil
-    }
 
     func play() {
         do{
@@ -76,20 +161,36 @@ actor PlayerEngine {
      }
 
     
-    func playbackPositionStream(interval: TimeInterval = 0.5) -> AsyncStream<Double> {
+    func playbackStream(interval: TimeInterval = 0.5) -> AsyncStream<PlaybackEvent> {
         AsyncStream { continuation in
-            Task {
+            let task = Task {
                 while !Task.isCancelled {
                     let position = avPlayer.currentTime().seconds
-                    continuation.yield(position)
+                    continuation.yield(.position(position))
                     try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 }
+            }
+
+            let endObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: avPlayer.currentItem,
+                queue: .main
+            ) { _ in
+                continuation.yield(.ended)
                 continuation.finish()
+                task.cancel()
             }
 
             continuation.onTermination = { _ in
-                // You could handle any cleanup if needed here
+              //  NotificationCenter.default.removeObserver(endObserver)
+                task.cancel()
             }
         }
     }
+    
+}
+
+enum PlaybackEvent {
+    case position(Double)
+    case ended
 }

@@ -8,11 +8,16 @@ import BasicLogger
 @Observable
 @MainActor
 class Player: NSObject {
+    
+     let progressThreshold: Double = 0.95 // how much of an episode must be played before it is considered "played"
+    
+    
     static let shared = Player()
   //  private let modelContext = ModelContainerManager().container.mainContext
 
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
+
     var playbackRate: Float = 1.0 {
         didSet {
             UserDefaults.standard.set(playbackRate, forKey: "playbackRate")
@@ -43,6 +48,7 @@ class Player: NSObject {
         super.init()
         loadLastPlayedEpisode()
         loadPlayBackSpeed()
+        listenToEvent()
         pause()
 
     }
@@ -74,6 +80,7 @@ class Player: NSObject {
             playbackRate = savedPlaybackRate
             Task {
                 await engine.setRate(playbackRate)
+                
                 // pause()
             }
         }
@@ -114,7 +121,7 @@ class Player: NSObject {
         
     private func unloadEpisode(episodeUUID: UUID) async{
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
-        if episode.playProgress > 0.95 {
+        if episode.playProgress > progressThreshold {
             await episodeActor.markasPlayed(episodeUUID)
             
         }else{
@@ -130,12 +137,12 @@ class Player: NSObject {
     func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true) async {
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
+            print("unloading episode \(currentEpisodeID)")
             await unloadEpisode(episodeUUID: currentEpisodeID)
         }
         
         episode.metaData?.isInbox = false
 
-        
         currentEpisode = episode
         currentEpisodeID = episode.id
         
@@ -173,12 +180,12 @@ class Player: NSObject {
             } else {
                 print("no last position")
             }
-            
-            updateNowPlayingInfo()
+            initRemoteCommandCenter()
+            setupStaticNowPlayingInfo()
             
             if playDirectly {
                 play()
-                initRemoteCommandCenter()
+                
             }
         }
     }
@@ -221,9 +228,41 @@ class Player: NSObject {
         }
     }
     
+    func listenToEvent() {
+        Task{
+            await engine.setInterruptionHandler { [weak self] event in
+                guard let self else { return }
+                switch event {
+                case .began:
+                    Task{
+                        await self.handleInterruptionBegan()
+                    }
+                case .ended:
+                    Task{
+                        await self.resumeAfterInterruption()
+                    }
+                case .pause:
+                    Task{
+                        await self.handleInterruptionBegan()
+                    }
+                case .resume:
+                    Task{
+                        await self.resumeAfterInterruption()
+                    }
+                }
+            }
+        }
+    }
 
-
- 
+    private func handleInterruptionBegan(){
+        BasicLogger.shared.log("Interruption Began")
+        pause()
+    }
+    
+    private func resumeAfterInterruption(){
+        BasicLogger.shared.log("Interruption Ended")
+        play()
+    }
     
     func play(){
         loadPlayBackSpeed()
@@ -235,6 +274,7 @@ class Player: NSObject {
         }
         updateLastPlayed()
         startPlaybackUpdates()
+        startNowPlayingInfoUpdater()
     }
     
     
@@ -246,6 +286,24 @@ class Player: NSObject {
         }
         updateLastPlayed()
         stopPlaybackUpdates()
+        stopNowPlayingInfoUpdater()
+    }
+    
+    func skipback(){
+        jumpPlaypostion(by: -Double(15))
+        
+    }
+    
+    func skipforward(){
+        jumpPlaypostion(by: Double(30))
+    }
+    
+    private func jumpPlaypostion(by seconds:Double){
+        let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
+        
+        let now = CMTimeMakeWithSeconds(playPosition,preferredTimescale: 1)
+        let jumpToTime = CMTimeAdd(now, secondsToAdd).seconds
+        jumpTo(time: jumpToTime)
     }
 
     func jumpTo(time: Double) {
@@ -264,18 +322,35 @@ class Player: NSObject {
         playbackRate = rate
     }
 
-    private func startPlaybackUpdates() {
-        playbackTask?.cancel()
-        playbackTask = Task {
-            for await time in await engine.playbackPositionStream() {
-                playPosition = time
-                updateEpisodeProgress(to: time)
-                updateNowPlayingInfo()
-            }
 
-            handlePlaybackFinished()
+    
+    private func stopPlaybackUpdates() {
+        playbackTask?.cancel()
+        playbackTask = nil
+    }
+    
+    
+
+    private func startPlaybackUpdates() {
+        Task {
+            for await event in await engine.playbackStream() {
+                switch event {
+                case .position(let time):
+                    playPosition = time
+                    updateEpisodeProgress(to: time)
+                    setupStaticNowPlayingInfo()
+                case .ended:
+                    BasicLogger.shared.log("Playback finished automatically")
+                    handlePlaybackFinished()
+                }
+            }
+            print("Loop ended") // This should run if the loop ends gracefully
+
         }
     }
+    
+    
+    
     func updateLastPlayed()  {
         if let currentEpisode {
             Task{
@@ -285,16 +360,13 @@ class Player: NSObject {
         }
     }
 
-    private func stopPlaybackUpdates() {
-        playbackTask?.cancel()
-        playbackTask = nil
-    }
+
 
     private var progressUpdateCounter = 0
     private let progressSaveInterval = 20  // 0.5 seconds * 20 = 10 seconds
     
     private func updateEpisodeProgress(to time: Double) {
-        guard let episode = currentEpisode else { return }
+      //  guard let episode = currentEpisode else { return }
         
         // Update UI-related properties on main thread
 
@@ -349,25 +421,21 @@ class Player: NSObject {
         }
     }
 
+
     private func handlePlaybackFinished() {
-        print("Playback finished.")
-     //   currentEpisode?.finishedPlaying = true
+        print("Playback finished. - handlePlaybackFinished")
         updateLastPlayed()
         stopPlaybackUpdates()
-        /*
-        Task{
-            if let episodeID = currentEpisode?.id{
-                await unloadEpisode(episodeUUID: episodeID)
-                
+        print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
+        if currentEpisode?.playProgress ?? 0 >= progressThreshold {
+            Task{
+                if let nextEpisodeID = await playlistActor.nextEpisode(){
+                    BasicLogger.shared.log("Playing next episode")
+                    await playEpisode(nextEpisodeID, playDirectly: true)
+                }
             }
         }
-        */
-        
-        Task{
-            if let nextEpisodeID = await playlistActor.nextEpisode(){
-                await playEpisode(nextEpisodeID, playDirectly: true)
-            }
-        }
+
         
 
     }
@@ -396,14 +464,36 @@ class Player: NSObject {
         remoteCommandsSetup = true
     }
     
-    func updateNowPlayingInfo()  {
+    func setupStaticNowPlayingInfo()   {
         guard let episode = currentEpisode else { return }
+        /*
+        var mediaArtwort:MPMediaItemArtwork?
+        
+        
+        if let chapterCover = currentChapter?.imageData{
+            if let image = UIImage(data: chapterCover){
+                mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            }
+        }
+         else
+        
+         if let imageURL = currentEpisode?.imageURL{
+             Task{
+                 if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+                     mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                 }
+             }
+        }
+         */
+        
+        
         let info: [String: Any] =  [
+        //    MPMediaItemPropertyArtwork: mediaArtwort ?? UIImage(named: "AppIcon") ?? UIImage(),
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist: episode.author ?? episode.podcast?.title ?? episode.podcast?.author ?? "",
-            MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
-            MPNowPlayingInfoPropertyPlaybackRate: playbackRate
+            MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0
+        //    MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
+         //   MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
         
        

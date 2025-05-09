@@ -26,56 +26,61 @@ struct ChapterListView: View {
                         .font(.title)
                         .padding()
                     Spacer()
-                //    Text(chapters.first?.type.rawValue ?? "Unknown")
+                    Text(chapters.first?.type.rawValue ?? "Unknown")
+                        .font(.caption)
                 }
                 .padding()
                
                 
                 ForEach(sortedChapters, id: \.id) { chapter in
-                    VStack(alignment: .leading) {
-                        Text(chapter.title)
-                            .font(.title3)
+                   
                         
-                        HStack {
-                            Text(Duration.seconds(chapter.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                .font(.footnote)
-                                .monospacedDigit()
                             
-                            Spacer()
-                            
-                            if let url = chapter.link {
-                                Link(destination: url) {
-                                    Image(systemName: "link")
-                                        .foregroundColor(.blue)
-                                }
-                                .padding(.trailing, 8)
-                            }
-                            
-                            Toggle("Play Chapter", isOn: Binding(
-                                get: { chapter.shouldPlay },
-                                set: { newValue in
-                                    if let index = chapters.firstIndex(where: { $0.id == chapter.id }) {
-                                        chapters[index].shouldPlay = newValue
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(chapter.title)
+                                        .font(.title3)
+                                    HStack {
+                                        Text(Duration.seconds(chapter.duration ?? 0.0).formatted(.units(width: .narrow)))
+                                            .font(.footnote)
+                                            .monospacedDigit()
+                                        
+                                        Spacer()
+                                        
+                                        if let url = chapter.link {
+                                            Link(destination: url) {
+                                                Image(systemName: "link")
+                                                    .foregroundColor(.blue)
+                                            }
+                                            .padding(.trailing, 8)
+                                        }
                                     }
                                 }
-                            ))
-                            .toggleStyle(SkipChapter())
+                                Toggle("Play Chapter", isOn: Binding(
+                                    get: { chapter.shouldPlay },
+                                    set: { newValue in
+                                        if let index = chapters.firstIndex(where: { $0.id == chapter.id }) {
+                                            chapters[index].shouldPlay = newValue
+                                        }
+                                    }
+                                ))
+                                .toggleStyle(SkipChapter())
+                           
                         }
-                    }
-                    .padding(.horizontal)
-                    .onTapGesture {
-                        Task{
-                           await player.skipTo(chapter: chapter)
+                        .padding(.horizontal)
+                        .onTapGesture {
+                            Task{
+                                await player.skipTo(chapter: chapter)
+                            }
                         }
-                    }
-                    .foregroundStyle(
-                        chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accentColor : Color.primary
-                    )
+                        .foregroundStyle(
+                            chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accentColor : Color.primary
+                        )
+                        if chapter.id != sortedChapters.last?.id {
+                            Divider()
+                                .padding(.horizontal)
+                        }
                     
-                    if chapter.id != sortedChapters.last?.id {
-                        Divider()
-                            .padding(.horizontal)
-                    }
                    
                 }
             }

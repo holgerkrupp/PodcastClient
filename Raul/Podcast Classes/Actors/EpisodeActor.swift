@@ -113,6 +113,8 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         episode.metaData?.finishedPlaying = true
         episode.metaData?.isHistory = true
+        episode.metaData?.status = .history
+
         modelContext.saveIfNeeded()
     }
     
@@ -123,10 +125,12 @@ actor EpisodeActor {
         }
         episode.metaData?.isArchived = true
         episode.metaData?.isInbox = false
-        /*
+        episode.metaData?.status = .archived
+
+        
         let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer)
         await PlaylistmodelActor.remove(episodeID: episodeID)
-    */
+    
         await deleteFile(episodeID: episodeID)
          modelContext.saveIfNeeded()
     }
@@ -154,6 +158,8 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         episode.metaData?.isArchived = false
         episode.metaData?.isInbox = true
+        episode.metaData?.status = .inbox
+
         await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
         modelContext.saveIfNeeded()
     }
@@ -168,22 +174,20 @@ actor EpisodeActor {
         }
     }
 
-    func markEpisodeHistory(episodeID: UUID, value: Bool) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
 
-        episode.metaData?.isHistory = value
-        modelContext.saveIfNeeded()
-        print("✅ Metadata updated")
-    }
 
     func markEpisodeAvailable(fileURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+        guard let episode = await fetchEpisode(byURL: fileURL) else {
+            
+            await BasicLogger.shared.log("Could not mark Episode As Available")
+            return }
 
         episode.metaData?.isAvailableLocally = true
         await createChapters(episode.persistentModelID)
         await downloadTranscript(episode.persistentModelID)
         modelContext.saveIfNeeded()
         print("✅ Metadata updated")
+        await BasicLogger.shared.log("Did mark Episode As Available")
     }
     
     func markEpisodeAvailable(episodeID: UUID) async {
@@ -215,6 +219,9 @@ actor EpisodeActor {
                 print("Error determining audio format: \(error)")
             }
         }
+       if episode.chapters.isEmpty {
+           await extractShownotesChapters(fileURL: episode.url)
+       }
     }
     
   private  func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
@@ -318,6 +325,49 @@ actor EpisodeActor {
             print("Error loading chapters: \(error)")
         }
     }
+    
+    
+    //MARK: Create Chapters from Episode Description
+    func extractShownotesChapters(fileURL: URL) async  {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+        guard let text = episode.desc else { return  }
+        print("extracting Chapters from Shownotes")
+        let extractedData = extractTimeCodesAndTitles(from: text)
+        var newchapters:[Chapter] = []
+        for extractedChapter in extractedData{
+            if let startingTime =  extractedChapter.key.durationAsSeconds{
+                print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
+                let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
+                newchapters.append(newChapter)
+            }
+        }
+        print("returning \(newchapters.count.formatted()) Chapters")
+        episode.chapters.removeAll(where: { $0.type == .extracted })
+        episode.chapters.append(contentsOf: newchapters)
+        modelContext.saveIfNeeded()
+    }
+    
+    
+    func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String] {
+        var result = [String: String]()
+        
+
+        let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|<br />|</p>|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
+
+        let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: htmlEncodedText.utf16.count))
+        
+        for match in matches {
+            if let titleRange = Range(match.range(at: 1), in: htmlEncodedText),
+               let timeCodeRange = Range(match.range, in: htmlEncodedText) {
+                let title = String(htmlEncodedText[titleRange])
+                let timeCode = String(htmlEncodedText[timeCodeRange].split(separator: " ")[0]) // Only take the time code part
+                result[timeCode] = title.decodeHTML() ?? title
+            }
+        }
+        
+        return result
+    }
+    
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async {
         print("downloadTranscript")

@@ -61,20 +61,22 @@ struct TimelineView: View {
                         playerView(fullSize: true)
                             .id("player")
                             .padding(.horizontal)
+                        /*
                             .onAppear {
-                                // Animate into mini when it's off-screen
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     withAnimation {
                                         proxy.scrollTo("player", anchor: .center)
                                     }
                                 }
                             }
-                        
+                            */
+                            
+                            .background(
                         GeometryReader { geo in
                             Color.clear
                                 .onChange(of: geo.frame(in: .global)) { oldValue, newValue in
                                     let screenHeight = UIScreen.main.bounds.height
-                                    let buffer: CGFloat = 100 // Increased buffer for better timing
+                                    let buffer: CGFloat = 0 // Increased buffer for better timing
                                     
                                     
                                     isScrollingUp = newValue.minY > oldValue.minY
@@ -96,8 +98,11 @@ struct TimelineView: View {
                                     }
                                 }
                         }
-                        .frame(height: 0)
+                            
+                        )
                         .listRowSeparator(.hidden)
+                            
+                         
                     }
                     Section {
                        

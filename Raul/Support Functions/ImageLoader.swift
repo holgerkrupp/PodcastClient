@@ -1,5 +1,7 @@
 import SwiftUI
 
+
+
 struct ImageWithURL: View {
     
    @ObservedObject var imageLoader: ImageLoaderAndCache
@@ -7,9 +9,6 @@ struct ImageWithURL: View {
     init(_ url: URL) {
         imageLoader = ImageLoaderAndCache(imageURL: url)
     }
-    
-    
-    
     var body: some View {
         Image(uiImage: (UIImage(data: self.imageLoader.imageData) ?? UIImage()))
             .resizable()
@@ -49,6 +48,25 @@ class ImageLoaderAndCache: ObservableObject {
                     }
                 }
             }.resume()
+        }
+    }
+    
+    static func loadUIImage(from url: URL) async -> UIImage? {
+        let cache = URLCache.shared
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 60.0)
+        
+        if let cachedData = cache.cachedResponse(for: request)?.data {
+            return UIImage(data: cachedData)
+        } else {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let cachedResponse = CachedURLResponse(response: response, data: data)
+                cache.storeCachedResponse(cachedResponse, for: request)
+                return UIImage(data: data)
+            } catch {
+                print("Failed to load image: \(error)")
+                return nil
+            }
         }
     }
 }

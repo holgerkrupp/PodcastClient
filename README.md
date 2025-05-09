@@ -1,13 +1,17 @@
 # PodcastClient
 An Open Source Podcast client. 
 
-I've started the development of an open source Podcast client that doesn't rely on a server back in 2023. I got a first working Alpha in 2024 that already incloded Transcripts, accidental skip detection and other features that I missed in other PodcastClients. Then life happend and I wouldn't find the time needed to work on the App. Now I have restarted. I'm removing my old code base and starting from scratch (nearly, I'm reusing parts that are reusable). I'm targetting iOS18 (or 19) - I will follow all restrictions Swift6 brings to avoid any race conditions. I hope this new approach will go better than before.
+I've started the development of an open source Podcast client that doesn't rely on a server back in 2023. I got a first working Alpha in 2024 that already incloded Transcripts, accidental skip detection and other features that I missed in other PodcastClients. Then life happend and I wouldn't find the time needed to work on the App. Now I have restarted. I'm removing my old code base and starting from scratch (nearly, I'm reusing parts that are reusable). I'm targetting iOS18 (or 19) - I will follow all restrictions Swift6 brings to avoid any race conditions. I hope this new approach will go better than before. I'm not relying on any outside code. All included packages have been written by me and are available to use in other apps.
 
 I'm, currently building the base functionallity, reimplementing what I have and focus on a modern design later. My first approach was to mimic a existing app that was no longer maintained. As that app now has a new owner and receives updates, I will use my own design approach.
 
+
 ### Next Steps
 - [ ] Create Podcast Detail View
-- [?] Load Playspeed when unpausing
+- [ ] Now Playing Cover Images
+- [ ] CarPlay
+- [x] React on interrupts
+- [x] React on Audio Routing Changed (pause when headphones are disconnected)
 - [ ] Integrate Settings (Per Podcasts and global)
 - [?] When finished Playing play next episode in line.
 
@@ -37,7 +41,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [x] PSC
 - - [x] m4a
 - - [x] mp3
-- - [ ] extracted from shownotes
+- - [x] extracted from shownotes
 - - [x] Update Chapter View more snappy
 - [ ] include chapter art for mp3/m4a
 - [?] include chapter links for mp3/m4a
@@ -64,7 +68,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ### Player
 - [x] skip manually selected chapters
 - [ ] sleep timer
-- [ ] play next queue
+- [x] play next queue
 - [x] set playbackspeed
 - - [ ] (per podcast)
 

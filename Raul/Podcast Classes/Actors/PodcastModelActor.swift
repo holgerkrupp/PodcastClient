@@ -206,6 +206,7 @@ actor PodcastModelActor {
             if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
             episode.metaData?.isArchived = true
             episode.metaData?.isInbox = false
+            episode.metaData?.status = .archived
         }
         modelContext.saveIfNeeded()
 
@@ -229,6 +230,8 @@ actor PodcastModelActor {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         episode.metaData?.isArchived = false
         episode.metaData?.isInbox = true
+        episode.metaData?.status = .inbox
+
         await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
         modelContext.saveIfNeeded()
     }

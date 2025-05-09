@@ -124,27 +124,4 @@ struct SubscribeToPodcastView: View {
     }
 }
 
-struct ExpandableTextView: View {
-    @State private var isExpanded = false
-    @Environment(\.lineLimit) private var externalLineLimit
-    var text: String
-    
-    var body: some View {
-        VStack {
-            Text(text)
-                .lineLimit(isExpanded ? nil : externalLineLimit) // Use the maxLines parameter
-              
-            
-            if text.count > 100 { // Optional: only show "Read More" if the text is long enough
-                Button(action: {
-                    isExpanded.toggle()
-                }) {
-                    Text(isExpanded ? "Show Less" : "Show More")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                        .padding(.top, 5)
-                }
-            }
-        }
-    }
-}
+

@@ -81,7 +81,7 @@ extension String{
     
 }
 extension String{
-    @MainActor
+   
     func decodeHTML() -> String? {
         
         guard let data = self.data(using: .utf8) else {
