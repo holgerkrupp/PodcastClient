@@ -70,6 +70,53 @@ actor EpisodeActor {
         }
     }
     
+    //MARK: Meta Data for Statistics
+    
+    func addplaybackStartTimes(episodeURL: URL, date: Date = Date()) async{
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        if episode.metaData?.playbackStartTimes == nil  {
+            episode.metaData?.playbackStartTimes = .init([])
+        }
+        episode.metaData?.playbackStartTimes?.elements.append(date)
+    }
+    
+    func addPlaybackDuration(episodeURL: URL, duration: TimeInterval) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        if episode.metaData?.playbackDurations == nil {
+            episode.metaData?.playbackDurations = .init([])
+        }
+        episode.metaData?.playbackDurations?.elements.append(duration)
+        episode.metaData?.totalListenTime += duration
+    }
+
+    func addPlaybackSpeed(episodeURL: URL, speed: Double) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        if episode.metaData?.playbackSpeeds == nil {
+            episode.metaData?.playbackSpeeds = .init([])
+        }
+        episode.metaData?.playbackSpeeds?.elements.append(speed)
+    }
+
+    func setCompletionDate(episodeURL: URL, date: Date? = nil) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        episode.metaData?.completionDate = date ?? Date()
+    }
+
+    func setFirstListenDateIfNeeded(episodeURL: URL, date: Date? = nil) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        if episode.metaData?.firstListenDate == nil {
+            episode.metaData?.firstListenDate = date ?? Date()
+        }
+    }
+
+    func markEpisodeAsSkipped(episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        episode.metaData?.wasSkipped = true
+    }
+    
+    
+    
+    
     
 
     
@@ -111,7 +158,7 @@ actor EpisodeActor {
     
     func markasPlayed(_ episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        episode.metaData?.finishedPlaying = true
+        episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
         episode.metaData?.status = .history
 
@@ -151,6 +198,21 @@ actor EpisodeActor {
                 print("❌ Could not download Episode \(episodeID)")
             }
         }
+        
+        await downloadCoverArt(for: episodeID)
+        
+    }
+    
+    func downloadCoverArt(for episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else {
+            print("❌ Could not find episode \(episodeID)")
+            return }
+        guard let coverURL = episode.imageURL else {
+            print("❌ Episode does not have a cover")
+            return }
+        let item = await DownloadManager.shared.download(from: coverURL, saveTo: episode.coverFile, episodeID: episode.id)
+        print("saving cover to \(String(describing: episode.coverFile))")
+       
     }
     
     func unarchiveEpisode(episodeID: UUID) async  {
@@ -166,12 +228,17 @@ actor EpisodeActor {
     
     func deleteFile(episodeID: UUID) async{
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        guard  episode.metaData?.isAvailableLocally == true else { return }
 
         if let file = episode.localFile{
             try? FileManager.default.removeItem(at: file)
-            episode.metaData?.isAvailableLocally = false
         }
+        
+        if let file = episode.coverFile{
+            try? FileManager.default.removeItem(at: file)
+        }
+        
+        episode.metaData?.isAvailableLocally = false
+        modelContext.saveIfNeeded()
     }
 
 
@@ -183,8 +250,11 @@ actor EpisodeActor {
             return }
 
         episode.metaData?.isAvailableLocally = true
+        await updateDuration(fileURL: fileURL)
+
         await createChapters(episode.persistentModelID)
         await downloadTranscript(episode.persistentModelID)
+
         modelContext.saveIfNeeded()
         print("✅ Metadata updated")
         await BasicLogger.shared.log("Did mark Episode As Available")
@@ -222,6 +292,8 @@ actor EpisodeActor {
        if episode.chapters.isEmpty {
            await extractShownotesChapters(fileURL: episode.url)
        }
+       await updateChapterDurations(episodeURL: episode.url)
+
     }
     
   private  func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
@@ -297,6 +369,8 @@ actor EpisodeActor {
         return try await item.load(.value)
     }
 
+    
+    //MARK: CHAPTERS
    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         guard let url = episode.localFile else {
@@ -351,16 +425,16 @@ actor EpisodeActor {
     func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String] {
         var result = [String: String]()
         
-
-        let regex = try! NSRegularExpression(pattern: "\\d{2}:\\d{2}:\\d{2} (.+?)(?=<br>|<br />|</p>|\\n\\d{2}:\\d{2}:\\d{2}|\\n\\z)", options: .dotMatchesLineSeparators)
-
+        let pattern = #"<li>(\d{2}:\d{2}:\d{2}) (.*?)</li>"#
+        let regex = try! NSRegularExpression(pattern: pattern, options: [])
+        
         let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: htmlEncodedText.utf16.count))
         
         for match in matches {
-            if let titleRange = Range(match.range(at: 1), in: htmlEncodedText),
-               let timeCodeRange = Range(match.range, in: htmlEncodedText) {
+            if let timeRange = Range(match.range(at: 1), in: htmlEncodedText),
+               let titleRange = Range(match.range(at: 2), in: htmlEncodedText) {
+                let timeCode = String(htmlEncodedText[timeRange])
                 let title = String(htmlEncodedText[titleRange])
-                let timeCode = String(htmlEncodedText[timeCodeRange].split(separator: " ")[0]) // Only take the time code part
                 result[timeCode] = title.decodeHTML() ?? title
             }
         }
@@ -368,6 +442,20 @@ actor EpisodeActor {
         return result
     }
     
+    func updateChapterDurations(episodeURL: URL) async{
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return  }
+         let chapters = episode.preferredChapters
+            
+        var lastEnd = episode.duration ?? 1000000
+        for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
+            if chapter.duration == nil{
+                chapter.duration = lastEnd - (chapter.start ?? 0.0)
+                lastEnd = chapter.start ?? 0.0
+            }
+        }
+    }
+    
+    //MARK: Transcript
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async {
         print("downloadTranscript")
@@ -384,6 +472,8 @@ actor EpisodeActor {
                     episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
                      modelContext.saveIfNeeded()
                 }
+            }else{
+                print ("no vtt file found")
             }
         }else{
             print("transcriptData already exists")

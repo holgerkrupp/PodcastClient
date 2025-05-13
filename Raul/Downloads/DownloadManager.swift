@@ -28,7 +28,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         print(fileExists(at: finalDestination) ? "file exists: \(finalDestination)" : "file does not exists: \(finalDestination)")
         
         guard !fileExists(at: finalDestination) else {
-            print("file does not exists: \(finalDestination)")
+            print("file does exists: \(finalDestination)")
             await markDownloaded(for: url)
             return nil
         }
@@ -47,17 +47,6 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         return item
     }
 
-    func item(for episodeID: UUID) async -> DownloadItem? {
-        let allItems = Array(downloads.values)
-        for item in allItems {
-            if await MainActor.run(resultType: Bool.self, body: {
-                item.episodeID == episodeID
-            }) {
-                return item
-            }
-        }
-        return nil
-    }
     
     func cancelDownload(for url: URL)  {
         print("cancel Download \(url)")
@@ -82,7 +71,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         let container = ModelContainerManager().container
         let episodeActor = EpisodeActor(modelContainer: container)
         await episodeActor.markEpisodeAvailable(fileURL: url)
-        await episodeActor.updateDuration(fileURL: url)
+      //  await episodeActor.updateDuration(fileURL: url)
     }
     
     private func defaultDestination(for url: URL) -> URL {
@@ -156,7 +145,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 await markDownloaded(for: url)
 
                 }
-            
+                
             
 
 
@@ -164,7 +153,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
     }
 
-    private func getItem(for url: URL) -> DownloadItem? {
+     func getItem(for url: URL) -> DownloadItem? {
         return downloads[url]
     }
 

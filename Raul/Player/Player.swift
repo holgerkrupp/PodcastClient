@@ -14,7 +14,7 @@ class Player: NSObject {
     
     static let shared = Player()
   //  private let modelContext = ModelContainerManager().container.mainContext
-
+    static let episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
 
@@ -22,7 +22,7 @@ class Player: NSObject {
         didSet {
             UserDefaults.standard.set(playbackRate, forKey: "playbackRate")
 
-            Task { await engine.setRate(playbackRate) }
+        //    Task { await engine.setRate(playbackRate) }
         }
     }
 
@@ -63,7 +63,7 @@ class Player: NSObject {
                     currentEpisode = episode
                     currentEpisodeID = episode.id
                     await playEpisode(episode.id, playDirectly: false)
-                    if let cover = episode.podcast?.coverImageURL{
+                    if let cover = episode.podcast?.imageURL{
                         let imagedata = ImageLoaderAndCache(imageURL: cover).imageData
                         podcastCover = ImageWithData(imagedata).image
                     }
@@ -140,18 +140,18 @@ class Player: NSObject {
             print("unloading episode \(currentEpisodeID)")
             await unloadEpisode(episodeUUID: currentEpisodeID)
         }
-        
+
         episode.metaData?.isInbox = false
 
         currentEpisode = episode
         currentEpisodeID = episode.id
+        await playlistActor.remove(episodeID: episodeUUID)
+
         
         jumpTo(time: episode.metaData?.playPosition ?? 0)
         
         _ = updateCurrentChapter()
         
-        let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
-        await playlistModelActor.remove(episodeID: episodeUUID)
         
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
 
@@ -231,6 +231,7 @@ class Player: NSObject {
     func listenToEvent() {
         Task{
             await engine.setInterruptionHandler { [weak self] event in
+                print("received interruption event: \(event)")
                 guard let self else { return }
                 switch event {
                 case .began:
@@ -248,6 +249,10 @@ class Player: NSObject {
                 case .resume:
                     Task{
                         await self.resumeAfterInterruption()
+                    }
+                case .finished:
+                    Task{
+                        await self.handlePlaybackFinished()
                     }
                 }
             }
@@ -275,6 +280,13 @@ class Player: NSObject {
         updateLastPlayed()
         startPlaybackUpdates()
         startNowPlayingInfoUpdater()
+       
+        if let episodeURL =  currentEpisode?.url{
+            Task {
+                await self.episodeActor.addplaybackStartTimes(episodeURL: episodeURL, date: Date())
+            }
+        }
+
     }
     
     
@@ -338,7 +350,7 @@ class Player: NSObject {
                 case .position(let time):
                     playPosition = time
                     updateEpisodeProgress(to: time)
-                    setupStaticNowPlayingInfo()
+             //       setupStaticNowPlayingInfo()
                 case .ended:
                     BasicLogger.shared.log("Playback finished automatically")
                     handlePlaybackFinished()
@@ -427,14 +439,14 @@ class Player: NSObject {
         updateLastPlayed()
         stopPlaybackUpdates()
         print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
-        if currentEpisode?.playProgress ?? 0 >= progressThreshold {
+     //   if currentEpisode?.playProgress ?? 0 >= progressThreshold {
             Task{
                 if let nextEpisodeID = await playlistActor.nextEpisode(){
                     BasicLogger.shared.log("Playing next episode")
                     await playEpisode(nextEpisodeID, playDirectly: true)
                 }
             }
-        }
+     //   }
 
         
 
@@ -491,9 +503,9 @@ class Player: NSObject {
         //    MPMediaItemPropertyArtwork: mediaArtwort ?? UIImage(named: "AppIcon") ?? UIImage(),
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist: episode.author ?? episode.podcast?.title ?? episode.podcast?.author ?? "",
-            MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0
-        //    MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
-         //   MPNowPlayingInfoPropertyPlaybackRate: playbackRate
+            MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
+            MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
         
        

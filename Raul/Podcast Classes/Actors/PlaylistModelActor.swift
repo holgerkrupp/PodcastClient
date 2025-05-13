@@ -126,6 +126,10 @@ actor PlaylistModelActor : ModelActor {
                     
                     let episodeActor = EpisodeActor(modelContainer: modelContainer)
                     await episodeActor.download(episodeID: episode.id)
+                   
+                    
+
+                    
                     
                 } catch {
                     print("error saving Playlist \(error)")

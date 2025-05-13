@@ -53,6 +53,8 @@ struct EpisodeRowView: View {
                                 
                                     .id(episode.downloadItem?.id ?? UUID())
                             }
+                            Text(episode.metaData?.episode?.playProgress.formatted() ?? "0.00")
+                                .monospaced()
                             
                             
                         }
@@ -231,7 +233,7 @@ struct EpisodeRowView: View {
     }
     
     private func loadImage() async {
-        if let imageURL = episode.imageURL ?? episode.podcast?.coverImageURL {
+        if let imageURL = episode.imageURL ?? episode.podcast?.imageURL {
             if let uiImage = await ImageLoader.shared.loadImage(from: imageURL) {
                 await MainActor.run {
                     self.image = Image(uiImage: uiImage)

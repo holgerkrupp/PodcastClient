@@ -9,7 +9,7 @@ final class DownloadViewModel: ObservableObject {
 
     func observeDownload(for episode: Episode) {
         Task {
-            if let found = await DownloadManager.shared.item(for: episode.id) {
+            if let found = await DownloadManager.shared.getItem(for: episode.url) {
                 self.item = found
             }
         }
@@ -20,8 +20,17 @@ final class DownloadViewModel: ObservableObject {
         Task {
             let item = await DownloadManager.shared.download(from: episode.url, saveTo: episode.localFile, episodeID: episode.id)
             self.item = item
-          //  print("started download for \(episode.title)")
-            
+        }
+    }
+    
+    func startCoverDownload(for episode: Episode) {
+        print("starting CoverDownload")
+        Task {
+            if let imageURL = episode.imageURL {
+                let item = await DownloadManager.shared.download(from: imageURL, saveTo: episode.coverFile, episodeID: episode.id)
+                print("saving cover to \(String(describing: episode.coverFile))")
+                self.item = item
+            }
         }
     }
     

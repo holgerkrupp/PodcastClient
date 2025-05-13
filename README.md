@@ -10,10 +10,10 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] Create Podcast Detail View
 - [ ] Now Playing Cover Images
 - [ ] CarPlay
-- [x] React on interrupts
-- [x] React on Audio Routing Changed (pause when headphones are disconnected)
 - [ ] Integrate Settings (Per Podcasts and global)
-- [?] When finished Playing play next episode in line.
+- [x] When finished Playing play next episode in line.
+- [ ] Chapter Durations not always correct (Wochendämmerung, DML)
+- [x] Extracted Chapters RegEx wrong (Lästerschwestern)
 
 
 ## Alpha min Requiremets

@@ -78,7 +78,8 @@ actor PodcastModelActor {
             podcast.copyright = podcastParser.podcastDictArr["copyright"] as? String ?? ""
             podcast.link = URL(string: podcastParser.podcastDictArr["link"] as? String ?? "")
             if let imageURL = podcastParser.podcastDictArr["coverImage"] as? String {
-                podcast.coverImageURL = URL(string: imageURL)
+                podcast.imageURL = URL(string: imageURL)
+                await downloadCoverArt(podcastID)
             }
             
             podcast.lastBuildDate = Date.dateFromRFC1123(
@@ -87,9 +88,6 @@ actor PodcastModelActor {
             
             // Update episodes
             if let episodesData = podcastParser.podcastDictArr["episodes"] as? [[String: Any]] {
-                
-                
-                
                 
                 var newEpisodes: [Episode] = []
                
@@ -125,6 +123,15 @@ actor PodcastModelActor {
         }
     }
     
+    func downloadCoverArt(_ podcastID: PersistentIdentifier) async  {
+        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        guard let coverURL = podcast.imageURL else {
+            print("❌ Podcast does not have a cover")
+            return }
+        let item = await DownloadManager.shared.download(from: coverURL, saveTo: podcast.coverFile)
+        print("saving cover to \(String(describing: podcast.coverFile))")
+       
+    }
 
     private func checkIfEpisodeExists(_ guid: String) -> Int? {
         let descriptor = FetchDescriptor<Episode>(

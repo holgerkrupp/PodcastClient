@@ -19,7 +19,7 @@ final class Podcast {
     var copyright: String?
     @Relationship(deleteRule: .cascade) var episodes: [Episode] = []
     var lastBuildDate: Date?
-    var coverImageURL: URL?
+    var imageURL: URL?
     @Relationship(deleteRule: .cascade) var metaData: PodcastMetaData?
     
     // calculated properties that will be generated out of existing properties.
@@ -27,6 +27,22 @@ final class Podcast {
    var directoryURL: URL?  {
         URL.documentsDirectory
             .appending(path: "\(title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "default")", directoryHint: .isDirectory)
+    }
+    
+    var coverFile: URL? {
+        let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
+        let documentsDirectoryUrl = directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard let baseURL = documentsDirectoryUrl else { return nil }
+        
+        // Create a sanitized filename
+        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
+        
+        let uniqueURL = baseURL.appendingPathComponent("\(sanitizedFileName)")
+        
+        try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
+                                               withIntermediateDirectories: true,
+                                               attributes: nil)
+        return uniqueURL
     }
     
     init(feed: URL) {

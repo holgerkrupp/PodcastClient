@@ -5,6 +5,7 @@ enum PlaybackInterruptionEvent {
     case began
     case ended
     
+    case finished
     
     case pause
     case resume
@@ -99,6 +100,8 @@ actor PlayerEngine {
         case .resume:
             try? self.session.setActive(true)
             self.interruptionHandler?(.resume)
+        case .finished:
+            break
         }
     }
     
@@ -179,10 +182,13 @@ actor PlayerEngine {
                 continuation.yield(.ended)
                 continuation.finish()
                 task.cancel()
+                Task{
+                    await self.sendInterrupt(type: .finished)
+                }
             }
 
             continuation.onTermination = { _ in
-              //  NotificationCenter.default.removeObserver(endObserver)
+           //     NotificationCenter.default.removeObserver(endObserver)
                 task.cancel()
             }
         }

@@ -26,6 +26,7 @@ struct DownloadControllView: View {
 
                 Button {
                     viewModel.startDownload(for: episode)
+                    viewModel.startCoverDownload(for: episode)
                     updateUI.toggle()
                 } label: {
                     Image(systemName: "arrow.down.circle")

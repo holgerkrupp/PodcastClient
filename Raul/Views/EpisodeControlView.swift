@@ -20,7 +20,7 @@ struct EpisodeControlView: View {
     var body: some View {
         HStack {
             
-            if episode.metaData?.finishedPlaying == true {
+            if episode.metaData?.completionDate != nil {
                 Image("custom.play.circle.badge.checkmark")
             } else {
                 if episode.metaData?.isAvailableLocally == true {

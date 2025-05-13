@@ -104,7 +104,7 @@ struct EpisodeDetailView: View {
        
     }
     private func loadImage() async {
-        if let imageURL = episode.imageURL ?? episode.podcast?.coverImageURL {
+        if let imageURL = episode.imageURL ?? episode.podcast?.imageURL {
             if let uiImage = await ImageLoader.shared.loadImage(from: imageURL) {
                 await MainActor.run {
                     self.image = Image(uiImage: uiImage)

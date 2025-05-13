@@ -54,7 +54,6 @@ class EpisodeDownloadStatus{
     var content: String?
     
     
-    
     var publishDate: Date?
     var url: URL // episodeURL - the mp3/m4a file
     var fileSize: Int64?
@@ -107,17 +106,31 @@ class EpisodeDownloadStatus{
         try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
                                                withIntermediateDirectories: true,
                                                attributes: nil)
-        
-      
-        
         return uniqueURL
     }
+    var coverFile: URL? {
+        let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
+        let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        guard let baseURL = documentsDirectoryUrl else { return nil }
+        
+        // Create a sanitized filename
+        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
+        
+        let uniqueURL = baseURL.appendingPathComponent("\(guid ?? id.uuidString)_\(sanitizedFileName)")
+        
+        try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
+                                               withIntermediateDirectories: true,
+                                               attributes: nil)
+        return uniqueURL
+    }
+    
+    
     @MainActor
     @Transient lazy var coverImage: some View = {
         
         if let imageURL {
             return AnyView(ImageWithURL(imageURL))
-        }else if let podcastcover = podcast?.coverImageURL{
+        }else if let podcastcover = podcast?.imageURL{
             return AnyView(ImageWithURL(podcastcover))
         }else{
             return AnyView(EmptyView())
@@ -275,7 +288,6 @@ class EpisodeDownloadStatus{
     var maxPlayposition:Double? = 0.0
     var playPosition:Double? = 0.0
     
-    var finishedPlaying: Bool? = false
     var isArchived: Bool? = false
     var isHistory: Bool? = false
     var isInbox: Bool? = true
@@ -284,6 +296,32 @@ class EpisodeDownloadStatus{
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?
     
+    /// Date the episode was finished
+    var completionDate: Date?
+
+    /// Playback start times per session
+    var playbackStartTimes: CodableArray<Date>?
+
+    /// Playback durations per session
+    var playbackDurations: CodableArray<TimeInterval>?
+
+    /// Accumulated listening time
+    var totalListenTime: TimeInterval = 0
+
+    /// Speeds used per session
+    var playbackSpeeds: CodableArray<Double>?
+
+    /// When playback first started
+    var firstListenDate: Date?
+
+    /// Whether the user skipped the episode
+    var wasSkipped: Bool = false
+
+    
     init() {
+        self.playbackStartTimes = CodableArray([])
+        self.playbackDurations = CodableArray([])
+        self.playbackSpeeds = CodableArray([])
+               
     }
 }
