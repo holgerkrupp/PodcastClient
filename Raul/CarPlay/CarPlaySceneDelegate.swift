@@ -6,10 +6,15 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate, CPI
     var interfaceController: CPInterfaceController?
     
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
-        
         self.interfaceController = interfaceController
-        let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
-        self.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: playListModelActor).template, animated: false, completion: nil)
+        interfaceController.delegate = self
+        
+        let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+
+        let rootTemplate = CarPlayPlayNext(playlistActor: playlistActor).template
+        interfaceController.setRootTemplate(rootTemplate, animated: true) {_,_ in 
+            print("CarPlay template loaded.")
+        }
     }
     
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {

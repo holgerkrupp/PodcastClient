@@ -22,8 +22,8 @@ struct PlayerProgressSliderView: View {
         GeometryReader { gr in
          //   let thumbHeight = gr.size.height * 1.0
          //   let thumbWidth = gr.size.width * 0.03
-            let radius = gr.size.height * 0.5
-            let minValue = gr.size.width * 0.015
+            let radius = gr.size.height * 0.3
+            let minValue = 0.0
             let maxValue = (gr.size.width)
             
             let scaleFactor = (maxValue - minValue) / (sliderRange.upperBound - sliderRange.lowerBound)
@@ -32,20 +32,25 @@ struct PlayerProgressSliderView: View {
             
             ZStack {
                 RoundedRectangle(cornerRadius: radius)
-                                .fill(.thickMaterial)
+                
+                               .fill(.ultraThinMaterial)
                     .frame(width: gr.size.width, height: gr.size.height * 0.95)
+                
             
                 HStack {
                     Rectangle()
                      //   .fill(.thinMaterial)
                         .foregroundColor(.accent)
+                       
                         .frame(width: sliderVal, height: gr.size.height * 0.95)
                     Spacer()
                 }
                 .clipShape(
                     RoundedRectangle(cornerRadius: radius)
+                        
                         .size(CGSize(width: gr.size.width, height: gr.size.height))
                 )
+               
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { v in
@@ -62,30 +67,6 @@ struct PlayerProgressSliderView: View {
                             }
                         }
                 )
-                /*
-                HStack {
-                    RoundedRectangle(cornerRadius: radius)
-                        .foregroundColor(.primary)
-                        .frame(width: thumbWidth, height: thumbHeight)
-                        .offset(x: sliderVal)
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { v in
-                                    if (abs(v.translation.width) < 0.1) {
-                                        self.lastCoordinateValue = sliderVal
-                                    }
-                                    if v.translation.width > 0 {
-                                        let nextCoordinateValue = min(maxValue, self.lastCoordinateValue + v.translation.width)
-                                        
-                                        self.value = ((nextCoordinateValue - minValue) / scaleFactor)  + lower
-                                    } else {
-                                        let nextCoordinateValue = max(minValue, self.lastCoordinateValue + v.translation.width)
-                                        self.value = ((nextCoordinateValue - minValue) / scaleFactor) + lower
-                                    }
-                                }
-                        )
-                    Spacer()
-                }*/
             }
         }
     }

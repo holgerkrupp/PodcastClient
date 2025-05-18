@@ -70,6 +70,20 @@ actor EpisodeActor {
         }
     }
     
+    func updateChapterDurations(fileURL: URL) async{
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+        guard !episode.chapters.isEmpty else { return }
+        guard let totalDuration = episode.duration else { return }
+        var chapters = episode.chapters
+        var lastEnd = totalDuration
+        for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
+            if chapter.duration == nil{
+                chapter.duration = lastEnd - (chapter.start ?? 0.0)
+                lastEnd = chapter.start ?? 0.0
+            }
+        }
+    }
+    
     //MARK: Meta Data for Statistics
     
     func addplaybackStartTimes(episodeURL: URL, date: Date = Date()) async{
@@ -157,6 +171,7 @@ actor EpisodeActor {
     }
     
     func markasPlayed(_ episodeID: UUID) async {
+        print("marking episode \(episodeID) as played")
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
@@ -199,7 +214,7 @@ actor EpisodeActor {
             }
         }
         
-        await downloadCoverArt(for: episodeID)
+     //   await downloadCoverArt(for: episodeID)
         
     }
     
@@ -210,8 +225,8 @@ actor EpisodeActor {
         guard let coverURL = episode.imageURL else {
             print("❌ Episode does not have a cover")
             return }
-        let item = await DownloadManager.shared.download(from: coverURL, saveTo: episode.coverFile, episodeID: episode.id)
-        print("saving cover to \(String(describing: episode.coverFile))")
+        let item = await DownloadManager.shared.download(from: coverURL, saveTo: episode.coverFileLocation, episodeID: episode.id)
+        print("saving cover to \(String(describing: episode.coverFileLocation))")
        
     }
     
@@ -233,7 +248,7 @@ actor EpisodeActor {
             try? FileManager.default.removeItem(at: file)
         }
         
-        if let file = episode.coverFile{
+        if let file = episode.coverFileLocation{
             try? FileManager.default.removeItem(at: file)
         }
         
@@ -253,6 +268,7 @@ actor EpisodeActor {
         await updateDuration(fileURL: fileURL)
 
         await createChapters(episode.persistentModelID)
+        await updateChapterDurations(fileURL: episode.url)
         await downloadTranscript(episode.persistentModelID)
 
         modelContext.saveIfNeeded()
@@ -260,15 +276,7 @@ actor EpisodeActor {
         await BasicLogger.shared.log("Did mark Episode As Available")
     }
     
-    func markEpisodeAvailable(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
 
-        episode.metaData?.isAvailableLocally = true
-        await createChapters(episode.persistentModelID)
-        await downloadTranscript(episode.persistentModelID)
-        modelContext.saveIfNeeded()
-        print("✅ Metadata updated")
-    }
     
    private func createChapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
@@ -319,27 +327,15 @@ actor EpisodeActor {
                 return
             }
             
+          //  let id3 = try? await mp3ChapterParser.fromRemoteURL(url)
+            
+            
             if let mp3Reader = mp3ChapterReader(with: url){
          
                 let dict = mp3Reader.getID3Dict()
-                dump(dict)
-                if let chaptersDict = dict["Chapters"] as? [String:[String:Any]]{
-                    var chapters: [Chapter] = []
-                    for chapter in chaptersDict {
-                        
-                        let newChaper = Chapter()
-                        newChaper.title = chapter.value["TIT2"] as? String ?? ""
-                        newChaper.start = chapter.value["startTime"] as? Double ?? 0
-                       
-                        newChaper.duration = (chapter.value["endTime"] as? Double ?? 0) - (newChaper.start ?? 0)
-                        newChaper.type = .mp3
-                        if let imagedata = (chapter.value["APIC"] as? [String:Any])?["Data"] as? Data{
-                            print("ImageChapter with Image data")
-                            newChaper.imageData = imagedata
-                        }else{
-                                                    }
-                        chapters.append(newChaper)
-                    }
+                
+                if let chapters = parse(chapters: dict){
+                   
                     episode.chapters.removeAll(where: { $0.type == .mp3 })
                     episode.chapters.append(contentsOf: chapters)
                      modelContext.saveIfNeeded()
@@ -352,8 +348,47 @@ actor EpisodeActor {
             print("Error extracting chapter marks: \(error.localizedDescription)")
             return
         }
-
+    }
+    /*
+     
+     I WANT TO LOAD Chapters from remote mp3 files in order to show the chapters prior to downloading the file. but i have a concurrency problem.
+     
+     
+    private func readRemoteMP3Chapters(fileURL: URL) async  {
         
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+        Task {
+            if let reader = await mp3ChapterReader.fromRemoteURL(fileURL) {
+                let dict = reader.getID3Dict()
+                let chapters = parse(chapters: dict)
+            } else {
+                print("Failed to load ID3 tag.")
+            }
+        }
+        
+    }
+    */
+    private func parse(chapters: [String: Any]) -> [Chapter]?{
+        if let chaptersDict = chapters["Chapters"] as? [String:[String:Any]]{
+            var chapters: [Chapter] = []
+            for chapter in chaptersDict {
+                
+                let newChaper = Chapter()
+                newChaper.title = chapter.value["TIT2"] as? String ?? ""
+                newChaper.start = chapter.value["startTime"] as? Double ?? 0
+               
+                newChaper.duration = (chapter.value["endTime"] as? Double ?? 0) - (newChaper.start ?? 0)
+                newChaper.type = .mp3
+                if let imagedata = (chapter.value["APIC"] as? [String:Any])?["Data"] as? Data{
+                    print("ImageChapter with Image data")
+                    newChaper.imageData = imagedata
+                }else{
+                                            }
+                chapters.append(newChaper)
+            }
+            return chapters
+        }
+        return nil
     }
     
     // Non-isolated helper function to load metadata
@@ -464,13 +499,36 @@ actor EpisodeActor {
             return }
 
         if episode.transcriptData == nil {
-            if let vttFileString = episode.transcripts.first(where: {$0.type == "text/vtt"})?.url,
-               let vttURL = URL(string: vttFileString) {
-                print(vttFileString)
-                if let vttData = try? await URLSession(configuration: .default).data(from: vttURL) {
-                   
-                    episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
-                     modelContext.saveIfNeeded()
+            if let vttFileString = episode.transcripts.first(where: {$0.category == .transcript})?.url,
+               var vttURL = URL(string: vttFileString) {
+                
+                do{
+                    let status = try await vttURL.status()
+                    
+                    switch status?.statusCode {
+                    case 200:
+                        break
+                    case 404:
+                        print("vtt URL 404 failed")
+                        return
+                    case 410:
+                        if let newURL = status?.newURL{
+                            vttURL = newURL
+                        }else{
+                           break
+                        }
+                    default:
+                       break
+                    }
+                    
+                    
+                    if let vttData = try? await URLSession(configuration: .default).data(from: vttURL) {
+                        
+                        episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
+                        modelContext.saveIfNeeded()
+                    }
+                }catch {
+                    print("vtt download failed")
                 }
             }else{
                 print ("no vtt file found")

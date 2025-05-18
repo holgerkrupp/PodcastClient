@@ -29,7 +29,7 @@ final class Podcast {
             .appending(path: "\(title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "default")", directoryHint: .isDirectory)
     }
     
-    var coverFile: URL? {
+    var coverFileLocation: URL? {
         let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
         let documentsDirectoryUrl = directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         guard let baseURL = documentsDirectoryUrl else { return nil }

@@ -27,8 +27,14 @@ struct EpisodeRowView: View {
                 ZStack{
                     GeometryReader { geometry in
                           // Background layer
-                          Rectangle()
-                              .fill(Color.accentColor.opacity(0.5))
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.accentColor.opacity(0.5))
+                       /*
+                        EpisodeCoverView(episode: episode)
+                            .cornerRadius(12)
+                            .clipped()
+                            .scaledToFill()
+                         */
                               .frame(width: geometry.size.width * episode.playProgress)
                              // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
                       }
@@ -61,19 +67,13 @@ struct EpisodeRowView: View {
                         .font(.caption)
                         HStack {
                             Group {
-                                if let image = image {
-                                    image
-                                        .resizable()
-                                        .scaledToFit()
-                                } else {
-                                    Color.gray.opacity(0.2)
-                                }
+                                
+                               EpisodeCoverView(episode: episode)
+                                
                                 
                             }
                             .frame(width: 50, height: 50)
-                            .task {
-                                await loadImage()
-                            }
+
                             
                             VStack(alignment: .leading) {
                                 HStack {
@@ -112,8 +112,12 @@ struct EpisodeRowView: View {
                         
                     }
                     .padding()
-                    .background(.ultraThinMaterial)
-                    
+                   // .background(.ultraThinMaterial)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.thinMaterial)
+                           // .shadow(radius: 3)
+                    )
                     .onTapGesture {
                         withAnimation {
                             isExtended.toggle()
@@ -223,6 +227,7 @@ struct EpisodeRowView: View {
                 
                 
             }
+            
             .sheet(isPresented: $showDetails) {
                 EpisodeDetailView(episode: episode)
                     .padding()
@@ -232,40 +237,6 @@ struct EpisodeRowView: View {
 
     }
     
-    private func loadImage() async {
-        if let imageURL = episode.imageURL ?? episode.podcast?.imageURL {
-            if let uiImage = await ImageLoader.shared.loadImage(from: imageURL) {
-                await MainActor.run {
-                    self.image = Image(uiImage: uiImage)
-                }
-            }
-        }
-    }
+
 }
 
-// Add this class to handle image loading
-actor ImageLoader {
-    static let shared = ImageLoader()
-    private var cache = NSCache<NSString, UIImage>()
-    
-    private init() {}
-    
-    func loadImage(from url: URL) async -> UIImage? {
-        let key = url.absoluteString as NSString
-        
-        if let cached = cache.object(forKey: key) {
-            return cached
-        }
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let image = UIImage(data: data) {
-                cache.setObject(image, forKey: key)
-                return image
-            }
-        } catch {
-            print("Error loading image: \(error)")
-        }
-        return nil
-    }
-}

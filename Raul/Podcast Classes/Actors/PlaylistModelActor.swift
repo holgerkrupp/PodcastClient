@@ -12,7 +12,7 @@ import Foundation
 
 //@ModelActor
 actor PlaylistModelActor : ModelActor {
-    let playlist: Playlist
+    var playlist: Playlist
 
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
@@ -69,6 +69,27 @@ actor PlaylistModelActor : ModelActor {
                 }
     }
     
+    func refresh()  throws {
+        let modelContext = ModelContext(modelContainer)
+        
+        // Re-fetch the playlist using the stored ID
+     //   let predicate = #Predicate<Playlist> { $0.id == self.playlist.id }
+        let playlistID = playlist.id
+        let predicate = #Predicate<Playlist> { playlist in
+            playlist.id == playlistID
+        }
+        let descriptor = FetchDescriptor<Playlist>(predicate: predicate)
+
+        let results = try modelContext.fetch(descriptor)
+        
+        guard let refreshedPlaylist = results.first else {
+            throw NSError(domain: "PlaylistModelActor", code: 404, userInfo: [NSLocalizedDescriptionKey: "Playlist not found during refresh"])
+        }
+
+        self.playlist = refreshedPlaylist
+
+    }
+    
   
     func orderedEpisodes() -> [Episode] {
         return playlist.ordered.compactMap { $0.episode }
@@ -80,7 +101,8 @@ actor PlaylistModelActor : ModelActor {
     
     // Add an episode to the playlist
     func add(episodeID: UUID, to position: Playlist.Position = .end) async {
-        
+        print("adding episode \(episodeID) to playlist \(playlist.title) at position \(position)")
+
         let predicate = #Predicate<Episode> { episode in
             // Direct comparison of the episode's persistentModelID
             episode.id == episodeID
@@ -105,31 +127,30 @@ actor PlaylistModelActor : ModelActor {
                         newPosition = (playlist.ordered.last?.order ?? 0)
                     }
 
-                    if let existingItem = playlist.items?.first(where: { $0.episode == episode }) {
+                    if let existingItem = playlist.items.first(where: { $0.episode == episode }) {
                         existingItem.order = newPosition
                         print("puted episode in new Position \(newPosition)")
                     } else {
                         let newEntry = PlaylistEntry(episode: episode, order: newPosition)
-                        if playlist.items == nil {
-                            playlist.items = [newEntry]
-                        } else {
-                            playlist.items?.append(newEntry)
-                        }
-                        print("added episode in new Position \(newPosition)")
+                        newEntry.playlist = playlist
+                       
+                            print("appended new playlist item")
+                            playlist.items.append(newEntry)
+                        
+                        print("added episode in new Position \(newPosition) to \(playlist.title)")
 
                     }
                     
                     episode.metaData?.isInbox = false
-                    
+                  //  normalizeOrder()
                     modelContext.saveIfNeeded()
                     print("✅ Playlist updated")
-                    
-                    let episodeActor = EpisodeActor(modelContainer: modelContainer)
-                    await episodeActor.download(episodeID: episode.id)
-                   
-                    
+                    if episode.metaData?.isAvailableLocally != true {
+                        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+                        await episodeActor.download(episodeID: episode.id)
+                    }
 
-                    
+                   
                     
                 } catch {
                     print("error saving Playlist \(error)")
@@ -142,48 +163,48 @@ actor PlaylistModelActor : ModelActor {
 
     // Remove an episode from the playlist
     func remove(episodeID: UUID) {
-        
+        do {
+            try refresh()
+        }catch {
+            print(error)
+        }
+       
         let predicate = #Predicate<Episode> { episode in
             // Direct comparison of the episode's persistentModelID
             episode.id == episodeID
         }
-
+       
                 do {
                     let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
                     guard let episode = results.first else {
                         print("❌ No episode found for episode ID: \(episodeID)")
                         return
                     }
-                    
+                    print("remoing episode \(episodeID) - \(episode.title) from playlist \(playlist.title)")
                     
                     guard
-                          let entry = playlist.items?.first(where: { $0.episode == episode }) else {
+                        let entry = playlist.items.first(where: { $0.episode?.id == episode.id }) else {
+                        print("❌ No playlist entry found for episode ID: \(episodeID)")
+                       
                         return
                     }
-                    if let index = playlist.items?.firstIndex(of: entry) {
-                        playlist.items?.remove(at: index)
+                    if let index = playlist.items.firstIndex(of: entry) {
+                        playlist.items.remove(at: index)
                         modelContext.delete(entry)
                     }
 
-                    
-                    
                      modelContext.saveIfNeeded()
                     print("✅ Playlist updated")
                 } catch {
                     print("error saving Playlist \(error)")
                 }
-        
-        
-  
-
-
     }
+    
+
 
     // Reorder playlist entries
     func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {
-        guard let entries = playlist.items else {
-            return
-        }
+        let entries = playlist.items
 
         let sorted = entries.sorted { $0.order < $1.order }
 
@@ -202,7 +223,7 @@ actor PlaylistModelActor : ModelActor {
     }
     
     func normalizeOrder() {
-
+        print("morlaizing order")
         for (i, entry) in (playlist.ordered).enumerated() {
             entry.order = i
         }

@@ -31,29 +31,24 @@ struct RaulApp: App {
         .onChange(of: phase, {
             switch phase {
             case .background:
-                scheduleAppRefresh()
+          
                 bgNewAppRefresh()
               //  debugActions()
             default: break
             }
         })
-        .backgroundTask(.appRefresh("feedRefresh")) { task in
-            await BasicLogger.shared.log("started feedRefresh in Background")
 
-            await setLastprocessDate()
-            await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
-        }
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
             await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
             await setLastRefreshDate()
-            await scheduleAppRefresh()
+         
             let shouldRefresh = await SubscriptionManager(modelContainer: ModelContainerManager().container).bgcheckIfFeedsShouldRefresh()
-         /*
+         
             if shouldRefresh {
                 await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
             }
-           */
+           
             
         }
     }
@@ -88,7 +83,7 @@ struct RaulApp: App {
         BasicLogger.shared.log("going to background will schedule checkFeedUpdates")
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
         request.earliestBeginDate = Date(timeIntervalSinceNow: 10)
-
+        
         do{
             try BGTaskScheduler.shared.submit(request)
 
@@ -97,25 +92,6 @@ struct RaulApp: App {
             BasicLogger.shared.log(error.localizedDescription)
         }
        
-    }
-    
-    
- 
-    func scheduleAppRefresh() {
-        BasicLogger.shared.log("going to background will schedule feedRefresh")
-        let request = BGProcessingTaskRequest(identifier: "feedRefresh")
-        request.requiresNetworkConnectivity = true
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 10)
-
-        do{
-            try BGTaskScheduler.shared.submit(request)
-
-        }catch{
-            print(error)
-            BasicLogger.shared.log(error.localizedDescription)
-
-        }
-
     }
     
 }

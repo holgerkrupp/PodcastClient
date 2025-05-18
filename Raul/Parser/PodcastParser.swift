@@ -13,7 +13,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
 
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
-    var transcriptArray = [Any]()
+    var externalFilesArray = [Any]()
+    
+    
     var enclosureArray = [Any]()
     var episodesArray = [Any]()
     
@@ -63,7 +65,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         tempDict.removeAll()
         currentElements.removeAll()
         currentValue = ""
-        transcriptArray.removeAll()
+        externalFilesArray.removeAll()
      
     }
     
@@ -121,9 +123,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     case "enclosure": enclosureArray.append(attributeDict)
                     case "itunes:image": currentValue = attributeDict["href"] ?? ""
                     case "podcast:transcript":
-                        if let url = attributeDict["url"] , let type = attributeDict["type"]{
-                            let newTranscript = Transcript(url: url, type: type, source: "feed")
-                            transcriptArray.append(newTranscript)
+                        if let url = attributeDict["url"] , let filetype = attributeDict["type"]{
+                            let newTranscript = ExternalFile(url: url, category: .transcript, source: "feed", fileType: filetype)
+                            externalFilesArray.append(newTranscript)
                         }
                     default:
                         break
@@ -172,10 +174,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 case "item":
                     //PodcastEpisode finished
                     //   isHeader = true // go back to header Level
-                    episodeDict.updateValue(transcriptArray, forKey: "transcripts")
+                    episodeDict.updateValue(externalFilesArray, forKey: "transcripts")
+                    episodeDict.updateValue(externalFilesArray, forKey: "externalFiles")
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
-                    transcriptArray.removeAll()
+                    externalFilesArray.removeAll()
                 case "psc:chapters":
                     // list of chapters is finished
                     episodeDict.updateValue(chapterArray, forKey: currentElement) // add all chapters to the Episode

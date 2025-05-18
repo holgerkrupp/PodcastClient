@@ -8,12 +8,14 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 - [ ] Create Podcast Detail View
-- [ ] Now Playing Cover Images
+- [x] Now Playing Cover Images
+- [x] Player Cover not updated when Episode is changed.
 - [ ] CarPlay
 - [ ] Integrate Settings (Per Podcasts and global)
-- [x] When finished Playing play next episode in line.
-- [ ] Chapter Durations not always correct (Wochendämmerung, DML)
-- [x] Extracted Chapters RegEx wrong (Lästerschwestern)
+- [x] Chapter Durations not always correct (Wochendämmerung, DML)
+- [ ] Refactor mp3ChapterReader to sednd a custom object (concurrency)
+- [ ] Replace transcripts with generic 'external File' that can also host chapters, images and others.
+- [x] Playlist items are not always correctly readded after beeing removed from the player
 
 
 ## Alpha min Requiremets

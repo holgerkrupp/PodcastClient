@@ -42,6 +42,10 @@ class Player: NSObject {
     var previousChapter: Chapter?
     var episodeActor: EpisodeActor
     var playlistActor: PlaylistModelActor
+    
+    
+    
+    
     override init()  {
         episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
         playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
@@ -63,10 +67,7 @@ class Player: NSObject {
                     currentEpisode = episode
                     currentEpisodeID = episode.id
                     await playEpisode(episode.id, playDirectly: false)
-                    if let cover = episode.podcast?.imageURL{
-                        let imagedata = ImageLoaderAndCache(imageURL: cover).imageData
-                        podcastCover = ImageWithData(imagedata).image
-                    }
+
                 }
             }
         }
@@ -120,14 +121,19 @@ class Player: NSObject {
     }
         
     private func unloadEpisode(episodeUUID: UUID) async{
+       
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
+        print("unloading episode \(episode.title)")
         if episode.playProgress > progressThreshold {
+            print("marking episode \(episode.title) as Played")
+
             await episodeActor.markasPlayed(episodeUUID)
             
         }else{
+            print("moving episode \(episode.title) back to playlist")
+
             let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
             await playlistModelActor.add(episodeID: episodeUUID, to: .front)
-            print("moving episode \(episode.title) back to playlist")
 
         }
     }
@@ -135,6 +141,9 @@ class Player: NSObject {
     
     
     func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true) async {
+        
+        print("playing episode \(episodeUUID)")
+        
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
             print("unloading episode \(currentEpisodeID)")
@@ -155,7 +164,7 @@ class Player: NSObject {
         
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
 
-        Task {
+        Task { @MainActor in
             // Load the AVPlayerItem asynchronously
             let item = await Task {
                 
@@ -182,7 +191,7 @@ class Player: NSObject {
             }
             initRemoteCommandCenter()
             setupStaticNowPlayingInfo()
-            
+        await   updateNowPlayingCover()
             if playDirectly {
                 play()
                 
@@ -193,7 +202,7 @@ class Player: NSObject {
     var coverImage: some View{
         if let playing = currentEpisode{
             
-             return AnyView(playing.coverImage)
+             return AnyView(EpisodeCoverView(episode: playing))
              
              
         }else{
@@ -478,29 +487,38 @@ class Player: NSObject {
     
     func setupStaticNowPlayingInfo()   {
         guard let episode = currentEpisode else { return }
+        
+        
+        
         /*
-        var mediaArtwort:MPMediaItemArtwork?
-        
-        
-        if let chapterCover = currentChapter?.imageData{
-            if let image = UIImage(data: chapterCover){
-                mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-            }
-        }
+         if let chapterCover = currentChapter?.imageData{
+         if let image = UIImage(data: chapterCover){
+         mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+         }
+         }
          else
-        
-         if let imageURL = currentEpisode?.imageURL{
-             Task{
-                 if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
-                     mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                 }
-             }
-        }
+         
+         if let imageURL = currentEpisode?.coverFile{
+         Task{
+         if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+         mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+         }
+         }
+         
+         Task {
+         guard let imageURL = currentEpisode?.coverFile else { return }
+         let saveLocation = currentEpisode?.coverFileLocation
+         
+         if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL, saveTo: saveLocation) {
+         await
+         mediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+         
+         }
+         }
+         }
          */
         
-        
         let info: [String: Any] =  [
-        //    MPMediaItemPropertyArtwork: mediaArtwort ?? UIImage(named: "AppIcon") ?? UIImage(),
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist: episode.author ?? episode.podcast?.title ?? episode.podcast?.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
@@ -508,10 +526,12 @@ class Player: NSObject {
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
         
-       
-            
+        
+        DispatchQueue.main.async {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         
+        }
+      
     }
     
     func initRemoteCommandCenter(){
@@ -599,9 +619,35 @@ class Player: NSObject {
             Task { @MainActor in
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.playPosition
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = self.playbackRate
+               
             }
         }
     }
+    
+  
+    private func updateNowPlayingCover() async{
+        guard let episode =  currentEpisode else {
+            print("currentEpisode is nil")
+            return
+        }
+        Task.detached(priority: .userInitiated) {
+            print("updating now playing cover")
+
+            guard let imageURL = episode.imageURL ?? episode.podcast?.imageURL else {
+                print("imageURL is nil")
+                return }
+            
+            if let image =  await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                
+                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
+                
+            }else{
+                print("image is nil")
+                
+            }
+        }}
+    
     
     private func stopNowPlayingInfoUpdater() {
         nowPlayingInfoTimer?.invalidate()

@@ -12,6 +12,7 @@ struct PodcastDetailView: View {
     @State private var image: Image?
     var body: some View {
         HStack {
+            /*
             Group {
                 if let image = image {
                     image
@@ -23,11 +24,24 @@ struct PodcastDetailView: View {
 
             }
             .frame(width: 50, height: 50)
-            .task {
-                await loadImage()
-            }
+*/
             
             VStack(alignment: .leading) {
+                
+                HStack{
+                    if let lastBuildDate = podcast.lastBuildDate {
+                        Text("Last updated: \(lastBuildDate.formatted(date: .numeric, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if let lastRefreshDate = podcast.metaData?.lastRefresh {
+                        Text("Last refresh: \(lastRefreshDate.formatted(date: .numeric, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
                 if let author = podcast.author {
                     Text(author)
                         .font(.caption)
@@ -60,13 +74,5 @@ struct PodcastDetailView: View {
         
 
     }
-    private func loadImage() async {
-        if let imageURL = podcast.imageURL  {
-            if let uiImage = await ImageLoader.shared.loadImage(from: imageURL) {
-                await MainActor.run {
-                    self.image = Image(uiImage: uiImage)
-                }
-            }
-        }
-    }
+
 }

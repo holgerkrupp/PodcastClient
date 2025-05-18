@@ -97,11 +97,18 @@ struct PodcastRowView: View {
                         .lineLimit(2)
                         .foregroundColor(.secondary)
                 }
-                
-                if let lastBuildDate = podcast.lastBuildDate {
-                    Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                HStack{
+                    if let lastBuildDate = podcast.lastBuildDate {
+                        Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if let lastRefreshDate = podcast.metaData?.lastRefresh {
+                        Text("Last refresh: \(lastRefreshDate.formatted(.relative(presentation: .named)))")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
             .padding(.vertical, 4)

@@ -10,10 +10,16 @@ import SwiftUI
 
 
 
-struct Transcript:Codable{
+struct ExternalFile:Codable{
+    
+    enum FileType: String, Codable{
+        case transcript, chapter, image
+    }
+    
     let url:String
-    let type:String
-    let source:String
+    let category:FileType?
+    let source:String?
+    let fileType:String?
 }
 
 enum EpisodeType: String, Codable{
@@ -65,8 +71,10 @@ class EpisodeDownloadStatus{
     var number: String?
     var type: EpisodeType?
     
-    var transcripts:[Transcript] = []
+    var transcripts:[ExternalFile] = [] // TODO: To be removed and replaced by externalFiles
     var transcriptData:String?
+    
+    var externalFiles:[ExternalFile] = []
 
     @Relationship(deleteRule: .cascade) var chapters: [Chapter] = []
     @Relationship(deleteRule: .cascade) var metaData: EpisodeMetaData?
@@ -89,10 +97,12 @@ class EpisodeDownloadStatus{
         guard metaData?.playPosition != nil else { return 0.0 }
         guard duration != 0.0 else { return 0.0 }
         guard duration != nil else { return 0.0 }
-        return  Double(metaData?.playPosition ?? 0.0) / Double(duration ?? 1)
+        let progress = Double(metaData?.playPosition ?? 0.0) / Double(duration ?? 1)
+        
+        return  progress > 1 ? 1 : progress
     }
     
-    // calculated properties that will be generated out of existing properties.
+    //MARK: calculated properties that will be generated out of existing properties.
     var localFile: URL? {
         let fileName = url.lastPathComponent
         let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -108,7 +118,8 @@ class EpisodeDownloadStatus{
                                                attributes: nil)
         return uniqueURL
     }
-    var coverFile: URL? {
+    
+    var coverFileLocation: URL? {
         let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
         let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
         guard let baseURL = documentsDirectoryUrl else { return nil }
@@ -125,21 +136,8 @@ class EpisodeDownloadStatus{
     }
     
     
-    @MainActor
-    @Transient lazy var coverImage: some View = {
-        
-        if let imageURL {
-            return AnyView(ImageWithURL(imageURL))
-        }else if let podcastcover = podcast?.imageURL{
-            return AnyView(ImageWithURL(podcastcover))
-        }else{
-            return AnyView(EmptyView())
-        }
-         
-    }()
-    
 
-    
+
 
     
     @Transient var preferredChapters: [Chapter] {
@@ -215,8 +213,9 @@ class EpisodeDownloadStatus{
  
         }
         
-        for transcript in episodeData["transcripts"] as? [Transcript] ?? []{
-            transcripts.append(transcript)
+        for transcript in episodeData["transcripts"] as? [ExternalFile] ?? []{
+            transcripts.append(transcript) // this is to be removed in the future
+            externalFiles.append(transcript)
         }
         if let chaptersData = episodeData["psc:chapters"] as? [[String: Any]] {
             for chapterData in chaptersData {

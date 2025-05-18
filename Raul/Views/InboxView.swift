@@ -22,6 +22,7 @@ struct InboxView: View {
     }
     
     var body: some View {
+        
         List {
             if let podcast {
                 Section() {
@@ -29,8 +30,6 @@ struct InboxView: View {
                 }
                 .listRowSeparator(.hidden)
             }
-            
-            
             
             ForEach(episodes) { episode in
                 EpisodeRowView(episode: episode)

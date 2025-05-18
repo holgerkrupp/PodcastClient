@@ -22,6 +22,7 @@ struct EpisodeDetailView: View {
             
        
         HStack {
+            /*
             Group {
                 if let image = image {
                     image
@@ -33,10 +34,7 @@ struct EpisodeDetailView: View {
 
             }
             .frame(width: 50, height: 50)
-            .task {
-                await loadImage()
-            }
-            
+*/
             VStack(alignment: .leading) {
                 HStack {
                     Text(episode.podcast?.title ?? "")
@@ -103,13 +101,5 @@ struct EpisodeDetailView: View {
         }
        
     }
-    private func loadImage() async {
-        if let imageURL = episode.imageURL ?? episode.podcast?.imageURL {
-            if let uiImage = await ImageLoader.shared.loadImage(from: imageURL) {
-                await MainActor.run {
-                    self.image = Image(uiImage: uiImage)
-                }
-            }
-        }
-    }
+
 }

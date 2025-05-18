@@ -21,6 +21,7 @@ struct PlaylistView: View {
             if let episode = entry.episode {
                 EpisodeRowView(episode: episode)
                     .id(episode.metaData?.id ?? episode.id)
+                    
                
             }
             

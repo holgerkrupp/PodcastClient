@@ -79,7 +79,7 @@ actor PodcastModelActor {
             podcast.link = URL(string: podcastParser.podcastDictArr["link"] as? String ?? "")
             if let imageURL = podcastParser.podcastDictArr["coverImage"] as? String {
                 podcast.imageURL = URL(string: imageURL)
-                await downloadCoverArt(podcastID)
+             //   await downloadCoverArt(podcastID)
             }
             
             podcast.lastBuildDate = Date.dateFromRFC1123(
@@ -128,8 +128,8 @@ actor PodcastModelActor {
         guard let coverURL = podcast.imageURL else {
             print("❌ Podcast does not have a cover")
             return }
-        let item = await DownloadManager.shared.download(from: coverURL, saveTo: podcast.coverFile)
-        print("saving cover to \(String(describing: podcast.coverFile))")
+        let item = await DownloadManager.shared.download(from: coverURL, saveTo: podcast.coverFileLocation)
+        print("saving cover to \(String(describing: podcast.coverFileLocation))")
        
     }
 

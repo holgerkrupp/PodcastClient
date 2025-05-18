@@ -31,6 +31,14 @@ class CarPlayPlayNext {
                 cover = ImageWithData(data).uiImage()
             }
             */
+            
+            if let imageURL = episode.imageURL ?? episode.podcast?.imageURL,
+            
+                let image =  await ImageLoaderAndCache.loadUIImage(from: imageURL){
+                cover = image
+            }
+            
+            
             let listItem = CPListItem(
                 text: episode.title,
                 detailText: episode.podcast?.title,
@@ -67,12 +75,13 @@ class CarPlayPlayNext {
         return CPListSection(items: [])
     }
     
-    func reloadInterface() {
+    func reloadInterface() async {
+        let items = await fetchItems()
+        let section = CPListSection(items: items)
+        let template = CPListTemplate(title: "Up Next", sections: [section])
         Task { @MainActor in
-            let items = await fetchItems()
-            let section = CPListSection(items: items)
-            let template = CPListTemplate(title: "Up Next", sections: [section])
-          //  try? await interfaceController?.setRootTemplate(template, animated: true)
+
+            try? await interfaceController?.setRootTemplate(template, animated: true)
         }
     }
 }

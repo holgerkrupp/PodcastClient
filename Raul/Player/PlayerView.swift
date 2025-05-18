@@ -2,7 +2,7 @@ import SwiftUI
 
 
 struct PlayerView: View {
-    @State private var player = Player.shared
+    @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
@@ -17,9 +17,10 @@ struct PlayerView: View {
                     ZStack{
                         GeometryReader { geometry in
                             // Background layer
-                            player.coverImage
-                                
+                         
+                            EpisodeCoverView(episode: episode)
                                 .scaledToFill()
+                                .id(episode.id)
                                 
                                 .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
                             // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
@@ -82,7 +83,13 @@ struct PlayerView: View {
                                 Color.clear
                                 
                                 if fullSize {
-                                    player.coverImage
+                                    EpisodeCoverView(episode: episode)
+                                        .id(episode.id)
+
+                                    
+                   
+                                    
+                                    
                                         .scaledToFit()
                                         .frame(maxWidth: .infinity)
                                     

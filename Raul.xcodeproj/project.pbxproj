@@ -10,6 +10,7 @@
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
 		4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
+		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
 		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
 		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
@@ -19,6 +20,7 @@
 /* Begin PBXFileReference section */
 		4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Entitlements.plist; sourceTree = "<group>"; };
 		4827FCD32DA5AC0500FA6778 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
 		487F5C6F2D9D4F0C00056D08 /* Raul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Raul.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -63,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				4827FCD32DA5AC0500FA6778 /* README.md */,
+				4878D3802DDA612600BA3D92 /* PodcastFeactures.md */,
 				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				487F5C962D9D59D000056D08 /* Frameworks */,
@@ -161,6 +164,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4827FCD42DA5AC0500FA6778 /* README.md in Resources */,
+				4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */,
 				4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
