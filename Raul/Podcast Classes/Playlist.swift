@@ -33,23 +33,10 @@ class Playlist{
         case none
         
         var id: Self { self }
-        
-        
+
     }
 
-    func addPlayTimes() -> [Double]{
-        var playTime = 0.0
-        var playTimes:[Double] = []
-        
-        
-        for item in ordered {
-            let playbackspeed = 1
-            let adjustedEpisodeDuration = ((item.episode?.duration ?? 0.0) - (item.episode?.metaData?.playPosition ?? 0.0) * Double(playbackspeed))
-            playTime = playTime + adjustedEpisodeDuration
-            playTimes.append(playTime)
-        }
-        return playTimes
-    }
+
     
 }
 
@@ -60,12 +47,14 @@ class PlaylistEntry: Equatable, Identifiable{
     var dateAdded: Date?
     var order:Int = 0
     @Relationship var playlist:Playlist?
-    init(episode: Episode, order: Int?){
-        
-        
+    
+    
+    
+    init(episode: Episode, playlist: Playlist, order: Int?) {
         self.order = order ?? 0
         self.dateAdded = Date()
         self.episode = episode
+        self.playlist = playlist
     }
 
 }

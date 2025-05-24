@@ -73,6 +73,7 @@ struct SubscribeToPodcastView: View {
                         }
                     }
                 }
+                .buttonStyle(.plain)
             } else {
                 Text("Already subscribed")
                     .foregroundStyle(.secondary)

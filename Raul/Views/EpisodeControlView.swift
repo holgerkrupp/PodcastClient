@@ -16,6 +16,10 @@ struct EpisodeControlView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var downloadProgress: Double = 0.0
     @State private var isDownloading: Bool = false
+    
+    var playlistViewModel:PlaylistViewModel = PlaylistViewModel(container: ModelContainerManager().container)
+ 
+
 
     var body: some View {
         HStack {
@@ -53,6 +57,103 @@ struct EpisodeControlView: View {
 
         }
         .frame(maxWidth: .infinity, maxHeight: 30)
+        HStack{
+            Button(action: {
+                Task{
+                    await Player.shared.playEpisode(episode.id)
+                }
+            }) {
+                Image(systemName: "play.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(12)
+                    .foregroundColor(.background)
+                    .background(
+                        Circle()
+                            .fill(.accent)
+                    )
+                
+                
+                
+            }
+            .buttonStyle(.plain)
+            .frame(width: 50, height: 50)
+            
+            Spacer()
+            
+            Button {
+                Task{
+                    await playlistViewModel.addEpisode(episode, to: .front)
+                    
+                }
+            } label: {
+                Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                    .symbolRenderingMode(.hierarchical)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(12)
+                    .foregroundColor(.background)
+                    .background(
+                        Circle()
+                            .fill(.accent)
+                    )
+                
+                
+                
+            }
+            .buttonStyle(.plain)
+            .frame(width: 50, height: 50)
+            
+            
+            Button {
+                Task{
+                    await playlistViewModel.addEpisode(episode, to: .end)
+                }
+            } label: {
+                Image(systemName: "text.line.last.and.arrowtriangle.forward")
+                    .symbolRenderingMode(.hierarchical)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(12)
+                    .foregroundColor(.background)
+                    .background(
+                        Circle()
+                            .fill(.accent)
+                    )
+                
+                
+                
+            }
+            .buttonStyle(.plain)
+            .frame(width: 50, height: 50)
+            
+            Spacer()
+            
+            Button {
+                Task{
+                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                }
+            } label: {
+                Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                    .symbolRenderingMode(.hierarchical)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(12)
+                    .foregroundColor(.background)
+                    .background(
+                        Circle()
+                            .fill(.accent)
+                    )
+                
+                
+                
+            }
+            .buttonStyle(.plain)
+            .frame(width: 50, height: 50)
+            
+            
+        }
 
     }
 }

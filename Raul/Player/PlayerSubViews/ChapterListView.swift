@@ -34,48 +34,7 @@ struct ChapterListView: View {
                 
                 ForEach(sortedChapters, id: \.id) { chapter in
                    
-                        
-                            
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(chapter.title)
-                                        .font(.title3)
-                                    HStack {
-                                        Text(Duration.seconds(chapter.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                            .font(.footnote)
-                                            .monospacedDigit()
-                                        
-                                        Spacer()
-                                        
-                                        if let url = chapter.link {
-                                            Link(destination: url) {
-                                                Image(systemName: "link")
-                                                    .foregroundColor(.blue)
-                                            }
-                                            .padding(.trailing, 8)
-                                        }
-                                    }
-                                }
-                                Toggle("Play Chapter", isOn: Binding(
-                                    get: { chapter.shouldPlay },
-                                    set: { newValue in
-                                        if let index = chapters.firstIndex(where: { $0.id == chapter.id }) {
-                                            chapters[index].shouldPlay = newValue
-                                        }
-                                    }
-                                ))
-                                .toggleStyle(SkipChapter())
-                           
-                        }
-                        .padding(.horizontal)
-                        .onTapGesture {
-                            Task{
-                                await player.skipTo(chapter: chapter)
-                            }
-                        }
-                        .foregroundStyle(
-                            chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accentColor : Color.primary
-                        )
+                         ChapterRowView(chapter: chapter)
                         if chapter.id != sortedChapters.last?.id {
                             Divider()
                                 .padding(.horizontal)

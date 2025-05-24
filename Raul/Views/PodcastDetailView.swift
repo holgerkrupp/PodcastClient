@@ -11,20 +11,8 @@ struct PodcastDetailView: View {
     @State var podcast: Podcast
     @State private var image: Image?
     var body: some View {
-        HStack {
-            /*
-            Group {
-                if let image = image {
-                    image
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    Color.gray.opacity(0.2)
-                }
 
-            }
-            .frame(width: 50, height: 50)
-*/
+
             
             VStack(alignment: .leading) {
                 
@@ -41,15 +29,29 @@ struct PodcastDetailView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                
-                if let author = podcast.author {
-                    Text(author)
-                        .font(.caption)
+                if let feedUpdateCheckDate = podcast.metaData?.feedUpdateCheckDate {
+                    Text("Feed update check: \(feedUpdateCheckDate.formatted(date: .numeric, time: .shortened))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                 }
-                Text(podcast.title)
-                    .font(.headline)
-                    .lineLimit(2)
-
+                HStack {
+                    
+                    
+                        if let imageURL = podcast.imageURL {
+                            ImageWithURL(imageURL)
+                                .frame(width: 50, height: 50)
+                                .cornerRadius(8)
+                        }
+                    VStack{
+                        if let author = podcast.author {
+                            Text(author)
+                                .font(.caption)
+                        }
+                        Text(podcast.title)
+                            .font(.headline)
+                            .lineLimit(2)
+                    }
+                }
                 if let podcastLink = podcast.link {
                     Link(destination: podcastLink) {
                         Text("Open in Safari")
@@ -58,7 +60,7 @@ struct PodcastDetailView: View {
 
 
               
-            }
+           
         }
         if let copyright = podcast.copyright {
             Text(copyright)
@@ -69,6 +71,7 @@ struct PodcastDetailView: View {
             ExpandableTextView(text: desc)
                 .font(.caption2)
                 .lineLimit(4)
+            
         }
        
         

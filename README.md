@@ -8,15 +8,11 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 - [ ] Create Podcast Detail View
-- [x] Now Playing Cover Images
-- [x] Player Cover not updated when Episode is changed.
 - [ ] CarPlay
 - [ ] Integrate Settings (Per Podcasts and global)
-- [x] Chapter Durations not always correct (Wochendämmerung, DML)
 - [ ] Refactor mp3ChapterReader to sednd a custom object (concurrency)
 - [ ] Replace transcripts with generic 'external File' that can also host chapters, images and others.
-- [x] Playlist items are not always correctly readded after beeing removed from the player
-
+- [?] Re adding an episode when it changes in the player is broken
 
 ## Alpha min Requiremets
 
@@ -29,7 +25,6 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [x] download episodes
 - - [x] show download progress
 - - [x] delete files
-- - [ ] update UI after file deleted
 - - [ ] implement automatic background downloads
 - [x] remove all files when one episode is archived 
 - [x] if Playlist contains episode, move it to the front/end instead of adding another copy
@@ -45,10 +40,9 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [x] mp3
 - - [x] extracted from shownotes
 - - [x] Update Chapter View more snappy
-- [ ] include chapter art for mp3/m4a
+- [?] include chapter art for mp3/m4a
 - [?] include chapter links for mp3/m4a
 - [x] postprocess chapters to find duration/end if no value is given ( chapter[n].end = chapter[n+1].start ? episode.end)
-- [ ] download images during postprocessing
 - [x] save last played episode and reload when opening the app
 
 ## Beta min Requirement
@@ -96,7 +90,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] Automatic deletion of files
 - - [ ] Based on last x files
 - - [ ] Based on time passed since release 
-- [ ] Notification after refresh
+- [?] Notification after refresh
 
 ### Player
 - [ ] skip detection

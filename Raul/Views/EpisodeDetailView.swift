@@ -22,32 +22,23 @@ struct EpisodeDetailView: View {
             
        
         HStack {
-            /*
-            Group {
-                if let image = image {
-                    image
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    Color.gray.opacity(0.2)
-                }
-
-            }
-            .frame(width: 50, height: 50)
-*/
+            EpisodeCoverView(episode: episode)
+                .frame(width: 50, height: 50)
             VStack(alignment: .leading) {
                 HStack {
                     Text(episode.podcast?.title ?? "")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     Spacer()
-                    Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
+                    Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 Text(episode.title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(4)
+                    .minimumScaleFactor(0.1)
+                    .truncationMode(.tail)
                 if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
                         Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
                             .font(.caption)
@@ -61,10 +52,11 @@ struct EpisodeDetailView: View {
               
             }
         }
-      //      HTMLTextView(episode.desc ?? "")
+        Spacer(minLength: 10)
         ExpandableTextView(text: episode.desc ?? "")
                 
                 .lineLimit(10)
+                .padding()
        
         if let episodeLink = episode.link {
             Link(destination: episodeLink) {
@@ -73,8 +65,12 @@ struct EpisodeDetailView: View {
         }
             
             Picker(selection: $listSelection) {
-                Text("Chapters").tag(Selection.chapters)
-                Text("Transcript").tag(Selection.transcript)
+                if episode.preferredChapters.count > 0{
+                    Text("Chapters").tag(Selection.chapters)
+                }
+                if episode.transcriptData != nil{
+                    Text("Transcript").tag(Selection.transcript)
+                }
             } label: {
                 Text("Show")
             }
@@ -94,10 +90,7 @@ struct EpisodeDetailView: View {
                 }else{
                     Text("no transcript available")
                 }
-    
             }
-            
-     
         }
        
     }

@@ -16,26 +16,27 @@ struct AddPodcastView: View {
     @State private var listSelection:Selection = .search
     var body: some View {
         NavigationStack{
-            Picker(selection: $listSelection) {
-                Text("Search").tag(Selection.search)
-                Text("Hot").tag(Selection.hot)
-                Text("Import").tag(Selection.importexport)
-            } label: {
-                Text("Show")
+            VStack{
+                Picker(selection: $listSelection) {
+                    Text("Search").tag(Selection.search)
+                    Text("Hot").tag(Selection.hot)
+                    Text("Import").tag(Selection.importexport)
+                } label: {
+                    Text("Show")
+                }
+                .pickerStyle(.segmented)
+                Spacer()
+                switch listSelection {
+                case .search:
+                    PodcastSearchView()
+                case .hot:
+                    HotPodcastView()
+                    
+                case .importexport:
+                    ImportExportView()
+                        .modelContext(context)
+                }
             }
-            .pickerStyle(.segmented)
-            
-            switch listSelection {
-            case .search:
-                PodcastSearchView()
-            case .hot:
-                HotPodcastView()
-          
-            case .importexport:
-                ImportExportView()
-                    .modelContext(context)
-            }
-            
             
             
             

@@ -35,7 +35,8 @@ class ImageLoaderAndCache: ObservableObject {
     static func loadImageData(from url: URL, saveTo: URL?) async -> Data? {
         let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
         let cache = URLCache.shared
-
+        cache.diskCapacity = 1024 * 1024 * 200
+        
         if let cached = cache.cachedResponse(for: request)?.data {
             return cached
         }

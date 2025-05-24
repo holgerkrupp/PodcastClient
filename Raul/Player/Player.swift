@@ -43,7 +43,7 @@ class Player: NSObject {
     var episodeActor: EpisodeActor
     var playlistActor: PlaylistModelActor
     
-    
+    var settingLockScreenScrubbing: Bool = false
     
     
     override init()  {
@@ -61,7 +61,7 @@ class Player: NSObject {
         if let episodeIDString = UserDefaults.standard.string(forKey: "lastPlayedEpisodeID"),
            let episodeUUID = UUID(uuidString: episodeIDString) {
             
-            Task {  @MainActor in
+            Task { 
                 if let episode = await fetchEpisode(with: episodeUUID) {
                     print("loading last episode: \(episode.title)")
                     currentEpisode = episode
@@ -124,6 +124,11 @@ class Player: NSObject {
        
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         print("unloading episode \(episode.title)")
+        currentEpisode = nil
+        currentEpisodeID = nil
+        UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeUUID")
+        
+        
         if episode.playProgress > progressThreshold {
             print("marking episode \(episode.title) as Played")
 
@@ -140,7 +145,7 @@ class Player: NSObject {
     
     
     
-    func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true) async {
+    func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true, startingAt time: Double? = nil) async {
         
         print("playing episode \(episodeUUID)")
         
@@ -148,55 +153,49 @@ class Player: NSObject {
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
             print("unloading episode \(currentEpisodeID)")
             await unloadEpisode(episodeUUID: currentEpisodeID)
+            await playlistActor.remove(episodeID: episodeUUID)
         }
 
         episode.metaData?.isInbox = false
 
         currentEpisode = episode
         currentEpisodeID = episode.id
-        await playlistActor.remove(episodeID: episodeUUID)
+        
+        
 
-        
-        jumpTo(time: episode.metaData?.playPosition ?? 0)
-        
-        _ = updateCurrentChapter()
-        
-        
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
 
         Task { @MainActor in
             // Load the AVPlayerItem asynchronously
             let item = await Task {
-                
                 if episode.metaData?.calculatedIsAvailableLocally ?? false, let localFile = episode.localFile {
-                    
                     AVPlayerItem(url: localFile)
                 }else{
-                  
                     AVPlayerItem(url: episode.url)
                 }
-                
-                
             }.value
-            
-            
-            await engine.replaceCurrentItem(with: item)
            
             
-            if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
+            await engine.replaceCurrentItem(with: item)
+ 
+            if let time  {
+                jumpTo(time: time)
+            }else if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
                 print("last position: \(lastPlayPosition)")
                 jumpTo(time: lastPlayPosition)
             } else {
-                print("no last position")
+                jumpTo(time: 0)
             }
+            _ = updateCurrentChapter()
             initRemoteCommandCenter()
             setupStaticNowPlayingInfo()
         await   updateNowPlayingCover()
             if playDirectly {
                 play()
-                
             }
+            
         }
+        
     }
     
     var coverImage: some View{
@@ -429,16 +428,24 @@ class Player: NSObject {
     }
     
     func skipTo(chapter: Chapter) async{
+            if let newEpisode = chapter.episode, let start = chapter.start{
+                await playEpisode(newEpisode.id, playDirectly: true, startingAt: start)
+            }
         
-        if chapter.episode == currentEpisode{
-            if let start = chapter.start{
-                
-                jumpTo(time: start)
-            }
-        }else{
-            if let newEpisode = chapter.episode{
-                await playEpisode(newEpisode.id, playDirectly: true)
-            }
+    }
+    
+    func skipToNextChapter() async{
+        if let start = nextChapter?.start{
+             jumpTo(time: start)
+        }
+    }
+    
+    func skipToChapterStart() async{
+        guard let currentChapter else {
+            return
+        }
+        if let start = currentChapter.start{
+             jumpTo(time: start)
         }
     }
 
@@ -453,6 +460,11 @@ class Player: NSObject {
                 if let nextEpisodeID = await playlistActor.nextEpisode(){
                     BasicLogger.shared.log("Playing next episode")
                     await playEpisode(nextEpisodeID, playDirectly: true)
+                }else{
+                    if let currentEpisodeID{
+                        await unloadEpisode(episodeUUID: currentEpisodeID)
+                    }
+                    
                 }
             }
      //   }
@@ -570,7 +582,7 @@ class Player: NSObject {
         RCC.skipForwardCommand.addTarget { event in
             
             let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.jumpTo(time: seconds)
+            self.jumpPlaypostion(by: seconds)
             return.success
         }
         RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: 30)]
@@ -581,7 +593,7 @@ class Player: NSObject {
         RCC.skipBackwardCommand.addTarget { event in
             
             let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.jumpTo(time: -seconds)
+            self.jumpPlaypostion(by: -seconds)
             return.success
         }
         
@@ -594,7 +606,7 @@ class Player: NSObject {
             return.success
         }
         
-        RCC.changePlaybackPositionCommand.isEnabled = true
+        RCC.changePlaybackPositionCommand.isEnabled = settingLockScreenScrubbing
         RCC.changePlaybackPositionCommand.addTarget { event in
             
                 if let event = event as? MPChangePlaybackPositionCommandEvent {
@@ -630,14 +642,27 @@ class Player: NSObject {
             print("currentEpisode is nil")
             return
         }
+        
+        let chapterImage = currentChapter?.image
+        let chapterImageData = currentChapter?.imageData
+        
+        
         Task.detached(priority: .userInitiated) {
             print("updating now playing cover")
 
-            guard let imageURL = episode.imageURL ?? episode.podcast?.imageURL else {
+            guard let imageURL = chapterImage ?? episode.imageURL ?? episode.podcast?.imageURL else {
                 print("imageURL is nil")
                 return }
             
-            if let image =  await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+            if let chapterImageData = chapterImageData, let image = UIImage(data: chapterImageData) {
+                print("using chapter image data")
+                let artwork = MPMediaItemArtwork(boundsSize: CGSize(width: 100, height: 100)) { _ in
+                   image
+                }
+                
+                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
+                
+            }else if let image =  await ImageLoaderAndCache.loadUIImage(from: imageURL) {
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork

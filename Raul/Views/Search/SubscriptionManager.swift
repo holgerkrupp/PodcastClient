@@ -160,16 +160,34 @@ actor SubscriptionManager:NSObject{
     func bgupdateFeeds() async{
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
-        fetchData()
+      
         await BasicLogger.shared.log("bgupdateFeeds")
+        
 
-        for podcast in podcasts.sorted(by: { lhs, rhs in
-            lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
-        }).filter({$0.metaData?.feedUpdated != false}){
-            await BasicLogger.shared.log("updating \(podcast.title)")
-            try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
-        }
+            setLastRefreshDate()
+            fetchData()
+            for podcast in podcasts.sorted(by: { lhs, rhs in
+                lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
+            }).filter({$0.metaData?.feedUpdated != false}){
+                await BasicLogger.shared.log("updating \(podcast.title)")
+                try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
+            }
+            
+   
+        
+        
+        
+
+
     }
+    func getLastRefreshDate() -> Date? {
+        let lastDate = Date.dateFromRFC1123(dateString: UserDefaults.standard.string(forKey: "LastBackgroundRefresh") ?? "")
+        return lastDate
+    }
+    func setLastRefreshDate(){
+        UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
+    }
+    
     
     
     func generateOPML() -> String {

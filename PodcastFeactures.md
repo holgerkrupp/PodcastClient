@@ -1,11 +1,12 @@
 #  Podcast Features to implement
 
+I'm trying to integrate the addtions to the podcast definition created by the Podlove project as well as the 'Podcasting 2.0 Namepace'. Here is a small tracker about my progress.
 
 ✅ Podlove Namespace
 
 Namespace URL: http://podlove.org/simple-chapters
 
-Primarily used by the Podlove Podcast Publisher, with structured metadata and modular formats.
+Primarily used by the Podlove, with structured metadata and modular formats.
 
 Notable Tags (under podlove:):
 - [x] <psc:chapters> — Inline chapter list.

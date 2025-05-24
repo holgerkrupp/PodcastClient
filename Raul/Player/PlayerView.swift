@@ -146,8 +146,9 @@ struct PlayerView: View {
                             
                             if fullSize {
                                 VStack {
-                                    PlayerProgressSliderView(value: $player.progress, sliderRange: 0...1)
+                                    PlayerProgressSliderView(value: $player.progress, allowTouch: false, sliderRange: 0...1)
                                         .frame(height: 30)
+                                        
                                     
                                     HStack {
                                         Text(player.playPosition.secondsToHoursMinutesSeconds ?? "00:00:00")
@@ -224,7 +225,11 @@ struct PlayerView: View {
                     .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
 
                 } else {
-                    Text("No episode playing.")
+                    HStack{
+                        Spacer()
+                        Text("No episode playing.")
+                        Spacer()
+                    }
                 }
             
 

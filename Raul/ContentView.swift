@@ -11,9 +11,15 @@ import BasicLogger
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var phase
+
+    @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
+    @Query(filter: #Predicate<Episode> { $0.metaData?.isInbox == true } ) var inBox: [Episode]
+    
+    private var SETTINGgoingBackToPlayerafterBackground: Bool = true
     
     enum Tab: Int {
-        case player, podcasts, inbox, downloads, logger
+        case player, podcasts, inbox, downloads, logger, settings
     }
     
     @State private var selectedTab: Tab = .player
@@ -35,6 +41,8 @@ struct ContentView: View {
                     Label("Inbox", systemImage: "tray.fill")
                 }
                 .tag(Tab.inbox)
+                .badge(inBox.count)
+            
             
 
             
@@ -46,6 +54,15 @@ struct ContentView: View {
                     Label("Podcasts", systemImage: "headphones")
                 }
                 .tag(Tab.podcasts)
+            
+            
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
+                .tag(Tab.settings)
+            
+            
             #if DEBUG
             NavigationStack {
                 LogView()
@@ -54,12 +71,31 @@ struct ContentView: View {
                     Label("Log", systemImage: "text.bubble")
                 }
                 .tag(Tab.logger)
+            
 #endif
 
 
         }
+        .onChange(of: phase, {
+            if SETTINGgoingBackToPlayerafterBackground{
+                switch phase {
+                case .background:
+                    setGoingToBackgroundDate()
+                case .active:
+                    if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
+                        selectedTab = .player
+                    }
+                    
+                default: break
+                }
+            }
+        })
         
   
+    }
+    
+    func setGoingToBackgroundDate() {
+        goingToBackgroundDate = Date()
     }
         
 }

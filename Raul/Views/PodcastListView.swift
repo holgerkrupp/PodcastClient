@@ -12,57 +12,86 @@ struct PodcastListView: View {
     
     var body: some View {
         NavigationView {
-            List {
-                ForEach(podcasts) { podcast in
-                    PodcastRowView(podcast: podcast)
-                }
-                .onDelete { indexSet in
-                    Task {
-                        for index in indexSet {
-                            await viewModel.deletePodcast(podcasts[index])
+            if podcasts.isEmpty {
+                PodcastsEmptyView()
+                    .navigationTitle("Podcasts")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: {
+                                Task {
+                                    await viewModel.refreshPodcasts()
+                                }
+                            }) {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            .disabled(viewModel.isLoading)
+                        }
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
+                                Image(systemName: "plus")
+                            }
+                        
                         }
                     }
-                }
-            }
-            .refreshable {
-                Task{
-                    await viewModel.refreshPodcasts()
-                }
-            }
-            .navigationTitle("Podcasts")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
+            }else{
+                List {
+                    ForEach(podcasts) { podcast in
+                        PodcastRowView(podcast: podcast)
+                    }
+                    .onDelete { indexSet in
                         Task {
-                            await viewModel.refreshPodcasts()
+                            for index in indexSet {
+                                await viewModel.deletePodcast(podcasts[index])
+                            }
                         }
-                    }) {
-                        Image(systemName: "arrow.clockwise")
                     }
-                    .disabled(viewModel.isLoading)
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
-                        Image(systemName: "plus")
+                .refreshable {
+                    Task{
+                        await viewModel.refreshPodcasts()
                     }
-                 //   .disabled(viewModel.isLoading)
                 }
-            }
-            .overlay {
-                if viewModel.isLoading {
-                    ProgressView()
+                
+                .navigationTitle("Podcasts")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            Task {
+                                await viewModel.refreshPodcasts()
+                            }
+                        }) {
+                            if viewModel.isLoading {
+                                ProgressView()
+                            }else{
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            
+                        }
+                        .disabled(viewModel.isLoading)
+                    }
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
+                            Image(systemName: "plus")
+                        }
+                    
+                    }
                 }
-            }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") {
-                    viewModel.errorMessage = nil
+                
+                .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+                    Button("OK") {
+                        viewModel.errorMessage = nil
+                    }
+                } message: {
+                    if let errorMessage = viewModel.errorMessage {
+                        Text(errorMessage)
+                    }
                 }
-            } message: {
-                if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
-                }
+                
+                
+                
             }
         }
+
     }
 }
 
@@ -113,9 +142,19 @@ struct PodcastRowView: View {
             }
             .padding(.vertical, 4)
         }
+        .overlay {
+            if podcast.metaData?.isUpdating  == true{
+                ProgressView()
+                    .frame(width: 100, height: 50)
+                                          .scaledToFill()
+                                          .background(Material.thin)
+            }
+        }
     }
 }
 
 #Preview {
     PodcastListView(modelContainer: try! ModelContainer(for: Podcast.self, Episode.self))
 } 
+
+

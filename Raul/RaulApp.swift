@@ -15,10 +15,11 @@ import BasicLogger
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager()
     @Environment(\.scenePhase) private var phase
+    
 
     init() {
         _ = Player.shared
-        
+      
     }
 
     var body: some Scene {
@@ -31,8 +32,10 @@ struct RaulApp: App {
         .onChange(of: phase, {
             switch phase {
             case .background:
-          
                 bgNewAppRefresh()
+         
+          
+                
               //  debugActions()
             default: break
             }
@@ -41,18 +44,12 @@ struct RaulApp: App {
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
             await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
-            await setLastRefreshDate()
-         
-            let shouldRefresh = await SubscriptionManager(modelContainer: ModelContainerManager().container).bgcheckIfFeedsShouldRefresh()
-         
-            if shouldRefresh {
-                await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
-            }
-           
             
+            await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
         }
     }
 
+    
 
     func debugActions() {
         let sharedContainerURL :URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient")
@@ -70,7 +67,12 @@ struct RaulApp: App {
 
     
     func setLastRefreshDate(){
-        UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundRefresh")
+        UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
+    }
+    
+    func getLastRefreshDate() -> Date? {
+        let lastDate = Date.dateFromRFC1123(dateString: UserDefaults.standard.string(forKey: "LastBackgroundRefresh") ?? "")
+        return lastDate
     }
     
     func setLastprocessDate(){
@@ -82,7 +84,7 @@ struct RaulApp: App {
         // this should replace scheduleAppRefresh
         BasicLogger.shared.log("going to background will schedule checkFeedUpdates")
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 10)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30)
         
         do{
             try BGTaskScheduler.shared.submit(request)

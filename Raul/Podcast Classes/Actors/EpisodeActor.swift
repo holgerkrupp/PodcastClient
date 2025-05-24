@@ -153,8 +153,11 @@ actor EpisodeActor {
     }
     
     func setLastPlayed(_ episodeID: UUID, to date: Date = Date()) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        
+        guard let episode = await fetchEpisode(byID: episodeID) else {
+            
+            print("could not find episode with ID \(episodeID) to set last played date")
+            return }
+        print("setting last played date for \(episode.title) to \(date.formatted())")
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
     }

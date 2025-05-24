@@ -21,7 +21,7 @@ struct HTMLTextView: View {
                     .characterEncoding: String.Encoding.utf8.rawValue
                 ],
                 documentAttributes: nil
-            )
+            ).removingColorAttributes()
             return try AttributedString(nsAttr, including: \.uiKit)
         } catch {
             print("HTML parse error: \(error)")
@@ -30,3 +30,11 @@ struct HTMLTextView: View {
     }
 }
 
+extension NSAttributedString {
+    func removingColorAttributes() -> NSAttributedString {
+        let mutable = NSMutableAttributedString(attributedString: self)
+        let fullRange = NSRange(location: 0, length: mutable.length)
+        mutable.removeAttribute(.foregroundColor, range: fullRange)
+        return mutable
+    }
+}

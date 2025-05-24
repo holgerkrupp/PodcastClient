@@ -101,67 +101,60 @@ actor PlaylistModelActor : ModelActor {
     
     // Add an episode to the playlist
     func add(episodeID: UUID, to position: Playlist.Position = .end) async {
-        print("adding episode \(episodeID) to playlist \(playlist.title) at position \(position)")
+        print("🎯 Adding episode \(episodeID) to playlist \(playlist.title) at position \(position)")
 
-        let predicate = #Predicate<Episode> { episode in
-            // Direct comparison of the episode's persistentModelID
-            episode.id == episodeID
-        }
+        let predicate = #Predicate<Episode> { $0.id == episodeID }
 
-                do {
-                    let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
-                    guard let episode = results.first else {
-                        print("❌ No episode found for episode ID: \(episodeID)")
-                        return
-                    }
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+            guard let episode = results.first else {
+                print("❌ No episode found for episode ID: \(episodeID)")
+                return
+            }
 
-                 
+            // Determine new order
+            let newPosition: Int
+            switch position {
+            case .front:
+                newPosition = (playlist.ordered.first?.order ?? 0) - 1
+            case .end:
+                newPosition = (playlist.ordered.last?.order ?? 0) + 1
+            case .none:
+                newPosition = (playlist.ordered.last?.order ?? 0)
+            }
 
-                    var newPosition = 0
-                    switch position {
-                    case .front:
-                        newPosition = (playlist.ordered.first?.order ?? 0) - 1
-                    case .end:
-                        newPosition = (playlist.ordered.last?.order ?? 0) + 1
-                    case .none:
-                        newPosition = (playlist.ordered.last?.order ?? 0)
-                    }
+            // Update if already exists
+            if let existingItem = playlist.items.first(where: { $0.episode?.id == episode.id }) {
+                existingItem.order = newPosition
+                print("🔄 Moved episode to position \(newPosition)")
+            } else {
+                // ✅ Create entry and set relationships only once
+                let newEntry = PlaylistEntry(episode: episode, playlist: playlist, order: newPosition)
 
-                    if let existingItem = playlist.items.first(where: { $0.episode == episode }) {
-                        existingItem.order = newPosition
-                        print("puted episode in new Position \(newPosition)")
-                    } else {
-                        let newEntry = PlaylistEntry(episode: episode, order: newPosition)
-                        newEntry.playlist = playlist
-                       
-                            print("appended new playlist item")
-                            playlist.items.append(newEntry)
-                        
-                        print("added episode in new Position \(newPosition) to \(playlist.title)")
+                print("➕ Created and linked new PlaylistEntry at position \(newPosition) of \(playlist.title)")
+            }
 
-                    }
-                    
-                    episode.metaData?.isInbox = false
-                  //  normalizeOrder()
-                    modelContext.saveIfNeeded()
-                    print("✅ Playlist updated")
-                    if episode.metaData?.isAvailableLocally != true {
-                        let episodeActor = EpisodeActor(modelContainer: modelContainer)
-                        await episodeActor.download(episodeID: episode.id)
-                    }
+            // Clear inbox flag
+            episode.metaData?.isInbox = false
 
-                   
-                    
-                } catch {
-                    print("error saving Playlist \(error)")
+            modelContext.saveIfNeeded()
+            print("✅ Saved playlist changes")
+
+            // Trigger download if needed (in background)
+            if episode.metaData?.isAvailableLocally != true {
+                Task {
+                    let episodeActor = EpisodeActor(modelContainer: modelContainer)
+                    await episodeActor.download(episodeID: episode.id)
                 }
- 
+            }
 
-
-
+        } catch {
+            print("❌ Error saving Playlist: \(error)")
+        }
     }
 
     // Remove an episode from the playlist
+   /*
     func remove(episodeID: UUID) {
         do {
             try refresh()
@@ -199,7 +192,34 @@ actor PlaylistModelActor : ModelActor {
                     print("error saving Playlist \(error)")
                 }
     }
-    
+    */
+    func remove(episodeID: UUID) {
+        print("remove episode \(episodeID)")
+        do {
+            // Find the PlaylistEntry directly using the same filter as your @Query
+            let predicate = #Predicate<PlaylistEntry> {
+                $0.episode?.id == episodeID &&
+                $0.playlist?.title == "de.holgerkrupp.podbay.queue"
+            }
+
+            let entries = try modelContext.fetch(FetchDescriptor<PlaylistEntry>(predicate: predicate))
+            guard let entry = entries.first else {
+                print("❌ No PlaylistEntry found for episode ID: \(episodeID)")
+                return
+            }
+
+            print("🗑 Removing entry for episode \(episodeID): \(entry.episode?.title ?? "Unknown")")
+
+            // Delete the entry from SwiftData
+            modelContext.delete(entry)
+
+            // Save changes
+            modelContext.saveIfNeeded()
+            print("✅ PlaylistEntry deleted and context saved")
+        } catch {
+            print("❌ Failed to remove PlaylistEntry: \(error)")
+        }
+    }
 
 
     // Reorder playlist entries

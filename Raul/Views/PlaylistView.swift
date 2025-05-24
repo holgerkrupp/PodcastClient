@@ -16,24 +16,30 @@ struct PlaylistView: View {
     
     var body: some View {
         
-        
-        ForEach(playListEntries, id: \.id) { entry in
-            if let episode = entry.episode {
-                EpisodeRowView(episode: episode)
-                    .id(episode.metaData?.id ?? episode.id)
-                    
-               
-            }
+        if playListEntries.isEmpty {
+            PlaylistEmptyView()
+        }else{
             
-        }
-        .onMove { indices, newOffset in
-            Task {
-                if let from = indices.first {
-                    moveEntry(from: from, to: newOffset)
+            ForEach(playListEntries, id: \.id) { entry in
+                if let episode = entry.episode {
+                   
+                        EpisodeRowView(episode: episode)
+                            .id(episode.metaData?.id ?? episode.id)
+                    
+                   
+                    
+                    
+                }
+                
+            }
+            .onMove { indices, newOffset in
+                Task {
+                    if let from = indices.first {
+                        moveEntry(from: from, to: newOffset)
+                    }
                 }
             }
         }
-        
     }
     private func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {
 

@@ -22,83 +22,86 @@ struct InboxView: View {
     }
     
     var body: some View {
-        
-        List {
-            if let podcast {
-                Section() {
-                    PodcastDetailView(podcast: podcast)
+        if episodes.isEmpty{
+            InboxEmptyView()
+        }else{
+            List {
+                if let podcast {
+                    Section() {
+                        PodcastDetailView(podcast: podcast)
+                    }
+                    .listRowSeparator(.hidden)
                 }
-                .listRowSeparator(.hidden)
-            }
-            
-            ForEach(episodes) { episode in
-                EpisodeRowView(episode: episode)
-                    .swipeActions(edge: .trailing){
-                        if episode.metaData?.isArchived == true {
-                            Button(role: .none) {
-                                Task { @MainActor in
-                                    await unarchiveEpisode(episode)
+                
+                ForEach(episodes) { episode in
+                    EpisodeRowView(episode: episode)
+                        .swipeActions(edge: .trailing){
+                            if episode.metaData?.isArchived == true {
+                                Button(role: .none) {
+                                    Task { @MainActor in
+                                        await unarchiveEpisode(episode)
+                                    }
+                                } label: {
+                                    Label("Unarchive Episode", systemImage: "archivebox")
                                 }
-                            } label: {
-                                Label("Unarchive Episode", systemImage: "archivebox")
-                            }
-                        } else {
-                            Button(role: .none) {
-                                Task { @MainActor in
-                                    await archiveEpisode(episode)
+                            } else {
+                                Button(role: .none) {
+                                    Task { @MainActor in
+                                        await archiveEpisode(episode)
+                                    }
+                                } label: {
+                                    Label("Archive Episode", systemImage: "archivebox.fill")
                                 }
-                            } label: {
-                                Label("Archive Episode", systemImage: "archivebox.fill")
                             }
                         }
-                    }
-                    .tint(.accent)
-            }
-        }
-        .navigationTitle(podcast?.title ?? "All Episodes")
-        .refreshable {
-            Task{
-                await refreshEpisodes()
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: {
-                    Task {
-                        await refreshEpisodes()
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
+                        .tint(.accent)
                 }
-                .disabled(isLoading)
             }
-
-            if let podcast {
+            .navigationTitle(podcast?.title ?? "All Episodes")
+            .refreshable {
+                Task{
+                    await refreshEpisodes()
+                }
+            }
+            .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
                         Task {
-                            try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)
+                            await refreshEpisodes()
                         }
                     }) {
-                        Image(systemName: "archivebox")
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(isLoading)
+                }
+                
+                if let podcast {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: {
+                            Task {
+                                try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)
+                            }
+                        }) {
+                            Image(systemName: "archivebox")
+                        }
                     }
                 }
             }
-        }
-        
-
-        .overlay {
-            if isLoading {
-                ProgressView()
+            
+            
+            .overlay {
+                if isLoading {
+                    ProgressView()
+                }
             }
-        }
-        .alert("Error", isPresented: .constant(errorMessage != nil)) {
-            Button("OK") {
-                errorMessage = nil
-            }
-        } message: {
-            if let errorMessage = errorMessage {
-                Text(errorMessage)
+            .alert("Error", isPresented: .constant(errorMessage != nil)) {
+                Button("OK") {
+                    errorMessage = nil
+                }
+            } message: {
+                if let errorMessage = errorMessage {
+                    Text(errorMessage)
+                }
             }
         }
     }

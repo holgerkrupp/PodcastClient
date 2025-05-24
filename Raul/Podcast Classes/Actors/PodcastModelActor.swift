@@ -12,6 +12,19 @@ import BasicLogger
 @ModelActor
 actor PodcastModelActor {
     
+    func linkEpisodeToPodcast(_ episodeID: PersistentIdentifier, _ podcastID: PersistentIdentifier)   {
+        guard let episode =   modelContext.model(for: episodeID) as? Episode else {
+            fatalError("Could not load episode \(episodeID)")
+        }
+        
+        guard var podcast =   modelContext.model(for: podcastID) as? Podcast else {
+            return
+        }
+        
+        podcast.episodes.append(episode)
+        
+    }
+    
     func checkIfFeedHasBeenUpdated(_ podcastID: PersistentIdentifier) async ->Bool?{
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return nil}
 
@@ -61,6 +74,7 @@ actor PodcastModelActor {
         if podcast.metaData == nil {
             podcast.metaData = PodcastMetaData()
         }
+        podcast.metaData?.isUpdating = true
          modelContext.saveIfNeeded()
         
         await BasicLogger.shared.log("Updating Podcast \(podcast.title)")
@@ -92,15 +106,23 @@ actor PodcastModelActor {
                 var newEpisodes: [Episode] = []
                
                 for episodeData in episodesData {
-                    
-                    guard  checkIfEpisodeExists(episodeData["guid"] as? String ?? "") ?? 0 < 1 else {
+                    let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "")
+                    if let episodeID {
                         print("Episode exists")
+                        if !podcast.episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                            await BasicLogger.shared.log("Episode exists but not linked to podcast")
+                            linkEpisodeToPodcast(episodeID , podcast.persistentModelID)
+                        }
                         continue
                     }
                     
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
                         newEpisodes.append(episode)
+                        
+                            await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
+                        
+                    
                     }else{
                         print("Episode already exists")
 
@@ -112,7 +134,7 @@ actor PodcastModelActor {
 
           
                 podcast.metaData?.lastRefresh = Date()
-
+                podcast.metaData?.isUpdating = false
                 modelContext.saveIfNeeded()
             
             
@@ -133,14 +155,14 @@ actor PodcastModelActor {
        
     }
 
-    private func checkIfEpisodeExists(_ guid: String) -> Int? {
+    private func checkIfEpisodeExists(_ guid: String) -> PersistentIdentifier? {
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.guid == guid  }
         )
         
-        let count = try? modelContext.fetch(descriptor).count
-        print("checking if episode exists \(guid) - count: \(count?.description ?? "nil")")
-        return count
+        let episodes = try? modelContext.fetch(descriptor)
+        print("checking if episode exists \(guid) - count: \(episodes?.count.description ?? "nil")")
+        return episodes?.first?.persistentModelID
     }
     
     func createPodcast(from url: URL) async throws -> PersistentIdentifier {
@@ -162,10 +184,6 @@ actor PodcastModelActor {
         default:
             feedURL = url
         }
-        
-        
-        
-        
         
         
         

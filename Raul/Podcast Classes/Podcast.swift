@@ -22,6 +22,8 @@ final class Podcast {
     var imageURL: URL?
     @Relationship(deleteRule: .cascade) var metaData: PodcastMetaData?
     
+   
+    
     // calculated properties that will be generated out of existing properties.
     
    var directoryURL: URL?  {
@@ -60,6 +62,8 @@ final class Podcast {
     // these properties are supposed to be used for background refresh checks
     var feedUpdated:Bool? // has the feed been updated and should refresh?
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
+    
+    var isUpdating: Bool = false
     
     var isSubscribed: Bool = true
     

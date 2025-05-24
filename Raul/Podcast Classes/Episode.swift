@@ -169,18 +169,7 @@ class EpisodeDownloadStatus{
         metadata.episode = self
         self.metaData = metadata
     }
-    
-    /*
-    static func ==(lhs: Episode, rhs: Episode) -> Bool {
-        
-        if lhs.guid == rhs.guid {
-            return true
-        }else{
-            return false
-        }
-    }
-*/
-    
+  
     private func updateEpisodeData(from episodeData: [String: Any]) {
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
         self.author = episodeData["itunes:author"] as? String

@@ -5,6 +5,7 @@ import SwiftData
 class PodcastListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var lastFetchDate: Date?
     
     private let modelContainer: ModelContainer
     private var podcastActor: PodcastModelActor
@@ -12,6 +13,7 @@ class PodcastListViewModel: ObservableObject {
     init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
         self.podcastActor = PodcastModelActor(modelContainer: modelContainer)
+       
     }
     
     func refreshPodcasts() async {
@@ -47,4 +49,9 @@ class PodcastListViewModel: ObservableObject {
         
         isLoading = false
     }
-} 
+    
+    func getlastFetchedDate() async -> Date? {
+       lastFetchDate =  await SubscriptionManager(modelContainer: ModelContainerManager().container).getLastRefreshDate()
+        return lastFetchDate
+    }
+}

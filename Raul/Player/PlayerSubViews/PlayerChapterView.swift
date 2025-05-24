@@ -17,7 +17,9 @@ struct PlayerChapterView: View {
                 Spacer()
                     .frame(width: 50)
                 Button {
-                //    player.skipToChapterStart()
+                    Task{
+                        await player.skipToChapterStart()
+                    }
                 } label: {
                     SkipBackView()
                         .aspectRatio(contentMode: .fit)
@@ -55,7 +57,7 @@ struct PlayerChapterView: View {
                 Spacer()
                 Button {
                     Task{
-                    //    await player.skipToNextChapter()
+                        await player.skipToNextChapter()
                     }
                     } label: {
                     SkipNextView(progress: player.chapterProgress ?? 0.0)
