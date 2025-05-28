@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct EpisodeControlView: View {
-    @Environment(\.deviceUIStyle) var style
+
 
     @State var episode: Episode
  //   @StateObject private var manager = DownloadManager.shared
@@ -22,64 +22,25 @@ struct EpisodeControlView: View {
 
 
     var body: some View {
-        HStack {
-            
-            if episode.metaData?.completionDate != nil {
-                Image("custom.play.circle.badge.checkmark")
-            } else {
-                if episode.metaData?.isAvailableLocally == true {
-                    Image(systemName: style.sfSymbolName)
-                }else{
-                    Image(systemName: "cloud")
-                }
-            }
-            
-            if episode.chapters.count > 0 {
-                Image(systemName: "list.bullet")
-            }
-            if episode.transcripts.count > 0 {
-                
-                Image(systemName: "quote.bubble")
-                
-               
-            }
-            
-         
-            
-                Spacer()
-            
-   
-            
-            if episode.metaData?.isAvailableLocally != true {
-                DownloadControllView(episode: episode)
-            }
-            
 
-        }
-        .frame(maxWidth: .infinity, maxHeight: 30)
         HStack{
             Button(action: {
                 Task{
                     await Player.shared.playEpisode(episode.id)
                 }
             }) {
-                Image(systemName: "play.fill")
+                Label("Play", systemImage: "play.fill")
                     .symbolRenderingMode(.hierarchical)
-                    .resizable()
                     .scaledToFit()
                     .padding(12)
-                    .foregroundColor(.background)
-                    .background(
-                        Circle()
-                            .fill(.accent)
-                    )
-                
-                
-                
+                    .foregroundColor(.accentColor)
+                    .minimumScaleFactor(0.5)
+                    .labelStyle(.automatic)
             }
             .buttonStyle(.plain)
-            .frame(width: 50, height: 50)
-            
+            .background(.thickMaterial, in: Capsule())
+            .frame(width: 100, height: 50)
+            .shadow(radius: 5)
             Spacer()
             
             Button {
@@ -88,22 +49,19 @@ struct EpisodeControlView: View {
                     
                 }
             } label: {
-                Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                
+                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
-                    .resizable()
                     .scaledToFit()
                     .padding(12)
-                    .foregroundColor(.background)
-                    .background(
-                        Circle()
-                            .fill(.accent)
-                    )
-                
-                
-                
+                    .foregroundColor(.accentColor)
+                    .minimumScaleFactor(0.5)
+                    .labelStyle(.iconOnly)
             }
             .buttonStyle(.plain)
+            .background(.thickMaterial, in: Capsule())
             .frame(width: 50, height: 50)
+            .shadow(radius: 5)
             
             
             Button {
@@ -111,22 +69,21 @@ struct EpisodeControlView: View {
                     await playlistViewModel.addEpisode(episode, to: .end)
                 }
             } label: {
-                Image(systemName: "text.line.last.and.arrowtriangle.forward")
+                Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
-                    .resizable()
                     .scaledToFit()
                     .padding(12)
-                    .foregroundColor(.background)
-                    .background(
-                        Circle()
-                            .fill(.accent)
-                    )
-                
-                
-                
+                    .foregroundColor(.accentColor)
+                    .minimumScaleFactor(0.5)
+                    .labelStyle(.iconOnly)
             }
             .buttonStyle(.plain)
+            .background(.thickMaterial, in: Capsule())
             .frame(width: 50, height: 50)
+            .shadow(radius: 5)
+           
+            
+            
             
             Spacer()
             
@@ -135,22 +92,23 @@ struct EpisodeControlView: View {
                     await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
                 }
             } label: {
-                Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                
+                Label("Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
                     .symbolRenderingMode(.hierarchical)
-                    .resizable()
                     .scaledToFit()
                     .padding(12)
-                    .foregroundColor(.background)
-                    .background(
-                        Circle()
-                            .fill(.accent)
-                    )
-                
-                
-                
+                    .foregroundColor(.accentColor)
+                    .minimumScaleFactor(0.5)
+                    .labelStyle(.automatic)
             }
             .buttonStyle(.plain)
-            .frame(width: 50, height: 50)
+            .background(.ultraThickMaterial, in: Capsule())
+            .frame(width: 100, height: 50)
+            .shadow(radius: 5)
+         
+                
+                
+
             
             
         }
@@ -158,3 +116,9 @@ struct EpisodeControlView: View {
     }
 }
 
+#Preview {
+    let URL = URL(string: "http:s//holgerkrupp.de")!
+    let podcast = Podcast(feed: URL)
+    let episode = Episode(id: UUID(), title: "Test Episode", url: URL, podcast: podcast)
+    EpisodeControlView(episode: episode)
+}

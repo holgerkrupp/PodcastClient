@@ -2,20 +2,18 @@ import SwiftUI
 import SwiftData
 
 struct InboxView: View {
-    let podcast: Podcast?
+ 
     @Query private var episodes: [Episode]
     @State private var isLoading = false
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     
-    init(podcast: Podcast? = nil) {
-        self.podcast = podcast
+    init() {
+       
         let predicate: Predicate<Episode>?
-        if let id = podcast?.persistentModelID {
-            predicate = #Predicate<Episode> { $0.podcast?.persistentModelID == id }
-        } else {
+        
             predicate = #Predicate<Episode> { $0.metaData?.isInbox == true}
-        }
+        
 
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
         _episodes = Query(filter: predicate, sort: [sortDescriptor], animation: .default)
@@ -26,12 +24,7 @@ struct InboxView: View {
             InboxEmptyView()
         }else{
             List {
-                if let podcast {
-                    Section() {
-                        PodcastDetailView(podcast: podcast)
-                    }
-                    .listRowSeparator(.hidden)
-                }
+
                 
                 ForEach(episodes) { episode in
                     EpisodeRowView(episode: episode)
@@ -57,7 +50,7 @@ struct InboxView: View {
                         .tint(.accent)
                 }
             }
-            .navigationTitle(podcast?.title ?? "All Episodes")
+            .navigationTitle("Inbox")
             .refreshable {
                 Task{
                     await refreshEpisodes()
@@ -75,17 +68,7 @@ struct InboxView: View {
                     .disabled(isLoading)
                 }
                 
-                if let podcast {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: {
-                            Task {
-                                try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)
-                            }
-                        }) {
-                            Image(systemName: "archivebox")
-                        }
-                    }
-                }
+
             }
             
             
@@ -121,11 +104,9 @@ struct InboxView: View {
         
         do {
             let actor = PodcastModelActor(modelContainer: modelContext.container)
-            if let podcast = podcast {
-                try await actor.updatePodcast(podcast.persistentModelID)
-            } else {
+          
                 try await actor.refreshAllPodcasts()
-            }
+            
         } catch {
             await MainActor.run {
                 errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"

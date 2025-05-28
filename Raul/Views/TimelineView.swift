@@ -18,16 +18,18 @@ struct TimelineView: View {
     @State private var showMiniPlayer = false
     @State private var isScrollingUp = false
     @State private var lastScrollPosition: CGFloat = 0
+    @State private var scrollToID: String? = nil
+
     @Namespace private var playerNamespace
     private let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date())!
 
     var body: some View {
         NavigationView{
+
             ZStack(alignment: isScrollingUp ? .bottom : .top) {
                 ScrollViewReader { proxy in
                     List {
-                        //ScrollView(.vertical) {
-                        //LazyVStack(spacing: 16) {
+                    
                         
                         Section{
                             EpisodeListView(predicate: #Predicate<Episode> { episode in
@@ -36,7 +38,7 @@ struct TimelineView: View {
                                 //episode.metaData!.lastPlayed! >= twoWeeksAgo
                             }, sort: \.metaData?.lastPlayed, order: .forward)
                             .listRowSeparator(.hidden)
-                            //}
+                           
                         }
                         Section{
                             HStack {
@@ -62,50 +64,44 @@ struct TimelineView: View {
                             
                         }
                         Section {
-                            playerView(fullSize: true)
-                                .id("player")
-                                .padding(.horizontal)
-                            /*
-                             .onAppear {
-                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                             withAnimation {
-                             proxy.scrollTo("player", anchor: .center)
-                             }
-                             }
-                             }
-                             */
-                            
-                                .background(
-                                    GeometryReader { geo in
-                                        Color.clear
-                                            .onChange(of: geo.frame(in: .global)) { oldValue, newValue in
-                                                let screenHeight = UIScreen.main.bounds.height
-                                                let buffer: CGFloat = 0 // Increased buffer for better timing
-                                                
-                                                
-                                                isScrollingUp = newValue.minY > oldValue.minY
-                                                
-                                                let position = isScrollingUp ? newValue.minY : newValue.maxY
-                                                let isVisible = position > buffer && position < (screenHeight - buffer)
-                                                
-                                                // Detect scroll direction
-                                                
-                                                lastScrollPosition = position
-                                                
-                                                // Add a small delay to prevent flickering
-                                                if showMiniPlayer != !isVisible {
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                        withAnimation(.spring()) {
-                                                            showMiniPlayer = !isVisible
+                         
+                                playerView(fullSize: true)
+                                    .id("player")
+                                    .padding(.horizontal)
+
+                                
+                                
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear
+                                                .onChange(of: geo.frame(in: .global)) { oldValue, newValue in
+                                                    let screenHeight = UIScreen.main.bounds.height
+                                                    let buffer: CGFloat = 0 // Increased buffer for better timing
+                                                    
+                                                    
+                                                    isScrollingUp = newValue.minY > oldValue.minY
+                                                    
+                                                    let position = isScrollingUp ? newValue.minY : newValue.maxY
+                                                    let isVisible = position > buffer && position < (screenHeight - buffer)
+                                                    
+                                                    // Detect scroll direction
+                                                    
+                                                    lastScrollPosition = position
+                                                    
+                                                    // Add a small delay to prevent flickering
+                                                    if showMiniPlayer != !isVisible {
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                            withAnimation(.spring()) {
+                                                                showMiniPlayer = !isVisible
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
-                                    }
-                                    
-                                )
-                                .listRowSeparator(.hidden)
-                            
+                                        }
+                                        
+                                    )
+                                    .listRowSeparator(.hidden)
+                                
                             
                         }
                         Section {
@@ -141,39 +137,68 @@ struct TimelineView: View {
                         
                     }
                     .listStyle(PlainListStyle())
-                    .padding(.top, 0) // Optionally reduce padding to make it look cleaner
+                    .padding(.top, 0) 
                     
-                    .environment(\.editMode, .constant(.active))  // Force edit mode active for the entire List
                     
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            EditButton()
-                        }
-                    }
-                    .onAppear {
-                        DispatchQueue.main.async {
-                            proxy.scrollTo("player", anchor: .center)
+
+                    .onChange(of: scrollToID) {
+                        if let target = scrollToID {
+                            withAnimation {
+                                proxy.scrollTo(target, anchor: .top)
+                            }
+                            scrollToID = nil
                         }
                     }
                 }
+                
                 
                 if showMiniPlayer {
                     playerView(fullSize: false)
                         .padding()
                         .transition(.move(edge: isScrollingUp ? .bottom : .top).combined(with: .opacity))
                         .zIndex(1)
+                        .onTapGesture {_ in
+                            self.scrollToID = "player"
+                        }
+                        
+                        
+                        
                 }
             }
+            .onAppear {
+                self.scrollToID = "player"
+            }
+            
         }
+        
     }
     
     @ViewBuilder
     func playerView(fullSize: Bool) -> some View {
-        VStack {
-            PlayerView(fullSize: fullSize)
-              //  .frame(width: UIScreen.main.bounds.width * 0.9, height: fullSize ? UIScreen.main.bounds.height * 0.5 : 80)
+        
+        if let episode = player.currentEpisode {
+            
+            if fullSize {
+                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                  
+                        PlayerView(fullSize: fullSize)
+                            .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
+                    
+                }
+            }else{
+                PlayerView(fullSize: fullSize)
+                    .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
+            }
+            
+
+        }else{
+          
+            PlayerEmptyView()
                 .matchedGeometryEffect(id: "playerView", in: playerNamespace, isSource: fullSize)
+            
         }
+
+
 
     }
 }

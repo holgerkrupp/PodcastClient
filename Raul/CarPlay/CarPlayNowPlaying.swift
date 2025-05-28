@@ -18,34 +18,22 @@ class CarPlayNowPlaying {
     var template: CPNowPlayingTemplate = CPNowPlayingTemplate.shared
     
     init() {
-        
         setupTempate()
     }
     
-    func setupTempate(){
-        
-        
-        
-        /*
-        let bookmarksButton = CPNowPlayingImageButton(
-            image: UIImage(named: "toolbarIconBookmark")!
-        ) {  _ in
-            guard Player.shared.currentEpisode != nil else { return }
-            self.player.bookmark()
-        }
-        */
+    func setupTempate() {
+        // Configure the now playing template
+        template.isUpNextButtonEnabled = true
+        template.isAlbumArtistButtonEnabled = true
         
         let listButton = CPNowPlayingImageButton(
             image: UIImage(named: "carplay.list.bullet")!
         ) { [weak self] _ in
             let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
             self?.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: playListModelActor).template, animated: false, completion: nil)
-            
         }
         
-        
-        template.updateNowPlayingButtons([ listButton])
-         
+        template.updateNowPlayingButtons([listButton])
     }
     
 }

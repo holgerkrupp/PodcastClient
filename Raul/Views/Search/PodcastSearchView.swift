@@ -19,7 +19,7 @@ struct PodcastSearchView: View {
             TextField("Search for podcasts...", text: $viewModel.searchText)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding()
-
+            Spacer()
             if viewModel.isLoading {
                 ProgressView()
             } else {

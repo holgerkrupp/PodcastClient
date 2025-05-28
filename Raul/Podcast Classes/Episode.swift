@@ -87,7 +87,21 @@ class EpisodeDownloadStatus{
             print("downloadItem changed")
         }
     }
-    
+    /*
+    var podcast: Podcast? {
+        get{
+            guard let podcasts = podcasts else { return nil }
+            return podcasts.first
+        }
+        set {
+            if let newValue = newValue {
+                self.podcasts?.append(newValue)
+                
+            }
+            
+        }
+    }
+    */
     var remainingTime: Double? {
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
     }
@@ -161,6 +175,7 @@ class EpisodeDownloadStatus{
         self.author = author
         self.publishDate = publishDate
         self.url = url
+      //  self.podcasts?.append(podcast)
         self.podcast = podcast
         self.duration = duration
         

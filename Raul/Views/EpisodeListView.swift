@@ -29,8 +29,10 @@ struct EpisodeListView: View {
     var body: some View {
         ForEach(allEpisodes) { episode in
             if episode.id != player.currentEpisode?.id {
-                EpisodeRowView(episode: episode)
-                    .id(episode.metaData?.id ?? episode.id)
+                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                    EpisodeRowView(episode: episode)
+                        .id(episode.metaData?.id ?? episode.id)
+                }
                    
 
             }

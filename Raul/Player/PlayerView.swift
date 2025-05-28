@@ -1,4 +1,5 @@
 import SwiftUI
+import GlowEffects
 
 
 struct PlayerView: View {
@@ -83,26 +84,29 @@ struct PlayerView: View {
                                 Color.clear
                                 
                                 if fullSize {
-                                    EpisodeCoverView(episode: episode)
-                                        .id(episode.id)
-
-                                    
-                   
-                                    
-                                    
-                                        .scaledToFit()
+                                    Group{
+                                        if let chapterImage = player.currentChapter?.imageData {
+                                            ImageWithData(chapterImage)
+                                                .id(player.currentChapter?.id ?? UUID())
+                                                .scaledToFit()
+                                        }else{
+                                            EpisodeCoverView(episode: episode)
+                                                .id(episode.id)
+                                            
+                                                .scaledToFit()
+                                        }
+                                    }
                                         .frame(maxWidth: .infinity)
                                     
                                         .overlay(alignment: .bottom) {
                                             if let vttFileContent = player.currentEpisode?.transcriptData,
                                                player.playPosition.isNormal, showTranscripts {
                                                 
+                                                let decoder = TranscriptDecoder(vttFileContent)
+
+                                                TranscriptView(decoder: decoder, currentTime: $player.playPosition)
                                                 
-                                                
-                                                TranscriptView(vttContent: vttFileContent, currentTime: $player.playPosition)
-                                                
-                                                
-                                                
+                                               
                                                     .background(.ultraThinMaterial)
                                                 
                                             }
@@ -176,6 +180,8 @@ struct PlayerView: View {
                                     
                                 }
                                 .buttonStyle(.borderless)
+                                .frame(width: fullSize ? 30 : 20)
+
                                 Spacer()
                                 Button(action: {
                                     if player.isPlaying {
@@ -189,6 +195,8 @@ struct PlayerView: View {
                                         .scaledToFit()
                                 }
                                 .buttonStyle(.borderless)
+                                .frame(width: fullSize ? 30 : 20)
+
                                 
                                 Spacer()
                                 Button(action:player.skipforward){
@@ -204,6 +212,7 @@ struct PlayerView: View {
                                     
                                 }
                                 .buttonStyle(.borderless)
+                                .frame(width: fullSize ? 30 : 20)
                                 Spacer()
                                 
                             }
@@ -225,11 +234,7 @@ struct PlayerView: View {
                     .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
 
                 } else {
-                    HStack{
-                        Spacer()
-                        Text("No episode playing.")
-                        Spacer()
-                    }
+                    PlayerEmptyView()
                 }
             
 

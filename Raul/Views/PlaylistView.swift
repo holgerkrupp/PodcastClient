@@ -22,16 +22,18 @@ struct PlaylistView: View {
             
             ForEach(playListEntries, id: \.id) { entry in
                 if let episode = entry.episode {
-                   
+                    NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                         EpisodeRowView(episode: episode)
                             .id(episode.metaData?.id ?? episode.id)
+                        
+                    }
                     
-                   
-                    
+                        
                     
                 }
                 
             }
+            
             .onMove { indices, newOffset in
                 Task {
                     if let from = indices.first {

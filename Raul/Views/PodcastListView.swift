@@ -99,7 +99,7 @@ struct PodcastRowView: View {
     let podcast: Podcast
     
     var body: some View {
-        NavigationLink(destination: InboxView(podcast: podcast)) {
+        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     if let imageURL = podcast.imageURL {

@@ -13,3 +13,4 @@ struct CodableArray<T: Codable & Equatable>: Codable, Equatable {
         self.elements = elements
     }
 }
+

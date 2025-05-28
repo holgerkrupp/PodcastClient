@@ -9,54 +9,79 @@ import SwiftUI
 
 struct EpisodeDetailView: View {
     
-    enum Selection {
-        case chapters, transcript
+    enum Selection: String, CaseIterable, Hashable {
+        case chapters
+        case transcript
     }
     @State private var listSelection:Selection = .chapters
     
     
     @State var episode: Episode
     @State private var image: Image?
+    
+    var episodeDescription: AttributedString {
+        HTMLTextView.parse(html: episode.content ?? episode.desc ?? "") ?? ""
+    }
+
+    
     var body: some View {
         ScrollView {
             
-       
-        HStack {
-            EpisodeCoverView(episode: episode)
-                .frame(width: 50, height: 50)
-            VStack(alignment: .leading) {
-                HStack {
-                    Text(episode.podcast?.title ?? "")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Text(episode.title)
-                    .font(.headline)
-                    .lineLimit(4)
-                    .minimumScaleFactor(0.1)
-                    .truncationMode(.tail)
-                if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                        Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }else{
-                        Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+           
 
-              
-            }
-        }
-        Spacer(minLength: 10)
-        ExpandableTextView(text: episode.desc ?? "")
                 
-                .lineLimit(10)
+                HStack {
+                    
+                    
+                    
+                    EpisodeCoverView(episode: episode)
+                        .frame(width: 50, height: 50)
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Group{
+                                if let podcast = episode.podcast {
+                                    NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                                        Text(podcast.title)
+                                    }
+                                }else{
+                                    Text(episode.podcast?.title ?? "")
+                                }
+                            }
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Text(episode.title)
+                            .font(.headline)
+                            .lineLimit(4)
+                            .minimumScaleFactor(0.1)
+                            .truncationMode(.tail)
+                        if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
+                            Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }else{
+                            Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        
+                    }
+                }
+            
+        Spacer(minLength: 10)
+            
+
+            HTMLTextView(html: episode.content ?? episode.desc ?? "")
                 .padding()
+                .font(.caption)
+ 
+            
+       
        
         if let episodeLink = episode.link {
             Link(destination: episodeLink) {
@@ -64,22 +89,21 @@ struct EpisodeDetailView: View {
             }
         }
             
-            Picker(selection: $listSelection) {
-                if episode.preferredChapters.count > 0{
+            Picker("Show", selection: $listSelection) {
+                if episode.preferredChapters.count > 0 {
                     Text("Chapters").tag(Selection.chapters)
                 }
-                if episode.transcriptData != nil{
+                if episode.transcriptData != nil {
                     Text("Transcript").tag(Selection.transcript)
                 }
-            } label: {
-                Text("Show")
             }
             .pickerStyle(.segmented)
+            .id(UUID())
             
             switch listSelection {
             case .chapters:
                 if episode.preferredChapters.count > 0 {
-                    ChapterListView(chapters: episode.preferredChapters)
+                    ChapterListView(episodeURL: episode.url)
                 }
             case .transcript:
                 if let vttFileContent = episode.transcriptData
@@ -92,6 +116,7 @@ struct EpisodeDetailView: View {
                 }
             }
         }
+        .padding()
        
     }
 

@@ -13,23 +13,23 @@ struct EpisodeRowView: View {
         lhs.episode.metaData?.lastPlayed == rhs.episode.metaData?.lastPlayed
     }
     @Environment(\.modelContext) private var modelContext
-    
+    @Environment(\.deviceUIStyle) var style
+
     
     let episode: Episode
     @State private var isExtended: Bool = false
     @State private var image: Image?
-    @State private var showDetails: Bool = false
     
     var body: some View {
-      
+
             VStack(alignment: .leading) {
                 ZStack{
                     GeometryReader { geometry in
-                          // Background layer
+                        // Background layer
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.accentColor.opacity(0.5))
                             .frame(width: geometry.size.width * episode.playProgress)
-                      }
+                    }
                     .padding()
                     
                     
@@ -57,8 +57,8 @@ struct EpisodeRowView: View {
                             
                         }
                         .font(.caption)
-                       
-                          
+                        
+                        
                         VStack(alignment: .leading){
                             HStack{
                                 EpisodeCoverView(episode: episode)
@@ -70,8 +70,10 @@ struct EpisodeRowView: View {
                                     Text(episode.title)
                                         .font(.headline)
                                         .lineLimit(2)
+                                        .minimumScaleFactor(0.5)
                                 }
                             }
+                            Spacer()
                             HStack {
                                 if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
                                     Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
@@ -83,15 +85,48 @@ struct EpisodeRowView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 Spacer()
+                                HStack {
+                                    
+                                    if episode.metaData?.completionDate != nil {
+                                        Image("custom.play.circle.badge.checkmark")
+                                    } else {
+                                        if episode.metaData?.calculatedIsAvailableLocally == true {
+                                            Image(systemName: style.sfSymbolName)
+                                        }else{
+                                            Image(systemName: "cloud")
+                                        }
+                                    }
+                                    
+                                    if episode.chapters.count > 0 {
+                                        Image(systemName: "list.bullet")
+                                    }
+                                    if episode.transcripts.count > 0 {
+                                        
+                                        Image(systemName: "quote.bubble")
+                                        
+                                       
+                                    }
+                                    
+                                 
+                                    
+                                        Spacer()
+                                    
+                           
+                                    
+                                    if episode.metaData?.isAvailableLocally != true {
+                                        DownloadControllView(episode: episode)
+                                    }
+                                    
+
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: 30)
+                                
+                                Spacer()
                                 Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            Button(action: {
-                                showDetails.toggle()
-                            }) {
-                                Text("details")
-                            }
+
                             .buttonStyle(.plain)
                             Spacer()
                             EpisodeControlView(episode: episode)
@@ -101,31 +136,23 @@ struct EpisodeRowView: View {
                         
                     }
                     .padding()
-                   // .background(.ultraThinMaterial)
+                    // .background(.ultraThinMaterial)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
                             .fill(.thinMaterial)
-                           // .shadow(radius: 3)
+                        // .shadow(radius: 3)
                     )
                     
-                    .onTapGesture {
-                        withAnimation {
-                            isExtended.toggle()
-                        }
-                    }
-                     
-                }
+
+                    
                 
-   
+                
+                
                 
                 
             }
-            
-            .sheet(isPresented: $showDetails) {
-                EpisodeDetailView(episode: episode)
-                    .padding()
-                  
-            }
+        }
+          
         
 
     }

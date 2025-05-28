@@ -217,7 +217,7 @@ actor EpisodeActor {
             }
         }
         
-     //   await downloadCoverArt(for: episodeID)
+   
         
     }
     
@@ -271,7 +271,7 @@ actor EpisodeActor {
         await updateDuration(fileURL: fileURL)
 
         await createChapters(episode.persistentModelID)
-        await updateChapterDurations(fileURL: episode.url)
+    //    await updateChapterDurations(fileURL: episode.url)
         await downloadTranscript(episode.persistentModelID)
 
         modelContext.saveIfNeeded()
@@ -480,18 +480,35 @@ actor EpisodeActor {
         return result
     }
     
-    func updateChapterDurations(episodeURL: URL) async{
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return  }
-         let chapters = episode.preferredChapters
+    func updateChapterDurations(episodeURL: URL) async {
+        print("update Chapter durations")
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            print("episode not found")
+            return }
+        var chapters = episode.preferredChapters
+
+        // Sort chapters in ascending order of start time
+        chapters.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
+        print("updating \(chapters.count.formatted()) chapters of type \(chapters.first?.type ?? .unknown)")
+   
+        for i in 0..<chapters.count {
+            guard let start = chapters[i].start else { continue }
+
+           
+                let end: Double
+                if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
+                    end = nextStart
+                } else {
+                    end = episode.duration ?? start
+                }
+                chapters[i].duration = end - start
             
-        var lastEnd = episode.duration ?? 1000000
-        for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
-            if chapter.duration == nil{
-                chapter.duration = lastEnd - (chapter.start ?? 0.0)
-                lastEnd = chapter.start ?? 0.0
-            }
         }
+        modelContext.saveIfNeeded()
     }
+    
+   
+    
     
     //MARK: Transcript
     
@@ -524,11 +541,14 @@ actor EpisodeActor {
                        break
                     }
                     
-                    
-                    if let vttData = try? await URLSession(configuration: .default).data(from: vttURL) {
+                    do{
+                         let vttData = try await URLSession(configuration: .default).data(from: vttURL)
+                        print("decoding vtt from \(vttURL.absoluteString)")
+                            episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
+                            modelContext.saveIfNeeded()
                         
-                        episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
-                        modelContext.saveIfNeeded()
+                    }catch{
+                        print("error dewnloading vtt: \(error)")
                     }
                 }catch {
                     print("vtt download failed")

@@ -15,6 +15,8 @@ class Player: NSObject {
     static let shared = Player()
   //  private let modelContext = ModelContainerManager().container.mainContext
     static let episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
+     let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager().container)
+
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
 
@@ -32,7 +34,6 @@ class Player: NSObject {
     var currentEpisode: Episode?
     var currentEpisodeID: UUID?
     
-    var podcastCover: Image?
     
     var isPlaying: Bool = false
     
@@ -104,8 +105,14 @@ class Player: NSObject {
         let playingChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         
         if currentChapter != playingChapter {
+            if let chapterProgress, let currentChapter  {
+                saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
+            }
             currentChapter = playingChapter
+            chapterProgress = 0.0
+            updateChapterProgress()
             nextChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+            
             return true
         }else{
             return false
@@ -117,7 +124,18 @@ class Player: NSObject {
         guard let currentChapter = currentChapter else { return }
         let chapterEnd = currentChapter.end ?? nextChapter?.start ?? currentEpisode?.duration ?? 1.0
         chapterProgress = (playPosition - (currentChapter.start ?? 0)) / ((chapterEnd) - (currentChapter.start ?? 0))
-        
+        currentChapter.progress = chapterProgress
+        if progressUpdateCounter >= progressSaveInterval {
+            guard let chapterProgress  else { return }
+            saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
+        }
+    }
+    
+    private func saveChapterProgress(chapter: Chapter, progress: Double){
+        let chapterID = chapter.id
+        Task.detached(priority: .background) {
+            await self.chapterActor.setChapterProgress(progress, for: chapterID)
+        }
     }
         
     private func unloadEpisode(episodeUUID: UUID) async{
@@ -126,6 +144,9 @@ class Player: NSObject {
         print("unloading episode \(episode.title)")
         currentEpisode = nil
         currentEpisodeID = nil
+        currentChapter = nil
+        chapterProgress = nil
+        nextChapter = nil
         UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeUUID")
         
         
@@ -240,26 +261,37 @@ class Player: NSObject {
         Task{
             await engine.setInterruptionHandler { [weak self] event in
                 print("received interruption event: \(event)")
+
+        
                 guard let self else { return }
                 switch event {
                 case .began:
                     Task{
+                        await BasicLogger.shared.log("received interruption event: began")
                         await self.handleInterruptionBegan()
                     }
                 case .ended:
                     Task{
+                        await BasicLogger.shared.log("received interruption event: ended")
+
                         await self.resumeAfterInterruption()
                     }
                 case .pause:
                     Task{
+                        await BasicLogger.shared.log("received interruption event: pause")
+
                         await self.handleInterruptionBegan()
                     }
                 case .resume:
                     Task{
+                        await BasicLogger.shared.log("received interruption event: reume")
+
                         await self.resumeAfterInterruption()
                     }
                 case .finished:
                     Task{
+                        await BasicLogger.shared.log("received interruption event: finished")
+
                         await self.handlePlaybackFinished()
                     }
                 }
@@ -305,6 +337,7 @@ class Player: NSObject {
             isPlaying = false
         }
         updateLastPlayed()
+        savePlayPosition()
         stopPlaybackUpdates()
         stopNowPlayingInfoUpdater()
     }
@@ -347,6 +380,7 @@ class Player: NSObject {
     private func stopPlaybackUpdates() {
         playbackTask?.cancel()
         playbackTask = nil
+        
     }
     
     
@@ -398,10 +432,8 @@ class Player: NSObject {
         if let currentChapter, currentChapter.shouldPlay == false && chapterChange == true {
             if let end = currentChapter.end {
                 jumpTo(time: end)
-                BasicLogger.shared.log("Jumped to end of chapter \(currentChapter.title)")
                 Task.detached(priority: .background) {
-                    let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager().container)
-                    await chapterActor.markChapterAsSkipped(currentChapter.id)
+                    await self.chapterActor.markChapterAsSkipped(currentChapter.id)
                 }
             }
                 
@@ -424,8 +456,13 @@ class Player: NSObject {
         Task.detached(priority: .background) {
             await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
              episode.modelContext?.saveIfNeeded()
+            await self.chapterActor.saveAllChanges()
+          
         }
+
     }
+    
+    
     
     func skipTo(chapter: Chapter) async{
             if let newEpisode = chapter.episode, let start = chapter.start{
@@ -452,8 +489,11 @@ class Player: NSObject {
 
     private func handlePlaybackFinished() {
         print("Playback finished. - handlePlaybackFinished")
+       
+        
         updateLastPlayed()
         stopPlaybackUpdates()
+        savePlayPosition()
         print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
      //   if currentEpisode?.playProgress ?? 0 >= progressThreshold {
             Task{

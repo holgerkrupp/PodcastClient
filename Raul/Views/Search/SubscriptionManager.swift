@@ -20,7 +20,10 @@ actor SubscriptionManager:NSObject{
     
      func fetchData() {
         
-        let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.metaData?.isSubscribed ?? true == true },
+            sortBy: [SortDescriptor(\.title)]
+        )
         if let fetchresult = try? modelContext.fetch(descriptor){
             podcasts = fetchresult
         }

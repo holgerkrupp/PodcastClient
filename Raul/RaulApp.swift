@@ -33,10 +33,9 @@ struct RaulApp: App {
             switch phase {
             case .background:
                 bgNewAppRefresh()
-         
+              //  debugActions()
           
                 
-              //  debugActions()
             default: break
             }
         })

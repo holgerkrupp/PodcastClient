@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import AVKit
 
 struct TranscriptLine: Identifiable, Hashable {
     let id = UUID()
@@ -16,71 +15,56 @@ struct TranscriptLine: Identifiable, Hashable {
 
 
 struct TranscriptView: View {
-    let vttContent: String
+    let decoder: TranscriptDecoder
     @Binding var currentTime: TimeInterval
     
-    var body: some View {
-       
-            VStack(alignment: .leading, spacing: 10) {
-                
-                ForEach(lines(for: currentTime), id: \.id) { line in
-                    VStack(alignment: .leading) {
-                        if let speaker = line.speaker{
-                            Text("\(speaker):")
-                                .font(.headline)
-                                .foregroundColor(.accent)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                        }
-                        Text(line.text)
-                            .font(.body)
-                            .padding()
-                    }
-                    
-                    
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .background(.ultraThinMaterial)
-            
-       
-    }
     
-    private func lines(for currentTime: TimeInterval) -> [TranscriptLine] {
-        let linesArray = vttContent.components(separatedBy: .newlines)
-        var currentLines: [TranscriptLine] = []
-        
-        for lineIndex in stride(from: 3, to: linesArray.count, by: 1) {
-            let timestampComponents = linesArray[lineIndex - 1].components(separatedBy: " --> ")
-            if let startTime = (timestampComponents.first ?? "0").durationAsSeconds,
-               let endTime = (timestampComponents.last ?? "0").durationAsSeconds,
-               startTime <= currentTime && currentTime <= endTime {
-
-                
-                let (speaker, text) = separateSpeakerAndText(from: linesArray[lineIndex])
-                currentLines.append(TranscriptLine(speaker: speaker, text: text))
-            }
+    private let speakerColors: [Color] = [
+        .blue,
+        .green,
+        .orange,
+        .purple,
+        .red,
+        .teal
+    ]
+    
+    private var speakerColorMap: [String: Color] {
+        var colorMap: [String: Color] = [:]
+        let speakers = Set(decoder.transcriptLines.compactMap { $0.speaker }).removingDuplicates().sorted(by: <)
+        for (index, speaker) in speakers.enumerated() {
+            colorMap[speaker] = speakerColors[index % speakerColors.count]
         }
         
-        return currentLines
+        return colorMap
     }
     
-    func separateSpeakerAndText(from line: String) -> (speaker: String?, text: String) {
-        let components = line.components(separatedBy: ">")
-        
-        if components.count > 1 {
-            var speaker = components[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            if speaker.hasPrefix("<v ") {
-                speaker.removeFirst(3)
-                
+    var body: some View {
+        if let line = currentLine {
+            VStack(alignment: .leading, spacing: 4) {
+                if let speaker = line.speaker {
+                    Text("\(speaker):")
+                        .font(.headline)
+                        .foregroundColor(speakerColorMap[speaker] ?? .accent)
+                        .transition(.opacity)
+                }
+                Text(line.text)
+                    .font(.body)
+                    .transition(.opacity)
+                    .minimumScaleFactor(0.5)
+               
             }
-            
-            
-            let text = components[1].trimmingCharacters(in: .whitespacesAndNewlines)
-            return (speaker, text)
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .animation(.easeInOut(duration: 0.3), value: currentLine?.id)
         } else {
-            return (nil, line.trimmingCharacters(in: .whitespacesAndNewlines))
+            EmptyView()
+        }
+    }
+    
+    private var currentLine: TranscriptDecoder.TranscriptLineWithTime? {
+        decoder.transcriptLines.first { line in
+            currentTime >= line.startTime && currentTime <= line.endTime
         }
     }
 }
-

@@ -52,6 +52,11 @@ class Chapter: Identifiable, Equatable, Hashable{
     
     var progress:Double?
     
+    @Transient var remainingTime: TimeInterval? {
+        guard let duration = duration, let progress = progress else { return nil }
+        return max(0, duration * (1 - progress))
+    }
+    
     @Transient var end:Double? {
         let end = ((start ?? 0) + (duration ?? 0))
         if end > 0{

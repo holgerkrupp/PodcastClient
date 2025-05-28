@@ -10,7 +10,6 @@ import SwiftUI
 struct EpisodeCoverView: View {
     
     @State var episode: Episode
-    
     var body: some View {
         Group {
             

@@ -4,84 +4,29 @@ import SwiftData
 
 @MainActor
 class CarPlayPlayNext {
-    private let playlistActor: PlaylistModelActor
-    private let player = Player.shared
-    private(set) var interfaceController: CPInterfaceController?
+    let playlistActor: PlaylistModelActor
+    var template: CPListTemplate
     
     init(playlistActor: PlaylistModelActor) {
         self.playlistActor = playlistActor
+        self.template = CPListTemplate(title: "Up Next", sections: [])
+        setupTemplate()
     }
     
-    var template: CPListTemplate {
-        return CPListTemplate(title: "Up Next", sections: [self.section])
-    }
-    
-    private func fetchItems() async -> [CPListItem] {
-        var listItems: [CPListItem] = []
+    private func setupTemplate() {
+        // Create a default empty section
+        let emptySection = CPListSection(items: [])
+        template.updateSections([emptySection])
         
-       // let episodes = await playlistActor.orderedEpisodes()
-        let episodes = [] as [Episode]
-        
-        for episode in episodes {
-            var cover = UIImage(systemName: "globe")
-            /*
-            if let data = episode.cover {
-                cover = ImageWithData(data).uiImage()
-            } else if let data = episode.podcast?.cover {
-                cover = ImageWithData(data).uiImage()
-            }
-            */
-            
-            if let imageURL = episode.imageURL ?? episode.podcast?.imageURL,
-            
-                let image =  await ImageLoaderAndCache.loadUIImage(from: imageURL){
-                cover = image
-            }
-            
-            
-            let listItem = CPListItem(
-                text: episode.title,
-                detailText: episode.podcast?.title,
-                image: cover
-            )
-            listItem.userInfo = episode
-            listItem.accessoryType = .disclosureIndicator
-            listItem.isPlaying = (episode == player.currentEpisode)
-            
-            listItem.handler = { [weak self] item, completion in
-                guard let self = self else { return }
-                if let episode = item.userInfo as? Episode {
-                    Task{
-                        await self.player.playEpisode(episode.id, playDirectly: true)
-                    }
-                    self.interfaceController?.pushTemplate(CarPlayNowPlaying().template, animated: true, completion: { success, error in
-                        if let error = error {
-                            print("❌ Error pushing NowPlaying template: \(error)")
-                        }
-                        completion()
-                    })
-                } else {
-                    completion()
-                }
-            }
-            
-            listItems.append(listItem)
+        // Add a back button to return to now playing
+        let backButton = CPBarButton(title: "Now Playing") { [weak self] _ in
+            self?.returnToNowPlaying()
         }
-        
-        return listItems
+        template.trailingNavigationBarButtons = [backButton]
     }
     
-    private var section: CPListSection {
-        return CPListSection(items: [])
-    }
-    
-    func reloadInterface() async {
-        let items = await fetchItems()
-        let section = CPListSection(items: items)
-        let template = CPListTemplate(title: "Up Next", sections: [section])
-        Task { @MainActor in
-
-            try? await interfaceController?.setRootTemplate(template, animated: true)
-        }
+    private func returnToNowPlaying() {
+        // This will be implemented to return to the now playing screen
+        // You'll need to implement this based on your navigation structure
     }
 }

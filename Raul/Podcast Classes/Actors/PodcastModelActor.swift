@@ -34,7 +34,6 @@ actor PodcastModelActor {
             if let serverLastModified = try? await podcast.feed?.status()?.lastModified {
                 
                 print("Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
-                await BasicLogger.shared.log("\(podcast.title) Server: \(serverLastModified.formatted()) vs Database: \(lastRefresh.formatted())")
                 if serverLastModified > lastRefresh{
                     print("feed is new")
                     podcast.metaData?.feedUpdated = true
@@ -59,7 +58,6 @@ actor PodcastModelActor {
         }else{
             // feed has never been fetched before, no last modified date is set.
             print("feed is very new")
-            await BasicLogger.shared.log("\(podcast.title) feed has never been fetched before")
             podcast.metaData?.feedUpdated = true
             modelContext.saveIfNeeded()
             return true
@@ -77,7 +75,6 @@ actor PodcastModelActor {
         podcast.metaData?.isUpdating = true
          modelContext.saveIfNeeded()
         
-        await BasicLogger.shared.log("Updating Podcast \(podcast.title)")
         
         let (data, _) = try await URLSession.shared.data(from: feedURL)
         
@@ -108,9 +105,8 @@ actor PodcastModelActor {
                 for episodeData in episodesData {
                     let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "")
                     if let episodeID {
-                        print("Episode exists")
+                      //  print("Episode exists")
                         if !podcast.episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
-                            await BasicLogger.shared.log("Episode exists but not linked to podcast")
                             linkEpisodeToPodcast(episodeID , podcast.persistentModelID)
                         }
                         continue
@@ -161,7 +157,7 @@ actor PodcastModelActor {
         )
         
         let episodes = try? modelContext.fetch(descriptor)
-        print("checking if episode exists \(guid) - count: \(episodes?.count.description ?? "nil")")
+ //       print("checking if episode exists \(guid) - count: \(episodes?.count.description ?? "nil")")
         return episodes?.first?.persistentModelID
     }
     
@@ -257,7 +253,6 @@ actor PodcastModelActor {
         episode.metaData?.isInbox = true
         episode.metaData?.status = .inbox
 
-        await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
         modelContext.saveIfNeeded()
     }
     

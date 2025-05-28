@@ -35,7 +35,7 @@ struct PlayerProgressSliderView: View {
                 RoundedRectangle(cornerRadius: radius)
                 
                                .fill(.ultraThinMaterial)
-                    .frame(width: gr.size.width, height: gr.size.height * 0.95)
+                    .frame(width: gr.size.width, height: gr.size.height)
                 
             
                 HStack {
@@ -43,7 +43,7 @@ struct PlayerProgressSliderView: View {
                      //   .fill(.thinMaterial)
                         .foregroundColor(.accent)
                        
-                        .frame(width: sliderVal, height: gr.size.height * 0.95)
+                        .frame(width: sliderVal, height: gr.size.height)
                     Spacer()
                 }
                 .clipShape(

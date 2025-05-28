@@ -6,39 +6,93 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ChapterListView: View {
+    @Environment(\.modelContext) private var modelContext
     var player = Player.shared
-    var chapters: [Chapter]
+
+
+    let episodeURL: URL?
+
+    @Query var chapters: [Chapter]
+
+    
+    init(episodeURL: URL?) {
+        self.episodeURL = episodeURL
+    
+        // Set up the query with a filter that uses the instance value
+        _chapters = Query(filter: #Predicate<Chapter> {
+            $0.episode?.url == episodeURL
+        })
+    }
+    
+    private var preferredChapters: [Chapter] {
+
+        let preferredOrder: [ChapterType] = [.mp3, .embedded, .podlove, .extracted]
+
+        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
+        
+        return categoryGroups.values.flatMap { group in
+            let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
+          //  print(highestCategory?.rawValue ?? "no category")
+            return group.filter { $0.type == highestCategory }
+        }
+    }
     
     private var sortedChapters: [Chapter] {
-        chapters.sorted(by: { first, second in
+        preferredChapters.sorted(by: { first, second in
             first.start ?? 0.0 < second.start ?? 0
         })
     }
     
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            LazyVStack(spacing: 0) {
                 HStack {
                     Spacer()
                     Text("Chapters")
                         .font(.title)
                         .padding()
                     Spacer()
-                    Text(chapters.first?.type.rawValue ?? "Unknown")
+                    Button(chapters.first?.type.rawValue ?? "Unknown") {
+                        if let url = episodeURL {
+                            Task{
+                              await EpisodeActor(modelContainer: modelContext.container).updateChapterDurations(episodeURL: url)
+                            }}
+                    }
                         .font(.caption)
                 }
                 .padding()
                
                 
                 ForEach(sortedChapters, id: \.id) { chapter in
-                   
-                         ChapterRowView(chapter: chapter)
-                        if chapter.id != sortedChapters.last?.id {
-                            Divider()
-                                .padding(.horizontal)
+                    ZStack{
+                        GeometryReader { geometry in
+                            // Background layer
+                            
+                            if chapter.id == player.currentChapter?.id {
+                                Rectangle()
+                                    .fill(Color.yellow.opacity(0.1))
+                                    .frame(width: geometry.size.width * (player.chapterProgress ?? 0.0), height: geometry.size.height)
+                            }else{
+                                Rectangle()
+                                    .fill(Color.accentColor.opacity(0.05))
+                                    .frame(width: geometry.size.width * (chapter.progress ?? 0.0), height: geometry.size.height)
+                            }
+                            
+                                
                         }
+                        VStack{
+                            ChapterRowView(chapter: chapter)
+                                .padding()
+                            if chapter.id != sortedChapters.last?.id {
+                                Divider()
+                                    
+                                  
+                            }
+                        }
+                    }
                     
                    
                 }
@@ -66,5 +120,5 @@ struct ChapterListView: View {
     ]
     
     
-    ChapterListView(chapters: sampleChapters)
+    ChapterListView(episodeURL: URL(string: ""))
 }

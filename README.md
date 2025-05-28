@@ -7,12 +7,12 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 
 ### Next Steps
-- [ ] Create Podcast Detail View
+- [X] Create Podcast Detail View
 - [ ] CarPlay
 - [ ] Integrate Settings (Per Podcasts and global)
-- [ ] Refactor mp3ChapterReader to sednd a custom object (concurrency)
+- [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
 - [ ] Replace transcripts with generic 'external File' that can also host chapters, images and others.
-- [?] Re adding an episode when it changes in the player is broken
+- [ ] Download unreliable
 
 ## Alpha min Requiremets
 

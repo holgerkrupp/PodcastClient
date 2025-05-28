@@ -10,6 +10,7 @@ import SwiftUI
 struct PlayerChapterView: View {
     @State var player = Player.shared
     @State var presentingModal = false
+
     var body: some View {
         if player.currentEpisode?.preferredChapters.count ?? 0 > 0{
            
@@ -30,27 +31,35 @@ struct PlayerChapterView: View {
                 
                 Spacer()
                 if let chapters = player.currentEpisode?.preferredChapters.sorted(by: { $0.start ?? 0 < $1.start ?? 0}){
-
-                Button {
-                        
-                        presentingModal = true
-                        
-                        
-                    } label: {
-                       
-                            Text(player.currentChapter?.title ?? "open chapter list")
-                            .foregroundStyle(Color.primary)
-                          
+                    VStack{
+                        Button {
+                            
+                            presentingModal = true
+                            
+                            
+                        } label: {
+                            
+                            Text(player.currentChapter?.title ?? "")
+                                .foregroundStyle(Color.primary)
+                                .minimumScaleFactor(0.5)
+                            
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $presentingModal, content: {
+                            ChapterListView(episodeURL: player.currentEpisode?.url)
+                                .presentationDragIndicator(.visible)
+                                .presentationBackground(.thinMaterial)
+                        })
+                        if let remaining = player.currentChapter?.remainingTime?.secondsToHoursMinutesSeconds{
+                            Text(remaining)
+                                .font(.caption)
+                                .monospaced()
+                                .foregroundStyle(.secondary)
+                        }
+                            
                     }
-                    .buttonStyle(.plain)
-                    .sheet(isPresented: $presentingModal, content: {
-                        ChapterListView(chapters: chapters)
-                            .presentationDragIndicator(.visible)
-                            .presentationBackground(.thinMaterial)
-                    })
-                    
+                   
                 }
-                
                 
                 
                 
@@ -73,7 +82,10 @@ struct PlayerChapterView: View {
          //   .background(.ultraThinMaterial)
 
         }
+            
     }
+    
+
 }
 
 #Preview {

@@ -29,6 +29,7 @@ struct AddPodcastView: View {
                 switch listSelection {
                 case .search:
                     PodcastSearchView()
+                        
                 case .hot:
                     HotPodcastView()
                     
@@ -40,7 +41,9 @@ struct AddPodcastView: View {
             
             
             
+            
         }
+       
     }
 }
 
