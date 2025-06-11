@@ -30,7 +30,20 @@ struct PlayerChapterView: View {
                 
                 
                 Spacer()
-                if let chapters = player.currentEpisode?.preferredChapters.sorted(by: { $0.start ?? 0 < $1.start ?? 0}){
+              
+                
+                ZStack{
+                    GeometryReader { geometry in
+                        // Background layer
+                        
+                       
+                            RoundedRectangle(cornerRadius: geometry.size.height * 0.3)
+                                .fill(Color.accentColor.opacity(0.05))
+                                .frame(width: geometry.size.width * (player.currentChapter?.progress ?? 0.0), height: geometry.size.height)
+                        
+                        
+                            
+                    }
                     VStack{
                         Button {
                             
@@ -53,15 +66,17 @@ struct PlayerChapterView: View {
                         if let remaining = player.currentChapter?.remainingTime?.secondsToHoursMinutesSeconds{
                             Text(remaining)
                                 .font(.caption)
-                                .monospaced()
+                                .monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
                             
-                    }
-                   
+                }
                 }
                 
                 
+                
+                
+
                 
                 Spacer()
                 Button {
@@ -77,6 +92,7 @@ struct PlayerChapterView: View {
                 
                 Spacer()
                     .frame(width: 50)
+               
             }
             .frame(maxWidth: .infinity, maxHeight: 40)
          //   .background(.ultraThinMaterial)

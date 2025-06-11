@@ -28,9 +28,7 @@ struct TimelineView: View {
 
             ZStack(alignment: isScrollingUp ? .bottom : .top) {
                 ScrollViewReader { proxy in
-                    List {
-                    
-                        
+                    List{
                         Section{
                             EpisodeListView(predicate: #Predicate<Episode> { episode in
                                 episode.metaData?.isHistory == true
@@ -38,6 +36,7 @@ struct TimelineView: View {
                                 //episode.metaData!.lastPlayed! >= twoWeeksAgo
                             }, sort: \.metaData?.lastPlayed, order: .forward)
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                            
                         }
                         Section{
@@ -61,6 +60,7 @@ struct TimelineView: View {
                             .foregroundStyle(Color(.tertiaryLabel))
                             .font(.caption)
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                             
                         }
                         Section {
@@ -101,6 +101,7 @@ struct TimelineView: View {
                                         
                                     )
                                     .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
                                 
                             
                         }
@@ -126,6 +127,7 @@ struct TimelineView: View {
                             .foregroundStyle(Color(.tertiaryLabel))
                             .font(.caption)
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                             
                         }
                         
@@ -133,6 +135,7 @@ struct TimelineView: View {
                         Section{
                             PlaylistView()
                                 .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                         }
                         
                     }
@@ -151,7 +154,7 @@ struct TimelineView: View {
                     }
                 }
                 
-                
+                /*
                 if showMiniPlayer {
                     playerView(fullSize: false)
                         .padding()
@@ -164,6 +167,7 @@ struct TimelineView: View {
                         
                         
                 }
+                */
             }
             .onAppear {
                 self.scrollToID = "player"

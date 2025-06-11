@@ -425,12 +425,12 @@ actor EpisodeActor {
                 chapter.title = data.title
                 chapter.start = data.start
                 chapter.duration = data.duration
-                chapter.type = .embedded
+                chapter.type = .mp4
                 chapter.imageData = data.imageData
                 return chapter
             }
             
-            episode.chapters.removeAll(where: { $0.type == .embedded })
+            episode.chapters.removeAll(where: { $0.type == .mp4 })
             episode.chapters.append(contentsOf: chapters)
             modelContext.saveIfNeeded()
         } catch {

@@ -156,7 +156,7 @@ class EpisodeDownloadStatus{
     
     @Transient var preferredChapters: [Chapter] {
 
-        let preferredOrder: [ChapterType] = [.mp3, .embedded, .podlove, .extracted]
+        let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted]
 
         let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
         
@@ -228,13 +228,16 @@ class EpisodeDownloadStatus{
                 self.chapters.append(chapter)
             }
             chapters.sort { $0.start ?? 0.0 < $1.start ?? 0.0 }
-           for i in 0..<chapters.count{
-               if chapters[i].duration == nil{
-                   if i+1 <= chapters.count, let nexStart = chapters[i+1].start{
-                       chapters[i].duration = nexStart - (chapters[i].start ?? 0.0)
-                   }
-               }
+            for i in 0..<chapters.count {
+                if chapters[i].duration == nil {
+                    if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
+                        chapters[i].duration = nextStart - (chapters[i].start ?? 0.0)
+                    } else {
+                        chapters[i].duration = (duration ?? 0.0) - (chapters[i].start ?? 0.0)
+                    }
+                }
             }
+            
         }
         
         if self.metaData == nil {
@@ -288,8 +291,8 @@ class EpisodeDownloadStatus{
     var isAvailableLocally: Bool = false
     
     var lastPlayed: Date?
-    var maxPlayposition:Double? = 0.0
-    var playPosition:Double? = 0.0
+    var maxPlayposition:Double? = 0.0 // in seconds
+    var playPosition:Double? = 0.0  // in seconds
     
     var isArchived: Bool? = false
     var isHistory: Bool? = false

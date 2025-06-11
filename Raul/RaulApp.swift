@@ -14,6 +14,8 @@ import BasicLogger
 @main
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager()
+    @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+
     @Environment(\.scenePhase) private var phase
     
 
@@ -26,6 +28,7 @@ struct RaulApp: App {
         WindowGroup {
             ContentView()
                 .modelContainer(modelContainerManager.container)
+                .environment(downloadedFilesManager)
                 .accentColor(.accent)
                 .withDeviceStyle()
         }

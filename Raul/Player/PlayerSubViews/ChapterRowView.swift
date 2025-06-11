@@ -37,6 +37,16 @@ struct ChapterRowView: View {
                             .padding(.trailing, 8)
                         }
                     }
+                    HStack {
+                        Text(Duration.seconds(chapter.start ?? 0.0).formatted(.units(width: .narrow)))
+                       
+                        Text(" - ")
+                        Text(Duration.seconds(chapter.end ?? 0.0).formatted(.units(width: .narrow)))
+                            
+                    }
+                        .font(.footnote)
+                        .monospacedDigit()
+                   
                 }
                 Toggle("Play Chapter", isOn: Binding(
                     get: { chapter.shouldPlay },

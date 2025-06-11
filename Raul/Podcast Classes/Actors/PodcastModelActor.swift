@@ -107,7 +107,9 @@ actor PodcastModelActor {
                     if let episodeID {
                       //  print("Episode exists")
                         if !podcast.episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                            modelContext.saveIfNeeded()
                             linkEpisodeToPodcast(episodeID , podcast.persistentModelID)
+                            
                         }
                         continue
                     }

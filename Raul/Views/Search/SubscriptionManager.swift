@@ -172,7 +172,7 @@ actor SubscriptionManager:NSObject{
             for podcast in podcasts.sorted(by: { lhs, rhs in
                 lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
             }).filter({$0.metaData?.feedUpdated != false}){
-                await BasicLogger.shared.log("updating \(podcast.title)")
+             
                 try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
             }
             

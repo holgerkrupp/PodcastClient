@@ -14,7 +14,7 @@ enum ChapterType: String, Codable, Comparable{
     }
     
     case podlove
-    case embedded
+    case mp4
     case extracted
     case unknown
     case mp3
@@ -26,8 +26,8 @@ enum ChapterType: String, Codable, Comparable{
             "Podlove"
         case .mp3:
             "mp3"
-        case .embedded:
-            "File"
+        case .mp4:
+            "mp4"
         case .extracted:
             "Shownotes"
         case .unknown:
@@ -48,9 +48,10 @@ class Chapter: Identifiable, Equatable, Hashable{
     var image: URL?
     var imageData:Data?
     var start: Double?
+    var endTime: Double?
     var duration: TimeInterval?
     
-    var progress:Double?
+    var progress:Double? // 0 -1 
     
     @Transient var remainingTime: TimeInterval? {
         guard let duration = duration, let progress = progress else { return nil }
@@ -84,6 +85,7 @@ class Chapter: Identifiable, Equatable, Hashable{
     init(details: [String: Any]) {
         title = details["title"] as? String ?? ""
         start = (details["start"] as? String)?.durationAsSeconds
+   //     endTime = (details["endTime"] as? Double)
         duration = (details["endTime"] as? Double ?? 0) - (start ?? 0)
         link = URL(string: details["href"] as? String ?? "")
         image = URL(string: details["image"] as? String ?? "")

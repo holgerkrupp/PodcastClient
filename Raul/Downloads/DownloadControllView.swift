@@ -10,28 +10,37 @@ import Combine
 
 struct DownloadControllView: View {
     @ObservedObject var viewModel = DownloadViewModel()
-    let episode: Episode
+    @State var episode: Episode
     @State private var updateUI: Bool = false
 
 
     var body: some View {
-        VStack {
+        Group {
             if let item = viewModel.item {
-                VStack{
                     DownloadProgressView(item: item)
                         .progressViewStyle(CircularProgressViewStyle())
-                }
-
             } else {
+                if episode.metaData?.calculatedIsAvailableLocally != true {
+                    Button {
+                        viewModel.startDownload(for: episode)
+                        viewModel.startCoverDownload(for: episode)
+                        updateUI.toggle()
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                    
+                }else{
+                    Button{
+                        Task{
+                            if let container = episode.modelContext?.container{
+                               await EpisodeActor(modelContainer: container).deleteFile(episodeID: episode.id)
+                            }
+                        }
+                    }label:{
+                        Label("Remove Download", systemImage: "trash")
 
-                Button {
-                    viewModel.startDownload(for: episode)
-                    viewModel.startCoverDownload(for: episode)
-                    updateUI.toggle()
-                } label: {
-                    Image(systemName: "arrow.down.circle")
+                    }
                 }
-
             }
         }
         .onAppear {

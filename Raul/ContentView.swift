@@ -19,7 +19,7 @@ struct ContentView: View {
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
     
     enum Tab: Int {
-        case player, podcasts, inbox, downloads, logger, settings
+        case player, podcasts, inbox, downloads, logger, settings, library
     }
     
     @State private var selectedTab: Tab = .player
@@ -43,18 +43,14 @@ struct ContentView: View {
                 .tag(Tab.inbox)
                 .badge(inBox.count)
             
-            
-
-            
-                PodcastListView(modelContainer: modelContext.container)
-            
-            
-
+            LibraryView()
                 .tabItem {
-                    Label("Podcasts", systemImage: "headphones")
+                    Label("Library", systemImage: "books.vertical")
                 }
-                .tag(Tab.podcasts)
+            .tag(Tab.library)
+
             
+
             
             SettingsView()
                 .tabItem {
@@ -63,7 +59,7 @@ struct ContentView: View {
                 .tag(Tab.settings)
             
             
-            #if DEBUG
+#if DEBUG
             NavigationStack {
                 LogView()
             }
@@ -72,10 +68,19 @@ struct ContentView: View {
                 }
                 .tag(Tab.logger)
             
-#endif
+#endif // DEBUG
 
 
         }
+#if iOS26
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewBottomAccessory {
+            if Player.shared.currentEpisode != nil {
+                PlayerTabBarView()
+            }
+        }
+#endif // iOS26
+        
         .onChange(of: phase, {
             if SETTINGgoingBackToPlayerafterBackground{
                 switch phase {

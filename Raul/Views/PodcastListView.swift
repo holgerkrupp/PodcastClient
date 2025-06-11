@@ -6,92 +6,88 @@ struct PodcastListView: View {
     @StateObject private var viewModel: PodcastListViewModel
     @Environment(\.modelContext) private var modelContext
     
+    @State private var searchText = ""
+    @State private var searchInTitle = true
+    @State private var searchInAuthor = false
+    @State private var searchInDescription = false
+
     init(modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
     }
-    
+
+    var filteredPodcasts: [Podcast] {
+        if searchText.isEmpty { return podcasts }
+
+        return podcasts.filter { podcast in
+            let lowercased = searchText.lowercased()
+
+            var matches = false
+            if searchInTitle {
+                matches = matches || podcast.title.localizedStandardContains(lowercased)
+            }
+            if searchInAuthor, let author = podcast.author {
+                matches = matches || author.localizedStandardContains(lowercased)
+            }
+            if searchInDescription, let desc = podcast.desc {
+                matches = matches || desc.localizedStandardContains(lowercased)
+            }
+            return matches
+        }
+    }
+
     var body: some View {
-        NavigationView {
-            if podcasts.isEmpty {
-                PodcastsEmptyView()
-                    .navigationTitle("Podcasts")
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(action: {
-                                Task {
-                                    await viewModel.refreshPodcasts()
+        NavigationStack {
+            VStack {
+
+
+                if filteredPodcasts.isEmpty {
+                    PodcastsEmptyView()
+                } else {
+                    List {
+                        ForEach(filteredPodcasts) { podcast in
+                            PodcastRowView(podcast: podcast)
+                        }
+                        .onDelete { indexSet in
+                            Task {
+                                for index in indexSet {
+                                    await viewModel.deletePodcast(filteredPodcasts[index])
                                 }
-                            }) {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            .disabled(viewModel.isLoading)
-                        }
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
-                                Image(systemName: "plus")
-                            }
-                        
-                        }
-                    }
-            }else{
-                List {
-                    ForEach(podcasts) { podcast in
-                        PodcastRowView(podcast: podcast)
-                    }
-                    .onDelete { indexSet in
-                        Task {
-                            for index in indexSet {
-                                await viewModel.deletePodcast(podcasts[index])
                             }
                         }
                     }
-                }
-                .refreshable {
-                    Task{
+                    .refreshable {
                         await viewModel.refreshPodcasts()
                     }
                 }
-                
-                .navigationTitle("Podcasts")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: {
-                            Task {
-                                await viewModel.refreshPodcasts()
-                            }
-                        }) {
-                            if viewModel.isLoading {
-                                ProgressView()
-                            }else{
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            
-                        }
-                        .disabled(viewModel.isLoading)
-                    }
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
-                            Image(systemName: "plus")
-                        }
-                    
+            }
+            .navigationTitle("Podcasts")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
+                        Image(systemName: "plus")
                     }
                 }
-                
-                .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                    Button("OK") {
-                        viewModel.errorMessage = nil
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        Task { await viewModel.refreshPodcasts() }
+                    } label: {
+                        if viewModel.isLoading {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
-                } message: {
-                    if let errorMessage = viewModel.errorMessage {
-                        Text(errorMessage)
-                    }
+                    .disabled(viewModel.isLoading)
                 }
-                
-                
-                
+            }
+            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+                Button("OK") { viewModel.errorMessage = nil }
+            } message: {
+                if let message = viewModel.errorMessage {
+                    Text(message)
+                }
             }
         }
-
     }
 }
 
@@ -133,8 +129,8 @@ struct PodcastRowView: View {
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    if let lastRefreshDate = podcast.metaData?.lastRefresh {
-                        Text("Last refresh: \(lastRefreshDate.formatted(.relative(presentation: .named)))")
+                    if let lastRefreshDate = podcast.metaData?.feedUpdateCheckDate {
+                        Text("Last checked: \(lastRefreshDate.formatted(.relative(presentation: .named)))")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }

@@ -38,7 +38,7 @@ struct EpisodeControlView: View {
                     .labelStyle(.automatic)
             }
             .buttonStyle(.plain)
-            .background(.thickMaterial, in: Capsule())
+           .background(.thickMaterial, in: Capsule())
             .frame(width: 100, height: 50)
             .shadow(radius: 5)
             Spacer()
@@ -87,6 +87,41 @@ struct EpisodeControlView: View {
             
             Spacer()
             
+            
+            Menu {
+                DownloadControllView(episode: episode)
+                
+                Button {
+                    Task{
+                        await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                    }
+                } label: {
+                    
+                    Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                        .symbolRenderingMode(.hierarchical)
+                        .scaledToFit()
+                        .padding(12)
+                        .foregroundColor(.accentColor)
+                        .minimumScaleFactor(0.5)
+                        .labelStyle(.automatic)
+                }
+                
+            } label: {
+                ZStack{
+                    Capsule()
+                        .fill(.clear)
+                       
+                    Label("Action", systemImage: "ellipsis")
+                        .labelStyle(.iconOnly)
+                    
+                }
+                    .background(.ultraThickMaterial, in: Capsule())
+                    .frame(width: 100, height: 50)
+                    .shadow(radius: 5)
+            }
+            
+            
+            /*
             Button {
                 Task{
                     await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
@@ -105,6 +140,7 @@ struct EpisodeControlView: View {
             .background(.ultraThickMaterial, in: Capsule())
             .frame(width: 100, height: 50)
             .shadow(radius: 5)
+            */
          
                 
                 
@@ -112,6 +148,7 @@ struct EpisodeControlView: View {
             
             
         }
+       
 
     }
 }

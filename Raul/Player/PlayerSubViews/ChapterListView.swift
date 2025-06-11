@@ -29,7 +29,7 @@ struct ChapterListView: View {
     
     private var preferredChapters: [Chapter] {
 
-        let preferredOrder: [ChapterType] = [.mp3, .embedded, .podlove, .extracted]
+        let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted]
 
         let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
         
@@ -55,7 +55,7 @@ struct ChapterListView: View {
                         .font(.title)
                         .padding()
                     Spacer()
-                    Button(chapters.first?.type.rawValue ?? "Unknown") {
+                    Button(chapters.first?.type.desc ?? "Unknown") {
                         if let url = episodeURL {
                             Task{
                               await EpisodeActor(modelContainer: modelContext.container).updateChapterDurations(episodeURL: url)

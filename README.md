@@ -7,12 +7,13 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 
 ### Next Steps
-- [X] Create Podcast Detail View
+
 - [ ] CarPlay
 - [ ] Integrate Settings (Per Podcasts and global)
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
 - [ ] Replace transcripts with generic 'external File' that can also host chapters, images and others.
-- [ ] Download unreliable
+- [ ] Downloaded files monitor
+
 
 ## Alpha min Requiremets
 
@@ -117,6 +118,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ##1.x requirements
 - [x] Transkripts
+-   -  [ ] optimized Transcipts view (long text)
 - [ ] Apple Watch App
 - [ ] remove tracking information from URLs
 - [ ] share little videos from episodes for social media

@@ -14,9 +14,11 @@ struct EpisodeRowView: View {
     }
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
+    @Environment(DownloadedFilesManager.self) var fileManager
+
 
     
-    let episode: Episode
+    @State var episode: Episode
     @State private var isExtended: Bool = false
     @State private var image: Image?
     
@@ -43,8 +45,13 @@ struct EpisodeRowView: View {
                             
                             Image(systemName: episode.metaData?.isAvailableLocally ?? false ? "document.fill" : "document")
                                 .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
-                            Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
-                                .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                           // Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
+                            //    .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                            
+                            Image(systemName: fileManager.isDownloaded(episode.localFile) ?? false ? "document.viewfinder.fill" : "document.viewfinder")
+                                .foregroundColor(fileManager.isDownloaded(episode.localFile?.absoluteString ?? "") == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                            
+                            
                             
                             if episode.downloadItem?.isDownloading ?? false {
                                 Image(systemName: "arrow.down")

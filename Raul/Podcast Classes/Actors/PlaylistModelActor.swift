@@ -6,6 +6,7 @@
 //
 import SwiftData
 import Foundation
+import BasicLogger
 
 
 
@@ -69,6 +70,40 @@ actor PlaylistModelActor : ModelActor {
                 }
     }
     
+    
+    
+    func fetchEpisode(byID episodeID: UUID) async -> Episode? {
+        let predicate = #Predicate<Episode> { episode in
+            episode.id == episodeID
+        }
+
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for episode ID: \(episodeID), Error: \(error)")
+            return nil
+        }
+    }
+    
+    
+    
+    func fetchEpisode(byURL fileURL: URL) async -> Episode? {
+        let predicate = #Predicate<Episode> { episode in
+            episode.url == fileURL
+        }
+
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for file URL: \(fileURL.absoluteString), Error: \(error)")
+            return nil
+        }
+    }
+    
+    
+    
     func refresh()  throws {
         let modelContext = ModelContext(modelContainer)
         
@@ -92,25 +127,26 @@ actor PlaylistModelActor : ModelActor {
     
   
     func orderedEpisodes() -> [Episode] {
+        try? refresh()
         return playlist.ordered.compactMap { $0.episode }
     }
     
     func nextEpisode() -> UUID? {
-        return orderedEpisodes().first?.id 
+   
+        return orderedEpisodes().first?.id
     }
     
     // Add an episode to the playlist
     func add(episodeID: UUID, to position: Playlist.Position = .end) async {
-        print("🎯 Adding episode \(episodeID) to playlist \(playlist.title) at position \(position)")
+        
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        
+        await BasicLogger.shared.log("🎯 Adding episode \(episode.title) to playlist \(playlist.title) at position \(position)")
 
         let predicate = #Predicate<Episode> { $0.id == episodeID }
 
-        do {
-            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
-            guard let episode = results.first else {
-                print("❌ No episode found for episode ID: \(episodeID)")
-                return
-            }
+        
+
 
             // Determine new order
             let newPosition: Int
@@ -126,21 +162,18 @@ actor PlaylistModelActor : ModelActor {
             // Update if already exists
             if let existingItem = playlist.items.first(where: { $0.episode?.id == episode.id }) {
                 existingItem.order = newPosition
-                print("🔄 Moved episode to position \(newPosition)")
+                await BasicLogger.shared.log("🔄 Moved episode to position \(newPosition)")
             } else {
-                // ✅ Create entry and set relationships only once
-                let newEntry = PlaylistEntry(episode: episode, playlist: playlist, order: newPosition)
+                let _ = PlaylistEntry(episode: episode, playlist: playlist, order: newPosition)
 
-                print("➕ Created and linked new PlaylistEntry at position \(newPosition) of \(playlist.title)")
+                await BasicLogger.shared.log("➕ Created and linked new PlaylistEntry at position \(newPosition) of \(playlist.title)")
             }
 
-            // Clear inbox flag
             episode.metaData?.isInbox = false
 
             modelContext.saveIfNeeded()
-            print("✅ Saved playlist changes")
+            await BasicLogger.shared.log("✅ Saved playlist changes")
 
-            // Trigger download if needed (in background)
             if episode.metaData?.isAvailableLocally != true {
                 Task {
                     let episodeActor = EpisodeActor(modelContainer: modelContainer)
@@ -148,9 +181,6 @@ actor PlaylistModelActor : ModelActor {
                 }
             }
 
-        } catch {
-            print("❌ Error saving Playlist: \(error)")
-        }
     }
 
     // Remove an episode from the playlist

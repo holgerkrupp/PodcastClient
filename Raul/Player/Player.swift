@@ -14,8 +14,10 @@ class Player: NSObject {
     
     static let shared = Player()
   //  private let modelContext = ModelContainerManager().container.mainContext
-    static let episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
+     let episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
      let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager().container)
+    let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+
 
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
@@ -41,15 +43,14 @@ class Player: NSObject {
     var currentChapter: Chapter?
     var nextChapter: Chapter?
     var previousChapter: Chapter?
-    var episodeActor: EpisodeActor
-    var playlistActor: PlaylistModelActor
+
     
     var settingLockScreenScrubbing: Bool = false
     
     
     override init()  {
-        episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
-        playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+      //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
+        
         super.init()
         loadLastPlayedEpisode()
         loadPlayBackSpeed()
@@ -102,7 +103,7 @@ class Player: NSObject {
     
     private func updateCurrentChapter() -> Bool?{
         
-        let playingChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
+        let playingChapter = currentEpisode?.preferredChapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         
         if currentChapter != playingChapter {
             if let chapterProgress, let currentChapter  {
@@ -141,7 +142,7 @@ class Player: NSObject {
     private func unloadEpisode(episodeUUID: UUID) async{
        
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
-        print("unloading episode \(episode.title)")
+        BasicLogger.shared.log("unloading episode \(episode.title)")
         currentEpisode = nil
         currentEpisodeID = nil
         currentChapter = nil
@@ -151,15 +152,14 @@ class Player: NSObject {
         
         
         if episode.playProgress > progressThreshold {
-            print("marking episode \(episode.title) as Played")
+            BasicLogger.shared.log("marking episode \(episode.title) as Played - \(episode.playProgress)")
 
             await episodeActor.markasPlayed(episodeUUID)
             
         }else{
-            print("moving episode \(episode.title) back to playlist")
+             BasicLogger.shared.log("moving episode \(episode.title) back to playlist")
 
-            let playlistModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
-            await playlistModelActor.add(episodeID: episodeUUID, to: .front)
+            await playlistActor.add(episodeID: episodeUUID, to: .front)
 
         }
     }
@@ -198,11 +198,12 @@ class Player: NSObject {
            
             
             await engine.replaceCurrentItem(with: item)
- 
+            BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
             if let time  {
                 jumpTo(time: time)
-            }else if let lastPlayPosition = currentEpisode?.metaData?.playPosition {
-                print("last position: \(lastPlayPosition)")
+            }else if let lastPlayPosition = currentEpisode?.metaData?.playPosition, lastPlayPosition < ((currentEpisode?.duration ?? 1.0) * progressThreshold) {
+                BasicLogger.shared.log("last position: \(lastPlayPosition)")
+                
                 jumpTo(time: lastPlayPosition)
             } else {
                 jumpTo(time: 0)
@@ -360,6 +361,7 @@ class Player: NSObject {
     }
 
     func jumpTo(time: Double) {
+        BasicLogger.shared.log("jumpTo \(time)")
         Task {
             let cmTime = CMTime(seconds: time, preferredTimescale: 600)
             await engine.seek(to: cmTime)
@@ -456,7 +458,10 @@ class Player: NSObject {
         Task.detached(priority: .background) {
             await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
              episode.modelContext?.saveIfNeeded()
-            await self.chapterActor.saveAllChanges()
+            if episode.chapters.isEmpty == false {
+                await self.chapterActor.saveAllChanges()
+            }
+          
           
         }
 

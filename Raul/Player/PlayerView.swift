@@ -16,16 +16,18 @@ struct PlayerView: View {
             
                 if let episode = player.currentEpisode {
                     ZStack{
-                        GeometryReader { geometry in
+                      
                             // Background layer
-                         
+                         if fullSize {
+                            
+                       
                             EpisodeCoverView(episode: episode)
                                 .scaledToFill()
                                 .id(episode.id)
                                 
                                 .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
                             // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
-                        }
+                         }
                         
                         VStack {
                             if fullSize {
@@ -157,9 +159,11 @@ struct PlayerView: View {
                                     HStack {
                                         Text(player.playPosition.secondsToHoursMinutesSeconds ?? "00:00:00")
                                             .monospacedDigit()
+                                            .font(.caption)
                                         Spacer()
                                         Text(player.remaining?.secondsToHoursMinutesSeconds ?? player.currentEpisode?.duration?.secondsToHoursMinutesSeconds ?? "")
                                             .monospacedDigit()
+                                            .font(.caption)
                                     }
                                 }
                                 
@@ -220,18 +224,20 @@ struct PlayerView: View {
                             .tint(.primary)
                         }
                         .padding()
-                      
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.thinMaterial)
-                                .shadow(radius: 3)
-                        )
                        
+                            .background(
+                                
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.thinMaterial)
+                                    .shadow(radius: 3)
+                            )
+                        
                         
                     }
                     .clipped()
                     .cornerRadius(12)
                     .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
+                   
 
                 } else {
                     PlayerEmptyView()
