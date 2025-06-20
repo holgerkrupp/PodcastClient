@@ -162,19 +162,25 @@ actor PlaylistModelActor : ModelActor {
             // Update if already exists
             if let existingItem = playlist.items.first(where: { $0.episode?.id == episode.id }) {
                 existingItem.order = newPosition
+              
                 await BasicLogger.shared.log("🔄 Moved episode to position \(newPosition)")
             } else {
-                let _ = PlaylistEntry(episode: episode, playlist: playlist, order: newPosition)
-
+                let newEntry = PlaylistEntry(episode: episode, order: newPosition)
+                newEntry.playlist = playlist
+                episode.playlist.append(newEntry)
                 await BasicLogger.shared.log("➕ Created and linked new PlaylistEntry at position \(newPosition) of \(playlist.title)")
             }
+        
+        
 
             episode.metaData?.isInbox = false
-
+            episode.metaData?.isArchived = false
+            episode.metaData?.status = .none
+        
             modelContext.saveIfNeeded()
             await BasicLogger.shared.log("✅ Saved playlist changes")
 
-            if episode.metaData?.isAvailableLocally != true {
+            if episode.metaData?.calculatedIsAvailableLocally != true {
                 Task {
                     let episodeActor = EpisodeActor(modelContainer: modelContainer)
                     await episodeActor.download(episodeID: episode.id)
@@ -183,46 +189,7 @@ actor PlaylistModelActor : ModelActor {
 
     }
 
-    // Remove an episode from the playlist
-   /*
-    func remove(episodeID: UUID) {
-        do {
-            try refresh()
-        }catch {
-            print(error)
-        }
-       
-        let predicate = #Predicate<Episode> { episode in
-            // Direct comparison of the episode's persistentModelID
-            episode.id == episodeID
-        }
-       
-                do {
-                    let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
-                    guard let episode = results.first else {
-                        print("❌ No episode found for episode ID: \(episodeID)")
-                        return
-                    }
-                    print("remoing episode \(episodeID) - \(episode.title) from playlist \(playlist.title)")
-                    
-                    guard
-                        let entry = playlist.items.first(where: { $0.episode?.id == episode.id }) else {
-                        print("❌ No playlist entry found for episode ID: \(episodeID)")
-                       
-                        return
-                    }
-                    if let index = playlist.items.firstIndex(of: entry) {
-                        playlist.items.remove(at: index)
-                        modelContext.delete(entry)
-                    }
-
-                     modelContext.saveIfNeeded()
-                    print("✅ Playlist updated")
-                } catch {
-                    print("error saving Playlist \(error)")
-                }
-    }
-    */
+ 
     func remove(episodeID: UUID) {
         print("remove episode \(episodeID)")
         do {

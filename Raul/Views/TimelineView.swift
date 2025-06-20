@@ -154,25 +154,17 @@ struct TimelineView: View {
                     }
                 }
                 
-                /*
-                if showMiniPlayer {
-                    playerView(fullSize: false)
-                        .padding()
-                        .transition(.move(edge: isScrollingUp ? .bottom : .top).combined(with: .opacity))
-                        .zIndex(1)
-                        .onTapGesture {_ in
-                            self.scrollToID = "player"
-                        }
-                        
-                        
-                        
-                }
-                */
+
             }
             .onAppear {
                 self.scrollToID = "player"
             }
             
+        }
+        .onAppear {
+            Task{
+                await DownloadManager.shared.refreshDownloadedFiles()
+            }
         }
         
     }

@@ -78,7 +78,7 @@ class EpisodeDownloadStatus{
 
     @Relationship(deleteRule: .cascade) var chapters: [Chapter] = []
     @Relationship(deleteRule: .cascade) var metaData: EpisodeMetaData?
-
+    @Relationship var playlist: [PlaylistEntry] = []
     
     // temporary values that don't need to survive an app restart
     @Transient @Published var refresh: Bool = false
@@ -116,27 +116,38 @@ class EpisodeDownloadStatus{
         return  progress > 1 ? 1 : progress
     }
     
+    var maxPlayProgress: Double {
+       
+        guard metaData?.maxPlayposition != nil else { return 0.0 }
+        guard duration != 0.0 else { return 0.0 }
+        guard duration != nil else { return 0.0 }
+        let progress = Double(metaData?.maxPlayposition ?? 0.0) / Double(duration ?? 1)
+        
+        return  progress > 1 ? 1 : progress
+    }
+    
     //MARK: calculated properties that will be generated out of existing properties.
     var localFile: URL? {
         let fileName = url.lastPathComponent
-        let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        guard let baseURL = documentsDirectoryUrl else { return nil }
+         let baseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
         
         // Create a sanitized filename
         let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
+        let sanitizedguid = guid?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+
+        let uniqueURL = baseURL?.appendingPathComponent("\(id.uuidString)_\(sanitizedFileName)")
         
-        let uniqueURL = baseURL.appendingPathComponent("\(guid ?? id.uuidString)_\(sanitizedFileName)")
-        
-        try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
+      /*  try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
                                                withIntermediateDirectories: true,
                                                attributes: nil)
+        */
+        
         return uniqueURL
     }
     
     var coverFileLocation: URL? {
         let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
-        let documentsDirectoryUrl = podcast?.directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        guard let baseURL = documentsDirectoryUrl else { return nil }
+        let baseURL = podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
         
         // Create a sanitized filename
         let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
@@ -230,6 +241,7 @@ class EpisodeDownloadStatus{
             chapters.sort { $0.start ?? 0.0 < $1.start ?? 0.0 }
             for i in 0..<chapters.count {
                 if chapters[i].duration == nil {
+                    
                     if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
                         chapters[i].duration = nextStart - (chapters[i].start ?? 0.0)
                     } else {
@@ -275,12 +287,13 @@ class EpisodeDownloadStatus{
     
 }
 
+enum EpisodeStatus: String, Codable{
+    case inbox, history, archived, unknown
+}
 
 @Model final class EpisodeMetaData{
     
-    enum EpisodeStatus: String, Codable{
-        case inbox, history, archived, unknown
-    }
+
     
     var calculatedIsAvailableLocally: Bool {
         guard let url = episode?.localFile else {
@@ -299,6 +312,7 @@ class EpisodeDownloadStatus{
     var isInbox: Bool? = true
     
     var status: EpisodeStatus? = EpisodeStatus.inbox
+   
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?
     

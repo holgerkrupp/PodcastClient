@@ -9,6 +9,8 @@ import BasicLogger
 @MainActor
 class Player: NSObject {
     
+
+    
      let progressThreshold: Double = 0.95 // how much of an episode must be played before it is considered "played"
     
     
@@ -37,6 +39,19 @@ class Player: NSObject {
     var currentEpisodeID: UUID?
     
     
+    let fileMonitor = DownloadedFilesManager(folder: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+
+    var downloadedFiles: Set<URL> {
+        fileMonitor.downloadedFiles
+    }
+
+    var isCurrentEpisodeDownloaded: Bool {
+     //   guard let url = currentEpisode?.localFile else { return false }
+      //  return downloadedFiles.contains(url)
+        return currentEpisode?.metaData?.calculatedIsAvailableLocally ?? false
+    }
+    
+    
     var isPlaying: Bool = false
     
     var chapterProgress: Double?
@@ -56,6 +71,8 @@ class Player: NSObject {
         loadPlayBackSpeed()
         listenToEvent()
         pause()
+        
+
 
     }
     
@@ -91,12 +108,10 @@ class Player: NSObject {
     }
     
     func fetchEpisode(with id: UUID) async -> Episode? {
-        print("fetching episode \(id)")
         do {
             let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.id == id })
             return try  episodeActor.modelContainer.mainContext.fetch(descriptor).first
         } catch {
-            print("Failed to fetch episode: \(error)")
             return nil
         }
     }
@@ -110,6 +125,11 @@ class Player: NSObject {
                 saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
             }
             currentChapter = playingChapter
+            if let currentChapterID = currentChapter?.id{
+                Task{
+                    currentChapter?.shouldPlay = await chapterActor.shouldPlayChapter(currentChapterID) // check that the user has not recently changed the toggle to play this chapter
+                }
+            }
             chapterProgress = 0.0
             updateChapterProgress()
             nextChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
@@ -134,15 +154,16 @@ class Player: NSObject {
     
     private func saveChapterProgress(chapter: Chapter, progress: Double){
         let chapterID = chapter.id
-        Task.detached(priority: .background) {
-            await self.chapterActor.setChapterProgress(progress, for: chapterID)
-        }
+       
+            Task.detached(priority: .background) {
+                await self.chapterActor.setChapterProgress(progress, for: chapterID)
+            }
+       
     }
         
     private func unloadEpisode(episodeUUID: UUID) async{
        
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
-        BasicLogger.shared.log("unloading episode \(episode.title)")
         currentEpisode = nil
         currentEpisodeID = nil
         currentChapter = nil
@@ -152,12 +173,10 @@ class Player: NSObject {
         
         
         if episode.playProgress > progressThreshold {
-            BasicLogger.shared.log("marking episode \(episode.title) as Played - \(episode.playProgress)")
 
             await episodeActor.markasPlayed(episodeUUID)
             
         }else{
-             BasicLogger.shared.log("moving episode \(episode.title) back to playlist")
 
             await playlistActor.add(episodeID: episodeUUID, to: .front)
 
@@ -168,11 +187,9 @@ class Player: NSObject {
     
     func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true, startingAt time: Double? = nil) async {
         
-        print("playing episode \(episodeUUID)")
         
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
-            print("unloading episode \(currentEpisodeID)")
             await unloadEpisode(episodeUUID: currentEpisodeID)
             await playlistActor.remove(episodeID: episodeUUID)
         }
@@ -189,10 +206,27 @@ class Player: NSObject {
         Task { @MainActor in
             // Load the AVPlayerItem asynchronously
             let item = await Task {
-                if episode.metaData?.calculatedIsAvailableLocally ?? false, let localFile = episode.localFile {
-                    AVPlayerItem(url: localFile)
-                }else{
-                    AVPlayerItem(url: episode.url)
+                if isCurrentEpisodeDownloaded,
+                   let localFile = episode.localFile {
+                    
+                    print("loading local file from \(localFile.path)")
+                    
+                    // Prepend Documents directory if localFile is not an absolute URL
+                    let localURL: URL
+                    if localFile.isFileURL && localFile.path.hasPrefix("/") {
+                        // Already a full path
+                        localURL = localFile
+                    } else {
+                        // Treat as relative to Documents
+                        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                        localURL = documents.appendingPathComponent(localFile.path)
+                    }
+                    print("loading local file from URL \(localURL.absoluteString)")
+                    return AVPlayerItem(url: localURL)
+                } else {
+                    print("loading remote - local file \(episode.localFile?.absoluteString ?? "") not available")
+
+                    return AVPlayerItem(url: episode.url)
                 }
             }.value
            
@@ -375,6 +409,11 @@ class Player: NSObject {
     func setRate(_ rate: Float){
         Task { await engine.setRate(rate) }
         playbackRate = rate
+        if rate > 0 {
+            startPlaybackUpdates()
+            startNowPlayingInfoUpdater()
+        }
+
     }
 
 
@@ -419,39 +458,44 @@ class Player: NSObject {
 
 
     private var progressUpdateCounter = 0
-    private let progressSaveInterval = 20  // 0.5 seconds * 20 = 10 seconds
+    private let progressSaveInterval = 40  // 0.5 seconds * 20 = 10 seconds
     
     private func updateEpisodeProgress(to time: Double) {
-      //  guard let episode = currentEpisode else { return }
+        //  guard let episode = currentEpisode else { return }
+        guard isPlaying == true else { return }
+        
         
         // Update UI-related properties on main thread
-
-        let chapterChange = updateCurrentChapter()
- 
-        updateChapterProgress()
-        
-        // Skip Chapter logic
-        if let currentChapter, currentChapter.shouldPlay == false && chapterChange == true {
-            if let end = currentChapter.end {
-                jumpTo(time: end)
-                Task.detached(priority: .background) {
-                    await self.chapterActor.markChapterAsSkipped(currentChapter.id)
+       
+            let chapterChange = updateCurrentChapter()
+            
+            updateChapterProgress()
+            
+            
+            
+            // Skip Chapter logic
+            if let currentChapter, currentChapter.shouldPlay == false && chapterChange == true {
+                if let end = currentChapter.end {
+                    jumpTo(time: end)
+                    Task.detached(priority: .background) {
+                        await self.chapterActor.markChapterAsSkipped(currentChapter.id)
+                    }
                 }
-            }
                 
+            }
+            
+            
+            // Move database operations to background thread
+            progressUpdateCounter += 1
+            
+            if progressUpdateCounter >= progressSaveInterval {
+                savePlayPosition()
+                
+                progressUpdateCounter = 0
+                
+            }
         }
-        
-        
-        // Move database operations to background thread
-        progressUpdateCounter += 1
-
-        if progressUpdateCounter >= progressSaveInterval {
-            savePlayPosition()
-                   
-            progressUpdateCounter = 0
-                    
-        }
-    }
+    
     
     private func savePlayPosition() {
         guard let episode = currentEpisode else { return }
@@ -518,29 +562,7 @@ class Player: NSObject {
 
     }
     
-    
-    private var remoteCommandsSetup = false
 
-    private func setupRemoteCommands() {
-        guard !remoteCommandsSetup else { return }
-        let RCC = MPRemoteCommandCenter.shared()
-
-        RCC.playCommand.isEnabled = true
-        RCC.playCommand.addTarget { [weak self] _ in
-            self?.play()
-            return .success
-        }
-
-        RCC.pauseCommand.isEnabled = true
-        RCC.pauseCommand.addTarget { [weak self] _ in
-            self?.pause()
-            return .success
-        }
-
-        // Add skip/back/bookmark etc...
-        
-        remoteCommandsSetup = true
-    }
     
     func setupStaticNowPlayingInfo()   {
         guard let episode = currentEpisode else { return }

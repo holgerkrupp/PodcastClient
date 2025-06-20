@@ -86,10 +86,19 @@ struct PodcastDetailView: View {
                     NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                         EpisodeRowView(episode: episode)
                             .id(episode.metaData?.id ?? episode.id)
+                        
+                        
                     }
                     
-                    
-                    
+                }
+                .onDelete { indexSet in
+                    Task {
+                        for index in indexSet {
+                            let episodeID = podcast.episodes.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()})[index].persistentModelID
+                            try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
+                            
+                        }
+                    }
                 }
             }
             .listRowSeparator(.hidden)

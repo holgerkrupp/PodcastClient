@@ -56,9 +56,16 @@ actor PlayerEngine {
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     if options.contains(.shouldResume) {
                         Task{
+                            await self?.sendInterrupt(type: .resume)
+                        }
+                    }else{
+                        Task{
                             await self?.sendInterrupt(type: .ended)
                         }
-                        
+                    }
+                }else{
+                    Task{
+                        await self?.sendInterrupt(type: .ended)
                     }
                 }
 

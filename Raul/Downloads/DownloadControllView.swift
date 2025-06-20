@@ -9,6 +9,8 @@ import SwiftUI
 import Combine
 
 struct DownloadControllView: View {
+    @Environment(DownloadedFilesManager.self) var fileManager
+
     @ObservedObject var viewModel = DownloadViewModel()
     @State var episode: Episode
     @State private var updateUI: Bool = false
@@ -20,7 +22,8 @@ struct DownloadControllView: View {
                     DownloadProgressView(item: item)
                         .progressViewStyle(CircularProgressViewStyle())
             } else {
-                if episode.metaData?.calculatedIsAvailableLocally != true {
+                
+                if fileManager.isDownloaded(episode.localFile) != true {
                     Button {
                         viewModel.startDownload(for: episode)
                         viewModel.startCoverDownload(for: episode)

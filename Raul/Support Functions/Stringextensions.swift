@@ -6,6 +6,7 @@
 //
 
 import Foundation
+ import SwiftUI
 extension String {
     func toDetectedAttributedString() -> AttributedString {
         

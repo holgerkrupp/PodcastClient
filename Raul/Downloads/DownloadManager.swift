@@ -3,12 +3,17 @@ import SwiftData
 
 actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     static let shared = DownloadManager()
-
     private var downloads: [URL: DownloadItem] = [:]
     private var urlToTask: [URL: URLSessionDownloadTask] = [:]
     private var destinations: [URL: URL] = [:]
     
 
+    private var downloadedFilesManager: DownloadedFilesManager?
+
+    func injectDownloadedFilesManager(_ manager: DownloadedFilesManager) {
+        self.downloadedFilesManager = manager
+    }
+    
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
         return URLSession(configuration: config, delegate: self, delegateQueue: .main)
@@ -68,6 +73,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         FileManager.default.fileExists(atPath: url.path)
     }
     private func markDownloaded(for url: URL) async {
+        refreshDownloadedFiles()
         let container = ModelContainerManager().container
         let episodeActor = EpisodeActor(modelContainer: container)
         await episodeActor.markEpisodeAvailable(fileURL: url)
@@ -78,6 +84,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         let filename = url.lastPathComponent
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         return documents.appendingPathComponent(filename)
+    }
+    
+    func refreshDownloadedFiles() {
+        downloadedFilesManager?.refreshDownloadedFiles()
     }
 
     // MARK: - Delegate
@@ -102,7 +112,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                                  downloadTask: URLSessionDownloadTask,
                                  didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
-        print("finished Download \(url)")
+        print("finished Download \(url) ")
 
         // Create a safe temp location to copy the file to before we suspend
         let tempCopy = FileManager.default.temporaryDirectory
@@ -117,8 +127,12 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
 
         Task {
-            guard let destination = await DownloadManager.shared.getDestination(for: url) else { return }
-
+            guard let destination = await DownloadManager.shared.getDestination(for: url) else {
+                
+                print("cant find destination for \(url)")
+                
+                return }
+            print("move file to \(destination)")
             do {
                 // Make sure directory exists
                 let dir = destination.deletingLastPathComponent()

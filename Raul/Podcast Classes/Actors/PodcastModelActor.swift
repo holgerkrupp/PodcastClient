@@ -258,6 +258,13 @@ actor PodcastModelActor {
         modelContext.saveIfNeeded()
     }
     
+    func deleteEpisode(_ episodeID: PersistentIdentifier) async throws {
+        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+        await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeID: episode.id)
+        modelContext.delete(episode)
+        modelContext.saveIfNeeded()
+    }
+    
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
         if let episodeFolder = podcast.directoryURL {

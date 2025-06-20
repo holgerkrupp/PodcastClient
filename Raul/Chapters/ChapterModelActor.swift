@@ -11,7 +11,6 @@ import Foundation
 
 
 
-
 @ModelActor
 actor ChapterModelActor {
     func fetchChapter(byID chapterID: UUID) async -> Chapter? {

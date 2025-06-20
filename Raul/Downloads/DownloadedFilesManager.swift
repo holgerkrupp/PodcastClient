@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 
+
 @Observable
 class DownloadedFilesManager {
     private let monitoredFolder: URL
@@ -24,23 +25,42 @@ class DownloadedFilesManager {
         return downloadedFiles.contains(fileURL)
     }
     
+
+    
     func isDownloaded(_ fileURL: URL?) -> Bool? {
-        print("isDownloaded fileURL: \(String(describing: fileURL))")
-        dump(downloadedFiles)
         guard let fileURL else { return nil }
-        return downloadedFiles.contains(fileURL)
+
+        let standardizedURL = fileURL.standardizedFileURL
+
+        return downloadedFiles.contains(where: { $0.standardizedFileURL == standardizedURL })
     }
 
-    private func refreshDownloadedFiles() {
+     func refreshDownloadedFiles() {
+         print("refreshing downloaded files")
         queue.async { [weak self] in
-            guard let self else { return }
+            guard let self = self else { return }
 
             let fileManager = FileManager.default
-            let allFiles = (try? fileManager.contentsOfDirectory(at: self.monitoredFolder, includingPropertiesForKeys: nil)) ?? []
-            let updated = Set(allFiles)
 
-            // Update observable state on the main thread
+            // Recursively collect all file URLs
+            let allFiles = (fileManager.enumerator(
+                at: self.monitoredFolder,
+                includingPropertiesForKeys: nil
+            )?.compactMap { $0 as? URL }) ?? []
+
+            let updated = Set(allFiles.filter { url in
+                var isDir: ObjCBool = false
+                return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
+            })
+            print("FILES")
+            for fileURL in updated {
+                print("file downloaded: \(fileURL)")
+            }
+            print("FILES END")
+            
+            
             Task { @MainActor in
+                
                 self.downloadedFiles = updated
             }
         }
@@ -56,7 +76,7 @@ class DownloadedFilesManager {
             queue: queue
         )
 
-        source.setEventHandler { [weak self] in
+        source.setEventHandler { [weak self]  in
             self?.refreshDownloadedFiles()
         }
 
@@ -71,5 +91,18 @@ class DownloadedFilesManager {
     private func stopMonitoring() {
         source?.cancel()
         source = nil
+    }
+    
+    private var pollTimer: Timer?
+
+    func startPolling() {
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.refreshDownloadedFiles()
+        }
+    }
+
+    func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
     }
 }

@@ -12,7 +12,8 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] Integrate Settings (Per Podcasts and global)
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
 - [ ] Replace transcripts with generic 'external File' that can also host chapters, images and others.
-- [ ] Downloaded files monitor
+- [ ] mp3ChapterReader work with remote files
+- [ ] Unified Timeline reorder function
 
 
 ## Alpha min Requiremets

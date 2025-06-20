@@ -19,16 +19,22 @@ struct ContentView: View {
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
     
     enum Tab: Int {
-        case player, podcasts, inbox, downloads, logger, settings, library
+        case player, podcasts, inbox, downloads, logger, settings, library, timeline
     }
     
-    @State private var selectedTab: Tab = .player
+    @State private var selectedTab: Tab = .timeline
    // @ObservedObject private var manager = DownloadManager.shared
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
     
     var body: some View {
         TabView(selection: $selectedTab) {
+            UnifiedTimelineView()
+                .tabItem {
+                    Label("Player", systemImage: "calendar.day.timeline.leading")
+                }
+                .tag(Tab.timeline)
+            
             TimelineView()
                 .tabItem {
                     Label("Player", systemImage: "play.circle.fill")
@@ -72,14 +78,14 @@ struct ContentView: View {
 
 
         }
-#if iOS26
+/*
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             if Player.shared.currentEpisode != nil {
                 PlayerTabBarView()
             }
         }
-#endif // iOS26
+*/
         
         .onChange(of: phase, {
             if SETTINGgoingBackToPlayerafterBackground{
@@ -88,7 +94,7 @@ struct ContentView: View {
                     setGoingToBackgroundDate()
                 case .active:
                     if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
-                        selectedTab = .player
+                        selectedTab = .timeline
                     }
                     
                 default: break

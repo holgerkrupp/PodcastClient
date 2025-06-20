@@ -11,7 +11,7 @@ import SwiftUI
 struct EpisodeControlView: View {
 
 
-    @State var episode: Episode
+    @Bindable var episode: Episode
  //   @StateObject private var manager = DownloadManager.shared
     @Environment(\.modelContext) private var modelContext
     @State private var downloadProgress: Double = 0.0
@@ -32,20 +32,26 @@ struct EpisodeControlView: View {
                 Label("Play", systemImage: "play.fill")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(12)
+                    .padding(8)
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
-                    .labelStyle(.automatic)
+                    .labelStyle(.iconOnly)
             }
-            .buttonStyle(.plain)
-           .background(.thickMaterial, in: Capsule())
+           
+                .buttonStyle(.plain)
+            
+           
             .frame(width: 100, height: 50)
-            .shadow(radius: 5)
+            
             Spacer()
+            if episode.playlist.isEmpty, episode.playlist.first?.playlist == nil {
+       //     if !PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).entries.contains(where: { $0.episode?.id == episode.id }) {
+                    
+           
             
             Button {
                 Task{
-                    await playlistViewModel.addEpisode(episode, to: .front)
+                    await PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).addEpisode(episode, to: .front)
                     
                 }
             } label: {
@@ -53,73 +59,90 @@ struct EpisodeControlView: View {
                 Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(12)
+                    .padding(8)
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.plain)
-            .background(.thickMaterial, in: Capsule())
             .frame(width: 50, height: 50)
-            .shadow(radius: 5)
             
-            
+                Spacer()
             Button {
                 Task{
-                    await playlistViewModel.addEpisode(episode, to: .end)
+                    await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
                 }
             } label: {
                 Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(12)
+                    .padding(8)
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.plain)
-            .background(.thickMaterial, in: Capsule())
             .frame(width: 50, height: 50)
-            .shadow(radius: 5)
            
-            
+            }
             
             
             Spacer()
             
             
-            Menu {
-                DownloadControllView(episode: episode)
                 
-                Button {
-                    Task{
-                        await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
-                    }
-                } label: {
-                    
-                    Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                        .symbolRenderingMode(.hierarchical)
-                        .scaledToFit()
-                        .padding(12)
-                        .foregroundColor(.accentColor)
-                        .minimumScaleFactor(0.5)
-                        .labelStyle(.automatic)
-                }
-                
-            } label: {
-                ZStack{
-                    Capsule()
-                        .fill(.clear)
+                Menu {
+                    DownloadControllView(episode: episode)
+                    Divider()
+                    if episode.metaData?.status != .history {
+                        Button {
+                            Task{
+                                await EpisodeActor(modelContainer: modelContext.container).moveToHistory(episodeID: episode.id)
+                            }
+                        } label: {
+                            
+                            Label("Move to History" , image: "custom.play.circle.badge.checkmark")
+                                .symbolRenderingMode(.hierarchical)
+                                .scaledToFit()
+                                .padding(8)
+                                .foregroundColor(.accentColor)
+                                .minimumScaleFactor(0.5)
+                                .labelStyle(.automatic)
+                        }
                        
-                    Label("Action", systemImage: "ellipsis")
-                        .labelStyle(.iconOnly)
+                    }
+                        
                     
-                }
-                    .background(.ultraThickMaterial, in: Capsule())
+                    Button {
+                        Task{
+                            await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                        }
+                    } label: {
+                        
+                        Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                            .symbolRenderingMode(.hierarchical)
+                            .scaledToFit()
+                            .padding(8)
+                            .foregroundColor(.accentColor)
+                            .minimumScaleFactor(0.5)
+                            .labelStyle(.automatic)
+                    }
+                    
+                } label: {
+                    ZStack{
+                        Capsule()
+                            .fill(.clear)
+                        
+                        Label("Action", systemImage: "ellipsis")
+                            .labelStyle(.iconOnly)
+                        
+                    }
                     .frame(width: 100, height: 50)
-                    .shadow(radius: 5)
-            }
-            
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+
+                
             
             /*
             Button {
@@ -131,7 +154,7 @@ struct EpisodeControlView: View {
                 Label("Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(12)
+                    .padding(8)
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.automatic)
@@ -148,14 +171,9 @@ struct EpisodeControlView: View {
             
             
         }
+
        
 
     }
 }
 
-#Preview {
-    let URL = URL(string: "http:s//holgerkrupp.de")!
-    let podcast = Podcast(feed: URL)
-    let episode = Episode(id: UUID(), title: "Test Episode", url: URL, podcast: podcast)
-    EpisodeControlView(episode: episode)
-}

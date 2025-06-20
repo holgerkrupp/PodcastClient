@@ -25,6 +25,14 @@ struct AllEpisodesListView: View {
                                 .padding(.horizontal)
                         }
                     }
+                    .onDelete { indexSet in
+                        Task {
+                            for index in indexSet {
+                                let episodeID = episodes[index].persistentModelID
+                                try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
+                            }
+                        }
+                    }
                 }
                 .padding(.top)
             }
@@ -33,7 +41,7 @@ struct AllEpisodesListView: View {
             .onAppear {
                 Task { await fetchEpisodes() }
             }
-            .onChange(of: searchText) { newValue in
+            .onChange(of: searchText) { oldValue, newValue in
                 debounceSearch(newValue)
             }
         }

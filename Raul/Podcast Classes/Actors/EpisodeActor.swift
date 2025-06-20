@@ -11,7 +11,6 @@ import AVFoundation
 import BasicLogger
 
 
-
 @ModelActor
 actor EpisodeActor {
     
@@ -27,6 +26,11 @@ actor EpisodeActor {
             print("❌ Error fetching episode for episode ID: \(episodeID), Error: \(error)")
             return nil
         }
+    }
+    
+    @available(iOS 26.0, *)
+    func generateAIChapters(fileURL: URL) async{
+
     }
     
     
@@ -74,6 +78,9 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
         guard !episode.chapters.isEmpty else { return }
         guard let totalDuration = episode.duration else { return }
+        
+        print("updateChapterDurations")
+        
         var chapters = episode.chapters
         var lastEnd = totalDuration
         for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
@@ -183,8 +190,15 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
     }
     
+    func removeFromPlaylist(_ episodeID: UUID) async {
+        let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer)
+        await PlaylistmodelActor.remove(episodeID: episodeID)
+    }
+    
     func archiveEpisode(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        await removeFromPlaylist(episodeID)
+
         if episode.metaData == nil {
             episode.metaData = EpisodeMetaData()
         }
@@ -193,11 +207,27 @@ actor EpisodeActor {
         episode.metaData?.status = .archived
 
         
-        let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer)
-        await PlaylistmodelActor.remove(episodeID: episodeID)
     
         await deleteFile(episodeID: episodeID)
          modelContext.saveIfNeeded()
+    }
+    
+    func moveToHistory(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        await removeFromPlaylist(episodeID)
+
+        if episode.metaData == nil {
+            episode.metaData = EpisodeMetaData()
+        }
+        if episode.metaData?.lastPlayed == nil {
+            episode.metaData?.lastPlayed = Date()
+        }
+        
+        episode.metaData?.isHistory = true
+        episode.metaData?.isInbox = false
+        episode.metaData?.status = .history
+        
+        modelContext.saveIfNeeded()
     }
     
     
@@ -372,6 +402,7 @@ actor EpisodeActor {
     }
     */
     private func parse(chapters: [String: Any]) -> [Chapter]?{
+        print("parse chapters")
         if let chaptersDict = chapters["Chapters"] as? [String:[String:Any]]{
             var chapters: [Chapter] = []
             for chapter in chaptersDict {

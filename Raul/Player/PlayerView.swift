@@ -27,6 +27,7 @@ struct PlayerView: View {
                                 
                                 .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
                             // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
+                        
                          }
                         
                         VStack {

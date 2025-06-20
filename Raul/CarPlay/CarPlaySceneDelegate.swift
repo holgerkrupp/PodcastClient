@@ -1,32 +1,30 @@
-import Foundation
 import CarPlay
+import SwiftData
 
-class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate, CPInterfaceControllerDelegate {
-    
+class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+    let container = ModelContainerManager().container
     var interfaceController: CPInterfaceController?
-    private var nowPlaying: CarPlayNowPlaying?
+    var window: CPWindow?
     
-    func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
+    func templateApplicationScene(_ scene: CPTemplateApplicationScene,
+                                  didConnect interfaceController: CPInterfaceController,
+                                  to window: CPWindow) {
         self.interfaceController = interfaceController
-        interfaceController.delegate = self
+        self.window = window
         
-        // Initialize the now playing template
-        nowPlaying = CarPlayNowPlaying()
-        nowPlaying?.interfaceController = interfaceController
+        let playlistActor = PlaylistModelActor(modelContainer: container)
+        let carPlay = CarPlayPlayNext(playlistActor: playlistActor)
         
-        // Set the now playing template as the root
-        interfaceController.setRootTemplate(nowPlaying?.template ?? CPNowPlayingTemplate.shared, animated: true) { _, _ in
-            print("CarPlay template loaded.")
+        interfaceController.setRootTemplate(carPlay.template, animated: true) { success, error in
+            if let error = error {
+                print("Failed to set root template: \(error.localizedDescription)")
+            } else if success {
+                print("Root template set successfully.")
+            }
         }
     }
     
-    func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {
-        self.interfaceController = nil
-        self.nowPlaying = nil
-    }
-    
-    func connect(_ interfaceController: CPInterfaceController) {
-        self.interfaceController = interfaceController
-        self.interfaceController?.delegate = self
+    func templateApplicationSceneDidDisconnect(_ scene: CPTemplateApplicationScene) {
+        // Cleanup if needed
     }
 }

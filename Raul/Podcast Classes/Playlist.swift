@@ -43,18 +43,18 @@ class Playlist{
 @Model
 class PlaylistEntry: Equatable, Identifiable{
     var id: UUID = UUID()
-    var episode: Episode?
+    @Relationship var episode: Episode?
     var dateAdded: Date?
     var order:Int = 0
     @Relationship var playlist:Playlist?
     
     
     
-    init(episode: Episode, playlist: Playlist, order: Int?) {
+    init(episode: Episode, order: Int?) {
         self.order = order ?? 0
         self.dateAdded = Date()
         self.episode = episode
-        self.playlist = playlist
+       
     }
 
 }

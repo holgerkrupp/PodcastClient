@@ -30,7 +30,7 @@ struct EpisodeRowView: View {
                         // Background layer
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.accentColor.opacity(0.5))
-                            .frame(width: geometry.size.width * episode.playProgress)
+                            .frame(width: geometry.size.width * episode.maxPlayProgress)
                     }
                     .padding()
                     
@@ -43,13 +43,10 @@ struct EpisodeRowView: View {
                             Image(systemName: episode.metaData?.isInbox ?? false ? "tray.fill" : "tray")
                             Image(systemName: episode.metaData?.isHistory ?? false ? "newspaper.fill" : "newspaper")
                             
-                            Image(systemName: episode.metaData?.isAvailableLocally ?? false ? "document.fill" : "document")
-                                .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
-                           // Image(systemName: episode.metaData?.calculatedIsAvailableLocally ?? false ? "document.viewfinder.fill" : "document.viewfinder")
-                            //    .foregroundColor(episode.metaData?.calculatedIsAvailableLocally ?? false == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+
                             
                             Image(systemName: fileManager.isDownloaded(episode.localFile) ?? false ? "document.viewfinder.fill" : "document.viewfinder")
-                                .foregroundColor(fileManager.isDownloaded(episode.localFile?.absoluteString ?? "") == episode.metaData?.isAvailableLocally ?? false ? .primary : .red)
+                               
                             
                             
                             
@@ -60,7 +57,9 @@ struct EpisodeRowView: View {
                             }
                             Text(episode.metaData?.episode?.playProgress.formatted() ?? "0.00")
                                 .monospaced()
-                            
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                            Text("Details")
+                            }
                             
                         }
                         .font(.caption)
@@ -70,6 +69,7 @@ struct EpisodeRowView: View {
                             HStack{
                                 EpisodeCoverView(episode: episode)
                                     .frame(width: 50, height: 50)
+                                
                                 VStack(alignment: .leading){
                                     Text(episode.podcast?.title ?? "")
                                         .font(.subheadline)
@@ -97,7 +97,7 @@ struct EpisodeRowView: View {
                                     if episode.metaData?.completionDate != nil {
                                         Image("custom.play.circle.badge.checkmark")
                                     } else {
-                                        if episode.metaData?.calculatedIsAvailableLocally == true {
+                                        if fileManager.isDownloaded(episode.localFile) == true {
                                             Image(systemName: style.sfSymbolName)
                                         }else{
                                             Image(systemName: "cloud")
@@ -120,9 +120,7 @@ struct EpisodeRowView: View {
                                     
                            
                                     
-                                    if episode.metaData?.isAvailableLocally != true {
-                                        DownloadControllView(episode: episode)
-                                    }
+                               
                                     
 
                                 }
@@ -138,6 +136,7 @@ struct EpisodeRowView: View {
                             Spacer()
                             EpisodeControlView(episode: episode)
                                 .modelContainer(modelContext.container)
+                           
                             
                         }
                         
@@ -149,6 +148,7 @@ struct EpisodeRowView: View {
                             .fill(.thinMaterial)
                         // .shadow(radius: 3)
                     )
+                   
                     
 
                     

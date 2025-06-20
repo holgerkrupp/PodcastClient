@@ -29,15 +29,7 @@ struct InboxView: View {
                 ForEach(episodes) { episode in
                     EpisodeRowView(episode: episode)
                         .swipeActions(edge: .trailing){
-                            if episode.metaData?.isArchived == true {
-                                Button(role: .none) {
-                                    Task { @MainActor in
-                                        await unarchiveEpisode(episode)
-                                    }
-                                } label: {
-                                    Label("Unarchive Episode", systemImage: "archivebox")
-                                }
-                            } else {
+                            
                                 Button(role: .none) {
                                     Task { @MainActor in
                                         await archiveEpisode(episode)
@@ -45,7 +37,7 @@ struct InboxView: View {
                                 } label: {
                                     Label("Archive Episode", systemImage: "archivebox.fill")
                                 }
-                            }
+                            
                         }
                         .tint(.accent)
                 }

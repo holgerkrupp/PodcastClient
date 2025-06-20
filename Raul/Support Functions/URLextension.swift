@@ -25,11 +25,11 @@ extension URL{
                     let session = URLSession.shared
                     var request = URLRequest(url: self)
                     request.httpMethod = "HEAD"
-        
+        /*
         if let appName = Bundle.main.applicationName{
                         request.setValue(appName, forHTTPHeaderField: "User-Agent")
                     }
-        
+        */
         do{
                         let (_, response) = try await session.data(for: request)
                         
@@ -65,9 +65,11 @@ extension URL{
         let session = URLSession.shared
         
         var request = URLRequest(url: self)
+        /*
         if let appName = Bundle.main.applicationName{
             request.setValue(appName, forHTTPHeaderField: "User-Agent")
         }
+         */
         do{
             let (data, response) = try await session.data(for: request)
             print("got response for \(self.absoluteString) ")

@@ -14,3 +14,26 @@ struct PlayerIntentsExtension: AppIntent {
         return .result()
     }
 }
+
+
+struct ResumePlaybackIntent: AppIntent {
+    static var title: LocalizedStringResource = "Resume Playback"
+   
+    func perform() async throws -> some IntentResult {
+        await Player.shared.play()
+        return .result()
+    }
+}
+
+struct PlayerShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        
+            AppShortcut(
+                intent: ResumePlaybackIntent(),
+                phrases: ["Resume playback", "Play last episode"],
+                shortTitle: "Resume",
+                systemImageName: "play.circle"
+            )
+        
+    }
+}

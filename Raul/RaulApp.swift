@@ -31,6 +31,13 @@ struct RaulApp: App {
                 .environment(downloadedFilesManager)
                 .accentColor(.accent)
                 .withDeviceStyle()
+                .onAppear {
+                    let manager = downloadedFilesManager  // Capture outside the @Sendable closure
+                    Task { @Sendable in
+                        await DownloadManager.shared.injectDownloadedFilesManager(manager)
+                    }
+                }
+            
         }
         .onChange(of: phase, {
             switch phase {
@@ -100,14 +107,7 @@ struct RaulApp: App {
     
 }
 
-struct CarPlayScene: Scene {
-    let container = ModelContainerManager().container
-    var body: some Scene {
-        WindowGroup {
-           // CarPlayPlayNext()
-        }
-    }
-}
+
 
 extension DeviceUIStyle {
     var sfSymbolName: String {
