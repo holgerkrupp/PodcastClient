@@ -1,9 +1,39 @@
 {
   "images" : [
     {
-      "filename" : "AppIcon.png",
+      "filename" : "AppIcon-iOS-Default-1024x1024@1x.png",
       "idiom" : "universal",
       "platform" : "ios",
+      "size" : "1024x1024"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "AppIcon-iOS-TintedDark-1024x1024@1x.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "tinted"
+        }
+      ],
+      "filename" : "AppIcon-macOS-ClearLight-1024x1024@1x.png",
+      "idiom" : "universal",
+      "platform" : "ios",
+      "size" : "1024x1024"
+    },
+    {
+      "filename" : "AppIcon-watchOS-Default-1024x1024@1x.png",
+      "idiom" : "universal",
+      "platform" : "watchos",
       "size" : "1024x1024"
     }
   ],
