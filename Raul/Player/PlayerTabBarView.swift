@@ -16,45 +16,17 @@ struct PlayerTabBarView: View {
     
     var body: some View {
         GeometryReader { geo in
-            if placement == .inline {
-                Button(action: {
-                    if player.isPlaying {
-                        player.pause()
-                    } else {
-                        player.play()
-                    }
-                }) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .resizable()
-                        .scaledToFit()
-                }
-                .buttonStyle(.borderless)
-            }else{
-                HStack{
+      
+                ZStack{
                     
-                    Text("\(player.currentEpisode?.title ?? "")")
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                        .minimumScaleFactor(0.75)
-                        .frame(maxWidth: geo.size.width/3*2)
-                      
+                    // Background layer
+                    HStack{
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.accentColor.opacity(0.2))
+                            .frame(width: geo.size.width * (Player.shared.currentEpisode?.maxPlayProgress ?? 0.0))
                     Spacer()
-                    Group{
-                    Button(action:player.skipback){
-                        Label {
-                            Text("Skip Back")
-                        } icon: {
-                            Image(systemName: "15.arrow.trianglehead.counterclockwise")
-                                .resizable()
-                                .scaledToFit()
-                            
-                        }
-                        .labelStyle(.iconOnly)
-                        
                     }
-                    .buttonStyle(.borderless)
-                   
-                   
+                    if placement == .inline {
                         Button(action: {
                             if player.isPlaying {
                                 player.pause()
@@ -67,29 +39,69 @@ struct PlayerTabBarView: View {
                                 .scaledToFit()
                         }
                         .buttonStyle(.borderless)
-                    
-                        
-                        Button(action:player.skipforward){
-                            Label {
-                                Text("Skip Back")
-                            } icon: {
-                                Image(systemName: "30.arrow.trianglehead.clockwise")
-                                    .resizable()
-                                    .scaledToFit()
+                    }else{
+                        HStack{
+                            
+                            Text("\(player.currentEpisode?.title ?? "")")
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                                .minimumScaleFactor(0.75)
+                                .frame(maxWidth: geo.size.width/3*2)
+                                .padding()
+                            
+                            //   Spacer()
+                            Group{
+                                Button(action:player.skipback){
+                                    Label {
+                                        Text("Skip Back")
+                                    } icon: {
+                                        Image(systemName: "15.arrow.trianglehead.counterclockwise")
+                                            .resizable()
+                                            .scaledToFit()
+                                        
+                                    }
+                                    .labelStyle(.iconOnly)
+                                    
+                                }
+                                .buttonStyle(.borderless)
+                                
+                                
+                                Button(action: {
+                                    if player.isPlaying {
+                                        player.pause()
+                                    } else {
+                                        player.play()
+                                    }
+                                }) {
+                                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                }
+                                .buttonStyle(.borderless)
+                                
+                                
+                                Button(action:player.skipforward){
+                                    Label {
+                                        Text("Skip Back")
+                                    } icon: {
+                                        Image(systemName: "30.arrow.trianglehead.clockwise")
+                                            .resizable()
+                                            .scaledToFit()
+                                        
+                                    }
+                                    .labelStyle(.iconOnly)
+                                    
+                                }
+                                .buttonStyle(.borderless)
                                 
                             }
-                            .labelStyle(.iconOnly)
-                            
+                            .padding(10)
                         }
-                        .buttonStyle(.borderless)
-                      
+                        
+                        
                     }
-                    .padding()
                 }
-        
-                
             }
-        }
     }
 }
 #Preview {

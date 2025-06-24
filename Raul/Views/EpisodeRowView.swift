@@ -26,14 +26,31 @@ struct EpisodeRowView: View {
 
             VStack(alignment: .leading) {
                 ZStack{
+                    
+                    EpisodeCoverView(episode: episode)
+                        .scaledToFill()
+                        .id(episode.id)
+                        
+                        .frame(width: UIScreen.main.bounds.width * 0.9, height: 200)
+                        .clipped()
+                    
+                    
                     GeometryReader { geometry in
                         // Background layer
-                        RoundedRectangle(cornerRadius: 12)
+                        Rectangle()
                             .fill(Color.accentColor.opacity(0.5))
                             .frame(width: geometry.size.width * episode.maxPlayProgress)
                     }
                     .padding()
-                    
+                
+                      
+                            // Background layer
+                         
+                            
+                       
+                            
+                        
+                         
                     
                     VStack{
                         
@@ -144,7 +161,7 @@ struct EpisodeRowView: View {
                     .padding()
                     // .background(.ultraThinMaterial)
                     .background(
-                        RoundedRectangle(cornerRadius: 12)
+                        Rectangle()
                             .fill(.thinMaterial)
                         // .shadow(radius: 3)
                     )

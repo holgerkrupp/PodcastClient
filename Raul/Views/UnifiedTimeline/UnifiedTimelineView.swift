@@ -90,15 +90,23 @@ struct TimelineListView: View {
                             
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 2,
+                                                 trailing: 0))
                             .moveDisabled(!item.isQueued)
                         }
                         .onMove(perform: viewModel.moveItems)
                         
                         
                     }
+                   
                     .listStyle(.plain)
                     .onAppear {
                         scrollToID = viewModel.nowPlayingID
+                    }
+                    .onDisappear(){
+                        scrollToID = nil
                     }
                     .onChange(of: scrollToID) {
                         guard let id = scrollToID else { return }
@@ -131,7 +139,7 @@ struct TimelineItemRow: View {
                 
                 if isNowPlaying {
                     PlayerView(fullSize: true)
-                        .padding()
+                     //   .padding()
                 }else{
                     
                         EpisodeRowView(episode: item.episode)

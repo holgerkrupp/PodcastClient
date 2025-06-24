@@ -1,10 +1,3 @@
-//
-//  RaulApp.swift
-//  Raul
-//
-//  Created by Holger Krupp on 02.04.25.
-//
-
 import SwiftUI
 import SwiftData
 import BackgroundTasks
@@ -26,18 +19,19 @@ struct RaulApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .modelContainer(modelContainerManager.container)
-                .environment(downloadedFilesManager)
-                .accentColor(.accent)
-                .withDeviceStyle()
-                .onAppear {
-                    let manager = downloadedFilesManager  // Capture outside the @Sendable closure
-                    Task { @Sendable in
-                        await DownloadManager.shared.injectDownloadedFilesManager(manager)
+            if let container = modelContainerManager.container{
+                ContentView()
+                    .modelContainer(container)
+                    .environment(downloadedFilesManager)
+                    .accentColor(.accent)
+                    .withDeviceStyle()
+                    .onAppear {
+                        let manager = downloadedFilesManager  // Capture outside the @Sendable closure
+                        Task { @Sendable in
+                            await DownloadManager.shared.injectDownloadedFilesManager(manager)
+                        }
                     }
-                }
-            
+            }
         }
         .onChange(of: phase, {
             switch phase {
@@ -53,8 +47,10 @@ struct RaulApp: App {
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
             await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
-            
-            await SubscriptionManager(modelContainer: ModelContainerManager().container).bgupdateFeeds()
+            if let container =  ModelContainerManager().container {
+                await SubscriptionManager(modelContainer: container).bgupdateFeeds()
+
+            }
         }
     }
 
@@ -122,12 +118,5 @@ extension DeviceUIStyle {
         case .macPro: return "macpro.gen3"
         case .macDesktop: return "desktopcomputer"
         }
-    }
-}
-extension Bundle {
-    /// Application name shown under the application icon.
-    var applicationName: String? {
-        object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ??
-        object(forInfoDictionaryKey: "CFBundleName") as? String
     }
 }

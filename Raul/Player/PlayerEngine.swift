@@ -122,6 +122,9 @@ actor PlayerEngine {
     }
 
     func replaceCurrentItem(with item: AVPlayerItem) {
+        guard  avPlayer.currentItem != item else {
+            return
+        }
         avPlayer.replaceCurrentItem(with: item)
 
         // Remove any previous observer

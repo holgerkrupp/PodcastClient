@@ -16,10 +16,31 @@ class Player: NSObject {
     
     static let shared = Player()
   //  private let modelContext = ModelContainerManager().container.mainContext
-     let episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
-     let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager().container)
-    let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+     let episodeActor: EpisodeActor? = {
+         guard let container = ModelContainerManager().container else {
+             print("Warning: Could not create EpisodeActor because ModelContainer is nil.")
+             return nil
+         }
+         return EpisodeActor(modelContainer: container)
+     }()
+     let chapterActor: ChapterModelActor? = {
+         guard let container = ModelContainerManager().container else {
+             print("Warning: Could not create ChapterModelActor because ModelContainer is nil.")
+             return nil
+         }
+         return ChapterModelActor(modelContainer: container)
+     }()
+    let playlistActor: PlaylistModelActor? = {
+        guard let container = ModelContainerManager().container else {
+            print("Warning: Could not create PlaylistModelActor because ModelContainer is nil.")
+            return nil
+        }
+        return PlaylistModelActor(modelContainer: container)
+    }()
 
+    
+
+    
 
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
@@ -110,7 +131,7 @@ class Player: NSObject {
     func fetchEpisode(with id: UUID) async -> Episode? {
         do {
             let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.id == id })
-            return try  episodeActor.modelContainer.mainContext.fetch(descriptor).first
+            return try  episodeActor?.modelContainer.mainContext.fetch(descriptor).first
         } catch {
             return nil
         }
@@ -127,7 +148,7 @@ class Player: NSObject {
             currentChapter = playingChapter
             if let currentChapterID = currentChapter?.id{
                 Task{
-                    currentChapter?.shouldPlay = await chapterActor.shouldPlayChapter(currentChapterID) // check that the user has not recently changed the toggle to play this chapter
+                    currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true // check that the user has not recently changed the toggle to play this chapter
                 }
             }
             chapterProgress = 0.0
@@ -156,7 +177,7 @@ class Player: NSObject {
         let chapterID = chapter.id
        
             Task.detached(priority: .background) {
-                await self.chapterActor.setChapterProgress(progress, for: chapterID)
+                await self.chapterActor?.setChapterProgress(progress, for: chapterID)
             }
        
     }
@@ -174,11 +195,11 @@ class Player: NSObject {
         
         if episode.playProgress > progressThreshold {
 
-            await episodeActor.markasPlayed(episodeUUID)
+            await episodeActor?.markasPlayed(episodeUUID)
             
         }else{
 
-            await playlistActor.add(episodeID: episodeUUID, to: .front)
+            await playlistActor?.add(episodeID: episodeUUID, to: .front)
 
         }
     }
@@ -191,7 +212,7 @@ class Player: NSObject {
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
             await unloadEpisode(episodeUUID: currentEpisodeID)
-            await playlistActor.remove(episodeID: episodeUUID)
+            await playlistActor?.remove(episodeID: episodeUUID)
         }
 
         episode.metaData?.isInbox = false
@@ -358,7 +379,7 @@ class Player: NSObject {
        
         if let episodeURL =  currentEpisode?.url{
             Task {
-                await self.episodeActor.addplaybackStartTimes(episodeURL: episodeURL, date: Date())
+                await self.episodeActor?.addplaybackStartTimes(episodeURL: episodeURL, date: Date())
             }
         }
 
@@ -449,8 +470,8 @@ class Player: NSObject {
     func updateLastPlayed()  {
         if let currentEpisode {
             Task{
-                await episodeActor.setLastPlayed(currentEpisode.id)
-                await episodeActor.setPlayPosition(episodeID: currentEpisode.id, position: playPosition)
+                await episodeActor?.setLastPlayed(currentEpisode.id)
+                await episodeActor?.setPlayPosition(episodeID: currentEpisode.id, position: playPosition)
             }
         }
     }
@@ -478,7 +499,7 @@ class Player: NSObject {
                 if let end = currentChapter.end {
                     jumpTo(time: end)
                     Task.detached(priority: .background) {
-                        await self.chapterActor.markChapterAsSkipped(currentChapter.id)
+                        await self.chapterActor?.markChapterAsSkipped(currentChapter.id)
                     }
                 }
                 
@@ -500,10 +521,10 @@ class Player: NSObject {
     private func savePlayPosition() {
         guard let episode = currentEpisode else { return }
         Task.detached(priority: .background) {
-            await self.episodeActor.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
+            await self.episodeActor?.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
              episode.modelContext?.saveIfNeeded()
             if episode.chapters.isEmpty == false {
-                await self.chapterActor.saveAllChanges()
+                await self.chapterActor?.saveAllChanges()
             }
           
           
@@ -546,7 +567,7 @@ class Player: NSObject {
         print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
      //   if currentEpisode?.playProgress ?? 0 >= progressThreshold {
             Task{
-                if let nextEpisodeID = await playlistActor.nextEpisode(){
+                if let nextEpisodeID = await playlistActor?.nextEpisode(){
                     BasicLogger.shared.log("Playing next episode")
                     await playEpisode(nextEpisodeID, playDirectly: true)
                 }else{
@@ -746,3 +767,4 @@ class Player: NSObject {
         nowPlayingInfoTimer = nil
     }
 }
+

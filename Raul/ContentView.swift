@@ -31,16 +31,16 @@ struct ContentView: View {
         TabView(selection: $selectedTab) {
             UnifiedTimelineView()
                 .tabItem {
-                    Label("Player", systemImage: "calendar.day.timeline.leading")
+                    Label("Timeline", systemImage: "calendar.day.timeline.leading")
                 }
                 .tag(Tab.timeline)
-            
+            /*
             TimelineView()
                 .tabItem {
                     Label("Player", systemImage: "play.circle.fill")
                 }
                 .tag(Tab.player)
-           
+           */
                 InboxView()
             
                 .tabItem {
@@ -78,14 +78,14 @@ struct ContentView: View {
 
 
         }
-/*
+
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             if Player.shared.currentEpisode != nil {
                 PlayerTabBarView()
             }
         }
-*/
+
         
         .onChange(of: phase, {
             if SETTINGgoingBackToPlayerafterBackground{

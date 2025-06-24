@@ -22,6 +22,10 @@ class CarPlayNowPlaying {
     }
     
     func setupTempate() {
+        guard let container = ModelContainerManager().container else {
+            print("Warning: Could not mark Downloaded because ModelContainer is nil.")
+            return
+        }
         // Configure the now playing template
         template.isUpNextButtonEnabled = true
         template.isAlbumArtistButtonEnabled = true
@@ -29,7 +33,7 @@ class CarPlayNowPlaying {
         let listButton = CPNowPlayingImageButton(
             image: UIImage(named: "carplay.list.bullet")!
         ) { [weak self] _ in
-            let playListModelActor = PlaylistModelActor(modelContainer: ModelContainerManager().container)
+            let playListModelActor = PlaylistModelActor(modelContainer: container)
             self?.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: playListModelActor).template, animated: false, completion: nil)
         }
         

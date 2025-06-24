@@ -228,16 +228,16 @@ struct PlayerView: View {
                        
                             .background(
                                 
-                                RoundedRectangle(cornerRadius: 12)
+                                Rectangle()
                                     .fill(.thinMaterial)
-                                    .shadow(radius: 3)
+                         
                             )
                         
                         
                     }
                     .clipped()
-                    .cornerRadius(12)
-                    .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
+                  
+                    .frame(width: UIScreen.main.bounds.width, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
                    
 
                 } else {

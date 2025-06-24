@@ -2,15 +2,21 @@ import CarPlay
 import SwiftData
 
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
-    let container = ModelContainerManager().container
+    let container: ModelContainer? = ModelContainerManager().container
     var interfaceController: CPInterfaceController?
     var window: CPWindow?
     
     func templateApplicationScene(_ scene: CPTemplateApplicationScene,
                                   didConnect interfaceController: CPInterfaceController,
                                   to window: CPWindow) {
+        print("CarPlay: Connecting interface...")
         self.interfaceController = interfaceController
         self.window = window
+        
+        guard let container = container else {
+            print("CarPlay: ModelContainer is unavailable. CarPlay integration cannot continue.")
+            return
+        }
         
         let playlistActor = PlaylistModelActor(modelContainer: container)
         let carPlay = CarPlayPlayNext(playlistActor: playlistActor)
@@ -25,6 +31,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
     
     func templateApplicationSceneDidDisconnect(_ scene: CPTemplateApplicationScene) {
+        print("CarPlay: Disconnected.")
         // Cleanup if needed
     }
 }
