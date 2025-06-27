@@ -482,11 +482,9 @@ class Player: NSObject {
     private let progressSaveInterval = 40  // 0.5 seconds * 20 = 10 seconds
     
     private func updateEpisodeProgress(to time: Double) {
-        //  guard let episode = currentEpisode else { return }
         guard isPlaying == true else { return }
         
         
-        // Update UI-related properties on main thread
        
             let chapterChange = updateCurrentChapter()
             
@@ -506,7 +504,6 @@ class Player: NSObject {
             }
             
             
-            // Move database operations to background thread
             progressUpdateCounter += 1
             
             if progressUpdateCounter >= progressSaveInterval {

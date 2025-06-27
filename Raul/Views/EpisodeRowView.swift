@@ -17,9 +17,8 @@ struct EpisodeRowView: View {
     @Environment(DownloadedFilesManager.self) var fileManager
 
 
-    
+    @State private var presentingModal : Bool = false
     @State var episode: Episode
-    @State private var isExtended: Bool = false
     @State private var image: Image?
     
     var body: some View {
@@ -43,17 +42,9 @@ struct EpisodeRowView: View {
                     }
                     .padding()
                 
-                      
-                            // Background layer
-                         
-                            
-                       
-                            
-                        
-                         
                     
                     VStack{
-                        
+                        /*
                         HStack {
                             Text("DEBUG")
                             Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
@@ -80,7 +71,7 @@ struct EpisodeRowView: View {
                             
                         }
                         .font(.caption)
-                        
+                        */
                         
                         VStack(alignment: .leading){
                             HStack{
@@ -96,6 +87,9 @@ struct EpisodeRowView: View {
                                         .lineLimit(2)
                                         .minimumScaleFactor(0.5)
                                 }
+                            }
+                            .onTapGesture(){
+                                presentingModal = true
                             }
                             Spacer()
                             HStack {
@@ -166,16 +160,14 @@ struct EpisodeRowView: View {
                         // .shadow(radius: 3)
                     )
                    
-                    
-
-                    
-                
-                
-                
-                
+                   
                 
             }
         }
+            .sheet(isPresented: $presentingModal, content: {
+                EpisodeDetailView(episode: episode)
+                  
+            })
           
         
 

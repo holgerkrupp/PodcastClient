@@ -12,6 +12,8 @@ struct PlayerTabBarView: View {
     
     @Environment(\.tabViewBottomAccessoryPlacement) var placement
  
+    @State private var presentingModal : Bool = false
+
     @Bindable private var player = Player.shared
     
     var body: some View {
@@ -101,7 +103,14 @@ struct PlayerTabBarView: View {
                         
                     }
                 }
+                .onTapGesture {
+                    presentingModal = true
+                }
             }
+        .sheet(isPresented: $presentingModal, content: {
+            PlayerView(fullSize: true)
+              
+        })
     }
 }
 #Preview {

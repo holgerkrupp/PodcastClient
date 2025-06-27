@@ -8,7 +8,8 @@
 import SwiftUI
 
 struct EpisodeDetailView: View {
-    
+    @Environment(\.modelContext) private var context
+
     enum Selection: String, CaseIterable, Hashable {
         case chapters
         case transcript
@@ -88,6 +89,12 @@ struct EpisodeDetailView: View {
                 Text("Open in Safari")
             }
         }
+            
+            Button("Extract Chapters") {
+                Task{
+                    await EpisodeActor(modelContainer: context.container).createChapters(episode.url)
+                }
+            }
             
             Picker("Show", selection: $listSelection) {
                 if episode.preferredChapters.count > 0 {

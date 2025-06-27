@@ -24,7 +24,8 @@ struct PlayerView: View {
                             EpisodeCoverView(episode: episode)
                                 .scaledToFill()
                                 .id(episode.id)
-                                
+                         //       .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+                             
                                 .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
                             // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
                         
@@ -237,7 +238,7 @@ struct PlayerView: View {
                     }
                     .clipped()
                   
-                    .frame(width: UIScreen.main.bounds.width, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 0.5 : 80)
+                    
                    
 
                 } else {

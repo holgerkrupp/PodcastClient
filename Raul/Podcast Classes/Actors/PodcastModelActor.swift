@@ -84,10 +84,14 @@ actor PodcastModelActor {
 
         if parser.parse() {
             podcast.title = podcastParser.podcastDictArr["title"] as? String ?? ""
-            podcast.author = podcastParser.podcastDictArr["itunes:author"] as? String ?? ""
-            podcast.desc = podcastParser.podcastDictArr["description"] as? String ?? ""
-            podcast.copyright = podcastParser.podcastDictArr["copyright"] as? String ?? ""
+            podcast.author = podcastParser.podcastDictArr["itunes:author"] as? String
+            podcast.desc = podcastParser.podcastDictArr["description"] as? String
+            podcast.copyright = podcastParser.podcastDictArr["copyright"] as? String 
+            
+            podcast.language = podcastParser.podcastDictArr["language"] as? String
+            
             podcast.link = URL(string: podcastParser.podcastDictArr["link"] as? String ?? "")
+            
             if let imageURL = podcastParser.podcastDictArr["coverImage"] as? String {
                 podcast.imageURL = URL(string: imageURL)
              //   await downloadCoverArt(podcastID)

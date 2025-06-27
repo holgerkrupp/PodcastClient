@@ -51,6 +51,7 @@ struct UnifiedTimelineView: View {
                     )
                 }
             }
+        /*
             .onChange(of: historyEpisodes) {
                 viewModel?.updateData(
                     historyEpisodes: historyEpisodes,
@@ -63,6 +64,7 @@ struct UnifiedTimelineView: View {
                     playlistEntries: playlistEntries
                 )
             }
+        */
         }
     
 }
@@ -139,6 +141,7 @@ struct TimelineItemRow: View {
                 
                 if isNowPlaying {
                     PlayerView(fullSize: true)
+                        .frame(width: UIScreen.main.bounds.width, height:  UIScreen.main.bounds.height * 0.5)
                      //   .padding()
                 }else{
                     

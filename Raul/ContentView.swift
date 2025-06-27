@@ -81,9 +81,10 @@ struct ContentView: View {
 
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
-            if Player.shared.currentEpisode != nil {
+            
+            //if Player.shared.currentEpisode != nil {
                 PlayerTabBarView()
-            }
+           // }
         }
 
         

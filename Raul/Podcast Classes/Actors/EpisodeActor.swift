@@ -300,7 +300,7 @@ actor EpisodeActor {
         episode.metaData?.isAvailableLocally = true
         await updateDuration(fileURL: fileURL)
 
-        await createChapters(episode.persistentModelID)
+        await createChapters(episode.url)
     //    await updateChapterDurations(fileURL: episode.url)
         await downloadTranscript(episode.persistentModelID)
 
@@ -310,9 +310,8 @@ actor EpisodeActor {
     }
     
 
-    
-   private func createChapters(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+    func createChapters(_ fileURL: URL) async  {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         guard let url = episode.localFile else {
             print("no local file")
             return
@@ -334,8 +333,9 @@ actor EpisodeActor {
            await extractShownotesChapters(fileURL: episode.url)
        }
        await updateChapterDurations(episodeURL: episode.url)
-
     }
+    
+
     
   private  func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
@@ -475,40 +475,59 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         guard let text = episode.desc else { return  }
         print("extracting Chapters from Shownotes")
-        let extractedData = extractTimeCodesAndTitles(from: text)
-        var newchapters:[Chapter] = []
-        for extractedChapter in extractedData{
-            if let startingTime =  extractedChapter.key.durationAsSeconds{
-                print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
-                let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
-                newchapters.append(newChapter)
-            }
+        var extractedData = extractTimeCodesAndTitles(from: text)
+        if  extractedData == nil || extractedData?.count == 0{
+            extractedData = await generateAIChapters(from: text)
         }
-        print("returning \(newchapters.count.formatted()) Chapters")
-        episode.chapters.removeAll(where: { $0.type == .extracted })
-        episode.chapters.append(contentsOf: newchapters)
-        modelContext.saveIfNeeded()
+       
+        if let extractedData {
+            var newchapters:[Chapter] = []
+            for extractedChapter in extractedData{
+                if let startingTime =  extractedChapter.key.durationAsSeconds{
+                    print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
+                    let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
+                    newchapters.append(newChapter)
+                }
+            }
+            print("returning \(newchapters.count.formatted()) Chapters")
+            episode.chapters.removeAll(where: { $0.type == .extracted })
+            episode.chapters.append(contentsOf: newchapters)
+            modelContext.saveIfNeeded()
+        }
     }
     
     
-    func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String] {
-        var result = [String: String]()
+    func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
+
         
-        let pattern = #"<li>(\d{2}:\d{2}:\d{2}) (.*?)</li>"#
-        let regex = try! NSRegularExpression(pattern: pattern, options: [])
-        
-        let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: htmlEncodedText.utf16.count))
-        
+        let pattern = #"(?m)^(\d{2}:\d{2}(?::\d{2})?)\s+(.+)$"#
+        let nsText = htmlEncodedText as NSString
+
+        guard let regex = try? NSRegularExpression(
+            pattern: pattern,
+            options: [.allowCommentsAndWhitespace, .caseInsensitive]
+        ) else { return nil }
+
+        let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: nsText.length))
+
+        var result: [String: String] = [:]
+
         for match in matches {
-            if let timeRange = Range(match.range(at: 1), in: htmlEncodedText),
-               let titleRange = Range(match.range(at: 2), in: htmlEncodedText) {
-                let timeCode = String(htmlEncodedText[timeRange])
-                let title = String(htmlEncodedText[titleRange])
-                result[timeCode] = title.decodeHTML() ?? title
-            }
+            guard match.numberOfRanges >= 3 else { continue }
+            let timeCode = nsText.substring(with: match.range(at: 1))
+            let title = nsText.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            result[timeCode] = title
         }
-        
+
         return result
+    }
+    
+    func generateAIChapters(from htmlEncodedText: String) async -> [String: String] {
+        print("AI Chapters")
+        let chapterGenerator = AIChapterGenerator()
+        let aiChapters = await chapterGenerator.extractChaptersFromText(htmlEncodedText)
+
+        return aiChapters
     }
     
     func updateChapterDurations(episodeURL: URL) async {
@@ -662,3 +681,4 @@ private struct MetadataLoader {
         return nil
     }
 }
+
