@@ -9,6 +9,7 @@
 import SwiftUI
 import SwiftData
 
+
 struct AllEpisodesListView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var episodes: [Episode] = []
@@ -17,24 +18,20 @@ struct AllEpisodesListView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 2) {
                     ForEach(episodes) { episode in
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EpisodeRowView(episode: episode)
                                 .id(episode.id)
-                                .padding(.horizontal)
+                               
+                               
                         }
+                       
+                       
                     }
-                    .onDelete { indexSet in
-                        Task {
-                            for index in indexSet {
-                                let episodeID = episodes[index].persistentModelID
-                                try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
-                            }
-                        }
-                    }
+                    
                 }
-                .padding(.top)
+                
             }
             .navigationTitle("All Episodes")
             .searchable(text: $searchText)
@@ -47,6 +44,8 @@ struct AllEpisodesListView: View {
         }
     }
 
+
+    
     // MARK: - Fetching Episodes
     
     private func fetchEpisodes(searchText: String = "") async {
@@ -62,7 +61,7 @@ struct AllEpisodesListView: View {
         )
         
         do {
-            episodes = try await modelContext.fetch(descriptor)
+            episodes = try modelContext.fetch(descriptor)
         } catch {
             print("Fetch error: \(error)")
         }

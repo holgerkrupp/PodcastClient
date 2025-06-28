@@ -45,7 +45,21 @@ struct PodcastListView: View {
                 } else {
                     List {
                         ForEach(filteredPodcasts) { podcast in
-                            PodcastRowView(podcast: podcast)
+                            
+                            ZStack {
+                                PodcastRowView(podcast: podcast)
+                                    .id(podcast.id)
+                                    .padding()
+                                NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                                    EmptyView()
+                                }.opacity(0)
+                            }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 2,
+                                                 trailing: 0))
                         }
                         .onDelete { indexSet in
                             Task {
@@ -55,6 +69,7 @@ struct PodcastListView: View {
                             }
                         }
                     }
+                    .listStyle(.plain)
                     .refreshable {
                         await viewModel.refreshPodcasts()
                     }
@@ -95,7 +110,7 @@ struct PodcastRowView: View {
     let podcast: Podcast
     
     var body: some View {
-        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+        
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     if let imageURL = podcast.imageURL {
@@ -137,7 +152,7 @@ struct PodcastRowView: View {
                 }
             }
             .padding(.vertical, 4)
-        }
+        
         .overlay {
             if podcast.metaData?.isUpdating  == true{
                 ProgressView()

@@ -73,6 +73,7 @@ struct EpisodeDetailView: View {
                         
                     }
                 }
+                .padding()
             
         Spacer(minLength: 10)
             
@@ -123,7 +124,8 @@ struct EpisodeDetailView: View {
                 }
             }
         }
-        .padding()
+       
+     
        
     }
 

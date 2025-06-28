@@ -16,6 +16,7 @@
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
 		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
+		48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */ = {isa = PBXBuildFile; productRef = 48C7E5E62E10816D007D1CD3 /* SwipeActions */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -72,6 +73,7 @@
 				4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */,
 				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
+				48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */,
 				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
 				488591272DE4D66F008604DA /* GlowEffects in Frameworks */,
 				48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */,
@@ -136,6 +138,7 @@
 				48C078082DB4111500D6DD9C /* DeviceInfo */,
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				488591262DE4D66F008604DA /* GlowEffects */,
+				48C7E5E62E10816D007D1CD3 /* SwipeActions */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -171,6 +174,7 @@
 				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
 				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
 				488591252DE4D66F008604DA /* XCLocalSwiftPackageReference "../GlowEffects" */,
+				48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -450,6 +454,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/c-villain/SwipeActions";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -474,6 +489,11 @@
 		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BasicLogger;
+		};
+		48C7E5E62E10816D007D1CD3 /* SwipeActions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */;
+			productName = SwipeActions;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

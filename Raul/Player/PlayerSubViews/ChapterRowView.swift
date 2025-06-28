@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ChapterRowView: View {
-    @State var chapter: Chapter
+    @Bindable var chapter: Chapter
     var player = Player.shared
     var body: some View {
 

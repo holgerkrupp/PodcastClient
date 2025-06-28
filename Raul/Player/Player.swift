@@ -78,7 +78,7 @@ class Player: NSObject {
     var chapterProgress: Double?
     var currentChapter: Chapter?
     var nextChapter: Chapter?
-    var previousChapter: Chapter?
+    var chapters: [Chapter]?
 
     
     var settingLockScreenScrubbing: Bool = false
@@ -137,11 +137,41 @@ class Player: NSObject {
         }
     }
     
+    private func fetchChapters(for episodeID: UUID)  -> [Chapter]? {
+        do {
+            let descriptor = FetchDescriptor<Chapter>(predicate: #Predicate { $0.episode?.id == episodeID })
+            if let chapters: [Chapter]? = try   episodeActor?.modelContainer.mainContext.fetch(descriptor) {
+                
+                
+                let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted]
+                
+                let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
+                
+                return categoryGroups.values.flatMap { group in
+                let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
+                 
+                return group.filter { $0.type == highestCategory }
+                }
+            }else{
+                return nil
+            }
+            
+        } catch {
+            return []
+        }
+    }
+    
+    private func updateChapters(){
+        guard let currentEpisodeID else { return }
+        chapters = fetchChapters(for: currentEpisodeID)
+    }
+    
     private func updateCurrentChapter() -> Bool?{
         
-        let playingChapter = currentEpisode?.preferredChapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
+        let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         
         if currentChapter != playingChapter {
+            updateChapters()
             if let chapterProgress, let currentChapter  {
                 saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
             }
@@ -153,7 +183,7 @@ class Player: NSObject {
             }
             chapterProgress = 0.0
             updateChapterProgress()
-            nextChapter = currentEpisode?.chapters.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+            nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
             
             return true
         }else{
@@ -190,6 +220,9 @@ class Player: NSObject {
         currentChapter = nil
         chapterProgress = nil
         nextChapter = nil
+        chapters = nil
+        
+        
         UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeUUID")
         
         
@@ -219,7 +252,7 @@ class Player: NSObject {
 
         currentEpisode = episode
         currentEpisodeID = episode.id
-        
+        updateChapters()
         
 
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
@@ -507,6 +540,7 @@ class Player: NSObject {
             progressUpdateCounter += 1
             
             if progressUpdateCounter >= progressSaveInterval {
+                updateChapters()
                 savePlayPosition()
                 
                 progressUpdateCounter = 0

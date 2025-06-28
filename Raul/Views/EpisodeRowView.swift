@@ -89,7 +89,7 @@ struct EpisodeRowView: View {
                                 }
                             }
                             .onTapGesture(){
-                                presentingModal = true
+                            //   presentingModal = true
                             }
                             Spacer()
                             HStack {

@@ -29,9 +29,10 @@ struct ContentView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            UnifiedTimelineView()
+           // UnifiedTimelineView()
+            PlaylistView()
                 .tabItem {
-                    Label("Timeline", systemImage: "calendar.day.timeline.leading")
+                    Label("Up next", systemImage: "calendar.day.timeline.leading")
                 }
                 .tag(Tab.timeline)
             /*

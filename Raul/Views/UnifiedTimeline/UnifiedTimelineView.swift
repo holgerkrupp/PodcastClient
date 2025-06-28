@@ -140,7 +140,7 @@ struct TimelineItemRow: View {
          
                 
                 if isNowPlaying {
-                    PlayerView(fullSize: true)
+                    PlayerView(fullSize: false)
                         .frame(width: UIScreen.main.bounds.width, height:  UIScreen.main.bounds.height * 0.5)
                      //   .padding()
                 }else{

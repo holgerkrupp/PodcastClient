@@ -65,7 +65,7 @@ struct TimelineView: View {
                         }
                         Section {
                          
-                                playerView(fullSize: true)
+                                playerView(fullSize: false)
                                     .id("player")
                                     .padding(.horizontal)
 

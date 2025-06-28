@@ -83,12 +83,21 @@ struct PodcastDetailView: View {
             .listRowSeparator(.hidden)
             Section{
                 ForEach(podcast.episodes.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()}), id: \.id) { episode in
-                    NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                   
+                    ZStack {
                         EpisodeRowView(episode: episode)
-                            .id(episode.metaData?.id ?? episode.id)
-                        
-                        
+                            .id(episode.id)
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                            EmptyView()
+                        }.opacity(0)
                     }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 2,
+                                         trailing: 0))
+                    .ignoresSafeArea()
                     
                 }
                 .onDelete { indexSet in

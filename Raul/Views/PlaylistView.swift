@@ -13,36 +13,69 @@ import SwiftData
 struct PlaylistView: View {
     @Query(filter: #Predicate<PlaylistEntry> { $0.playlist?.title == "de.holgerkrupp.podbay.queue" },
            sort: [SortDescriptor(\PlaylistEntry.order)] ) var playListEntries: [PlaylistEntry]
-    
+    @Environment(\.modelContext) private var modelContext
+
     var body: some View {
-        
-        if playListEntries.isEmpty {
-            PlaylistEmptyView()
-        }else{
-            
-            ForEach(playListEntries, id: \.id) { entry in
-                if let episode = entry.episode {
-                    NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                        EpisodeRowView(episode: episode)
-                            .id(episode.metaData?.id ?? episode.id)
+        NavigationStack{
+            List{
+                if playListEntries.isEmpty {
+                    PlaylistEmptyView()
+                }else{
+                    
+                    ForEach(playListEntries, id: \.id) { entry in
+                        if let episode = entry.episode {
+                            ZStack {
+                                EpisodeRowView(episode: episode)
+                                    .id(episode.id)
+                                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                    EmptyView()
+                                }.opacity(0)
+                            }
+                            .swipeActions(edge: .trailing){
+                                
+                                    Button(role: .none) {
+                                        Task { @MainActor in
+                                            await archiveEpisode(episode)
+                                        }
+                                    } label: {
+                                        Label("Archive Episode", systemImage: "archivebox.fill")
+                                    }
+                                
+                            }
+                            
+                            
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(.init(top: 0,
+                                                     leading: 0,
+                                                     bottom: 2,
+                                                     trailing: 0))
+                                .ignoresSafeArea()
+                        }
                         
                     }
                     
-                        
                     
-                }
-                
-            }
-            
-            .onMove { indices, newOffset in
-                Task {
-                    if let from = indices.first {
-                        moveEntry(from: from, to: newOffset)
+                    .onMove { indices, newOffset in
+                        Task {
+                            if let from = indices.first {
+                                moveEntry(from: from, to: newOffset)
+                            }
+                        }
                     }
                 }
             }
+            .listStyle(.plain)
+            .navigationTitle("Up Next")
         }
+        
     }
+    
+    private func archiveEpisode(_ episode: Episode) async {
+        let episodeActor = EpisodeActor(modelContainer: modelContext.container)
+        await episodeActor.archiveEpisode(episodeID: episode.id)
+    }
+    
     private func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {
 
 

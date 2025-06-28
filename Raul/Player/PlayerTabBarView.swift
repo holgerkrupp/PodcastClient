@@ -15,7 +15,7 @@ struct PlayerTabBarView: View {
     @State private var presentingModal : Bool = false
 
     @Bindable private var player = Player.shared
-    
+  
     var body: some View {
         GeometryReader { geo in
       
@@ -25,7 +25,7 @@ struct PlayerTabBarView: View {
                     HStack{
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.accentColor.opacity(0.2))
-                            .frame(width: geo.size.width * (Player.shared.currentEpisode?.maxPlayProgress ?? 0.0))
+                            .frame(width: geo.size.width * (player.progress))
                     Spacer()
                     }
                     if placement == .inline {
@@ -44,12 +44,13 @@ struct PlayerTabBarView: View {
                     }else{
                         HStack{
                             
-                            Text("\(player.currentEpisode?.title ?? "")")
-                                .lineLimit(2)
-                                .truncationMode(.tail)
-                                .minimumScaleFactor(0.75)
-                                .frame(maxWidth: geo.size.width/3*2)
-                                .padding()
+                                Text("\(player.currentEpisode?.title ?? "")")
+                                    .lineLimit(2)
+                                    .truncationMode(.tail)
+                                    .minimumScaleFactor(0.75)
+                                    .frame(maxWidth: geo.size.width/3*2)
+                                    .padding()
+
                             
                             //   Spacer()
                             Group{
@@ -108,8 +109,9 @@ struct PlayerTabBarView: View {
                 }
             }
         .sheet(isPresented: $presentingModal, content: {
-            PlayerView(fullSize: true)
-              
+            
+                PlayerView(fullSize: true)
+            
         })
     }
 }

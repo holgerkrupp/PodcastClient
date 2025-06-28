@@ -23,13 +23,21 @@ struct InboxView: View {
         if episodes.isEmpty{
             InboxEmptyView()
         }else{
-            List {
-
-                
-                ForEach(episodes) { episode in
-                    EpisodeRowView(episode: episode)
-                        .swipeActions(edge: .trailing){
-                            
+            NavigationStack{
+                List {
+                    
+                    
+                    ForEach(episodes) { episode in
+                        ZStack {
+                            EpisodeRowView(episode: episode)
+                                .id(episode.id)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
+                        }
+                        
+                            .swipeActions(edge: .trailing){
+                                
                                 Button(role: .none) {
                                     Task { @MainActor in
                                         await archiveEpisode(episode)
@@ -37,11 +45,19 @@ struct InboxView: View {
                                 } label: {
                                     Label("Archive Episode", systemImage: "archivebox.fill")
                                 }
-                            
-                        }
-                        .tint(.accent)
+                                
+                            }
+                        
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 2,
+                                                 trailing: 0))
+                    }
                 }
-            }
+                .listStyle(.plain)
+            
             .navigationTitle("Inbox")
             .refreshable {
                 Task{
@@ -62,7 +78,7 @@ struct InboxView: View {
                 
 
             }
-            
+            }
             
             .overlay {
                 if isLoading {
