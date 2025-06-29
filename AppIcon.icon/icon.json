@@ -1,6 +1,6 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.47843,1.00000,1.00000"
+    "automatic-gradient" : "display-p3:0.70588,0.51765,0.70196,1.00000"
   },
   "groups" : [
     {
@@ -24,6 +24,9 @@
           }
         },
         {
+          "fill" : {
+            "automatic-gradient" : "srgb:1.00000,0.94206,0.68036,1.00000"
+          },
           "image-name" : "playlist.svg",
           "name" : "playlist",
           "opacity" : 0.5,

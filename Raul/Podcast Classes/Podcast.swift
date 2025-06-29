@@ -24,7 +24,7 @@ final class Podcast {
     var lastBuildDate: Date?
     var imageURL: URL?
     @Relationship(deleteRule: .cascade) var metaData: PodcastMetaData?
-    
+    @Relationship(deleteRule: .cascade) var settings: PodcastSettings?
    
     
     // calculated properties that will be generated out of existing properties.
@@ -75,5 +75,7 @@ final class Podcast {
     init() {
     }
 }
+
+
 
 

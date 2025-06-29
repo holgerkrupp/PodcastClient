@@ -10,10 +10,13 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 - [ ] CarPlay
 - [ ] Integrate Settings (Per Podcasts and global)
+- [ ] AutoArchive - Delete files
+- [ ] LibraryView - PodcastListView integration (Links to single Podcasts and Deletion not working)
+
+
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
 - [ ] Replace transcripts with generic 'external File' that can also host chapters, images and others.
 - [ ] mp3ChapterReader work with remote files
-- [ ] LibraryView - PodcastListView integration
 
 ## Alpha min Requiremets
 
