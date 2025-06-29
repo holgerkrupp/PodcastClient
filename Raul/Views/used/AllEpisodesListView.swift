@@ -9,11 +9,27 @@
 import SwiftUI
 import SwiftData
 
+enum EpisodeListFilterMode {
+    case all
+    case onlyPlayed
+}
 
 struct AllEpisodesListView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var episodes: [Episode] = []
     @State private var searchText: String = ""
+    let filterMode: EpisodeListFilterMode
+    
+    init(filterMode: EpisodeListFilterMode = .all) {
+        self.filterMode = filterMode
+    }
+    
+    private var navigationTitleText: String {
+        switch filterMode {
+        case .all: return "All Episodes"
+        case .onlyPlayed: return "Recently Played"
+        }
+    }
     
     var body: some View {
         NavigationStack {
@@ -32,7 +48,7 @@ struct AllEpisodesListView: View {
                 }
                 
             }
-            .navigationTitle("All Episodes")
+            .navigationTitle(navigationTitleText)
             .searchable(text: $searchText)
             .onAppear {
                 Task { await fetchEpisodes() }
@@ -50,19 +66,38 @@ struct AllEpisodesListView: View {
     private func fetchEpisodes(searchText: String = "") async {
         var predicate: Predicate<Episode>? = nil
         
-        if !searchText.isEmpty {
-            predicate = #Predicate<Episode> { $0.title.localizedStandardContains(searchText) }
-        }
-        
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: predicate,
-            sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
-        )
-        
-        do {
-            episodes = try modelContext.fetch(descriptor)
-        } catch {
-            print("Fetch error: \(error)")
+        switch filterMode {
+        case .onlyPlayed:
+            if searchText.isEmpty {
+                predicate = #Predicate<Episode> { $0.metaData?.lastPlayed != nil }
+            } else {
+                predicate = #Predicate<Episode> { 
+                    $0.metaData?.lastPlayed != nil && $0.title.localizedStandardContains(searchText) 
+                }
+            }
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: predicate,
+                sortBy: [SortDescriptor(\.metaData?.lastPlayed, order: .reverse)]
+            )
+            do {
+                episodes = try modelContext.fetch(descriptor)
+            } catch {
+                print("Fetch error: \(error)")
+            }
+            
+        case .all:
+            if !searchText.isEmpty {
+                predicate = #Predicate<Episode> { $0.title.localizedStandardContains(searchText) }
+            }
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: predicate,
+                sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
+            )
+            do {
+                episodes = try modelContext.fetch(descriptor)
+            } catch {
+                print("Fetch error: \(error)")
+            }
         }
     }
 
@@ -73,9 +108,14 @@ struct AllEpisodesListView: View {
             Task { await fetchEpisodes(searchText: text) }
         }
     }
+    
+    func onlyPlayed() -> some View {
+        Self(filterMode: .onlyPlayed)
+    }
 }
 
 #Preview {
-    AllEpisodesListView()
+    AllEpisodesListView(filterMode: .all)
         .modelContainer(for: Episode.self, inMemory: true) // Preview-safe
 }
+

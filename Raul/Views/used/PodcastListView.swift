@@ -36,14 +36,14 @@ struct PodcastListView: View {
     }
 
     var body: some View {
-        NavigationStack {
+       
             VStack {
 
 
                 if filteredPodcasts.isEmpty {
                     PodcastsEmptyView()
                 } else {
-                    List {
+                  
                         ForEach(filteredPodcasts) { podcast in
                             
                             ZStack {
@@ -68,14 +68,12 @@ struct PodcastListView: View {
                                 }
                             }
                         }
-                    }
-                    .listStyle(.plain)
+                    
                     .refreshable {
                         await viewModel.refreshPodcasts()
                     }
                 }
             }
-            .navigationTitle("Podcasts")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
@@ -102,7 +100,7 @@ struct PodcastListView: View {
                     Text(message)
                 }
             }
-        }
+        
     }
 }
 

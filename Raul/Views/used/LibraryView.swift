@@ -46,7 +46,7 @@ struct LibraryView: View {
                     
                 } header: {
                     // The clickable header using NavigationLink
-                    NavigationLink(destination: AllEpisodesListView()) {
+                    NavigationLink(destination: AllEpisodesListView().onlyPlayed()) {
                         HStack {
                             Text("Recently Played Episodes")
                                 .font(.headline)
