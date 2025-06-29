@@ -23,8 +23,7 @@ struct AllEpisodesListView: View {
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EpisodeRowView(episode: episode)
                                 .id(episode.id)
-                               
-                               
+
                         }
                        
                        

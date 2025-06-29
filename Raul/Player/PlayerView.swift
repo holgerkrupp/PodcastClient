@@ -34,7 +34,7 @@ struct PlayerView: View {
                         
                         Group{
                             if fullSize {
-                                ScrollView{
+                                ScrollView([.vertical]){
                                     Spacer(minLength: 20)
                                     PlayerControllView()
                                         .padding()

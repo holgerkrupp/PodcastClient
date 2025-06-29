@@ -28,12 +28,7 @@ struct EpisodeDetailView: View {
     var body: some View {
         ScrollView {
             
-           
-
-                
                 HStack {
-                    
-                    
                     
                     EpisodeCoverView(episode: episode)
                         .frame(width: 50, height: 50)

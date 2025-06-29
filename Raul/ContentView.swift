@@ -29,19 +29,12 @@ struct ContentView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-           // UnifiedTimelineView()
             PlaylistView()
                 .tabItem {
                     Label("Up next", systemImage: "calendar.day.timeline.leading")
                 }
                 .tag(Tab.timeline)
-            /*
-            TimelineView()
-                .tabItem {
-                    Label("Player", systemImage: "play.circle.fill")
-                }
-                .tag(Tab.player)
-           */
+          
                 InboxView()
             
                 .tabItem {

@@ -14,6 +14,7 @@ struct DownloadControllView: View {
     @ObservedObject var viewModel = DownloadViewModel()
     @State var episode: Episode
     @State private var updateUI: Bool = false
+    var showDelete: Bool = true
 
 
     var body: some View {
@@ -33,15 +34,17 @@ struct DownloadControllView: View {
                     }
                     
                 }else{
-                    Button{
-                        Task{
-                            if let container = episode.modelContext?.container{
-                               await EpisodeActor(modelContainer: container).deleteFile(episodeID: episode.id)
+                    if showDelete{
+                        Button{
+                            Task{
+                                if let container = episode.modelContext?.container{
+                                    await EpisodeActor(modelContainer: container).deleteFile(episodeID: episode.id)
+                                }
                             }
+                        }label:{
+                            Label("Remove Download", systemImage: "trash")
+                            
                         }
-                    }label:{
-                        Label("Remove Download", systemImage: "trash")
-
                     }
                 }
             }

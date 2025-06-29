@@ -79,9 +79,16 @@ struct EpisodeRowView: View {
                                     .frame(width: 50, height: 50)
                                 
                                 VStack(alignment: .leading){
-                                    Text(episode.podcast?.title ?? "")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
+                                    HStack{
+                                        Text(episode.podcast?.title ?? "")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(2)
+                                        Spacer()
+                                        Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                     Text(episode.title)
                                         .font(.headline)
                                         .lineLimit(2)
@@ -130,17 +137,20 @@ struct EpisodeRowView: View {
                                         Spacer()
                                     
                            
-                                    
-                               
+                                  
+                                     DownloadControllView(episode: episode, showDelete: false)
+                                        .symbolRenderingMode(.hierarchical)
+                                       // .scaledToFit()
+                                        .padding(8)
+                                        .foregroundColor(.accentColor)
+                                     //   .minimumScaleFactor(0.5)
+                                        .labelStyle(.iconOnly)
                                     
 
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: 30)
                                 
-                                Spacer()
-                                Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                
                             }
 
                             .buttonStyle(.plain)

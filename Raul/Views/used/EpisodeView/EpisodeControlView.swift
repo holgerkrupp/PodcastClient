@@ -51,10 +51,7 @@ struct EpisodeControlView: View {
             
             Spacer()
             if episode.playlist.isEmpty, episode.playlist.first?.playlist == nil {
-       //     if !PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).entries.contains(where: { $0.episode?.id == episode.id }) {
-                    
-           
-            
+
             Button {
                 Task{
                     await PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).addEpisode(episode, to: .front)
@@ -90,9 +87,25 @@ struct EpisodeControlView: View {
             .buttonStyle(.plain)
             .frame(width: 50, height: 50)
            
+            }else{
+                Button {
+                    Task{
+                        await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                    }
+                } label: {
+                    
+                    Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                        .symbolRenderingMode(.hierarchical)
+                        .scaledToFit()
+                        .padding(8)
+                        .foregroundColor(.accentColor)
+                        .minimumScaleFactor(0.5)
+                        .labelStyle(.automatic)
+                }
+                
             }
             
-            
+            /*
             Spacer()
             
             
@@ -147,7 +160,7 @@ struct EpisodeControlView: View {
                 }
                 .menuStyle(.button)
                 .buttonStyle(.plain)
-
+*/
                 
             
             /*
