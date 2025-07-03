@@ -57,6 +57,19 @@ struct AllEpisodesListView: View {
                 debounceSearch(newValue)
             }
         }
+        .toolbar {
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    Task { deleteFiles() }
+                } label: {
+                    Label("Delete Files", systemImage: "trash")
+                   
+                }
+                
+            }
+        }
+        
     }
 
 
@@ -69,10 +82,21 @@ struct AllEpisodesListView: View {
         switch filterMode {
         case .onlyPlayed:
             if searchText.isEmpty {
-                predicate = #Predicate<Episode> { $0.metaData?.lastPlayed != nil }
+                predicate = #Predicate<Episode> {
+                    $0.metaData?.lastPlayed != nil
+                    &&
+                    ($0.metaData?.isHistory == true || $0.metaData?.isArchived == true)
+                    
+                }
             } else {
                 predicate = #Predicate<Episode> { 
-                    $0.metaData?.lastPlayed != nil && $0.title.localizedStandardContains(searchText) 
+                    $0.metaData?.lastPlayed != nil
+                    
+                    &&
+                    ($0.metaData?.isHistory == true || $0.metaData?.isArchived == true)
+                    
+                    &&
+                    $0.title.localizedStandardContains(searchText)
                 }
             }
             let descriptor = FetchDescriptor<Episode>(
@@ -106,6 +130,18 @@ struct AllEpisodesListView: View {
     private func debounceSearch(_ text: String) {
         Debounce.shared.perform {
             Task { await fetchEpisodes(searchText: text) }
+        }
+    }
+    
+    
+    private func deleteFiles() {
+        let urls = episodes.compactMap(\.localFile)
+        for url in urls {
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                print("Error deleting file: \(error)")
+            }
         }
     }
     

@@ -89,10 +89,10 @@ struct PlayerControllView: View {
                     .frame(maxWidth: .infinity)
                     
                     .overlay(alignment: .bottom) {
-                        if let vttFileContent = player.currentEpisode?.transcriptData,
+                        if let transcriptFileContent = player.currentEpisode?.transcriptData,
                            player.playPosition.isNormal, showTranscripts {
                             
-                            let decoder = TranscriptDecoder(vttFileContent)
+                            let decoder = TranscriptDecoder(transcriptFileContent)
                             
                             TranscriptView(decoder: decoder, currentTime: $player.playPosition)
                             

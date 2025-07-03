@@ -37,6 +37,14 @@ class Player: NSObject {
         }
         return PlaylistModelActor(modelContainer: container)
     }()
+    
+    let settingsActor: PodcastSettingsModelActor? = {
+        guard let container = ModelContainerManager().container else {
+            print("Warning: Could not create PlaylistModelActor because ModelContainer is nil.")
+            return nil
+        }
+        return PodcastSettingsModelActor(modelContainer: container)
+    }()
 
     
 
@@ -47,10 +55,8 @@ class Player: NSObject {
 
     var playbackRate: Float = 1.0 {
         didSet {
-            UserDefaults.standard.set(playbackRate, forKey: "playbackRate")
-
-        //    Task { await engine.setRate(playbackRate) }
-        }
+            setPlayBackSpeed(to: playbackRate)
+            }
     }
 
     var playPosition: Double = 0.0
@@ -89,7 +95,7 @@ class Player: NSObject {
         
         super.init()
         loadLastPlayedEpisode()
-        loadPlayBackSpeed()
+      //  loadPlayBackSpeed()
         listenToEvent()
         pause()
         
@@ -113,19 +119,29 @@ class Player: NSObject {
         }
     }
     
-    private func loadPlayBackSpeed() {
-        // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
-        
-        let savedPlaybackRate = UserDefaults.standard.float(forKey: "playbackRate")
-        if savedPlaybackRate > 0 {
-            playbackRate = savedPlaybackRate
-            Task {
-                await engine.setRate(playbackRate)
-                
-                // pause()
+    private func setPlayBackSpeed(to playbackRate: Float){
+        Task{
+            await engine.setRate(playbackRate)
+            await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.id , to: playbackRate)
+            if playbackRate >= 1 {
+                isPlaying = true
             }
         }
-        
+    }
+    
+    private func loadPlayBackSpeed() {
+        // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
+        Task{
+            let savedPlaybackRate = await settingsActor?.getPlaybackSpeed(for: currentEpisode?.podcast?.id) ?? 1.0
+            if savedPlaybackRate > 0 {
+                playbackRate = savedPlaybackRate
+                Task {
+                    await engine.setRate(playbackRate)
+                  
+                    // pause()
+                }
+            }
+        }
     }
     
     func fetchEpisode(with id: UUID) async -> Episode? {

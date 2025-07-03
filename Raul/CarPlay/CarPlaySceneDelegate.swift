@@ -2,6 +2,22 @@ import CarPlay
 import SwiftData
 
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+    var interfaceController: CPInterfaceController?
+    
+    func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
+        
+        self.interfaceController = interfaceController
+        
+        self.interfaceController?.setRootTemplate(CarPlayHelloWorld().template, animated: false, completion: nil)
+    }
+    
+    func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {
+        self.interfaceController = nil
+    }
+}
+
+    
+    /*
     let container: ModelContainer? = ModelContainerManager().container
     var interfaceController: CPInterfaceController?
     var window: CPWindow?
@@ -35,3 +51,4 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         // Cleanup if needed
     }
 }
+*/

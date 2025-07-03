@@ -38,7 +38,7 @@ struct EpisodeControlView: View {
                 Label("Play", systemImage: "play.fill")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(8)
+                  
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
@@ -47,7 +47,7 @@ struct EpisodeControlView: View {
                 .buttonStyle(.plain)
             
            
-            .frame(width: 100, height: 50)
+          
             
             Spacer()
             if episode.playlist.isEmpty, episode.playlist.first?.playlist == nil {
@@ -62,13 +62,13 @@ struct EpisodeControlView: View {
                 Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(8)
+          
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.plain)
-            .frame(width: 50, height: 50)
+        
             
                 Spacer()
             Button {
@@ -79,15 +79,16 @@ struct EpisodeControlView: View {
                 Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(8)
+                 
                     .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.plain)
-            .frame(width: 50, height: 50)
+   
            
-            }else{
+            }
+            Spacer()
                 Button {
                     Task{
                         await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
@@ -97,95 +98,12 @@ struct EpisodeControlView: View {
                     Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
                         .symbolRenderingMode(.hierarchical)
                         .scaledToFit()
-                        .padding(8)
+                      
                         .foregroundColor(.accentColor)
                         .minimumScaleFactor(0.5)
                         .labelStyle(.automatic)
                 }
-                
-            }
-            
-            /*
-            Spacer()
-            
-            
-                
-                Menu {
-                    DownloadControllView(episode: episode)
-                    Divider()
-                    if episode.metaData?.status != .history {
-                        Button {
-                            Task{
-                                await EpisodeActor(modelContainer: modelContext.container).moveToHistory(episodeID: episode.id)
-                            }
-                        } label: {
-                            
-                            Label("Move to History" , image: "custom.play.circle.badge.checkmark")
-                                .symbolRenderingMode(.hierarchical)
-                                .scaledToFit()
-                                .padding(8)
-                                .foregroundColor(.accentColor)
-                                .minimumScaleFactor(0.5)
-                                .labelStyle(.automatic)
-                        }
-                       
-                    }
-                        
-                    
-                    Button {
-                        Task{
-                            await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
-                        }
-                    } label: {
-                        
-                        Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                            .symbolRenderingMode(.hierarchical)
-                            .scaledToFit()
-                            .padding(8)
-                            .foregroundColor(.accentColor)
-                            .minimumScaleFactor(0.5)
-                            .labelStyle(.automatic)
-                    }
-                    
-                } label: {
-                    ZStack{
-                        Capsule()
-                            .fill(.clear)
-                        
-                        Label("Action", systemImage: "ellipsis")
-                            .labelStyle(.iconOnly)
-                        
-                    }
-                    .frame(width: 100, height: 50)
-                }
-                .menuStyle(.button)
                 .buttonStyle(.plain)
-*/
-                
-            
-            /*
-            Button {
-                Task{
-                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
-                }
-            } label: {
-                
-                Label("Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                    .symbolRenderingMode(.hierarchical)
-                    .scaledToFit()
-                    .padding(8)
-                    .foregroundColor(.accentColor)
-                    .minimumScaleFactor(0.5)
-                    .labelStyle(.automatic)
-            }
-            .buttonStyle(.plain)
-            .background(.ultraThickMaterial, in: Capsule())
-            .frame(width: 100, height: 50)
-            .shadow(radius: 5)
-            */
-         
-                
-                
 
             
             

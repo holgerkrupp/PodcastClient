@@ -312,11 +312,39 @@ actor EpisodeActor {
 
     func createChapters(_ fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        guard let url = episode.localFile else {
-            print("no local file")
-            return
+        
+        
+        // Check if there is an external chapter file
+        if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
+            await BasicLogger.shared.log("Downloading Chapters for \(episode.title) of type \(chapterFile.fileType ?? "unknown")")
+            if let url = URL(string: chapterFile.url) {
+                // Check for file extension or fileType indicating JSON
+                let isJSON = (url.pathExtension.lowercased() == "json") || (chapterFile.fileType?.lowercased().contains("json") == true)
+                if isJSON {
+                    // If JSON, download and parse chapters from JSON format
+                    if let jsonString = await downloadAndParseStringFile(url: url),
+                       let jsonData = jsonString.data(using: .utf8),
+                       let chapters = await parseJSONChapters(jsonData: jsonData) {
+                        episode.chapters.removeAll(where: { $0.type == .extracted })
+                        episode.chapters.append(contentsOf: chapters)
+                        modelContext.saveIfNeeded()
+                        print("Imported \(chapters.count) chapters from JSON.")
+                    }
+                }
+            }
         }
+        
+        
         if episode.chapters.isEmpty {
+            await extractShownotesChapters(fileURL: episode.url)
+        }
+        
+
+        if episode.chapters.isEmpty {
+            guard let url = episode.localFile else {
+                print("no local file")
+                return
+            }
             do {
                 if let formatInfo = try await MetadataLoader.getAudioFormat(from: url) {
                     if formatInfo.formatID == kAudioFormatMPEGLayer3 {
@@ -329,9 +357,7 @@ actor EpisodeActor {
                 print("Error determining audio format: \(error)")
             }
         }
-       if episode.chapters.isEmpty {
-           await extractShownotesChapters(fileURL: episode.url)
-       }
+
        await updateChapterDurations(episodeURL: episode.url)
     }
     
@@ -423,6 +449,33 @@ actor EpisodeActor {
             return chapters
         }
         return nil
+    }
+    
+    /// Parses JSON formatted chapters data into an array of Chapter models asynchronously.
+    /// - Parameter jsonData: The JSON data representing chapters.
+    /// - Returns: An optional array of Chapter objects or nil if decoding fails.
+    func parseJSONChapters(jsonData: Data) async -> [Chapter]? {
+        do {
+            let decoder = JSONDecoder()
+            let chapterList = try decoder.decode(JSONChapterList.self, from: jsonData)
+            var chapters: [Chapter] = []
+            for ch in chapterList.chapters {
+                let chapter = Chapter()
+                chapter.title = ch.title
+                chapter.start = ch.startTime
+                chapter.type = .extracted
+                if let imgUrlStr = ch.img, let imgUrl = URL(string: imgUrlStr) {
+                    // Load image data synchronously here (could be improved to async if needed)
+                    chapter.imageData = try? Data(contentsOf: imgUrl)
+                }
+                // Optionally handle ch.url if needed
+                chapters.append(chapter)
+            }
+            return chapters
+        } catch {
+            print("Failed to decode chapter JSON: \(error)")
+            return nil
+        }
     }
     
     // Non-isolated helper function to load metadata
@@ -569,49 +622,66 @@ actor EpisodeActor {
             return }
 
         if episode.transcriptData == nil {
-            if let vttFileString = episode.transcripts.first(where: {$0.category == .transcript})?.url,
-               var vttURL = URL(string: vttFileString) {
+            if let transcriptfile = episode.externalFiles.first(where: { $0.category == .transcript}) {
+                await BasicLogger.shared.log("Downloading transcript for \(episode.title) of type \(transcriptfile.fileType ?? "unknown")")
                 
-                do{
-                    let status = try await vttURL.status()
-                    
-                    switch status?.statusCode {
-                    case 200:
-                        break
-                    case 404:
-                        print("vtt URL 404 failed")
-                        return
-                    case 410:
-                        if let newURL = status?.newURL{
-                            vttURL = newURL
-                        }else{
-                           break
-                        }
-                    default:
-                       break
+                    if let url = URL(string: transcriptfile.url){
+                        episode.transcriptData = await downloadAndParseStringFile(url: url)
+                        modelContext.saveIfNeeded()
                     }
-                    
-                    do{
-                         let vttData = try await URLSession(configuration: .default).data(from: vttURL)
-                        print("decoding vtt from \(vttURL.absoluteString)")
-                            episode.transcriptData = String(decoding: vttData.0, as: UTF8.self)
-                            modelContext.saveIfNeeded()
-                        
-                    }catch{
-                        print("error dewnloading vtt: \(error)")
-                    }
-                }catch {
-                    print("vtt download failed")
-                }
-            }else{
-                print ("no vtt file found")
+                
             }
+
         }else{
             print("transcriptData already exists")
         }
         return
     }
+    
+    
+    private func downloadAndParseStringFile(url: URL) async -> String?{
+        var stringURL = url
+        do{
+            let status = try await stringURL.status()
+            
+            switch status?.statusCode {
+            case 200:
+                break
+            case 404:
+                print("String file URL 404 failed")
+                return nil
+            case 410:
+                if let newURL = status?.newURL{
+                    stringURL = newURL
+                }else{
+                   break
+                }
+            default:
+               break
+            }
+            
+            do{
+                 let stringData = try await URLSession(configuration: .default).data(from: stringURL)
+                    print("decoding string from \(stringURL.absoluteString)")
+                   
+                return String(decoding: stringData.0, as: UTF8.self)
+                
+                
+            }catch{
+                print("error dewnloading String file: \(error)")
+                return nil
+            }
+        }catch {
+            print("String File download failed  \(error)")
+            return nil
+        }
+    }
+    
+    
+    
 }
+
+
 private struct SendableChapterData: Sendable {
     let title: String
     let start: Double
@@ -680,5 +750,18 @@ private struct MetadataLoader {
         }
         return nil
     }
+}
+
+// Structures to decode JSON chapter format from external sources
+private struct JSONChapterList: Decodable {
+    let version: String?
+    let chapters: [JSONChapter]
+}
+
+private struct JSONChapter: Decodable {
+    let startTime: Double
+    let title: String
+    let img: String?
+    let url: String?
 }
 

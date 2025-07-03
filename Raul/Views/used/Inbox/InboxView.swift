@@ -71,7 +71,13 @@ struct InboxView: View {
                             await refreshEpisodes()
                         }
                     }) {
-                        Image(systemName: "arrow.clockwise")
+                        if isLoading {
+                            ProgressView()
+                        }else{
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        
+                        
                     }
                     .disabled(isLoading)
                 }

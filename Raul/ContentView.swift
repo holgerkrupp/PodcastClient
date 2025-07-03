@@ -43,7 +43,8 @@ struct ContentView: View {
                 .tag(Tab.inbox)
                 .badge(inBox.count)
             
-            LibraryView()
+           LibraryView()
+            
                 .tabItem {
                     Label("Library", systemImage: "books.vertical")
                 }
@@ -76,9 +77,9 @@ struct ContentView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             
-            //if Player.shared.currentEpisode != nil {
+         
                 PlayerTabBarView()
-           // }
+ 
         }
 
         

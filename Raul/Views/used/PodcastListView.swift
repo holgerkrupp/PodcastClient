@@ -36,44 +36,49 @@ struct PodcastListView: View {
     }
 
     var body: some View {
-       
-            VStack {
-
-
+      
+            List {
+                
+                
                 if filteredPodcasts.isEmpty {
                     PodcastsEmptyView()
                 } else {
-                  
-                        ForEach(filteredPodcasts) { podcast in
-                            
-                            ZStack {
-                                PodcastRowView(podcast: podcast)
-                                    .id(podcast.id)
-                                    .padding()
-                                NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                                    EmptyView()
-                                }.opacity(0)
-                            }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0,
-                                                 leading: 0,
-                                                 bottom: 2,
-                                                 trailing: 0))
-                        }
-                        .onDelete { indexSet in
-                            Task {
-                                for index in indexSet {
-                                    await viewModel.deletePodcast(filteredPodcasts[index])
-                                }
-                            }
-                        }
                     
-                    .refreshable {
-                        await viewModel.refreshPodcasts()
+                    ForEach(filteredPodcasts) { podcast in
+                      
+                        ZStack {
+                            PodcastRowView(podcast: podcast)
+                            
+                                .padding()
+                            
+                            NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                                EmptyView()
+                            }.opacity(0)
+                            
+                        }
+                        
+                        
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 2,
+                                             trailing: 0))
+                     
+                        
                     }
+                    .onDelete { indexSet in
+                        Task {
+                            for index in indexSet {
+                                await viewModel.deletePodcast(filteredPodcasts[index])
+                            }
+                        }
+                    }
+                    
+                    
                 }
             }
+        
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
@@ -100,6 +105,7 @@ struct PodcastListView: View {
                     Text(message)
                 }
             }
+        
         
     }
 }

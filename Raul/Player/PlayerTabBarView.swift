@@ -15,7 +15,8 @@ struct PlayerTabBarView: View {
     @State private var presentingModal : Bool = false
 
     @Bindable private var player = Player.shared
-  
+
+    
     var body: some View {
         GeometryReader { geo in
       
@@ -23,10 +24,10 @@ struct PlayerTabBarView: View {
                     
                     // Background layer
                     HStack{
-                        RoundedRectangle(cornerRadius: 12)
+                        Rectangle()
                             .fill(Color.accentColor.opacity(0.2))
                             .frame(width: geo.size.width * (player.progress))
-                    Spacer()
+                        Spacer()
                     }
                     if placement == .inline {
                         Button(action: {
@@ -42,16 +43,39 @@ struct PlayerTabBarView: View {
                         }
                         .buttonStyle(.borderless)
                     }else{
+                        
                         HStack{
+                        
+                            if let episode = player.currentEpisode{
+                                EpisodeCoverView(episode: episode)
+                                    .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
+                                    .scaledToFit()
+                                    .clipShape(Circle())
+                                    .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
+                                
+                                    
+                            }else{
+                                Rectangle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
+                                    .scaledToFit()
+                                    .clipShape(Circle())
+                                    .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
+                            }
                             
-                                Text("\(player.currentEpisode?.title ?? "")")
-                                    .lineLimit(2)
-                                    .truncationMode(.tail)
-                                    .minimumScaleFactor(0.75)
-                                    .frame(maxWidth: geo.size.width/3*2)
-                                    .padding()
-
                             
+                            VStack(alignment: .leading){
+                                Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .foregroundStyle(.secondary)
+                                Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                   
+                            }
+                            
+                        //    .padding()
                             //   Spacer()
                             Group{
                                 Button(action:player.skipback){
@@ -67,7 +91,8 @@ struct PlayerTabBarView: View {
                                     
                                 }
                                 .buttonStyle(.borderless)
-                                
+                                .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
+
                                 
                                 Button(action: {
                                     if player.isPlaying {
@@ -81,6 +106,7 @@ struct PlayerTabBarView: View {
                                         .scaledToFit()
                                 }
                                 .buttonStyle(.borderless)
+                                .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 2))
                                 
                                 
                                 Button(action:player.skipforward){
@@ -96,10 +122,14 @@ struct PlayerTabBarView: View {
                                     
                                 }
                                 .buttonStyle(.borderless)
+                                .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 8))
                                 
                             }
-                            .padding(10)
+                          
+                            .frame(height: geo.size.height * 0.6)
+                            
                         }
+                      
                         
                         
                     }
@@ -116,10 +146,17 @@ struct PlayerTabBarView: View {
     }
 }
 #Preview {
-    if #available(iOS 26.0, *) {
-        PlayerTabBarView()
-    } else {
-        // Fallback on earlier versions
-    }
+        TabView {
+            Text("First")
+            
+    }.tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewBottomAccessory {
+            
+     
+                PlayerTabBarView()
+           
+        }
+       
+    
 }
 

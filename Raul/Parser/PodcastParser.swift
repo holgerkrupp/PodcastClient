@@ -127,6 +127,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
                             let newTranscript = ExternalFile(url: url, category: .transcript, source: "feed", fileType: filetype)
                             externalFilesArray.append(newTranscript)
                         }
+                    case "podcast:chapters":
+                        if let url = attributeDict["url"] , let filetype = attributeDict["type"]{
+                            let newFile = ExternalFile(url: url, category: .chapter, source: "feed", fileType: filetype)
+                            externalFilesArray.append(newFile)
+                        }
                     default:
                         break
                     }
@@ -174,7 +179,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 case "item":
                     //PodcastEpisode finished
                     //   isHeader = true // go back to header Level
-                    episodeDict.updateValue(externalFilesArray, forKey: "transcripts")
+                    episodeDict.updateValue(externalFilesArray, forKey: "transcripts") // to be removed in the future
                     episodeDict.updateValue(externalFilesArray, forKey: "externalFiles")
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()

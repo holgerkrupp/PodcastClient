@@ -44,34 +44,7 @@ struct EpisodeRowView: View {
                 
                     
                     VStack{
-                        /*
-                        HStack {
-                            Text("DEBUG")
-                            Image(systemName: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                            Image(systemName: episode.metaData?.isInbox ?? false ? "tray.fill" : "tray")
-                            Image(systemName: episode.metaData?.isHistory ?? false ? "newspaper.fill" : "newspaper")
-                            
 
-                            
-                            Image(systemName: fileManager.isDownloaded(episode.localFile) ?? false ? "document.viewfinder.fill" : "document.viewfinder")
-                               
-                            
-                            
-                            
-                            if episode.downloadItem?.isDownloading ?? false {
-                                Image(systemName: "arrow.down")
-                                
-                                    .id(episode.downloadItem?.id ?? UUID())
-                            }
-                            Text(episode.metaData?.episode?.playProgress.formatted() ?? "0.00")
-                                .monospaced()
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                            Text("Details")
-                            }
-                            
-                        }
-                        .font(.caption)
-                        */
                         
                         VStack(alignment: .leading){
                             HStack{
@@ -125,7 +98,7 @@ struct EpisodeRowView: View {
                                     if episode.chapters.count > 0 {
                                         Image(systemName: "list.bullet")
                                     }
-                                    if episode.transcripts.count > 0 {
+                                    if episode.externalFiles.contains(where: {$0.category == .transcript}) {
                                         
                                         Image(systemName: "quote.bubble")
                                         
@@ -154,11 +127,13 @@ struct EpisodeRowView: View {
                             }
 
                             .buttonStyle(.plain)
-                            Spacer()
+                         
                             EpisodeControlView(episode: episode)
                                 .modelContainer(modelContext.container)
+                                .frame(height: 50)
+                                .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+
                            
-                            
                         }
                         
                     }
@@ -166,7 +141,7 @@ struct EpisodeRowView: View {
                     // .background(.ultraThinMaterial)
                     .background(
                         Rectangle()
-                            .fill(.thinMaterial)
+                            .fill(.ultraThinMaterial)
                         // .shadow(radius: 3)
                     )
                    

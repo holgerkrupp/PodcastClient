@@ -10,7 +10,7 @@ import Foundation
 @Observable
 class TranscriptDecoder{
     
-    var vttContent: String = ""
+    var transcriptContent: String = ""
     var transcriptLines: [TranscriptLineWithTime] = []
     
     struct TranscriptLineWithTime: Identifiable, Sendable, Equatable {
@@ -25,28 +25,33 @@ class TranscriptDecoder{
         case webVTT
         case inline
         case srt
+        case json // MARK: - JSON Transcript Support
         case unknown
     }
 
     
-    init (_ vttContent: String) {
-        self.vttContent = vttContent
+    init (_ string: String) {
+        self.transcriptContent = string
         transcriptLines  = parseAllLines()
     }
     
     func reload(with content: String) {
-        self.vttContent = content
+        self.transcriptContent = content
         self.transcriptLines = parseAllLines()
     }
     
     
     private func detectFormat() -> TranscriptFormat {
-        if vttContent.contains("WEBVTT") {
+        if transcriptContent.contains("WEBVTT") {
             return .webVTT
-        } else if vttContent.range(of: #"\(\d{1,2}:\d{2}\)"#, options: .regularExpression) != nil {
+        } else if transcriptContent.range(of: #"\(\d{1,2}:\d{2}\)"#, options: .regularExpression) != nil {
             return .inline
-        }else if vttContent.range(of: #"^\d+\r?\n\d{2}:\d{2}:\d{2},"#, options: .regularExpression, range: nil, locale: nil) != nil {
+        } else if transcriptContent.range(of: #"^\d+\r?\n\d{2}:\d{2}:\d{2},"#, options: .regularExpression, range: nil, locale: nil) != nil {
             return .srt
+        } else if transcriptContent.contains("{\"version\":") && transcriptContent.contains("\"segments\":") { // MARK: - JSON Transcript Support
+            return .json
+        }else if transcriptContent.contains("{\"version\":") && transcriptContent.contains("\"chapters\":") { // MARK: - JSON Transcript Support
+            return .json
         }
         return .unknown
     }
@@ -59,6 +64,8 @@ class TranscriptDecoder{
             return parseInlineTranscript()
         case .srt:
             return parseSRT()
+        case .json: // MARK: - JSON Transcript Support
+            return parseJSONTranscript()
         case .unknown:
             return []
         
@@ -66,7 +73,7 @@ class TranscriptDecoder{
     }
     //MARK: WebVTT
     private func parseWebVTT() -> [TranscriptLineWithTime] {
-        let linesArray = vttContent.components(separatedBy: .newlines)
+        let linesArray = transcriptContent.components(separatedBy: .newlines)
         var transcriptLines: [TranscriptLineWithTime] = []
         var currentIndex = 0
         
@@ -141,7 +148,7 @@ class TranscriptDecoder{
     }
     //MARK: Inline
     private func parseInlineTranscript() -> [TranscriptLineWithTime] {
-        let lines = vttContent.components(separatedBy: .newlines)
+        let lines = transcriptContent.components(separatedBy: .newlines)
         var results: [TranscriptLineWithTime] = []
 
         var currentSpeaker: String?
@@ -205,7 +212,7 @@ class TranscriptDecoder{
 
     //MARK: SRT
     private func parseSRT() -> [TranscriptLineWithTime] {
-        let blocks = vttContent.components(separatedBy: "\n\n")
+        let blocks = transcriptContent.components(separatedBy: "\n\n")
         var results: [TranscriptLineWithTime] = []
 
         for block in blocks {
@@ -241,6 +248,76 @@ class TranscriptDecoder{
         return results
     }
 
+    // MARK: - JSON Transcript Support
+    private struct JSONTranscript: Decodable {
+        let version: String
+        let segments: [Segment]?
+        let chapters: [Chapter]?
+        
+        struct Segment: Decodable {
+            let speaker: String
+            let startTime: Double
+            let endTime: Double
+            let body: String
+        }
+        
+        struct Chapter: Decodable {
+            let startTime: Double
+            let title: String
+            let endTime: Double?
+        }
+    }
+    
+    private func parseJSONTranscript() -> [TranscriptLineWithTime] {
+        guard let data = transcriptContent.data(using: .utf8) else {
+            return []
+        }
+        do {
+            let decoded = try JSONDecoder().decode(JSONTranscript.self, from: data)
+            if let segments = decoded.segments {
+                // Parse segments as before
+                let results = segments.map { segment in
+                    TranscriptLineWithTime(
+                        id: UUID(),
+                        speaker: segment.speaker,
+                        text: segment.body,
+                        startTime: segment.startTime,
+                        endTime: segment.endTime
+                    )
+                }
+                return results
+            } else if let chapters = decoded.chapters {
+                // Parse chapters, mapping each chapter to TranscriptLineWithTime
+                var results: [TranscriptLineWithTime] = []
+                for (index, chapter) in chapters.enumerated() {
+                    let startTime = chapter.startTime
+                    // Determine endTime: chapter.endTime, or next chapter's startTime, or startTime + 5 fallback
+                    let endTime: TimeInterval
+                    if let chapterEnd = chapter.endTime {
+                        endTime = chapterEnd
+                    } else if index + 1 < chapters.count {
+                        endTime = chapters[index + 1].startTime
+                    } else {
+                        endTime = startTime + 5
+                    }
+                    results.append(
+                        TranscriptLineWithTime(
+                            id: UUID(),
+                            speaker: nil,
+                            text: chapter.title,
+                            startTime: startTime,
+                            endTime: endTime
+                        )
+                    )
+                }
+                return results
+            } else {
+                return []
+            }
+        } catch {
+            return []
+        }
+    }
     
 }
 private extension String {

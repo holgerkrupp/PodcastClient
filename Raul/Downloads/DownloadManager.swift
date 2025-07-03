@@ -83,6 +83,15 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
       //  await episodeActor.updateDuration(fileURL: url)
     }
     
+    private func markPurgeable(for url: URL) async {
+        // For a file at `url`:
+        var url = url
+        var resourceValues = URLResourceValues()
+
+        resourceValues.isExcludedFromBackup = true
+        try? url.setResourceValues(resourceValues)
+    }
+    
     private func defaultDestination(for url: URL) -> URL {
         let filename = url.lastPathComponent
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!

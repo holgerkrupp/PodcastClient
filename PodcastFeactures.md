@@ -28,9 +28,9 @@ Notable Tags:
 - [ ] <podcast:location> — Geolocation of episode/show.
 - [x] <podcast:transcript> — Link to a transcript file (WebVTT, SRT, etc.).
 - - [x] WebVTT
-- - [ ] SRT
-- - [ ] JSON
-- [ ] <podcast:chapters> — Link to chapter file (e.g. JSON format).
+- - [x] SRT
+- - [x] JSON
+- [x] <podcast:chapters> — Link to chapter file (e.g. JSON format).
 - [ ] <podcast:funding> — Monetization URL with description (e.g. Patreon).
 - [ ] <podcast:medium> — Show type (e.g. audio, video, music).
 - [ ] <podcast:guid> — Global unique identifier (permanent).

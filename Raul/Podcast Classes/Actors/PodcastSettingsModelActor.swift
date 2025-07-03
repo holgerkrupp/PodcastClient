@@ -54,4 +54,41 @@ actor PodcastSettingsModelActor {
         modelContext.delete(settings)
         modelContext.saveIfNeeded()
     }
+    
+    
+    func fetchPodcastSettings(for podcastID: UUID) async -> PodcastSettings? {
+        let predicate = #Predicate<PodcastSettings> { setting in
+            setting.podcast?.id == podcastID
+        }
+
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<PodcastSettings>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for episode ID: \(podcastID), Error: \(error)")
+            return nil
+        }
+    }
+    
+    func getPlaybackSpeed(for podcastID: UUID?) async -> Float?{
+        guard let podcastID else {
+            return await standardSettings().playbackSpeed // is no podcastID is given, the global Settings are returned
+        }
+        guard let setting = await fetchPodcastSettings(for: podcastID) else {
+            return await standardSettings().playbackSpeed // is no podcastID is found, the global Settings are returned
+        }
+        return setting.playbackSpeed
+    }
+    
+    func setPlaybackSpeed(for podcastID: UUID?, to value: Float) async{
+        
+        if let podcastID, let setting = await fetchPodcastSettings(for: podcastID) {
+             setting.playbackSpeed  = value// is no podcastID is found, the global Settings are returned
+        } else {
+            await standardSettings().playbackSpeed = value
+        }
+        modelContext.saveIfNeeded()
+    }
+    
+    
 }
