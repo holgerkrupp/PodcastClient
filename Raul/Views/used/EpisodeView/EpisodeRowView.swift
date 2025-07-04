@@ -44,6 +44,15 @@ struct EpisodeRowView: View {
                 
                     
                     VStack{
+                        Button {
+                            Task{
+                                await EpisodeActor(modelContainer: modelContext.container).transcribe(episode.url)
+                            }
+                        } label: {
+                            Text("Transcribe")
+                        }
+                        .buttonStyle(.glass)
+
 
                         
                         VStack(alignment: .leading){
@@ -98,7 +107,7 @@ struct EpisodeRowView: View {
                                     if episode.chapters.count > 0 {
                                         Image(systemName: "list.bullet")
                                     }
-                                    if episode.externalFiles.contains(where: {$0.category == .transcript}) {
+                                    if episode.externalFiles.contains(where: {$0.category == .transcript}) || episode.transcriptData != nil {
                                         
                                         Image(systemName: "quote.bubble")
                                         

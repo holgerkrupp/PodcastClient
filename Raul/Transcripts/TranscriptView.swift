@@ -62,7 +62,7 @@ struct TranscriptView: View {
         }
     }
     
-    private var currentLine: TranscriptDecoder.TranscriptLineWithTime? {
+    private var currentLine: TranscriptLineWithTime? {
         decoder.transcriptLines.first { line in
             currentTime >= line.startTime && currentTime <= line.endTime
         }

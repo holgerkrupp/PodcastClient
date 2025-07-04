@@ -71,7 +71,6 @@ class EpisodeDownloadStatus{
     var number: String?
     var type: EpisodeType?
     
-    var transcripts:[ExternalFile] = [] // TODO: To be removed and replaced by externalFiles
     var transcriptData:String?
     
     var externalFiles:[ExternalFile] = []
@@ -215,7 +214,6 @@ class EpisodeDownloadStatus{
         }
         
         for transcript in episodeData["transcripts"] as? [ExternalFile] ?? []{
-            transcripts.append(transcript) // this is to be removed in the future
             externalFiles.append(transcript)
         }
         if let chaptersData = episodeData["psc:chapters"] as? [[String: Any]] {

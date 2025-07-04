@@ -241,10 +241,11 @@ actor EpisodeActor {
         if let localFile = episode.localFile {
             if await DownloadManager.shared.download(from: episode.url, saveTo: localFile, episodeID: episode.id) != nil {
                 print("✅ Episode download started - from \(episode.url) to \(localFile)")
-
             }else{
                 print("❌ Could not download Episode \(episodeID)")
             }
+            await downloadTranscript(episode.persistentModelID)
+
         }
         
    
@@ -301,14 +302,37 @@ actor EpisodeActor {
         await updateDuration(fileURL: fileURL)
 
         await createChapters(episode.url)
-    //    await updateChapterDurations(fileURL: episode.url)
-        await downloadTranscript(episode.persistentModelID)
-
+  
+        await transcribe(episode.url)
         modelContext.saveIfNeeded()
         print("✅ Metadata updated")
         await BasicLogger.shared.log("Did mark Episode As Available")
     }
     
+    func transcribe(_ fileURL: URL) async  {
+        print("transcribe")
+        guard let episode = await fetchEpisode(byURL: fileURL) else {
+            print("could not fetch data")
+     
+            return  }
+        /*
+        guard episode.transcriptData == nil else {
+            print("transcript exists")
+            return }
+        */
+         guard let localFile = episode.localFile else {
+            print("no local file")
+            return }
+       
+        let transcriber = AITranscripts(url: localFile, language: episode.podcast?.language)
+        let transcription = try? await transcriber.transcribeTovTT()
+        print("transcript to vtt finished")
+        episode.transcriptData = transcription
+        modelContext.saveIfNeeded()
+        
+    }
+    
+
 
     func createChapters(_ fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }

@@ -15,8 +15,12 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
-- [?] Replace transcripts with generic 'external File' that can also host chapters, images and others.
 - [ ] mp3ChapterReader work with remote files
+
+
+- [x] Decode transcripts on Download not during playing audio
+- [x] Create transcripts from Audio (Speech)
+- [ ] Create chapter markers from transcript if available
 
 ## Alpha min Requiremets
 

@@ -13,6 +13,7 @@ class TranscriptDecoder{
     var transcriptContent: String = ""
     var transcriptLines: [TranscriptLineWithTime] = []
     
+    
     struct TranscriptLineWithTime: Identifiable, Sendable, Equatable {
         let id: UUID
         let speaker: String?
