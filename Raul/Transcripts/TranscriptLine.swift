@@ -7,21 +7,24 @@
 
 import Foundation
 import SwiftData
-/*
- @Model final class TranscriptLineWithTime: Identifiable, Sendable, Equatable {
- var id: UUID
+
+ @Model final class TranscriptLineAndTime {
+ var id = UUID()
  var speaker: String?
  var text: String
  var startTime: TimeInterval
  var endTime: TimeInterval
  
- init(id: UUID = UUID(), speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval) {
- self.id = id
+ init( speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval) {
+
  self.speaker = speaker
  self.text = text
  self.startTime = startTime
  self.endTime = endTime
  }
+     
+     
  }
  
- */
+ 
+

@@ -15,7 +15,8 @@ struct TranscriptLine: Identifiable, Hashable {
 
 
 struct TranscriptView: View {
-    let decoder: TranscriptDecoder
+   // let decoder: TranscriptDecoder
+    let transcriptLines: [TranscriptLineAndTime]
     @Binding var currentTime: TimeInterval
     
     
@@ -30,7 +31,7 @@ struct TranscriptView: View {
     
     private var speakerColorMap: [String: Color] {
         var colorMap: [String: Color] = [:]
-        let speakers = Set(decoder.transcriptLines.compactMap { $0.speaker }).removingDuplicates().sorted(by: <)
+        let speakers = Set(transcriptLines.compactMap { $0.speaker }).removingDuplicates().sorted(by: <)
         for (index, speaker) in speakers.enumerated() {
             colorMap[speaker] = speakerColors[index % speakerColors.count]
         }
@@ -61,10 +62,17 @@ struct TranscriptView: View {
             EmptyView()
         }
     }
-    
-    private var currentLine: TranscriptLineWithTime? {
+    /*
+    private var currentLine: TranscriptDecoder.TranscriptLineWithTime? {
         decoder.transcriptLines.first { line in
             currentTime >= line.startTime && currentTime <= line.endTime
         }
     }
+    */
+    private var currentLine: TranscriptLineAndTime? {
+        transcriptLines.first { line in
+            currentTime >= line.startTime && currentTime <= line.endTime
+        }
+    }
+    
 }

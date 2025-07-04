@@ -309,6 +309,8 @@ actor EpisodeActor {
         await BasicLogger.shared.log("Did mark Episode As Available")
     }
     
+
+    
     func transcribe(_ fileURL: URL) async  {
         print("transcribe")
         guard let episode = await fetchEpisode(byURL: fileURL) else {
@@ -316,7 +318,7 @@ actor EpisodeActor {
      
             return  }
         /*
-        guard episode.transcriptData == nil else {
+        guard episode.transcriptLines == nil else {
             print("transcript exists")
             return }
         */
@@ -327,9 +329,29 @@ actor EpisodeActor {
         let transcriber = AITranscripts(url: localFile, language: episode.podcast?.language)
         let transcription = try? await transcriber.transcribeTovTT()
         print("transcript to vtt finished")
+        
+        
         episode.transcriptData = transcription
+        if let transcription = transcription {
+            episode.transcriptLines = decodeTranscription(transcription)
+
+        }
+        
         modelContext.saveIfNeeded()
         
+    }
+    
+
+    
+    func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime]{
+        let decoder = TranscriptDecoder(transcription)
+        let lines = decoder.transcriptLines
+        var transcript = [TranscriptLineAndTime]()
+        for line in lines{
+            let transcriptline = TranscriptLineAndTime(speaker: line.speaker, text: line.text ,startTime: line.startTime, endTime: line.endTime)
+            transcript.append(transcriptline)
+        }
+        return transcript
     }
     
 
@@ -644,21 +666,29 @@ actor EpisodeActor {
         guard let episode = modelContext.model(for: episodeID) as? Episode else {
             print("episode not found")
             return }
+        
+        guard episode.transcriptLines == nil else {
+            print("transcriptData already exists")
 
-        if episode.transcriptData == nil {
+            return }
+
             if let transcriptfile = episode.externalFiles.first(where: { $0.category == .transcript}) {
                 await BasicLogger.shared.log("Downloading transcript for \(episode.title) of type \(transcriptfile.fileType ?? "unknown")")
                 
                     if let url = URL(string: transcriptfile.url){
-                        episode.transcriptData = await downloadAndParseStringFile(url: url)
+                        let transcription = await downloadAndParseStringFile(url: url)
+                        
+                        if let transcription = transcription {
+                            episode.transcriptData = transcription // this should be removed soon but the views need to be changed first to use transcriptLines
+                            episode.transcriptLines = decodeTranscription(transcription)
+                        }
+                        
                         modelContext.saveIfNeeded()
                     }
                 
             }
 
-        }else{
-            print("transcriptData already exists")
-        }
+       
         return
     }
     

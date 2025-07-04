@@ -94,7 +94,7 @@ struct PlayerControllView: View {
                             
                             let decoder = TranscriptDecoder(transcriptFileContent)
                             
-                            TranscriptView(decoder: decoder, currentTime: $player.playPosition)
+                            TranscriptView(transcriptLines: player.currentEpisode?.transcriptLines ?? [], currentTime: $player.playPosition)
                             
                             
                                 .background(.ultraThinMaterial)

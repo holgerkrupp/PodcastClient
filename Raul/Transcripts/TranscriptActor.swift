@@ -10,7 +10,6 @@ import Foundation
 
 actor TranscriptActor {
     
-    
     func createLinesFromString(_ input: String) {
         let lines = TranscriptDecoder(input).transcriptLines
     }

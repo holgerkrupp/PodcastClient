@@ -72,6 +72,7 @@ class EpisodeDownloadStatus{
     var type: EpisodeType?
     
     var transcriptData:String?
+    var transcriptLines: [TranscriptLineAndTime]?
     
     var externalFiles:[ExternalFile] = []
 
