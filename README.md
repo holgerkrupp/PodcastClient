@@ -13,6 +13,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] AutoArchive - Delete files
 - [x] LibraryView - PodcastListView integration (Links to single Podcasts and Deletion not working)
 
+- [ ] fix Skip Chapters (validate skip to and skip last)
 
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
 - [ ] mp3ChapterReader work with remote files

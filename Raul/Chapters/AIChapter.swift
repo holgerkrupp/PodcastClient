@@ -22,7 +22,7 @@ actor AIChapterGenerator{
     }
     
     func extractChaptersFromText(_ text: String) async -> [String:String] {
-        var model = SystemLanguageModel.default
+        let model = SystemLanguageModel.default
         guard model.isAvailable else {
             return [:]
         }
@@ -49,6 +49,43 @@ actor AIChapterGenerator{
                 return [:]
             }
         }
+    
+    func createChaptersFromTranscriptLines(_ lines: String) async -> [String:String] {
+        
+        
+        
+        let model = SystemLanguageModel.default
+        guard model.isAvailable else {
+            return [:]
+        }
+            do{
+                
+                
+                let options = GenerationOptions(temperature: 2.0)
+                
+                
+                let instructions = """
+                   You are a podcast chapter generator. Given the transcription and timestamps below, identify if this section starts a new topic. If so, generate a short title (max 8 words) that summarizes it. If it's a continuation, say "continuation".
+
+                """
+                let session = LanguageModelSession(instructions: instructions)
+                
+                //let prompt = text
+                let response = try await session.respond(
+                    to: lines,
+                    generating: [AIChapter].self,
+                    options: options
+                )
+                return Dictionary<String, String>(response.content.compactMap { $0 }.map { ($0.timecode, $0.title) }, uniquingKeysWith: { first, _ in return first })
+                
+            }
+            catch{
+                print("Error: \(error)")
+                return [:]
+            }
+    }
+    
+
     
 }
 

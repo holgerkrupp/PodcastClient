@@ -89,12 +89,12 @@ struct PlayerControllView: View {
                     .frame(maxWidth: .infinity)
                     
                     .overlay(alignment: .bottom) {
-                        if let transcriptFileContent = player.currentEpisode?.transcriptData,
+                        if let transcriptLines = player.currentEpisode?.transcriptLines,
                            player.playPosition.isNormal, showTranscripts {
                             
-                            let decoder = TranscriptDecoder(transcriptFileContent)
+                           // let decoder = TranscriptDecoder(transcriptFileContent)
                             
-                            TranscriptView(transcriptLines: player.currentEpisode?.transcriptLines ?? [], currentTime: $player.playPosition)
+                            TranscriptView(transcriptLines: transcriptLines, currentTime: $player.playPosition)
                             
                             
                                 .background(.ultraThinMaterial)
@@ -102,15 +102,15 @@ struct PlayerControllView: View {
                         }
                     }
                     .sheet(isPresented: $showFullTranscripts) {
-                        if let vttFileContent = player.currentEpisode?.transcriptData {
-                            TranscriptListView(vttContent: vttFileContent)
+                        if let transcriptLines = player.currentEpisode?.transcriptLines {
+                            TranscriptListView(transcriptLines: transcriptLines)
                                 .presentationDetents([.large])
                         }
                     }
                     
                 }
                 
-                if episode.transcriptData != nil {
+                if episode.transcriptLines != nil {
                     HStack {
                         if showTranscripts{
                             Image("custom.quote.bubble.slash")

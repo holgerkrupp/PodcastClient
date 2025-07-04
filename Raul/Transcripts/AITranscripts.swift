@@ -55,6 +55,30 @@ class AITranscripts {
         }
     }
     
+    /// Maps language codes to preferred region-specific locales if present in supportedLocales.
+    static func regionPreferredLocale(for language: String, supportedLocales: [String]) -> String {
+        let preferred: [String: String] = [
+            "de": "de-DE",
+            "en": "en-US", // 'en-EN' does not exist; 'en-US' or 'en-GB' are standard
+            "fr": "fr-FR",
+            "it": "it-IT",
+            "es": "es-ES"
+        ]
+        if let mapped = preferred[language.lowercased()], supportedLocales.contains(mapped) {
+            return mapped
+        }
+        // If language-only is in supportedLocales, return that
+        if supportedLocales.contains(language.lowercased()) {
+            return language.lowercased()
+        }
+        // Otherwise, try to find any supported locale starting with the language code
+        if let found = supportedLocales.first(where: { $0.lowercased().hasPrefix(language.lowercased() + "-") }) {
+            return found
+        }
+        // Fallback to input
+        return language
+    }
+    
     
     func transcribeTovTT() async throws -> String? {
         self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
@@ -62,7 +86,6 @@ class AITranscripts {
         
         guard let segments = try await transcribe() else { return nil }
         print("transcript finished")
-        dump(segments)
         
         
         let formatted = segments.map { segment in
@@ -76,7 +99,6 @@ class AITranscripts {
         let result = "WEBVTT\n\n" + formatted
 
         
-        print("formated:  \(result)")
         print("formating finished")
         return result
     }
@@ -173,17 +195,31 @@ class AITranscripts {
     func bestMatchingSupportedLocale(for input: String) async -> Locale? {
         
         let supported = await SpeechTranscriber.supportedLocales
+        
+        let preferred: [String: String] = [
+            "de": "de-DE",
+            "en": "en-GB", // 'en-EN' does not exist; 'en-US' or 'en-GB' are standard
+            "fr": "fr-FR",
+            "it": "it-IT",
+            "es": "es-ES"
+        ]
      
         print("Supported:", supported.map { $0.identifier(.bcp47) })
         print("Mine:", language.identifier(.bcp47))
         
-        
-      
+
         
         // First, try for exact language-region match
         if let fullMatch = supported.first(where: { $0.identifier(.bcp47).lowercased() == input.lowercased() }) {
             return fullMatch
         }
+        
+        if let mapped = preferred[input.lowercased()],
+           supported.contains(where: { $0.identifier(.bcp47).lowercased() == mapped.lowercased() }) {
+            return Locale(identifier: mapped)
+        }
+        
+        
         // Then, try for a language-only match (e.g., "de" matches "de-DE")
         if let prefixMatch = supported.first(where: { $0.identifier(.bcp47).lowercased().hasPrefix(input.lowercased() + "-") }) {
             print("Best Match:", prefixMatch.identifier(.bcp47))

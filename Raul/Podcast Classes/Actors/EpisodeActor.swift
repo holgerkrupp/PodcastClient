@@ -28,11 +28,7 @@ actor EpisodeActor {
         }
     }
     
-    @available(iOS 26.0, *)
-    func generateAIChapters(fileURL: URL) async{
-
-    }
-    
+  
     
     
     func fetchEpisode(byURL fileURL: URL) async -> Episode? {
@@ -331,7 +327,6 @@ actor EpisodeActor {
         print("transcript to vtt finished")
         
         
-        episode.transcriptData = transcription
         if let transcription = transcription {
             episode.transcriptLines = decodeTranscription(transcription)
 
@@ -343,13 +338,82 @@ actor EpisodeActor {
     
 
     
-    func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime]{
+    func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
         let decoder = TranscriptDecoder(transcription)
         let lines = decoder.transcriptLines
         var transcript = [TranscriptLineAndTime]()
-        for line in lines{
-            let transcriptline = TranscriptLineAndTime(speaker: line.speaker, text: line.text ,startTime: line.startTime, endTime: line.endTime)
-            transcript.append(transcriptline)
+        let maxLineLength = 84 // Two lines of 42 chars
+        let minDuration: Double = 1.0
+        let sentenceSeparators: [Character] = [".", "?", "!"]
+        for line in lines {
+            let text = line.text
+            let start = line.startTime
+            let end = line.endTime
+            let speaker = line.speaker
+        
+            if text.count <= maxLineLength {
+                transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
+            } else {
+                // Split into sentences using period, exclamation, or question mark
+                let sentences = text.split(whereSeparator: { sentenceSeparators.contains($0) }).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                var chunks: [String] = []
+                var currentChunk = ""
+                for sentence in sentences where !sentence.isEmpty {
+                    let extendedSentence = (sentence.last == "." || sentence.last == "!" || sentence.last == "?") ? sentence : sentence + "."
+                    if currentChunk.count + extendedSentence.count + 1 > maxLineLength {
+                        if !currentChunk.isEmpty {
+                            chunks.append(currentChunk.trimmingCharacters(in: .whitespacesAndNewlines))
+                            currentChunk = ""
+                        }
+                    }
+                    if !currentChunk.isEmpty {
+                        currentChunk += " "
+                    }
+                    currentChunk += extendedSentence
+                }
+                if !currentChunk.isEmpty {
+                    chunks.append(currentChunk.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+                // If a single sentence is too long, fall back to word-splitting
+                for (i, chunk) in chunks.enumerated() where chunk.count > maxLineLength {
+                    // Replace the chunk with smaller word-based chunks
+                    let words = chunk.split(separator: " ")
+                    var wordChunk = ""
+                    var replacementChunks: [String] = []
+                    for word in words {
+                        if (wordChunk.count + word.count + 1) > maxLineLength {
+                            if !wordChunk.isEmpty {
+                                replacementChunks.append(wordChunk)
+                                wordChunk = ""
+                            }
+                        }
+                        if !wordChunk.isEmpty {
+                            wordChunk += " "
+                        }
+                        wordChunk += word
+                    }
+                    if !wordChunk.isEmpty {
+                        replacementChunks.append(wordChunk)
+                    }
+                    chunks.remove(at: i)
+                    chunks.insert(contentsOf: replacementChunks.reversed(), at: i)
+                }
+                // Assign times proportionally
+                let totalChunks = chunks.count
+                let totalDuration = end - start
+                let baseDuration = max(totalDuration / Double(totalChunks), minDuration)
+                var chunkStart = start
+                for (i, chunk) in chunks.enumerated() {
+                    let chunkEnd: Double
+                    if i == totalChunks - 1 {
+                        chunkEnd = end
+                    } else {
+                        chunkEnd = min(chunkStart + baseDuration, end)
+                    }
+                    transcript.append(TranscriptLineAndTime(speaker: speaker, text: String(chunk), startTime: chunkStart, endTime: chunkEnd))
+                    chunkStart = chunkEnd
+                }
+            }
         }
         return transcript
     }
@@ -568,6 +632,30 @@ actor EpisodeActor {
         }
     }
     
+    func extractTranscriptChapters(fileURL: URL) async  {
+        print("extractTranscriptChapters")
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+        guard let transcriptLines = episode.transcriptLines, transcriptLines != [] else {
+            print("no transcript")
+            return  }
+        
+        let extractedData = await generateAIChapters(from: transcriptLines)
+        if !extractedData.isEmpty {
+            var newchapters:[Chapter] = []
+            for extractedChapter in extractedData{
+                if let startingTime =  extractedChapter.key.durationAsSeconds{
+                    print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
+                    let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
+                    newchapters.append(newChapter)
+                }
+            }
+            print("returning \(newchapters.count.formatted()) Chapters")
+            episode.chapters.removeAll(where: { $0.type == .ai })
+            episode.chapters.append(contentsOf: newchapters)
+            modelContext.saveIfNeeded()
+        }
+        
+    }
     
     //MARK: Create Chapters from Episode Description
     func extractShownotesChapters(fileURL: URL) async  {
@@ -625,8 +713,32 @@ actor EpisodeActor {
         print("AI Chapters")
         let chapterGenerator = AIChapterGenerator()
         let aiChapters = await chapterGenerator.extractChaptersFromText(htmlEncodedText)
-
         return aiChapters
+    }
+    
+    func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
+        print("AI Transcript Chapters")
+        guard let prompt = transcriptLinesToJSONArray(transcript) else { return [:] }
+        let chapterGenerator = AIChapterGenerator()
+        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(prompt)
+        return aiChapters
+    }
+    
+    private func transcriptLinesToJSONArray(_ lines: [TranscriptLineAndTime]) -> String? {
+        let mapped = lines.map { line in
+            [
+                "starttime": line.startTime,
+                "endtime": line.endTime ?? NSNull(),
+                "text": line.text
+            ] as [String: Any]
+        }
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: mapped, options: [.prettyPrinted])
+            return String(data: jsonData, encoding: .utf8)
+        } catch {
+            print("Error serializing transcript lines to JSON: \(error)")
+            return nil
+        }
     }
     
     func updateChapterDurations(episodeURL: URL) async {
@@ -667,8 +779,8 @@ actor EpisodeActor {
             print("episode not found")
             return }
         
-        guard episode.transcriptLines == nil else {
-            print("transcriptData already exists")
+        guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
+            print("transcriptLines already exists")
 
             return }
 
@@ -679,7 +791,6 @@ actor EpisodeActor {
                         let transcription = await downloadAndParseStringFile(url: url)
                         
                         if let transcription = transcription {
-                            episode.transcriptData = transcription // this should be removed soon but the views need to be changed first to use transcriptLines
                             episode.transcriptLines = decodeTranscription(transcription)
                         }
                         

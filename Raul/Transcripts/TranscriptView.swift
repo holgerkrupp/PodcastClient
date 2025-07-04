@@ -71,7 +71,7 @@ struct TranscriptView: View {
     */
     private var currentLine: TranscriptLineAndTime? {
         transcriptLines.first { line in
-            currentTime >= line.startTime && currentTime <= line.endTime
+            currentTime >= line.startTime && currentTime <= line.endTime ?? TimeInterval.infinity
         }
     }
     

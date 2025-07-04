@@ -159,7 +159,7 @@ class Player: NSObject {
             if let chapters: [Chapter]? = try   episodeActor?.modelContainer.mainContext.fetch(descriptor) {
                 
                 
-                let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted]
+                let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted, .ai]
                 
                 let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
                 

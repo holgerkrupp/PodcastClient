@@ -18,12 +18,15 @@ enum ChapterType: String, Codable, Comparable{
     case extracted
     case unknown
     case mp3
+    case ai
     
     var desc:String{
         
         switch self {
         case .podlove:
             "Podlove"
+        case .ai:
+            "AI"
         case .mp3:
             "mp3"
         case .mp4:

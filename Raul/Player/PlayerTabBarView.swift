@@ -76,7 +76,7 @@ struct PlayerTabBarView: View {
                             }
                             
                         //    .padding()
-                            //   Spacer()
+                               Spacer()
                             Group{
                                 Button(action:player.skipback){
                                     Label {

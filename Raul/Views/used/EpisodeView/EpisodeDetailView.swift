@@ -96,7 +96,7 @@ struct EpisodeDetailView: View {
                 if episode.preferredChapters.count > 0 {
                     Text("Chapters").tag(Selection.chapters)
                 }
-                if episode.transcriptData != nil {
+                if episode.transcriptLines != nil {
                     Text("Transcript").tag(Selection.transcript)
                 }
             }
@@ -109,10 +109,10 @@ struct EpisodeDetailView: View {
                     ChapterListView(episodeURL: episode.url)
                 }
             case .transcript:
-                if let vttFileContent = episode.transcriptData
+                if let transcriptLines = episode.transcriptLines
                     {
             
-                    TranscriptListView(vttContent: vttFileContent)
+                    TranscriptListView(transcriptLines: transcriptLines)
                    
                 }else{
                     Text("no transcript available")

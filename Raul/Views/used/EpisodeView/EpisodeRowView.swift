@@ -44,15 +44,25 @@ struct EpisodeRowView: View {
                 
                     
                     VStack{
-                        Button {
-                            Task{
-                                await EpisodeActor(modelContainer: modelContext.container).transcribe(episode.url)
+                        HStack{
+                            Button {
+                                Task{
+                                    await EpisodeActor(modelContainer: modelContext.container).transcribe(episode.url)
+                                }
+                            } label: {
+                                Text("Transcribe")
                             }
-                        } label: {
-                            Text("Transcribe")
+                            .buttonStyle(.glass)
+                            Button {
+                                Task{
+                                    await EpisodeActor(modelContainer: modelContext.container).extractTranscriptChapters(fileURL: episode.url)
+                                }
+                            } label: {
+                                Text("AI Chapter (trans)")
+                            }
+                            .buttonStyle(.glass)
+                            
                         }
-                        .buttonStyle(.glass)
-
 
                         
                         VStack(alignment: .leading){
@@ -107,7 +117,7 @@ struct EpisodeRowView: View {
                                     if episode.chapters.count > 0 {
                                         Image(systemName: "list.bullet")
                                     }
-                                    if episode.externalFiles.contains(where: {$0.category == .transcript}) || episode.transcriptData != nil {
+                                    if episode.externalFiles.contains(where: {$0.category == .transcript}) || episode.transcriptLines?.count ?? 0 > 0 {
                                         
                                         Image(systemName: "quote.bubble")
                                         

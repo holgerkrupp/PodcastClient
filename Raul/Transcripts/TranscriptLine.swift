@@ -13,9 +13,9 @@ import SwiftData
  var speaker: String?
  var text: String
  var startTime: TimeInterval
- var endTime: TimeInterval
+ var endTime: TimeInterval?
  
- init( speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval) {
+ init( speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil) {
 
  self.speaker = speaker
  self.text = text

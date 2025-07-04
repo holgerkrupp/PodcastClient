@@ -8,7 +8,11 @@ import SwiftData
 import Foundation
 import BasicLogger
 
-
+struct EpisodeSummary: Sendable {
+    let id: UUID
+    let title: String?
+    let desc: String?
+}
 
 
 //@ModelActor
@@ -246,5 +250,12 @@ actor PlaylistModelActor : ModelActor {
         }
 
          modelContext.saveIfNeeded()
+    }
+    
+    func orderedEpisodeSummaries() async -> [EpisodeSummary] {
+        let episodes = orderedEpisodes()
+        return episodes.map { episode in
+            EpisodeSummary(id: episode.id, title: episode.title, desc: episode.desc)
+        }
     }
 }
