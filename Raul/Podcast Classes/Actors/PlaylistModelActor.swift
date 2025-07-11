@@ -8,11 +8,7 @@ import SwiftData
 import Foundation
 import BasicLogger
 
-struct EpisodeSummary: Sendable {
-    let id: UUID
-    let title: String?
-    let desc: String?
-}
+
 
 
 //@ModelActor
@@ -252,10 +248,22 @@ actor PlaylistModelActor : ModelActor {
          modelContext.saveIfNeeded()
     }
     
+
+    
     func orderedEpisodeSummaries() async -> [EpisodeSummary] {
         let episodes = orderedEpisodes()
         return episodes.map { episode in
-            EpisodeSummary(id: episode.id, title: episode.title, desc: episode.desc)
+            EpisodeSummary(id: episode.id, title: episode.title, desc: episode.desc, podcast: episode.podcast?.title, cover: episode.imageURL, file: episode.url, localfile: episode.localFile)
         }
     }
+}
+
+struct EpisodeSummary: Sendable {
+    let id: UUID
+    let title: String?
+    let desc: String?
+    let podcast: String?
+    let cover: URL?
+    let file: URL?
+    let localfile: URL?
 }

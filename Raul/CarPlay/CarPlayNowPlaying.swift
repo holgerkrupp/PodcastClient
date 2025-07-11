@@ -10,18 +10,20 @@ import CarPlay
 import SwiftData
 @MainActor
 class CarPlayNowPlaying {
-    var interfaceController: CPInterfaceController?
+    var interfaceController: CPInterfaceController
 
     
     let player = Player.shared
     
     var template: CPNowPlayingTemplate = CPNowPlayingTemplate.shared
     
-    init() {
-        setupTempate()
+    init(interfaceController: CPInterfaceController) {
+        self.interfaceController = interfaceController
+        setupTempate(interfaceController: interfaceController)
+        
     }
     
-    func setupTempate() {
+    func setupTempate(interfaceController: CPInterfaceController) {
         guard let container = ModelContainerManager().container else {
             print("Warning: Could not mark Downloaded because ModelContainer is nil.")
             return
@@ -31,10 +33,13 @@ class CarPlayNowPlaying {
         template.isAlbumArtistButtonEnabled = true
         
         let listButton = CPNowPlayingImageButton(
-            image: UIImage(named: "carplay.list.bullet")!
+            image: UIImage(systemName: "list.bullet") ?? UIImage()
         ) { [weak self] _ in
             let playListModelActor = PlaylistModelActor(modelContainer: container)
-            self?.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: playListModelActor).template, animated: false, completion: nil)
+            
+            let chapterList = CarPlayChapterMarkList(interfaceController: interfaceController).template
+            
+            self?.interfaceController.setRootTemplate(chapterList, animated: false, completion: nil)
         }
         
         template.updateNowPlayingButtons([listButton])

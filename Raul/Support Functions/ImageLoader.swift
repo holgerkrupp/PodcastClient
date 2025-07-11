@@ -8,6 +8,10 @@ struct ImageWithURL: View {
     init(_ url: URL, saveTo: URL? = nil) {
         _loader = StateObject(wrappedValue: ImageLoaderAndCache(imageURL: url, saveTo: saveTo))
     }
+    
+    func uiImage() -> UIImage{
+        return UIImage(data: loader.imageData) ??  UIImage()
+    }
 
     var body: some View {
         Group {

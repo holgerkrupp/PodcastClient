@@ -3,12 +3,16 @@ import SwiftData
 
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     var interfaceController: CPInterfaceController?
-    
+    var playNext: CarPlayPlayNext?    // <- Add this line
+
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
-        
         self.interfaceController = interfaceController
-        
-        self.interfaceController?.setRootTemplate(CarPlayPlayNext(playlistActor: PlaylistModelActor(modelContainer: ModelContainerManager().container!)).template, animated: false, completion: nil)
+
+        let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container!)
+        let playNext = CarPlayPlayNext(playlistActor: playlistActor, interfaceController: interfaceController)
+        self.playNext = playNext   // <- Retain the instance
+
+        self.interfaceController?.setRootTemplate(playNext.template, animated: false, completion: nil)
     }
     
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {

@@ -15,7 +15,13 @@ struct PlayerTabBarView: View {
     @State private var presentingModal : Bool = false
 
     @Bindable private var player = Player.shared
+    
+    @State private var fakeProgress : Double?
 
+    
+    init(fakeProgress : Double? = nil){
+        self.fakeProgress = fakeProgress
+    }
     
     var body: some View {
         GeometryReader { geo in
@@ -26,7 +32,7 @@ struct PlayerTabBarView: View {
                     HStack{
                         Rectangle()
                             .fill(Color.accentColor.opacity(0.2))
-                            .frame(width: geo.size.width * (player.progress))
+                            .frame(width: geo.size.width * (fakeProgress ?? player.progress))
                         Spacer()
                     }
                     if placement == .inline {
@@ -43,7 +49,6 @@ struct PlayerTabBarView: View {
                         }
                         .buttonStyle(.borderless)
                     }else{
-                        
                         HStack{
                         
                             if let episode = player.currentEpisode{
@@ -129,11 +134,11 @@ struct PlayerTabBarView: View {
                             .frame(height: geo.size.height * 0.6)
                             
                         }
-                      
-                        
-                        
+                       
                     }
+                   
                 }
+              
                 .onTapGesture {
                     presentingModal = true
                 }
@@ -141,19 +146,26 @@ struct PlayerTabBarView: View {
         .sheet(isPresented: $presentingModal, content: {
             
                 PlayerView(fullSize: true)
+                .presentationDragIndicator(.visible)
+                .padding(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+
             
         })
     }
 }
 #Preview {
         TabView {
-            Text("First")
+            List{
+                ForEach(1...100, id : \.self){_ in
+                    Text("Hello World")
+                }
+            }
             
     }.tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             
      
-                PlayerTabBarView()
+            PlayerTabBarView(fakeProgress: 0.5)
            
         }
        

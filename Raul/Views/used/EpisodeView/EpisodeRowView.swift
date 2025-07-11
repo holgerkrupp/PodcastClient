@@ -26,11 +26,11 @@ struct EpisodeRowView: View {
             VStack(alignment: .leading) {
                 ZStack{
                     
-                    EpisodeCoverView(episode: episode)
+                    PodcastCoverView(podcast: episode.podcast)
                         .scaledToFill()
                         .id(episode.id)
                         
-                        .frame(width: UIScreen.main.bounds.width * 0.9, height: 200)
+                        .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
                         .clipped()
                     
                     
@@ -43,29 +43,31 @@ struct EpisodeRowView: View {
                     .padding()
                 
                     
-                    VStack{
-                        HStack{
-                            Button {
-                                Task{
-                                    await EpisodeActor(modelContainer: modelContext.container).transcribe(episode.url)
-                                }
-                            } label: {
-                                Text("Transcribe")
-                            }
-                            .buttonStyle(.glass)
-                            Button {
-                                Task{
-                                    await EpisodeActor(modelContainer: modelContext.container).extractTranscriptChapters(fileURL: episode.url)
-                                }
-                            } label: {
-                                Text("AI Chapter (trans)")
-                            }
-                            .buttonStyle(.glass)
-                            
-                        }
-
                         
-                        VStack(alignment: .leading){
+                   VStack(alignment: .leading){
+                       /*
+                       HStack{
+                           Button {
+                               Task{
+                                   await EpisodeActor(modelContainer: modelContext.container).transcribe(episode.url)
+                               }
+                           } label: {
+                               Text("Transcribe")
+                           }
+                           .buttonStyle(.glass)
+                           Button {
+                               Task{
+                                   await EpisodeActor(modelContainer: modelContext.container).extractTranscriptChapters(fileURL: episode.url)
+                               }
+                           } label: {
+                               Text("AI Chapter (trans)")
+                           }
+                           .buttonStyle(.glass)
+                           
+                       }
+                       */
+                       
+                       
                             HStack{
                                 EpisodeCoverView(episode: episode)
                                     .frame(width: 50, height: 50)
@@ -87,10 +89,7 @@ struct EpisodeRowView: View {
                                         .minimumScaleFactor(0.5)
                                 }
                             }
-                            .onTapGesture(){
-                            //   presentingModal = true
-                            }
-                            Spacer()
+                           
                             HStack {
                                 if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
                                     Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
@@ -153,10 +152,10 @@ struct EpisodeRowView: View {
                                 .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
 
                            
-                        }
+                        }.padding()
                         
-                    }
-                    .padding()
+                    
+                    
                     // .background(.ultraThinMaterial)
                     .background(
                         Rectangle()

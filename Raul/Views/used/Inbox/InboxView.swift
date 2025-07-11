@@ -21,7 +21,30 @@ struct InboxView: View {
     
     var body: some View {
         if episodes.isEmpty{
-            InboxEmptyView()
+            NavigationStack{
+                InboxEmptyView()
+            
+           
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(action: {
+                            Task {
+                                await refreshEpisodes()
+                            }
+                        }) {
+                            if isLoading {
+                                ProgressView()
+                            }else{
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            
+                            
+                        }
+                        .disabled(isLoading)
+                    }
+                }
+
+                }
         }else{
             NavigationStack{
                 List {

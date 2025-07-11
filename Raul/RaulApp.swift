@@ -7,7 +7,7 @@ import BasicLogger
 @main
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager()
-    @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+    @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
 
     @Environment(\.scenePhase) private var phase
     
@@ -61,7 +61,7 @@ struct RaulApp: App {
         // replace "group.etc.etc" above with your App Group's identifier
         NSLog("sharedContainerURL = \(String(describing: sharedContainerURL))")
         if let sourceURL :URL = sharedContainerURL?.appendingPathComponent("SharedDatabase.sqlite") {
-            if let destinationURL :URL = FileManager().urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("copyOfStore.sqlite") {
+            if let destinationURL :URL = FileManager().urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("copyOfStore.sqlite") {
                 try? FileManager().removeItem(at: destinationURL)
                 try? FileManager().copyItem(at: sourceURL, to: destinationURL)
              //   try? FileManager().replaceItemAt(destinationURL, withItemAt: sourceURL)

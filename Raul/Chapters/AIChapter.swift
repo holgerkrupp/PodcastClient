@@ -17,7 +17,7 @@ actor AIChapterGenerator{
         // A guide isn't necessary for basic fields.
         var title: String
         
-        @Guide(description: "The timecode of the chapter")
+        @Guide(description: "The timecode of the chapter in the format hh:mm:ss")
         var timecode: String
     }
     
@@ -31,7 +31,7 @@ actor AIChapterGenerator{
                 
                 
                 let instructions = """
-                   If the following text might contain time codes (in the format 00:00 or 00:00:00) and titles, please extract them and format them as chapters. If the text does not conatin time codes, return an empty array.
+                   If the following text might contain time codes (in the format 00:00 or 00:00:00) and titles, please extract them and format them as chapters. If the text does not conatin time codes, return an empty dictionary.
                 """
                 let session = LanguageModelSession(instructions: instructions)
                 

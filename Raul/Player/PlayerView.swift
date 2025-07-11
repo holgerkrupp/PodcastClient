@@ -34,6 +34,8 @@ struct PlayerView: View {
                         
                         Group{
                             if fullSize {
+                                VStack{
+                            
                                 ScrollView([.vertical]){
                                     Spacer(minLength: 20)
                                     PlayerControllView()
@@ -41,7 +43,8 @@ struct PlayerView: View {
                                     EpisodeDetailView(episode: episode)
                                     
                                 }
-                                
+                            }
+                                .padding(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
                             }else{
                                 PlayerControllView()
                             }

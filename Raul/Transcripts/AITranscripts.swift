@@ -7,6 +7,7 @@
 
 import Foundation
 import Speech
+import BasicLogger
 
 @Observable
 class AITranscripts {
@@ -18,13 +19,17 @@ class AITranscripts {
     //MARK: OUTPUT
     var transcript: [SFTranscriptionSegment] = []
     
-    init(url: URL, language: String? = nil) {
+    init(url: URL, language: String? = nil) async {
         
         self.url = url
-        self.language = Locale(identifier: language ?? "en-US")
+        print("language set to: \(language ?? "nil") ")
+        if let language{
+            self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
+        }else{
+            self.language = Locale.current
+        }
         
-        print("language was \(language ?? "nil") ")
-        print("locate is \(self.language.identifier)")
+
     }
     
     func requestAuthorization() async {
@@ -55,6 +60,13 @@ class AITranscripts {
         }
     }
     
+    func logEpisodeTitle(for url: URL) async {
+        if let container = ModelContainerManager().container {
+            let title = await EpisodeActor(modelContainer: container).getEpisodeTitlefrom(url: url)
+            await BasicLogger.shared.log("Episode title: \(title ?? "unknown")")
+        }
+    }
+    
     /// Maps language codes to preferred region-specific locales if present in supportedLocales.
     static func regionPreferredLocale(for language: String, supportedLocales: [String]) -> String {
         let preferred: [String: String] = [
@@ -81,11 +93,11 @@ class AITranscripts {
     
     
     func transcribeTovTT() async throws -> String? {
-        self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
+     //   self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
         print("language finished")
         
         guard let segments = try await transcribe() else { return nil }
-        print("transcript finished")
+        print("transcript finished with \(segments.count) segments")
         
         
         let formatted = segments.map { segment in
@@ -106,6 +118,10 @@ class AITranscripts {
     
     
     func transcribe() async throws -> [(range: CMTimeRange, text: String)]?{
+       
+           
+        
+        await BasicLogger.shared.log("transcribing \(url.absoluteString)")
         print("transcribing")
         guard let audioFile = try? AVAudioFile(forReading: url) else {
             print("could not load audio file")
@@ -121,7 +137,7 @@ class AITranscripts {
             print(error)
             return nil
         }
-        print("language ensured")
+    
         
         async let transcriptionFuture = try await transcriber.results.reduce(into: [(range: CMTimeRange, text: String)]()) { arr, result in
             arr.append((range: result.range, text: result.text.description))
@@ -133,21 +149,24 @@ class AITranscripts {
         } else {
             await analyzer.cancelAndFinishNow()
         }
+        let transcription = try await transcriptionFuture
         
-        return try await transcriptionFuture
+        return transcription
     }
     
     
     public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
             guard await supported(locale: locale) else {
-                print("localeNotSupported")
+                await BasicLogger.shared.log("locate \(locale.identifier) not supported")
               //  throw TranscriptionError.localeNotSupported
                 return
             }
             
             if await installed(locale: locale) {
+                await BasicLogger.shared.log(" \(locale.identifier) available")
                 return
             } else {
+                await BasicLogger.shared.log("need to download \(locale.identifier) support")
                 try await downloadIfNeeded(for: transcriber)
             }
         }
@@ -180,17 +199,7 @@ class AITranscripts {
         let seconds = totalSeconds.truncatingRemainder(dividingBy: 60)
         return String(format: "%02d:%02d:%06.3f", hours, minutes, seconds)
     }
-    func bestMatchingLocale(for input: String?) -> Locale {
-      
-        guard let input, Locale.LanguageCode(input).isISOLanguage else {
-            print("bestMatchingLocale: Invalid input")
-            let standardIdentifier = Locale.current.identifier
-            let canonicalIdentifier = Locale.canonicalIdentifier(from: standardIdentifier)
-            return Locale(identifier: canonicalIdentifier)
-        }
-        print("bestMatchingLocale: \(Locale.LanguageCode(input).identifier)")
-        return Locale(languageCode: Locale.LanguageCode(input))
-    }
+
     
     func bestMatchingSupportedLocale(for input: String) async -> Locale? {
         
@@ -198,14 +207,16 @@ class AITranscripts {
         
         let preferred: [String: String] = [
             "de": "de-DE",
-            "en": "en-GB", // 'en-EN' does not exist; 'en-US' or 'en-GB' are standard
+            "en": "en-US", // 'en-EN' does not exist; 'en-US' or 'en-GB' are standard
             "fr": "fr-FR",
             "it": "it-IT",
             "es": "es-ES"
         ]
-     
-        print("Supported:", supported.map { $0.identifier(.bcp47) })
-        print("Mine:", language.identifier(.bcp47))
+#if targetEnvironment(simulator)
+            print("---- TRANSCRIPT NOT SUPPORT IN SIMULATOR ----")
+#endif
+    //    print("Supported:", supported.map { $0.identifier(.bcp47) })
+       
         
 
         

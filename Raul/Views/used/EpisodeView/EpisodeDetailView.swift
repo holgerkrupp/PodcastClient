@@ -109,7 +109,7 @@ struct EpisodeDetailView: View {
                     ChapterListView(episodeURL: episode.url)
                 }
             case .transcript:
-                if let transcriptLines = episode.transcriptLines
+                if let transcriptLines = episode.transcriptLines?.sorted(by: {$0.startTime < $1.startTime})
                     {
             
                     TranscriptListView(transcriptLines: transcriptLines)

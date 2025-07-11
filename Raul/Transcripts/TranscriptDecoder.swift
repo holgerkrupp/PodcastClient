@@ -207,6 +207,8 @@ class TranscriptDecoder{
                 )
             )
         }
+        
+        results.sort { $0.startTime < $1.startTime }
 
         return results
     }

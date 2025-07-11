@@ -66,7 +66,7 @@ class Player: NSObject {
     var currentEpisodeID: UUID?
     
     
-    let fileMonitor = DownloadedFilesManager(folder: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0])
+    let fileMonitor = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
 
     var downloadedFiles: Set<URL> {
         fileMonitor.downloadedFiles
@@ -288,7 +288,7 @@ class Player: NSObject {
                         localURL = localFile
                     } else {
                         // Treat as relative to Documents
-                        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                        let documents = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
                         localURL = documents.appendingPathComponent(localFile.path)
                     }
                     print("loading local file from URL \(localURL.absoluteString)")
@@ -782,7 +782,7 @@ class Player: NSObject {
         let chapterImageData = currentChapter?.imageData
         
         
-        Task.detached(priority: .userInitiated) {
+        Task { @MainActor in
             print("updating now playing cover")
 
             guard let imageURL = chapterImage ?? episode.imageURL ?? episode.podcast?.imageURL else {
@@ -801,7 +801,7 @@ class Player: NSObject {
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
-                
+              
             }else{
                 print("image is nil")
                 

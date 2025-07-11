@@ -96,7 +96,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     
     private func defaultDestination(for url: URL) -> URL {
         let filename = url.lastPathComponent
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let documents = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         return documents.appendingPathComponent(filename)
     }
     

@@ -322,7 +322,7 @@ actor EpisodeActor {
             print("no local file")
             return }
        
-        let transcriber = AITranscripts(url: localFile, language: episode.podcast?.language)
+        let transcriber = await AITranscripts(url: localFile, language: episode.podcast?.language)
         let transcription = try? await transcriber.transcribeTovTT()
         print("transcript to vtt finished")
         
@@ -601,6 +601,10 @@ actor EpisodeActor {
         return try await item.load(.value)
     }
 
+    func getEpisodeTitlefrom(url: URL) async -> String? {
+        guard let episode = await fetchEpisode(byURL: url) else { return nil }
+        return episode.title
+    }
     
     //MARK: CHAPTERS
    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
@@ -663,6 +667,7 @@ actor EpisodeActor {
         guard let text = episode.desc else { return  }
         print("extracting Chapters from Shownotes")
         var extractedData = extractTimeCodesAndTitles(from: text)
+        
         if  extractedData == nil || extractedData?.count == 0{
             extractedData = await generateAIChapters(from: text)
         }

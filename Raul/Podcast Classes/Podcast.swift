@@ -36,7 +36,7 @@ final class Podcast {
     
     var coverFileLocation: URL? {
         let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
-        let documentsDirectoryUrl = directoryURL ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        let documentsDirectoryUrl = directoryURL ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         guard let baseURL = documentsDirectoryUrl else { return nil }
         
         // Create a sanitized filename

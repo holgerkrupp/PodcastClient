@@ -114,7 +114,7 @@ class EpisodeDownloadStatus{
     //MARK: calculated properties that will be generated out of existing properties.
     var localFile: URL? {
         let fileName = url.lastPathComponent
-         let baseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
+         let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
         
         // Create a sanitized filename
         let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
@@ -158,7 +158,7 @@ class EpisodeDownloadStatus{
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
-          //  print(highestCategory?.rawValue ?? "no category")
+          
             return group.filter { $0.type == highestCategory }
         }
     }

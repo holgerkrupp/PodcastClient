@@ -9,19 +9,26 @@ import SwiftUI
 import Foundation
 
 struct SettingsView: View {
+    
+    
+
+    
     var body: some View {
         VStack{
             NotificationSettingsView()
                 
-            Button("Delete all files in Documents folder") {
-                deleteAllFilesInDocumentsFolder()
+            Button("Delete all files in Documents Directory") {
+                deleteAllFiles(in: .documentDirectory)
+            }
+            Button("Delete all files in Cahes Directory") {
+                deleteAllFiles(in: .cachesDirectory)
             }
         }
     }
     
     
 
-    func deleteAllFilesInDocumentsFolder(excluding excludedFileName: String = "log.txt") {
+    func deleteAllFiles(in folder: FileManager.SearchPathDirectory, excluding excludedFileName: String = "log.txt") {
         let fileManager = FileManager.default
 
         guard let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {

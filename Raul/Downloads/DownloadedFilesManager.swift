@@ -52,12 +52,13 @@ class DownloadedFilesManager {
                 var isDir: ObjCBool = false
                 return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
             })
+            /*
             print("FILES")
             for fileURL in updated {
                 print("file downloaded: \(fileURL)")
             }
             print("FILES END")
-            
+            */
             
             Task { @MainActor in
                 

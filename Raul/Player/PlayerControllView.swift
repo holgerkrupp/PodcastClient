@@ -94,7 +94,7 @@ struct PlayerControllView: View {
                             
                            // let decoder = TranscriptDecoder(transcriptFileContent)
                             
-                            TranscriptView(transcriptLines: transcriptLines, currentTime: $player.playPosition)
+                            TranscriptView(transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }), currentTime: $player.playPosition)
                             
                             
                                 .background(.ultraThinMaterial)
@@ -105,12 +105,13 @@ struct PlayerControllView: View {
                         if let transcriptLines = player.currentEpisode?.transcriptLines {
                             TranscriptListView(transcriptLines: transcriptLines)
                                 .presentationDetents([.large])
+                                .presentationDragIndicator(.visible)
                         }
                     }
                     
                 }
                 
-                if episode.transcriptLines != nil {
+                if let transcripts = episode.transcriptLines, transcripts.count > 0 {
                     HStack {
                         if showTranscripts{
                             Image("custom.quote.bubble.slash")

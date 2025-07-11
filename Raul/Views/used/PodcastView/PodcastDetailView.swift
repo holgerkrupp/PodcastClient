@@ -13,12 +13,19 @@ struct PodcastDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
+    
+    @State private var showSettings: Bool = false
 
   
     var body: some View {
 
 
         List{
+            
+            Button("Show Settings", action: {
+                showSettings.toggle()
+            })
+            
             Section{
                 VStack(alignment: .leading) {
                     
@@ -42,12 +49,10 @@ struct PodcastDetailView: View {
                     }
                     HStack {
                         
-                        
-                        if let imageURL = podcast.imageURL {
-                            ImageWithURL(imageURL)
-                                .frame(width: 50, height: 50)
-                                .cornerRadius(8)
-                        }
+                        PodcastCoverView(podcast: podcast)
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(8)
+                       
                         VStack{
                             if let author = podcast.author {
                                 Text(author)
@@ -142,6 +147,9 @@ struct PodcastDetailView: View {
             }
             
 
+        }
+        .sheet(isPresented: $showSettings) {
+            PodcastSettingsView(podcast: podcast)
         }
 
 

@@ -16,13 +16,14 @@ struct ContentView: View {
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @Query(filter: #Predicate<Episode> { $0.metaData?.isInbox == true } ) var inBox: [Episode]
     
+    
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
     
     enum Tab: Int {
         case player, podcasts, inbox, downloads, logger, settings, library, timeline
     }
     
-    @State private var selectedTab: Tab = .timeline
+    @State private var selectedTab: Tab = .inbox
    // @ObservedObject private var manager = DownloadManager.shared
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
@@ -34,6 +35,9 @@ struct ContentView: View {
                     Label("Up next", systemImage: "calendar.day.timeline.leading")
                 }
                 .tag(Tab.timeline)
+
+                
+            
           
                 InboxView()
             
@@ -68,12 +72,13 @@ struct ContentView: View {
                     Label("Log", systemImage: "text.bubble")
                 }
                 .tag(Tab.logger)
+
             
 #endif // DEBUG
 
 
         }
-
+        
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
             
@@ -90,7 +95,12 @@ struct ContentView: View {
                     setGoingToBackgroundDate()
                 case .active:
                     if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
-                        selectedTab = .timeline
+                        if inBox.count > 0 {
+                            selectedTab = .inbox
+                        }else{
+                            selectedTab = .timeline
+                        }
+                       
                     }
                     
                 default: break

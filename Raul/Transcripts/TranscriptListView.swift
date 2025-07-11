@@ -20,6 +20,11 @@ struct TranscriptListView: View {
     let transcriptLines: [TranscriptLineAndTime]
     @State private var searchText: String = ""
     
+    init(transcriptLines: [TranscriptLineAndTime], searchText: String = "") {
+        self.transcriptLines = transcriptLines.sorted { $0.startTime < $1.startTime }
+        self.searchText = searchText
+    }
+    
     // Predefined colors for speakers
     private let speakerColors: [Color] = [
         .blue,

@@ -12,7 +12,6 @@ struct EpisodeCoverView: View {
     @State var episode: Episode
     var body: some View {
         Group {
-            
             if let episodeCover = episode.imageURL {
                 ImageWithURL(episodeCover)
                     .scaledToFit()
@@ -22,7 +21,23 @@ struct EpisodeCoverView: View {
             }else {
                 Image(systemName: "photo")
             }
+        }
+    }
+}
+
+import SwiftUI
+
+struct PodcastCoverView: View {
     
+    @State var podcast: Podcast?
+    var body: some View {
+        Group {
+            if let podcastCover = podcast?.imageURL {
+                ImageWithURL(podcastCover)
+                    .scaledToFit()
+            }else {
+                Image(systemName: "photo")
+            }
         }
     }
 }

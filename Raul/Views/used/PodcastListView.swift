@@ -38,46 +38,69 @@ struct PodcastListView: View {
     var body: some View {
       
             List {
+      
+                    
+                    
+                    NavigationLink(destination: AllEpisodesListView()) {
+                        HStack {
+                            Text("All Episodes")
+                                .font(.headline)
+
+                        }
+                    }
+      
+                    
+                    // The clickable header using NavigationLink
+                    NavigationLink(destination: AllEpisodesListView().onlyPlayed()) {
+                        HStack {
+                            Text("Recently Played Episodes")
+                                .font(.headline)
+
+                        }
+                    }
                 
                 
                 if filteredPodcasts.isEmpty {
                     PodcastsEmptyView()
                 } else {
-                    
-                    ForEach(filteredPodcasts) { podcast in
-                      
-                        ZStack {
-                            PodcastRowView(podcast: podcast)
+                  
+                        ForEach(filteredPodcasts) { podcast in
                             
-                                .padding()
+                            ZStack {
+                                PodcastRowView(podcast: podcast)
+                                
+                                  
+                                
+                                NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                                    EmptyView()
+                                }.opacity(0)
+                                
+                            }
                             
-                            NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                                EmptyView()
-                            }.opacity(0)
+                            
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 1,
+                                                 trailing: 0))
+                            
                             
                         }
-                        
-                        
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 2,
-                                             trailing: 0))
-                     
-                        
-                    }
-                    .onDelete { indexSet in
-                        Task {
-                            for index in indexSet {
-                                await viewModel.deletePodcast(filteredPodcasts[index])
+                        .onDelete { indexSet in
+                            Task {
+                                for index in indexSet {
+                                    await viewModel.deletePodcast(filteredPodcasts[index])
+                                }
                             }
                         }
-                    }
-                    
+                
                     
                 }
             }
+        
+            .listStyle(.plain)
+            .navigationTitle("Library")
         
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -110,63 +133,7 @@ struct PodcastListView: View {
     }
 }
 
-struct PodcastRowView: View {
-    let podcast: Podcast
-    
-    var body: some View {
-        
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    if let imageURL = podcast.imageURL {
-                        ImageWithURL(imageURL)
-                            .frame(width: 50, height: 50)
-                            .cornerRadius(8)
-                    }
-                    
-                    VStack(alignment: .leading) {
-                        Text(podcast.title)
-                            .font(.headline)
-                        
-                        if let author = podcast.author {
-                            Text(author)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                
-                if let desc = podcast.desc {
-                    Text(desc)
-                        .font(.caption)
-                        .lineLimit(2)
-                        .foregroundColor(.secondary)
-                }
-                HStack{
-                    if let lastBuildDate = podcast.lastBuildDate {
-                        Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    if let lastRefreshDate = podcast.metaData?.feedUpdateCheckDate {
-                        Text("Last checked: \(lastRefreshDate.formatted(.relative(presentation: .named)))")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-        
-        .overlay {
-            if podcast.metaData?.isUpdating  == true{
-                ProgressView()
-                    .frame(width: 100, height: 50)
-                                          .scaledToFill()
-                                          .background(Material.thin)
-            }
-        }
-    }
-}
+
 
 #Preview {
     PodcastListView(modelContainer: try! ModelContainer(for: Podcast.self, Episode.self))

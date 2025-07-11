@@ -67,7 +67,9 @@ struct PlaylistView: View {
             }
             .listStyle(.plain)
             .navigationTitle("Up Next")
+
         }
+
         
     }
     

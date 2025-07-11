@@ -19,6 +19,8 @@ struct TranscriptView: View {
     let transcriptLines: [TranscriptLineAndTime]
     @Binding var currentTime: TimeInterval
     
+   
+    
     
     private let speakerColors: [Color] = [
         .blue,
