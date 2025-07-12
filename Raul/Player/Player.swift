@@ -89,6 +89,8 @@ class Player: NSObject {
     
     var settingLockScreenScrubbing: Bool = false
     
+    private var nowPlayingArtwork: MPMediaItemArtwork?
+
     
     override init()  {
       //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
@@ -182,7 +184,7 @@ class Player: NSObject {
         chapters = fetchChapters(for: currentEpisodeID)
     }
     
-    private func updateCurrentChapter() -> Bool?{
+    private func updateCurrentChapter() -> Bool{
         
         let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         
@@ -300,6 +302,10 @@ class Player: NSObject {
                 }
             }.value
            
+            let duration = item.duration.seconds
+            if currentEpisode?.duration != duration {
+                currentEpisode?.duration = duration
+            }
             
             await engine.replaceCurrentItem(with: item)
             BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
@@ -540,17 +546,7 @@ class Player: NSObject {
             updateChapterProgress()
             
             
-            
-            // Skip Chapter logic
-            if let currentChapter, currentChapter.shouldPlay == false && chapterChange == true {
-                if let end = currentChapter.end {
-                    jumpTo(time: end)
-                    Task.detached(priority: .background) {
-                        await self.chapterActor?.markChapterAsSkipped(currentChapter.id)
-                    }
-                }
-                
-            }
+            skipIfNeeded(chapterChange: chapterChange)
             
             
             progressUpdateCounter += 1
@@ -563,6 +559,26 @@ class Player: NSObject {
                 
             }
         }
+    
+    // Helper to cascade skip consecutive skipped chapters and handle last skipped chapter
+    private func skipIfNeeded(chapterChange: Bool) {
+        guard chapterChange else { return }
+        
+        while let currentChapter, currentChapter.shouldPlay == false {
+            let id = currentChapter.id
+            Task.detached(priority: .background) {
+                await self.chapterActor?.markChapterAsSkipped(id)
+            }
+            if let end = currentChapter.end, end < (currentEpisode?.duration ?? .greatestFiniteMagnitude) {
+                jumpTo(time: end)
+                _ = updateCurrentChapter()
+            } else {
+                // If this is the last chapter, finish playback
+                handlePlaybackFinished()
+                break
+            }
+        }
+    }
     
     
     private func savePlayPosition() {
@@ -632,53 +648,30 @@ class Player: NSObject {
     
 
     
-    func setupStaticNowPlayingInfo()   {
+    // Always call this function to update nowPlayingInfo—when artwork or position/rate changes.
+    private func updateNowPlayingInfo(artwork: MPMediaItemArtwork? = nil) {
         guard let episode = currentEpisode else { return }
-        
-        
-        
-        /*
-         if let chapterCover = currentChapter?.imageData{
-         if let image = UIImage(data: chapterCover){
-         mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-         }
-         }
-         else
-         
-         if let imageURL = currentEpisode?.coverFile{
-         Task{
-         if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
-         mediaArtwort = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-         }
-         }
-         
-         Task {
-         guard let imageURL = currentEpisode?.coverFile else { return }
-         let saveLocation = currentEpisode?.coverFileLocation
-         
-         if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL, saveTo: saveLocation) {
-         await
-         mediaArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-         
-         }
-         }
-         }
-         */
-        
-        let info: [String: Any] =  [
+        if let artwork = artwork {
+            nowPlayingArtwork = artwork
+        }
+        var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
-            MPMediaItemPropertyArtist: episode.author ?? episode.podcast?.title ?? episode.podcast?.author ?? "",
+            MPMediaItemPropertyArtist:  episode.podcast?.title ?? episode.podcast?.author ?? episode.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
-        
-        
-        DispatchQueue.main.async {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        
+        if let artwork = nowPlayingArtwork {
+            info[MPMediaItemPropertyArtwork] = artwork
         }
-      
+        DispatchQueue.main.async {
+  
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
+    }
+    
+    func setupStaticNowPlayingInfo() {
+        updateNowPlayingInfo()
     }
     
     func initRemoteCommandCenter(){
@@ -764,9 +757,7 @@ class Player: NSObject {
             guard let self else { return }
             
             Task { @MainActor in
-                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.playPosition
-                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = self.playbackRate
-               
+                self.updateNowPlayingInfo()
             }
         }
     }
@@ -794,19 +785,30 @@ class Player: NSObject {
                 let artwork = MPMediaItemArtwork(boundsSize: CGSize(width: 100, height: 100)) { _ in
                    image
                 }
+                self.updateNowPlayingInfo(artwork: artwork)
                 
-                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
-                
-            }else if let image =  await ImageLoaderAndCache.loadUIImage(from: imageURL) {
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                
-                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
-              
+            }else if let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+                let targetSize = CGSize(width: 600, height: 600)
+                if let resizedImage = downscale(image: originalImage, to: targetSize) {
+                    await MainActor.run {
+                        let artwork = MPMediaItemArtwork(boundsSize: resizedImage.size) { _ in resizedImage }
+                        
+                        self.updateNowPlayingInfo(artwork: nil)
+                    }
+                }
             }else{
                 print("image is nil")
                 
             }
         }}
+    
+    func downscale(image: UIImage, to size: CGSize) -> UIImage? {
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        image.draw(in: CGRect(origin: .zero, size: size))
+        let newImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return newImage
+    }
     
     
     private func stopNowPlayingInfoUpdater() {

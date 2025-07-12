@@ -38,7 +38,7 @@
 </string>
 				<key>leading</key>
 				<string>        let fileName = url.lastPathComponent
-         let baseURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
+         let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
 </string>
 				<key>trailing</key>
 				<string>        // Create a sanitized filename

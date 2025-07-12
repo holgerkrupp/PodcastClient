@@ -12,7 +12,7 @@ struct PlayerChapterView: View {
     @State var presentingModal = false
 
     var body: some View {
-        if player.currentEpisode?.preferredChapters.count ?? 0 > 0{
+        if player.currentEpisode?.preferredChapters.count ?? 0 > 1{
            
             HStack{
                 Spacer()
