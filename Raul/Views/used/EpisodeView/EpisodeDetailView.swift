@@ -17,7 +17,7 @@ struct EpisodeDetailView: View {
     @State private var listSelection:Selection = .chapters
     
     
-    @State var episode: Episode
+    @Bindable var episode: Episode
     @State private var image: Image?
     
     var episodeDescription: AttributedString {
@@ -93,7 +93,7 @@ struct EpisodeDetailView: View {
             }
             
             Picker("Show", selection: $listSelection) {
-                if episode.preferredChapters.count > 0 {
+                if episode.preferredChapters.count > 1 {
                     Text("Chapters").tag(Selection.chapters)
                 }
                 if episode.transcriptLines != nil {
@@ -105,11 +105,11 @@ struct EpisodeDetailView: View {
             
             switch listSelection {
             case .chapters:
-                if episode.preferredChapters.count > 0 {
+                if episode.preferredChapters.count > 1 {
                     ChapterListView(episodeURL: episode.url)
                 }
             case .transcript:
-                if let transcriptLines = episode.transcriptLines?.sorted(by: {$0.startTime < $1.startTime})
+                if let transcriptLines = episode.transcriptLines?.sorted(by: {$0.startTime < $1.startTime}), !transcriptLines.isEmpty
                     {
             
                     TranscriptListView(transcriptLines: transcriptLines)

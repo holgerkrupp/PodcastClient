@@ -15,16 +15,40 @@ struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
     
     @State private var showSettings: Bool = false
+    
+    @State private var searchText = ""
+    @State private var searchInTitle = true
+    @State private var searchInAuthor = false
+    @State private var searchInDescription = true
+    @State private var searchInTranscript = true
 
+    var filteredPodcasts: [Episode] {
+        if searchText.isEmpty { return podcast.episodes }
+
+        return podcast.episodes.filter { episode in
+            let lowercased = searchText.lowercased()
+
+            var matches = false
+            if searchInTitle {
+                matches = matches || episode.title.localizedStandardContains(lowercased)
+            }
+            if searchInDescription, let desc = episode.desc {
+                matches = matches || desc.localizedStandardContains(lowercased)
+            }
+            if searchInTranscript, let lines = episode.transcriptLines {
+                matches = matches || lines.contains(where: { $0.text.localizedStandardContains(lowercased)})
+            }
+
+            return matches
+        }
+    }
+    
   
     var body: some View {
 
 
         List{
-            
-            Button("Show Settings", action: {
-                showSettings.toggle()
-            })
+
             
             Section{
                 VStack(alignment: .leading) {
@@ -87,7 +111,7 @@ struct PodcastDetailView: View {
             }
             .listRowSeparator(.hidden)
             Section{
-                ForEach(podcast.episodes.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()}), id: \.id) { episode in
+                ForEach(filteredPodcasts.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()}), id: \.id) { episode in
                    
                     ZStack {
                         EpisodeRowView(episode: episode)
@@ -119,6 +143,7 @@ struct PodcastDetailView: View {
         }
         .listStyle(PlainListStyle())
         .padding(.top, 0)
+        .searchable(text: $searchText)
      //   .navigationTitle(podcast.title)
         .refreshable {
             Task{
@@ -126,6 +151,14 @@ struct PodcastDetailView: View {
             }
         }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: {
+                    showSettings.toggle()
+                }) {
+                    Image(systemName: "gear")
+                }
+               
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: {
                     Task {
@@ -162,7 +195,7 @@ struct PodcastDetailView: View {
         do {
             let actor = PodcastModelActor(modelContainer: modelContext.container)
           
-                try await actor.updatePodcast(podcast.persistentModelID)
+                try await actor.updatePodcast(podcast.persistentModelID, force: true)
             
         } catch {
             await MainActor.run {

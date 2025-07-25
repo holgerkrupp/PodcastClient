@@ -150,6 +150,7 @@ struct EpisodeRowView: View {
                                 .modelContainer(modelContext.container)
                                 .frame(height: 50)
                                 .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                                
 
                            
                         }.padding()
@@ -179,3 +180,32 @@ struct EpisodeRowView: View {
 
 }
 
+#Preview {
+    // Dummy Podcast
+    let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+    podcast.title = "Sample Podcast"
+    podcast.author = "Sample Author"
+    podcast.desc = "A fun show about testing previews."
+
+    // Dummy Episode
+    let episode = Episode(
+        id: UUID(),
+        title: "Sample Episode Title",
+        publishDate: Date(),
+        url: URL(string: "https://example.com/episode.mp3")!,
+        podcast: podcast,
+        duration: 3600,
+        author: "Episode Author"
+    )
+    episode.desc = "A very interesting episode about previews."
+    episode.metaData?.playPosition = 900 // Simulate 15 mins listened
+    episode.metaData?.maxPlayposition = 1200 // Simulate max progress
+    episode.metaData?.lastPlayed = Date()
+
+    // Inject a dummy DownloadedFilesManager for preview
+    let tempFolder = FileManager.default.temporaryDirectory
+    let previewFilesManager = DownloadedFilesManager(folder: tempFolder)
+
+    return EpisodeRowView(episode: episode)
+        .environment(previewFilesManager)
+}

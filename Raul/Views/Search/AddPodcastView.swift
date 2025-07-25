@@ -40,8 +40,6 @@ struct AddPodcastView: View {
             }
             
             
-            
-            
         }
        
     }

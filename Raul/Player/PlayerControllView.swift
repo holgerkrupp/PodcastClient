@@ -73,7 +73,10 @@ struct PlayerControllView: View {
                 ZStack() {
                     Color.clear
                     
-                    
+                    EpisodeCoverView(episode: episode, timecode: player.currentChapter?.start)
+                        .id(episode.id)
+                        .scaledToFit()
+                    /*
                     Group{
                         if let chapterImage = player.currentChapter?.imageData {
                             ImageWithData(chapterImage)
@@ -86,6 +89,7 @@ struct PlayerControllView: View {
                                 .scaledToFit()
                         }
                     }
+                     */
                     .frame(maxWidth: .infinity)
                     
                     .overlay(alignment: .bottom) {
@@ -146,11 +150,12 @@ struct PlayerControllView: View {
                     
                     
                     HStack {
-                        Text(player.playPosition.secondsToHoursMinutesSeconds ?? "00:00:00")
+                        Text(Duration.seconds(player.playPosition).formatted(.units(width: .narrow)))
                             .monospacedDigit()
                             .font(.caption)
                         Spacer()
-                        Text(player.remaining?.secondsToHoursMinutesSeconds ?? player.currentEpisode?.duration?.secondsToHoursMinutesSeconds ?? "")
+                        Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
+
                             .monospacedDigit()
                             .font(.caption)
                     }

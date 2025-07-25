@@ -17,11 +17,13 @@ actor PlaylistModelActor : ModelActor {
 
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
+    let modelContext: ModelContext
     
-    public init(modelContainer: ModelContainer, playlistID: UUID) {
-      let modelContext = ModelContext(modelContainer)
-      modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
-      self.modelContainer = modelContainer
+    public init(modelContainer: ModelContainer? = nil, playlistID: UUID) {
+        self.modelContainer = modelContainer ?? ModelContainerManager().container!
+        self.modelContext = ModelContext(self.modelContainer)
+        modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
+      
         
         
         let predicate = #Predicate<Playlist> { playlist in
@@ -40,18 +42,13 @@ actor PlaylistModelActor : ModelActor {
                 }
     }
     
-    
-    
-    
-    
-    
     /// - Parameters:
     ///   - modelContainer: The ModelContainer to use
     ///   - playlistTitle: An optional Title to use, if not set, the playNext List is used
-    public init(modelContainer: ModelContainer, playlistTitle: String = "de.holgerkrupp.podbay.queue") {
-      let modelContext = ModelContext(modelContainer)
-      modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
-      self.modelContainer = modelContainer
+    public init(modelContainer: ModelContainer? = nil, playlistTitle: String = "de.holgerkrupp.podbay.queue") {
+        self.modelContainer = modelContainer ?? ModelContainerManager().container!
+        self.modelContext = ModelContext(self.modelContainer)
+        modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
         
         
         let predicate = #Predicate<Playlist> { playlist in
@@ -105,10 +102,10 @@ actor PlaylistModelActor : ModelActor {
     
     
     func refresh()  throws {
-        let modelContext = ModelContext(modelContainer)
+        // Use self.modelContext instead of local variable
         
         // Re-fetch the playlist using the stored ID
-     //   let predicate = #Predicate<Playlist> { $0.id == self.playlist.id }
+        //   let predicate = #Predicate<Playlist> { $0.id == self.playlist.id }
         let playlistID = playlist.id
         let predicate = #Predicate<Playlist> { playlist in
             playlist.id == playlistID
@@ -145,9 +142,6 @@ actor PlaylistModelActor : ModelActor {
 
         let predicate = #Predicate<Episode> { $0.id == episodeID }
 
-        
-
-
             // Determine new order
             let newPosition: Int
             switch position {
@@ -161,11 +155,14 @@ actor PlaylistModelActor : ModelActor {
 
             // Update if already exists
             if let existingItem = playlist.items.first(where: { $0.episode?.id == episode.id }) {
+                print("Playlist Item is existing")
                 existingItem.order = newPosition
               
                 await BasicLogger.shared.log("🔄 Moved episode to position \(newPosition)")
             } else {
+                print("Playlist Item is not existing")
                 let newEntry = PlaylistEntry(episode: episode, order: newPosition)
+                modelContext.insert(newEntry)
                 newEntry.playlist = playlist
                 episode.playlist.append(newEntry)
                 await BasicLogger.shared.log("➕ Created and linked new PlaylistEntry at position \(newPosition) of \(playlist.title)")
@@ -176,7 +173,7 @@ actor PlaylistModelActor : ModelActor {
             episode.metaData?.isInbox = false
             episode.metaData?.isArchived = false
             episode.metaData?.status = .none
-        
+            
             modelContext.saveIfNeeded()
             await BasicLogger.shared.log("✅ Saved playlist changes")
 
@@ -206,12 +203,13 @@ actor PlaylistModelActor : ModelActor {
             }
 
             print("🗑 Removing entry for episode \(episodeID): \(entry.episode?.title ?? "Unknown")")
-
+            
             // Delete the entry from SwiftData
             modelContext.delete(entry)
 
             // Save changes
             modelContext.saveIfNeeded()
+            try? refresh()
             print("✅ PlaylistEntry deleted and context saved")
         } catch {
             print("❌ Failed to remove PlaylistEntry: \(error)")
@@ -253,7 +251,18 @@ actor PlaylistModelActor : ModelActor {
     func orderedEpisodeSummaries() async -> [EpisodeSummary] {
         let episodes = orderedEpisodes()
         return episodes.map { episode in
-            EpisodeSummary(id: episode.id, title: episode.title, desc: episode.desc, podcast: episode.podcast?.title, cover: episode.imageURL, file: episode.url, localfile: episode.localFile)
+            
+            
+           return  EpisodeSummary(
+                        id: episode.id,
+                        title: episode.title,
+                        desc: episode.subtitle ?? episode.desc ?? episode.podcast?.title,
+                        podcast: episode.podcast?.title,
+                        cover: episode.imageURL,
+                        podcastCover: episode.podcast?.imageURL,
+                        file: episode.url,
+                        localfile: episode.localFile
+           )
         }
     }
 }
@@ -264,6 +273,7 @@ struct EpisodeSummary: Sendable {
     let desc: String?
     let podcast: String?
     let cover: URL?
+    let podcastCover: URL?
     let file: URL?
     let localfile: URL?
 }

@@ -63,8 +63,8 @@ struct PlayerChapterView: View {
                                 .presentationDragIndicator(.visible)
                                 .presentationBackground(.thinMaterial)
                         })
-                        if let remaining = player.currentChapter?.remainingTime?.secondsToHoursMinutesSeconds{
-                            Text(remaining)
+                        if let remaining = player.currentChapter?.remainingTime {
+                            Text(Duration.seconds(remaining).formatted(.units(width: .narrow)))
                                 .font(.caption)
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)

@@ -23,7 +23,8 @@ struct PlayerView: View {
                         
                         EpisodeCoverView(episode: episode)
                            
-                            .aspectRatio(contentMode: .fill)
+                          
+                            .aspectRatio(1, contentMode: .fill)
                             .scaledToFill()
                         
                         //       .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)

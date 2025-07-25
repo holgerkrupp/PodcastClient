@@ -129,7 +129,7 @@ class AITranscripts {
         
        
         
-        let transcriber = SpeechTranscriber(locale: language, preset: .offlineTranscription)
+        let transcriber = SpeechTranscriber(locale: language, preset: .transcription)
         
         do {
             try await ensureModel(transcriber: transcriber, locale: language)
@@ -158,7 +158,6 @@ class AITranscripts {
     public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
             guard await supported(locale: locale) else {
                 await BasicLogger.shared.log("locate \(locale.identifier) not supported")
-              //  throw TranscriptionError.localeNotSupported
                 return
             }
             

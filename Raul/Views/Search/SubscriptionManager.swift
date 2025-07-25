@@ -39,10 +39,6 @@ actor SubscriptionManager:NSObject{
         }
     }
     
-
-
-
-    
     func read(file url: URL) -> [PodcastFeed]?{
         var newPodcasts: [PodcastFeed] = []
         
@@ -176,17 +172,13 @@ actor SubscriptionManager:NSObject{
                 try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
             }
             
-   
-        
-        
-        
-
-
     }
+    
     func getLastRefreshDate() -> Date? {
         let lastDate = Date.dateFromRFC1123(dateString: UserDefaults.standard.string(forKey: "LastBackgroundRefresh") ?? "")
         return lastDate
     }
+    
     func setLastRefreshDate(){
         UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
     }

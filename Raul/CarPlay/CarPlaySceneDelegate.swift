@@ -3,15 +3,21 @@ import SwiftData
 
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     var interfaceController: CPInterfaceController?
-    var playNext: CarPlayPlayNext?    // <- Add this line
+    var playNext: CarPlayPlayNext?
+    var nowPlaying: CarPlayNowPlaying?
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
 
-        let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container!)
-        let playNext = CarPlayPlayNext(playlistActor: playlistActor, interfaceController: interfaceController)
-        self.playNext = playNext   // <- Retain the instance
+       // let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container!)
+         let playlistActor = PlaylistModelActor()
 
+        let playNext = CarPlayPlayNext(playlistActor: playlistActor, interfaceController: interfaceController)
+        self.playNext = playNext
+        
+        let nowPlaying = CarPlayNowPlaying(interfaceController: interfaceController)
+        self.nowPlaying = nowPlaying
+        
         self.interfaceController?.setRootTemplate(playNext.template, animated: false, completion: nil)
     }
     
@@ -19,40 +25,3 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self.interfaceController = nil
     }
 }
-
-    
-    /*
-    let container: ModelContainer? = ModelContainerManager().container
-    var interfaceController: CPInterfaceController?
-    var window: CPWindow?
-    
-    func templateApplicationScene(_ scene: CPTemplateApplicationScene,
-                                  didConnect interfaceController: CPInterfaceController,
-                                  to window: CPWindow) {
-        print("CarPlay: Connecting interface...")
-        self.interfaceController = interfaceController
-        self.window = window
-        
-        guard let container = container else {
-            print("CarPlay: ModelContainer is unavailable. CarPlay integration cannot continue.")
-            return
-        }
-        
-        let playlistActor = PlaylistModelActor(modelContainer: container)
-        let carPlay = CarPlayPlayNext(playlistActor: playlistActor)
-        
-        interfaceController.setRootTemplate(carPlay.template, animated: true) { success, error in
-            if let error = error {
-                print("Failed to set root template: \(error.localizedDescription)")
-            } else if success {
-                print("Root template set successfully.")
-            }
-        }
-    }
-    
-    func templateApplicationSceneDidDisconnect(_ scene: CPTemplateApplicationScene) {
-        print("CarPlay: Disconnected.")
-        // Cleanup if needed
-    }
-}
-*/

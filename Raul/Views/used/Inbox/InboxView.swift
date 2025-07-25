@@ -5,6 +5,8 @@ struct InboxView: View {
  
     @Query private var episodes: [Episode]
     @State private var isLoading = false
+    @State private var isArchiving = false
+
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     
@@ -105,6 +107,22 @@ struct InboxView: View {
                     .disabled(isLoading)
                 }
                 
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: {
+                        Task {
+                            await archiveAll()
+                        }
+                    }) {
+                        if isArchiving {
+                            ProgressView()
+                        }else{
+                            Image(systemName: "archivebox")
+                        }
+                        
+                        
+                    }
+                    .disabled(isArchiving)
+                }
 
             }
             }
@@ -133,6 +151,14 @@ struct InboxView: View {
     private func unarchiveEpisode(_ episode: Episode) async {
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         await episodeActor.unarchiveEpisode(episodeID: episode.id)
+    }
+    
+    private func archiveAll() async {
+        isArchiving = true
+        let episodeIDs = episodes.map { $0.id }
+        let episodeActor = PodcastModelActor(modelContainer: modelContext.container)
+        try? await episodeActor.archiveEpisodes(episodeIDs: episodeIDs)
+        isArchiving = false
     }
     
     private func refreshEpisodes() async {

@@ -62,11 +62,15 @@ class Chapter: Identifiable, Equatable, Hashable{
     }
     
     @Transient var end:Double? {
-        let end = ((start ?? 0) + (duration ?? 0))
-        if end > 0{
-            return end
+        if endTime != nil{
+            return endTime
         }else{
-            return nil
+            let end = ((start ?? 0) + (duration ?? 0))
+            if end > 0{
+                return end
+            }else{
+                return nil
+            }
         }
     }
     

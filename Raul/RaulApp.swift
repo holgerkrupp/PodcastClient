@@ -37,7 +37,7 @@ struct RaulApp: App {
             switch phase {
             case .background:
                 bgNewAppRefresh()
-              //  debugActions()
+                cleanUp()
           
                 
             default: break
@@ -54,7 +54,15 @@ struct RaulApp: App {
         }
     }
 
-    
+    func cleanUp()  {
+        if let container = modelContainerManager.container {
+            Task{
+                let janitor = CleanUpActor(modelContainer: container)
+                await janitor.cleanUpOldDownloads()
+            }
+        }
+        
+    }
 
     func debugActions() {
         let sharedContainerURL :URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient")

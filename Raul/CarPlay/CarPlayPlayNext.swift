@@ -16,15 +16,32 @@ class CarPlayPlayNext {
         Task { await self.setupTemplate() }
     }
     
+    private func loadImage(episode: EpisodeSummary) async -> UIImage?{
+        
+        guard let imageURL =  episode.cover ?? episode.podcastCover else {
+            print("imageURL is nil")
+            return nil }
+        
+        return await ImageLoaderAndCache.loadUIImage(from: imageURL)
+    }
+    
+    
     private func setupTemplate() async {
         // Fetch ordered episodes from the playlist
         self.episodes = await playlistActor.orderedEpisodeSummaries()
-        let items = episodes.enumerated().map { (index, episode) in
-            var cover = UIImage()
-            if let url = episode.cover {
-                cover = ImageWithURL(url).uiImage()
+        // Load images asynchronously for all episodes
+        let images: [UIImage?]? = try? await withThrowingTaskGroup(of: (Int, UIImage?).self) { group in
+            for (index, episode) in episodes.enumerated() {
+                group.addTask { (index, await self.loadImage(episode: episode)) }
             }
-            
+            var results = Array<UIImage?>(repeating: nil, count: episodes.count)
+            for try await (index, image) in group {
+                results[index] = image
+            }
+            return results
+        }
+        let items = episodes.enumerated().map { (index, episode) in
+            let cover = images?[index] ?? UIImage()
             let item = CPListItem(
                 text: episode.title ?? "",
                 detailText: episode.desc ?? episode.title ?? "",
@@ -43,7 +60,6 @@ class CarPlayPlayNext {
                         print(error ?? "Error loading CarPlay Items")
                     })
                 }
-                
             }
             return item
         }
@@ -54,7 +70,7 @@ class CarPlayPlayNext {
         let backButton = CPBarButton(title: "Now Playing") { [weak self] _ in
             self?.returnToNowPlaying()
         }
-        template.trailingNavigationBarButtons = [backButton]
+        template.trailingNavigationBarButtons = []
     }
     
     private func returnToNowPlaying() {

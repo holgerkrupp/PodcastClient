@@ -74,11 +74,17 @@ struct PodcastRowView: View {
             
         
         .overlay {
-            if podcast.metaData?.isUpdating  == true{
-                ProgressView()
-                    .frame(width: 100, height: 50)
-                                          .scaledToFill()
-                                          .background(Material.thin)
+            if podcast.metaData?.isUpdating == true {
+                ZStack {
+                    Rectangle()
+                        .fill(Material.ultraThin)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .frame(width: 100, height: 50)
+                     //   .background(Material.ultraThin)
+                       // .cornerRadius(12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         
         }

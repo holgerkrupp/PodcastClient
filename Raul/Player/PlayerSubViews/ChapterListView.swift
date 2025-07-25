@@ -30,8 +30,8 @@ struct ChapterListView: View {
     private var preferredChapters: [Chapter] {
 
         let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-
-        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
+        
+        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + (Duration.seconds($0.start ?? 0).formatted(.units(width: .narrow))) })
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type

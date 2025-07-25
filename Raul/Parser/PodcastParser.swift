@@ -1,4 +1,3 @@
-
 import Foundation
 import SwiftData
 
@@ -25,6 +24,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     var currentElements:[String] = []
     
+    // RFC 5005 paged feed support URLs
+    var nextPageURL: String?
+    var prevPageURL: String?
+    var firstPageURL: String?
+    var lastPageURL: String?
     
     var currentElement:String {
         set {
@@ -54,7 +58,6 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     
-    
     func parserDidStartDocument(_ parser: XMLParser)  {
         print("parserDidStartDocument")
         episodeDict.removeAll()
@@ -66,7 +69,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
         currentElements.removeAll()
         currentValue = ""
         externalFilesArray.removeAll()
-     
+        
+        nextPageURL = nil
+        prevPageURL = nil
+        firstPageURL = nil
+        lastPageURL = nil
     }
     
     
@@ -74,6 +81,24 @@ class PodcastParser:NSObject, XMLParserDelegate{
        // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
         currentValue = ""
         currentElement = qName ?? elementName
+        
+        // RFC 5005 paged feed support handling of atom:link rels
+        if currentElement == "atom:link" {
+            if let rel = attributeDict["rel"], let href = attributeDict["href"] {
+                switch rel {
+                case "next":
+                    nextPageURL = href
+                case "prev":
+                    prevPageURL = href
+                case "first":
+                    firstPageURL = href
+                case "last":
+                    lastPageURL = href
+                default:
+                    break
+                }
+            }
+        }
         
         attributes.removeAll()
         
@@ -215,3 +240,42 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
 }
 
+
+// MARK: - RFC 5005 Paged Feed Aggregation
+
+extension PodcastParser {
+    /// Fetches and aggregates all podcast data and episodes from all paged feed documents, following RFC 5005.
+    /// - Parameter url: The URL of the first (or any) feed page.
+    /// - Returns: The merged podcast dictionary with all episodes.
+    static func fetchAllPages(from url: URL) async throws -> [String: Any] {
+        var nextURL: URL? = url
+        var allEpisodes: [Any] = []
+        var podcastHeader: [String: Any] = [:]
+        var seenFirstHeader = false
+        while let currentURL = nextURL {
+            let (data, _) = try await URLSession.shared.data(from: currentURL)
+            let parser = PodcastParser()
+            let xmlParser = XMLParser(data: data)
+            xmlParser.delegate = parser
+            xmlParser.parse()
+            // On the first page, get header
+            if !seenFirstHeader {
+                podcastHeader = parser.podcastDictArr
+                seenFirstHeader = true
+            }
+            // Always append episodes
+            if let episodes = parser.podcastDictArr["episodes"] as? [Any] {
+                allEpisodes.append(contentsOf: episodes)
+            }
+            // Advance to next page if present
+            if let nextString = parser.nextPageURL, let next = URL(string: nextString, relativeTo: currentURL) {
+                nextURL = next.absoluteURL
+            } else {
+                nextURL = nil
+            }
+        }
+        // Merge all episodes
+        podcastHeader["episodes"] = allEpisodes
+        return podcastHeader
+    }
+}

@@ -2,11 +2,13 @@ import SwiftUI
 import SwiftData
 
 struct PodcastSettingsView: View {
+    @Environment(\.modelContext) private var context
+
     @Bindable var podcast: Podcast
     @State private var useCustomSettings: Bool
     var podcastTitle: String { podcast.title }
     var settings: PodcastSettings? { podcast.settings }
-
+  
     init(podcast: Podcast) {
         self._podcast = .init(wrappedValue: podcast)
         self._useCustomSettings = State(initialValue: podcast.settings != nil)
@@ -20,8 +22,8 @@ struct PodcastSettingsView: View {
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
-            .onChange(of: useCustomSettings) { newValue in
-                if newValue {
+            .onChange(of: useCustomSettings) {
+                if useCustomSettings == true {
                     if podcast.settings == nil {
                         podcast.settings = PodcastSettings(podcast: podcast)
                     }

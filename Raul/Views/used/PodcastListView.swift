@@ -9,7 +9,8 @@ struct PodcastListView: View {
     @State private var searchText = ""
     @State private var searchInTitle = true
     @State private var searchInAuthor = false
-    @State private var searchInDescription = false
+    @State private var searchInDescription = true
+    @State private var searchInEpisodes = true
 
     init(modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
@@ -25,11 +26,17 @@ struct PodcastListView: View {
             if searchInTitle {
                 matches = matches || podcast.title.localizedStandardContains(lowercased)
             }
+            if searchInTitle, searchInEpisodes {
+                matches = matches || podcast.episodes.contains(where: { $0.title.localizedStandardContains(lowercased) })
+            }
             if searchInAuthor, let author = podcast.author {
                 matches = matches || author.localizedStandardContains(lowercased)
             }
             if searchInDescription, let desc = podcast.desc {
                 matches = matches || desc.localizedStandardContains(lowercased)
+            }
+            if searchInDescription, searchInEpisodes {
+                matches = matches || podcast.episodes.contains(where: { $0.desc?.localizedStandardContains(lowercased) ?? false })
             }
             return matches
         }
@@ -39,8 +46,6 @@ struct PodcastListView: View {
       
             List {
       
-                    
-                    
                     NavigationLink(destination: AllEpisodesListView()) {
                         HStack {
                             Text("All Episodes")
@@ -65,28 +70,29 @@ struct PodcastListView: View {
                 } else {
                   
                         ForEach(filteredPodcasts) { podcast in
+
                             
                             ZStack {
+                               
                                 PodcastRowView(podcast: podcast)
-                                
-                                  
-                                
+                                 
                                 NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                                     EmptyView()
                                 }.opacity(0)
                                 
                             }
-                            
-                            
+                           
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0,
                                                  leading: 0,
                                                  bottom: 1,
                                                  trailing: 0))
+                             
                             
                             
                         }
+                    
                         .onDelete { indexSet in
                             Task {
                                 for index in indexSet {
@@ -94,10 +100,14 @@ struct PodcastListView: View {
                                 }
                             }
                         }
+                   //     .searchable(text: $searchText)
                 
                     
                 }
             }
+
+       
+            
         
             .listStyle(.plain)
             .navigationTitle("Library")
@@ -138,5 +148,3 @@ struct PodcastListView: View {
 #Preview {
     PodcastListView(modelContainer: try! ModelContainer(for: Podcast.self, Episode.self))
 } 
-
-

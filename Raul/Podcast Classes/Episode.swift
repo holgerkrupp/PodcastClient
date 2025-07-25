@@ -154,7 +154,7 @@ class EpisodeDownloadStatus{
 
         let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted, .ai]
 
-        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
+        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
@@ -184,7 +184,7 @@ class EpisodeDownloadStatus{
     private func updateEpisodeData(from episodeData: [String: Any]) {
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
         self.author = episodeData["itunes:author"] as? String
-        self.guid = episodeData["guid"] as? String ?? (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String
+        self.guid = episodeData["guid"] as? String ?? episodeData["podcast:guid"] as? String ?? (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String
         self.desc = episodeData["description"] as? String
         self.subtitle = episodeData["itunes:subtitle"] as? String
         self.content = episodeData["content"] as? String

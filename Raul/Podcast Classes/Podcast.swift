@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class Podcast {
+final class Podcast: Identifiable {
     var id = UUID()
     var title: String = "Loading..."
     var desc: String?

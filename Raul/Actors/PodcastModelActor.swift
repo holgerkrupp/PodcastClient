@@ -64,11 +64,12 @@ actor PodcastModelActor {
         }
     }
 
-    func updatePodcast(_ podcastID: PersistentIdentifier) async throws {
+    func updatePodcast(_ podcastID: PersistentIdentifier, force: Bool? = false) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
         guard let feedURL = podcast.feed else { return }
-        
-       guard await checkIfFeedHasBeenUpdated(podcastID) != false else { return }
+        if force == false {
+            guard await checkIfFeedHasBeenUpdated(podcastID) != false else { return }
+        }
         if podcast.metaData == nil {
             podcast.metaData = PodcastMetaData()
         }
@@ -82,27 +83,29 @@ actor PodcastModelActor {
         let podcastParser = PodcastParser()
         parser.delegate = podcastParser
 
-        if parser.parse() {
-            podcast.title = podcastParser.podcastDictArr["title"] as? String ?? ""
-            podcast.author = podcastParser.podcastDictArr["itunes:author"] as? String
-            podcast.desc = podcastParser.podcastDictArr["description"] as? String
-            podcast.copyright = podcastParser.podcastDictArr["copyright"] as? String 
+        let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
+        
+    //    if parser.parse() {
+            podcast.title = fullPodcast["title"] as? String ?? ""
+            podcast.author = fullPodcast["itunes:author"] as? String
+            podcast.desc = fullPodcast["description"] as? String
+            podcast.copyright = fullPodcast["copyright"] as? String 
             
-            podcast.language = podcastParser.podcastDictArr["language"] as? String
+            podcast.language = fullPodcast["language"] as? String
             
-            podcast.link = URL(string: podcastParser.podcastDictArr["link"] as? String ?? "")
+            podcast.link = URL(string: fullPodcast["link"] as? String ?? "")
             
-            if let imageURL = podcastParser.podcastDictArr["coverImage"] as? String {
+            if let imageURL = fullPodcast["coverImage"] as? String {
                 podcast.imageURL = URL(string: imageURL)
              //   await downloadCoverArt(podcastID)
             }
             
             podcast.lastBuildDate = Date.dateFromRFC1123(
-                dateString: podcastParser.podcastDictArr["lastBuildDate"] as? String ?? ""
+                dateString: fullPodcast["lastBuildDate"] as? String ?? ""
             )
             
             // Update episodes
-            if let episodesData = podcastParser.podcastDictArr["episodes"] as? [[String: Any]] {
+            if let episodesData = fullPodcast["episodes"] as? [[String: Any]] {
                 
                 var newEpisodes: [Episode] = []
                
@@ -141,11 +144,12 @@ actor PodcastModelActor {
             
             
           
-
+/*
         } else {
             throw parser.parserError ?? NSError(domain: "ParserError", code: -1, userInfo: nil)
         }
-    }
+ */
+ }
     
     func downloadCoverArt(_ podcastID: PersistentIdentifier) async  {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
@@ -229,14 +233,19 @@ actor PodcastModelActor {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
       
         for episode in podcast.episodes {
-           
-            if episode.metaData == nil { episode.metaData = EpisodeMetaData() }
-            episode.metaData?.isArchived = true
-            episode.metaData?.isInbox = false
-            episode.metaData?.status = .archived
+            let episodeActor = EpisodeActor(modelContainer: modelContainer)
+            await episodeActor.archiveEpisode(episodeID: episode.id)
         }
         modelContext.saveIfNeeded()
 
+    }
+    
+    func archiveEpisodes(episodeIDs: [UUID]) async throws {
+        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+        for episodeID in episodeIDs {
+            await episodeActor.archiveEpisode(episodeID: episodeID)
+        }
+        modelContext.saveIfNeeded()
     }
     
     func archiveInboxEpisodes() async throws {

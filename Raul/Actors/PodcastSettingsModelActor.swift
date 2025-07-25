@@ -6,6 +6,7 @@
 
 import Foundation
 import SwiftData
+import BasicLogger
 
 @ModelActor
 actor PodcastSettingsModelActor {
@@ -40,12 +41,35 @@ actor PodcastSettingsModelActor {
         modelContext.model(for: settingsID) as? PodcastSettings
     }
     
+    func fetchPodcast(_ podcastID: UUID) -> Podcast? {
+        let predicate = #Predicate<Podcast> { podcast in
+            podcast.id == podcastID
+        }
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for episode ID: \(podcastID), Error: \(error)")
+            return nil
+        }
+    }
+    
+    
     /// Create and insert a new PodcastSettings (optionally for a podcast)
-    func createSettings(for podcast: Podcast? = nil) -> PodcastSettings {
-        let settings = podcast == nil ? PodcastSettings() : PodcastSettings(podcast: podcast!)
-        modelContext.insert(settings)
-        modelContext.saveIfNeeded()
-        return settings
+    func createSettings(for podcastID: UUID) async -> PodcastSettings? {
+
+        if let settings = await fetchPodcastSettings(for: podcastID){
+            modelContext.insert(settings)
+            modelContext.saveIfNeeded()
+            return settings
+        }else if let podcast = fetchPodcast(podcastID){
+            let settings = PodcastSettings(podcast: podcast)
+            modelContext.insert(settings)
+            modelContext.saveIfNeeded()
+            return settings
+        }else{
+            return nil
+        }
     }
     
     /// Example: Delete a PodcastSettings object
@@ -71,12 +95,18 @@ actor PodcastSettingsModelActor {
     }
     
     func getPlaybackSpeed(for podcastID: UUID?) async -> Float?{
+        
         guard let podcastID else {
+            await BasicLogger.shared.log("no PodcastID - standard PlaybackSpeed")
             return await standardSettings().playbackSpeed // is no podcastID is given, the global Settings are returned
         }
         guard let setting = await fetchPodcastSettings(for: podcastID) else {
+            await BasicLogger.shared.log("no Podcast Settings - standard PlaybackSpeed")
+
             return await standardSettings().playbackSpeed // is no podcastID is found, the global Settings are returned
         }
+        await BasicLogger.shared.log("custom PlaybackSpeed: \(setting.playbackSpeed?.formatted() ?? "-")")
+
         return setting.playbackSpeed
     }
     

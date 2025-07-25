@@ -70,25 +70,25 @@ struct TranscriptListView: View {
             // Transcript list
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(groupedLines(), id: \.id) { group in
+                    ForEach(groupedLines(), id: \.id) { line in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(formatTime(group.startTime))
+                                Text(formatTime(line.startTime))
                                     .font(.caption)
                                     .foregroundColor(.gray)
                                 
-                                if let speaker = group.speaker {
+                                if let speaker = line.speaker {
                                     Text("\(speaker):")
                                         .font(.headline)
                                         .foregroundColor(speakerColorMap[speaker] ?? .accent)
                                 }
                             }
-                            Text(group.text)
+                            Text(line.text)
                                 .font(.body)
                                 .foregroundColor(.primary)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    Player.shared.jumpTo(time: group.startTime)
+                                    Player.shared.jumpTo(time: line.startTime)
                                 }
                         }
                         .padding(.horizontal)
@@ -111,7 +111,7 @@ struct TranscriptListView: View {
                     grouped.append(line)
                 } else {
                     // Same speaker, append text to the last entry
-                    if var lastLine = grouped.last {
+                    if let lastLine = grouped.last {
                         lastLine.text += " " + line.text
                         grouped[grouped.count - 1] = lastLine
                     }

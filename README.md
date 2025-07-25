@@ -8,11 +8,11 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 
-- [ ] CarPlay
+- [ ] Update of Subscribe Views
+- [ ] Replace HTML-View
+
 - [ ] Integrate Settings (Per Podcasts and global)
-- [ ] AutoArchive - Delete files
-- [x] LibraryView - PodcastListView integration (Links to single Podcasts and Deletion not working)
-- [ ] Now Playing Center Artwork Updates
+- [x] AutoArchive - Delete files
 
 - [?] fix Skip Chapters (validate skip to and skip last)
 
@@ -24,7 +24,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ## Alpha min Requiremets
 
 ### Subscription Management
-- [x] add podcast via URL
+- [ ] add podcast via URL
 
 ### Refresh and Downloads
 - [x] refresh podcast content via Button

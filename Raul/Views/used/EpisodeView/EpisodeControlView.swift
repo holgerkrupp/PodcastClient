@@ -38,13 +38,13 @@ struct EpisodeControlView: View {
                 Label("Play", systemImage: "play.fill")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                  
-                    .foregroundColor(.accentColor)
+                    .padding(10)
+                    // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
            
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
             
            
           
@@ -62,12 +62,13 @@ struct EpisodeControlView: View {
                 Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-          
-                    .foregroundColor(.accentColor)
+                    .padding(10)
+
+                    // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
         
             
                 Spacer()
@@ -79,12 +80,13 @@ struct EpisodeControlView: View {
                 Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                 
-                    .foregroundColor(.accentColor)
+                    .padding(10)
+
+                    // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glass)
    
            
             }
@@ -98,12 +100,13 @@ struct EpisodeControlView: View {
                     Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
                         .symbolRenderingMode(.hierarchical)
                         .scaledToFit()
-                      
-                        .foregroundColor(.accentColor)
+                        .padding(10)
+
+                       // .foregroundColor(.accentColor)
                         .minimumScaleFactor(0.5)
-                        .labelStyle(.automatic)
+                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
 
             
             
@@ -114,3 +117,24 @@ struct EpisodeControlView: View {
     }
 }
 
+#Preview {
+    // Dummy Podcast
+    let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+    podcast.title = "Sample Podcast"
+    podcast.author = "Sample Author"
+
+    // Dummy Episode
+    let episode = Episode(
+        id: UUID(),
+        title: "Preview Test Episode",
+        publishDate: Date(),
+        url: URL(string: "https://example.com/ep.mp3")!,
+        podcast: podcast,
+        duration: 1234,
+        author: "Preview Author"
+    )
+    episode.desc = "A previewable episode for testing controls."
+    episode.metaData?.isArchived = false
+
+    return EpisodeControlView(episode: episode)
+}

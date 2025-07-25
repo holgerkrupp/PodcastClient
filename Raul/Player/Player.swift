@@ -10,7 +10,7 @@ import BasicLogger
 class Player: NSObject {
     
 
-    
+  
      let progressThreshold: Double = 0.95 // how much of an episode must be played before it is considered "played"
     
     
@@ -49,7 +49,7 @@ class Player: NSObject {
     
 
     
-
+    private let nowPlayingInfoActor = NowPlayingInfoActor()
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
 
@@ -73,8 +73,6 @@ class Player: NSObject {
     }
 
     var isCurrentEpisodeDownloaded: Bool {
-     //   guard let url = currentEpisode?.localFile else { return false }
-      //  return downloadedFiles.contains(url)
         return currentEpisode?.metaData?.calculatedIsAvailableLocally ?? false
     }
     
@@ -87,7 +85,7 @@ class Player: NSObject {
     var chapters: [Chapter]?
 
     
-    var settingLockScreenScrubbing: Bool = false
+
     
     private var nowPlayingArtwork: MPMediaItemArtwork?
 
@@ -163,7 +161,7 @@ class Player: NSObject {
                 
                 let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted, .ai]
                 
-                let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + ($0.start?.secondsToHoursMinutesSeconds ?? "") })
+                let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
                 
                 return categoryGroups.values.flatMap { group in
                 let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
@@ -303,7 +301,10 @@ class Player: NSObject {
             }.value
            
             let duration = item.duration.seconds
-            if currentEpisode?.duration != duration {
+            
+            print("comparing episode Duration \(currentEpisode?.duration ?? 0.0) with item duration \(duration) ")
+            
+            if duration.isNormal && currentEpisode?.duration != duration {
                 currentEpisode?.duration = duration
             }
             
@@ -462,7 +463,7 @@ class Player: NSObject {
         jumpPlaypostion(by: Double(30))
     }
     
-    private func jumpPlaypostion(by seconds:Double){
+     func jumpPlaypostion(by seconds:Double){
         let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
         
         let now = CMTimeMakeWithSeconds(playPosition,preferredTimescale: 1)
@@ -472,8 +473,9 @@ class Player: NSObject {
 
     func jumpTo(time: Double) {
         BasicLogger.shared.log("jumpTo \(time)")
+        let safeTime = max(0, time)
         Task {
-            let cmTime = CMTime(seconds: time, preferredTimescale: 600)
+            let cmTime = CMTime(seconds: safeTime, preferredTimescale: 600)
             await engine.seek(to: cmTime)
         }
         playPosition = time
@@ -539,31 +541,27 @@ class Player: NSObject {
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
         
-        
+            
        
             let chapterChange = updateCurrentChapter()
             
             updateChapterProgress()
-            
-            
             skipIfNeeded(chapterChange: chapterChange)
-            
-            
+            updateNowPlayingInfo()
+        
+        
             progressUpdateCounter += 1
-            
             if progressUpdateCounter >= progressSaveInterval {
                 updateChapters()
                 savePlayPosition()
-                
                 progressUpdateCounter = 0
-                
             }
         }
     
     // Helper to cascade skip consecutive skipped chapters and handle last skipped chapter
     private func skipIfNeeded(chapterChange: Bool) {
         guard chapterChange else { return }
-        
+        updateChapters()
         while let currentChapter, currentChapter.shouldPlay == false {
             let id = currentChapter.id
             Task.detached(priority: .background) {
@@ -598,6 +596,7 @@ class Player: NSObject {
     
     
     func skipTo(chapter: Chapter) async{
+        print("skip to chapter \(chapter.title)")
             if let newEpisode = chapter.episode, let start = chapter.start{
                 await playEpisode(newEpisode.id, playDirectly: true, startingAt: start)
             }
@@ -605,12 +604,25 @@ class Player: NSObject {
     }
     
     func skipToNextChapter() async{
+        
+        
+        
+        let nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 >= self.playPosition})
+        
+        
+        
         if let start = nextChapter?.start{
              jumpTo(time: start)
+        }else if let end = currentChapter?.end{
+                jumpTo(time: end)
         }
     }
     
     func skipToChapterStart() async{
+        
+        let referenceTime = self.playPosition - 3 // if the chapter just started, jump to the previous chapter
+        let lastChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= referenceTime})
+        
         guard let currentChapter else {
             return
         }
@@ -651,9 +663,7 @@ class Player: NSObject {
     // Always call this function to update nowPlayingInfo—when artwork or position/rate changes.
     private func updateNowPlayingInfo(artwork: MPMediaItemArtwork? = nil) {
         guard let episode = currentEpisode else { return }
-        if let artwork = artwork {
-            nowPlayingArtwork = artwork
-        }
+    
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist:  episode.podcast?.title ?? episode.podcast?.author ?? episode.author ?? "",
@@ -661,13 +671,10 @@ class Player: NSObject {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
-        if let artwork = nowPlayingArtwork {
+        if let artwork {
             info[MPMediaItemPropertyArtwork] = artwork
         }
-        DispatchQueue.main.async {
-  
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        }
+        nowPlayingInfoActor.updateInfo(info)
     }
     
     func setupStaticNowPlayingInfo() {
@@ -675,78 +682,7 @@ class Player: NSObject {
     }
     
     func initRemoteCommandCenter(){
-        let RCC = MPRemoteCommandCenter.shared()
-        
-        RCC.bookmarkCommand.isEnabled = true
-        RCC.bookmarkCommand.addTarget { _ in
-           // self.bookmark()
-            return .success
-        }
-        
-        RCC.playCommand.isEnabled = true
-        RCC.playCommand.addTarget { _ in
-            
-            if !self.isPlaying {
-                self.play()
-                return .success
-            }
-            return .commandFailed
-        }
-        
-        
-        
-        // Add handler for Pause Command
-        RCC.pauseCommand.isEnabled = true
-        RCC.pauseCommand.addTarget { _ in
-            
-            if self.isPlaying{
-                self.pause()
-                return .success
-            }
-            return .commandFailed
-        }
-        
-        RCC.skipForwardCommand.isEnabled = true
-        RCC.skipForwardCommand.addTarget { event in
-            
-            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.jumpPlaypostion(by: seconds)
-            return.success
-        }
-        RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: 30)]
-        
-        
-        // <<
-        RCC.skipBackwardCommand.isEnabled = true
-        RCC.skipBackwardCommand.addTarget { event in
-            
-            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.jumpPlaypostion(by: -seconds)
-            return.success
-        }
-        
-        RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
-        
-        
-        RCC.bookmarkCommand.isEnabled = true
-        RCC.bookmarkCommand.addTarget { event in
-         //   self.bookmark()
-            return.success
-        }
-        
-        RCC.changePlaybackPositionCommand.isEnabled = settingLockScreenScrubbing
-        RCC.changePlaybackPositionCommand.addTarget { event in
-            
-                if let event = event as? MPChangePlaybackPositionCommandEvent {
-                    let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000).seconds
-                    self.jumpTo(time: time)
-                    return .success
-                }
-            
-            return .commandFailed
-        }
-        
-        
+        _ = RemoteCommandCenter.shared
     }
     
     private var nowPlayingInfoTimer: Timer?
@@ -773,7 +709,7 @@ class Player: NSObject {
         let chapterImageData = currentChapter?.imageData
         
         
-        Task { @MainActor in
+       
             print("updating now playing cover")
 
             guard let imageURL = chapterImage ?? episode.imageURL ?? episode.podcast?.imageURL else {
@@ -782,25 +718,23 @@ class Player: NSObject {
             
             if let chapterImageData = chapterImageData, let image = UIImage(data: chapterImageData) {
                 print("using chapter image data")
-                let artwork = MPMediaItemArtwork(boundsSize: CGSize(width: 100, height: 100)) { _ in
-                   image
-                }
-                self.updateNowPlayingInfo(artwork: artwork)
+
+                nowPlayingInfoActor.setArtwork(image)
                 
             }else if let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+                print("using URL image Data \(imageURL.absoluteString)")
                 let targetSize = CGSize(width: 600, height: 600)
                 if let resizedImage = downscale(image: originalImage, to: targetSize) {
-                    await MainActor.run {
-                        let artwork = MPMediaItemArtwork(boundsSize: resizedImage.size) { _ in resizedImage }
-                        
-                        self.updateNowPlayingInfo(artwork: nil)
-                    }
+                
+                    nowPlayingInfoActor.setArtwork(resizedImage)
+                   
+                    
                 }
             }else{
                 print("image is nil")
                 
             }
-        }}
+        }
     
     func downscale(image: UIImage, to size: CGSize) -> UIImage? {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)

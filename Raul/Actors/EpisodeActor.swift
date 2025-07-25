@@ -9,6 +9,7 @@ import Foundation
 import mp3ChapterReader
 import AVFoundation
 import BasicLogger
+import SwiftUI
 
 
 @ModelActor
@@ -28,7 +29,7 @@ actor EpisodeActor {
         }
     }
     
-  
+
     
     
     func fetchEpisode(byURL fileURL: URL) async -> Episode? {
@@ -49,10 +50,13 @@ actor EpisodeActor {
         guard let episodeID = await getLastPlayedEpisodeID() else { return nil }
         return await fetchEpisode(byID: episodeID)
     }
+
     
     func updateDuration(fileURL: URL) async{
+      
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        if episode.duration == nil{
+        print("updateDuration of \(episode.title)")
+       
             if let localFile = episode.localFile, ((episode.metaData?.calculatedIsAvailableLocally) == true){
                 do{
                     let duration = try await AVURLAsset(url: localFile).load(.duration)
@@ -60,6 +64,7 @@ actor EpisodeActor {
                     if !seconds.isNaN{
                         episode.duration = seconds
                     }
+                    print("new duration: \(seconds)")
                     modelContext.saveIfNeeded()
                 }catch{
                     print(error)
@@ -67,7 +72,7 @@ actor EpisodeActor {
             }else{
                 print("no local file")
             }
-        }
+        
     }
     
     func updateChapterDurations(fileURL: URL) async{
@@ -202,8 +207,6 @@ actor EpisodeActor {
         episode.metaData?.isInbox = false
         episode.metaData?.status = .archived
 
-        
-    
         await deleteFile(episodeID: episodeID)
          modelContext.saveIfNeeded()
     }
@@ -350,7 +353,11 @@ actor EpisodeActor {
             let start = line.startTime
             let end = line.endTime
             let speaker = line.speaker
-        
+        /*
+         
+         The following code should split long lines into shorter lines. but somehow it has a bug. needs more work.
+         
+         
             if text.count <= maxLineLength {
                 transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
             } else {
@@ -414,6 +421,8 @@ actor EpisodeActor {
                     chunkStart = chunkEnd
                 }
             }
+         */
+            transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
         }
         return transcript
     }
@@ -444,11 +453,6 @@ actor EpisodeActor {
             }
         }
         
-        
-        if episode.chapters.isEmpty {
-            await extractShownotesChapters(fileURL: episode.url)
-        }
-        
 
         if episode.chapters.isEmpty {
             guard let url = episode.localFile else {
@@ -466,6 +470,9 @@ actor EpisodeActor {
             } catch {
                 print("Error determining audio format: \(error)")
             }
+        }
+        if episode.chapters.isEmpty {
+            await extractShownotesChapters(fileURL: episode.url)
         }
 
        await updateChapterDurations(episodeURL: episode.url)

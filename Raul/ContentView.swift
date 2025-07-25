@@ -16,74 +16,58 @@ struct ContentView: View {
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @Query(filter: #Predicate<Episode> { $0.metaData?.isInbox == true } ) var inBox: [Episode]
     
-    
+    @State private var search:String = ""
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
-    
+    /*
     enum Tab: Int {
         case player, podcasts, inbox, downloads, logger, settings, library, timeline
     }
     
-    @State private var selectedTab: Tab = .inbox
+    @State private var selectedTab: Tab = .timeline
+     */
    // @ObservedObject private var manager = DownloadManager.shared
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            PlaylistView()
-                .tabItem {
-                    Label("Up next", systemImage: "calendar.day.timeline.leading")
-                }
-                .tag(Tab.timeline)
-
-                
-            
-          
-                InboxView()
-            
-                .tabItem {
-                    Label("Inbox", systemImage: "tray.fill")
-                }
-                .tag(Tab.inbox)
-                .badge(inBox.count)
-            
-           LibraryView()
-            
-                .tabItem {
-                    Label("Library", systemImage: "books.vertical")
-                }
-            .tag(Tab.library)
-
-            
-
-            
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
-                .tag(Tab.settings)
-            
-            
-#if DEBUG
-            NavigationStack {
-                LogView()
-            }
-                .tabItem {
-                    Label("Log", systemImage: "text.bubble")
-                }
-                .tag(Tab.logger)
-
-            
-#endif // DEBUG
-
-
-        }
         
+        TabView() {
+            Tab {
+                PlaylistView()
+            } label: {
+                Label("Up next", systemImage: "calendar.day.timeline.leading")
+            }
+            
+            Tab {
+                InboxView()
+            } label: {
+                Label("Inbox", systemImage: "tray.fill")
+            }
+            .badge(inBox.count)
+
+            Tab {
+                LibraryView()
+            } label: {
+                Label("Library", systemImage: "books.vertical")
+            }
+            
+            
+            Tab(role: .search) {
+                AddPodcastView()
+            } label: {
+                Label("Search", systemImage: "magnifyingglass")
+            }
+
+            
+        }
+        .searchable(text: $search)
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
-            
-         
+           
                 PlayerTabBarView()
+                .opacity(Player.shared.currentEpisode == nil ? 0 : 1)
+                .allowsHitTesting(Player.shared.currentEpisode != nil)
+            
  
         }
 
@@ -93,13 +77,11 @@ struct ContentView: View {
                 switch phase {
                 case .background:
                     setGoingToBackgroundDate()
+                   
                 case .active:
                     if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
-                        if inBox.count > 0 {
-                            selectedTab = .inbox
-                        }else{
-                            selectedTab = .timeline
-                        }
+                       
+                        //    selectedTab = .timeline
                        
                     }
                     

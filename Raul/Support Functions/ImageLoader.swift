@@ -42,6 +42,7 @@ class ImageLoaderAndCache: ObservableObject {
         cache.diskCapacity = 1024 * 1024 * 200
         
         if let cached = cache.cachedResponse(for: request)?.data {
+          
             return cached
         }
 
@@ -53,7 +54,7 @@ class ImageLoaderAndCache: ObservableObject {
             if let saveTo {
                 try? data.write(to: saveTo)
             }
-
+           
             return data
         } catch {
             print("Image loading failed: \(error)")
