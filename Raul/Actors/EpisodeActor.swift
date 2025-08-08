@@ -198,6 +198,8 @@ actor EpisodeActor {
     
     func archiveEpisode(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        
+        print("archiveEpisode from Actor - episode: \(episode.title)")
         await removeFromPlaylist(episodeID)
 
         if episode.metaData == nil {
@@ -247,9 +249,30 @@ actor EpisodeActor {
 
         }
         
-   
-        
     }
+    
+    func processAfterCreation(episodeID: UUID) async {
+        
+        await BasicLogger.shared.log("processAfterCreation  - \(episodeID) - start")
+        
+        guard let episode = await fetchEpisode(byID: episodeID) else {
+            await BasicLogger.shared.log("processAfterCreation ❌ Could not find episode \(episodeID)")
+            return }
+        await BasicLogger.shared.log("processAfterCreation  - \(episode.podcast?.title ?? "Unknown Podcast") - \(episode.title)")
+        
+        await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
+
+        
+        
+        let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
+        await BasicLogger.shared.log("processAfterCreation - \(episode.title) playnext \(playnext)")
+        if playnext != .none {
+            await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
+        }
+
+    }
+    
+    
     
     func downloadCoverArt(for episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else {
@@ -332,6 +355,7 @@ actor EpisodeActor {
         
         if let transcription = transcription {
             episode.transcriptLines = decodeTranscription(transcription)
+            episode.refresh.toggle()
 
         }
         

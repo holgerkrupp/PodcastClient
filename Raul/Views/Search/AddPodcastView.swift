@@ -9,35 +9,38 @@ import SwiftUI
 
 struct AddPodcastView: View {
     @Environment(\.modelContext) private var context
-
+    @Binding var search: String
     enum Selection {
         case search, hot, importexport
     }
     @State private var listSelection:Selection = .search
     var body: some View {
         NavigationStack{
-            VStack{
-                Picker(selection: $listSelection) {
-                    Text("Search").tag(Selection.search)
-                    Text("Hot").tag(Selection.hot)
-                    Text("Import").tag(Selection.importexport)
-                } label: {
-                    Text("Show")
+            List{
+            
+                NavigationLink(destination: ImportExportView()
+                    .modelContext(context)) {
+                    HStack {
+                        Text("Import / Export")
+                            .font(.headline)
+
+                    }
                 }
-                .pickerStyle(.segmented)
-                Spacer()
-                switch listSelection {
-                case .search:
-                    PodcastSearchView()
-                        
-                case .hot:
-                    HotPodcastView()
-                    
-                case .importexport:
-                    ImportExportView()
-                        .modelContext(context)
+                NavigationLink(destination:  PodcastCategoryView()
+                    .modelContext(context)) {
+                    HStack {
+                        Text("Browse by Category")
+                            .font(.headline)
+
+                    }
                 }
+               
+                
+             
+                    PodcastSearchView(search: $search)
+
             }
+            .listStyle(.plain)
             
             
         }
@@ -46,5 +49,6 @@ struct AddPodcastView: View {
 }
 
 #Preview {
-    AddPodcastView()
+    @Previewable @State var search: String = ""
+    AddPodcastView(search: $search)
 }

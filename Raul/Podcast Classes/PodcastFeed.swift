@@ -16,6 +16,10 @@ import Foundation
         hasher.combine(url)
         
     }
+     
+     init (url: URL) {
+         self.url = url
+     }
     
     var title: String?
     var subtitle: String?

@@ -7,11 +7,12 @@ struct PodcastSettingsView: View {
     @Bindable var podcast: Podcast
     @State private var useCustomSettings: Bool
     var podcastTitle: String { podcast.title }
-    var settings: PodcastSettings? { podcast.settings }
+    var settings: PodcastSettings? {podcast.settings }
+    @Query private var allSettings: [PodcastSettings]
   
     init(podcast: Podcast) {
         self._podcast = .init(wrappedValue: podcast)
-        self._useCustomSettings = State(initialValue: podcast.settings != nil)
+        self._useCustomSettings = State(initialValue: podcast.settings != nil && podcast.settings?.isEnabled == true)
     }
 
     var body: some View {
@@ -23,12 +24,18 @@ struct PodcastSettingsView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .onChange(of: useCustomSettings) {
+                printAllSettings()
                 if useCustomSettings == true {
-                    if podcast.settings == nil {
-                        podcast.settings = PodcastSettings(podcast: podcast)
+                    if podcast.settings == nil || podcast.settings?.isEnabled == false {
+                        if let existing = allSettings.first(where: { $0.podcast?.id == podcast.id }) {
+                            podcast.settings = existing
+                        } else {
+                            podcast.settings = PodcastSettings(podcast: podcast)
+                        }
                     }
+                    podcast.settings?.isEnabled = true
                 } else {
-                    podcast.settings = nil
+                    podcast.settings?.isEnabled = false
                 }
             }
 
@@ -48,6 +55,13 @@ struct PodcastSettingsView: View {
         }
     }
 
+    func printAllSettings() {
+        for setting in allSettings {
+            print("podcast: \(setting.podcast?.title ?? "nil") - \(setting.podcast?.id.uuidString ?? "nil") - SettingID: \(setting.id.uuidString)")
+        }
+    }
+    
+    
     // All editable sections for PodcastSettings
     @ViewBuilder
     func settingsSections(settings: PodcastSettings) -> some View {
@@ -126,6 +140,8 @@ struct PodcastSettingsView: View {
             set: { settings[keyPath: keyPath] = $0 }
         )
     }
+    
+
 }
 
 // MARK: - Preview and Preview Model

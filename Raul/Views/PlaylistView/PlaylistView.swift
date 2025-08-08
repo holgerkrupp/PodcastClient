@@ -21,7 +21,7 @@ struct PlaylistView: View {
                 if playListEntries.isEmpty {
                     PlaylistEmptyView()
                 }else{
-                    
+             
                     ForEach(playListEntries, id: \.id) { entry in
                         if let episode = entry.episode {
                             ZStack {
@@ -48,7 +48,7 @@ struct PlaylistView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(.init(top: 0,
                                                      leading: 0,
-                                                     bottom: 2,
+                                                     bottom: 0,
                                                      trailing: 0))
                                 .ignoresSafeArea()
                         }
@@ -74,6 +74,7 @@ struct PlaylistView: View {
     }
     
     private func archiveEpisode(_ episode: Episode) async {
+        print("archiveEpisode from PlaylistView - \(episode.title)")
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         await episodeActor.archiveEpisode(episodeID: episode.id)
     }

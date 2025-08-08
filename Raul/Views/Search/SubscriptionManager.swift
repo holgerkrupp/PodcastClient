@@ -165,12 +165,16 @@ actor SubscriptionManager:NSObject{
 
             setLastRefreshDate()
             fetchData()
+        let all = podcasts.count
+        var updated = 0
             for podcast in podcasts.sorted(by: { lhs, rhs in
                 lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
             }).filter({$0.metaData?.feedUpdated != false}){
              
-                try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
+                let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
+                if new == true { updated += 1}
             }
+        await BasicLogger.shared.log("bgupdateFeeds \(updated)/\(all)")
             
     }
     

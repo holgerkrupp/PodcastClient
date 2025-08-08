@@ -65,8 +65,13 @@ struct PodcastListView: View {
                     }
                 
                 
-                if filteredPodcasts.isEmpty {
-                    PodcastsEmptyView()
+                if filteredPodcasts.isEmpty{
+                    if searchText.isEmpty {
+                        PodcastsEmptyView()
+                    }else{
+                        Text("No results found for \"\(searchText)\"")
+                    }
+                    
                 } else {
                   
                         ForEach(filteredPodcasts) { podcast in
@@ -75,18 +80,19 @@ struct PodcastListView: View {
                             ZStack {
                                
                                 PodcastRowView(podcast: podcast)
-                                 
-                                NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                                
+                               NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                                     EmptyView()
                                 }.opacity(0)
-                                
+                            
                             }
+                        
                            
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0,
                                                  leading: 0,
-                                                 bottom: 1,
+                                                 bottom: 2,
                                                  trailing: 0))
                              
                             
@@ -100,7 +106,7 @@ struct PodcastListView: View {
                                 }
                             }
                         }
-                   //     .searchable(text: $searchText)
+                      //  .searchable(text: $searchText)
                 
                     
                 }
@@ -113,11 +119,9 @@ struct PodcastListView: View {
             .navigationTitle("Library")
         
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: AddPodcastView().modelContext(modelContext)) {
-                        Image(systemName: "plus")
-                    }
-                }
+              //  DefaultToolbarItem(kind: .search, placement: .automatic)
+                
+ 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         Task { await viewModel.refreshPodcasts() }

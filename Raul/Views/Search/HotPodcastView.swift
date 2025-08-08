@@ -14,36 +14,43 @@ struct HotPodcastView: View {
 
 
     var body: some View {
+        if !viewModel.languages.isEmpty {
+            Picker("Language", selection: $viewModel.selectedLanguage) {
+                ForEach(viewModel.languages, id: \.self) { name in
+                    
+                
+                        Text(name.languageName()).tag(name)
+                }
+            }
+            .pickerStyle(.menu)
+            .padding()
+        } else {
+            ProgressView("Loading languages...") // Show loading indicator if needed
+        }
+        
         VStack {
             
-            if !viewModel.languages.isEmpty {
-                Picker("Language", selection: $viewModel.selectedLanguage) {
-                    ForEach(viewModel.languages, id: \.self) { name in
-                        
-                    
-                            Text(name.languageName()).tag(name)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .padding()
-            } else {
-                ProgressView("Loading languages...") // Show loading indicator if needed
-            }
+
             
 
             if viewModel.isLoading {
                 ProgressView()
             } else {
 
-                Text("Hot Podcasts")
-                    .font(.headline)
-                    .padding(.top)
-                
-                List(viewModel.hotPodcasts , id: \.id) { podcast in
+
+                ForEach(viewModel.hotPodcasts , id: \.id) { podcast in
                     SubscribeToPodcastView(fyydPodcastFeed: podcast)
                         .modelContext(context)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 1,
+                                             trailing: 0))
                     
                 }
+                .listStyle(.plain)
+                .navigationTitle("Hot")
             }
         }
      

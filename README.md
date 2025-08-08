@@ -8,7 +8,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 
-- [ ] Update of Subscribe Views
+- [x] Update of Subscribe Views
 - [ ] Replace HTML-View
 
 - [ ] Integrate Settings (Per Podcasts and global)
@@ -24,7 +24,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ## Alpha min Requiremets
 
 ### Subscription Management
-- [ ] add podcast via URL
+- [x] add podcast via URL
 
 ### Refresh and Downloads
 - [x] refresh podcast content via Button
@@ -32,7 +32,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [x] download episodes
 - - [x] show download progress
 - - [x] delete files
-- - [ ] implement automatic background downloads
+- - [x] implement automatic background downloads
 - [x] remove all files when one episode is archived 
 - [x] if Playlist contains episode, move it to the front/end instead of adding another copy
 
@@ -73,17 +73,17 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - [ ] sleep timer
 - [x] play next queue
 - [x] set playbackspeed
-- - [ ] (per podcast)
+- - [?] (per podcast)
 
 
 
 ## 1.0 min requirements
 
 ### Miscellaneous
-- [ ] nice UI
+- [x] nice UI
 - [ ] nice Logo
 - [ ] nice name - Raúl
-- [ ] CarPlay
+- [x] CarPlay
 
 ### Subscription Management
 - [x] OPML export
@@ -94,10 +94,10 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 
 ### Refresh and Downloads
-- [ ] Automatic deletion of files
+- [x] Automatic deletion of files
 - - [ ] Based on last x files
-- - [ ] Based on time passed since release 
-- [?] Notification after refresh
+- - [x] Based on time passed since release 
+- [x] Notification after refresh
 
 ### Player
 - [ ] skip detection

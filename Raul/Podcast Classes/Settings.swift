@@ -15,6 +15,7 @@ class PodcastSettings {
     
     var id = UUID()
     var title:String?
+    var isEnabled:Bool = true
     
     var autoDownload:Bool = false
     var playnextPosition:Playlist.Position = Playlist.Position.none
@@ -49,7 +50,7 @@ class PodcastSettings {
     init(podcast: Podcast){
         title = podcast.title
         self.podcast = podcast
-      //  self.voices = SleepTimer().listOfVoices()
+        print("INIT SETTINGS WITH: \(podcast.title) - \(podcast.id)")
     }
 }
 

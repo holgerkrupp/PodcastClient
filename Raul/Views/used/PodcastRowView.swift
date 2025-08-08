@@ -14,41 +14,42 @@ struct PodcastRowView: View {
         
             ZStack{
                 
-                PodcastCoverView(podcast:podcast)
+                CoverImageView(podcast:podcast)
                     .scaledToFill()
                     .id(podcast.id)
                 
-                    .frame(width: UIScreen.main.bounds.width * 0.9, height: 130)
+                    .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
                     .clipped()
                 
                 
 
                 VStack(alignment: .leading){
                     HStack {
-                        PodcastCoverView(podcast: podcast)
-                            .frame(width: 50, height: 50)
+                        CoverImageView(podcast: podcast)
+                            .frame(width: 150, height: 150)
                             .cornerRadius(8)
                         
                         
                         VStack(alignment: .leading) {
                             Text(podcast.title)
                                 .font(.headline)
-                            
+                            Spacer()
                             if let author = podcast.author {
                                 Text(author)
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            if let desc = podcast.desc {
+                                Text(desc)
+                                    .font(.caption)
+                                    .lineLimit(5)
+                                    .foregroundColor(.secondary)
+                                Spacer()
                             }
                         }
                     }
                     
-                    if let desc = podcast.desc {
-                        Text(desc)
-                            .font(.caption)
-                            .lineLimit(3)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
                     HStack{
                         if let lastBuildDate = podcast.lastBuildDate {
                             Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
@@ -63,14 +64,18 @@ struct PodcastRowView: View {
                         }
                     }
                 }
-                .frame(width: UIScreen.main.bounds.width * 0.9, height: 130)
+                .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
                 .padding()
                 .background(
                     Rectangle()
                         .fill(.ultraThinMaterial)
-                    // .shadow(radius: 3)
+                    
                 )
+                
+                
+                
             }
+            
             
         
         .overlay {
@@ -89,4 +94,24 @@ struct PodcastRowView: View {
         
         }
     }
+}
+
+#Preview {
+    // Create a dummy PodcastMetaData for preview
+    let metaData = PodcastMetaData()
+    metaData.feedUpdateCheckDate = Date().addingTimeInterval(-3600) // 1 hour ago
+    metaData.isUpdating = false
+
+    // Create a dummy Podcast
+    let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+    podcast.title = "Swift Over Coffee"
+    podcast.author = "Paul Hudson & Sean Allen"
+    podcast.desc = "A show about Swift, iOS development, and general Apple nerdery."
+    podcast.lastBuildDate = Date().addingTimeInterval(-7200) // 2 hours ago
+    podcast.imageURL = nil // Or provide a sample image URL if your PodcastCoverView handles it
+    podcast.metaData = metaData
+
+    return PodcastRowView(podcast: podcast)
+        .padding()
+        .previewLayout(.sizeThatFits)
 }

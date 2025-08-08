@@ -39,6 +39,7 @@ struct ImportExportView: View {
                         print(error.localizedDescription)
                     }
                 }
+                .buttonStyle(.borderedProminent)
             }header: {
                 Text("Import")
             }footer: {
@@ -53,6 +54,7 @@ struct ImportExportView: View {
                             await sharePodcasts()
                         }
                     }
+                    .buttonStyle(.borderedProminent)
 
             }header: {
                 Text("Export")
@@ -93,6 +95,13 @@ struct ImportExportView: View {
                     }).sorted(by: {$0.title ?? "" < $1.title ?? ""}), id: \.url) { newPodcastFeed in
                         SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
                             .modelContext(context)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 1,
+                                                 trailing: 0))
+
                     }
                 }header: {
                     Text("new Podcasts")
@@ -108,6 +117,12 @@ struct ImportExportView: View {
                     }), id: \.url) { newPodcastFeed in
                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
                             .modelContext(context)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 1,
+                                                 trailing: 0))
 
                         
                     }
@@ -120,7 +135,8 @@ struct ImportExportView: View {
             
 
         }
-        .listStyle(SidebarListStyle())
+        .listStyle(.plain)
+        .navigationTitle("Import")
 
 
     }

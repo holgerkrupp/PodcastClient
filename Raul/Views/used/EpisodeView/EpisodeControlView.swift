@@ -38,20 +38,23 @@ struct EpisodeControlView: View {
                 Label("Play", systemImage: "play.fill")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(10)
+                    .padding(5)
                     // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
+            .buttonStyle(.glass)
            
-                .buttonStyle(.glass)
+           
             
            
           
             
             Spacer()
-            if episode.playlist.isEmpty, episode.playlist.first?.playlist == nil {
-
+            
+            
+                
+            
             Button {
                 Task{
                     await PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).addEpisode(episode, to: .front)
@@ -59,16 +62,17 @@ struct EpisodeControlView: View {
                 }
             } label: {
                 
-                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                Label("Play Next", systemImage: (!episode.playlist.isEmpty || episode.playlist.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(10)
+                    .padding(5)
 
                     // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.glass)
+            
         
             
                 Spacer()
@@ -77,10 +81,10 @@ struct EpisodeControlView: View {
                     await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
                 }
             } label: {
-                Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                Label("Play Last", systemImage: (!episode.playlist.isEmpty || episode.playlist.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
-                    .padding(10)
+                    .padding(5)
 
                     // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
@@ -89,7 +93,7 @@ struct EpisodeControlView: View {
             .buttonStyle(.glass)
    
            
-            }
+            
             Spacer()
                 Button {
                     Task{
@@ -100,7 +104,7 @@ struct EpisodeControlView: View {
                     Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
                         .symbolRenderingMode(.hierarchical)
                         .scaledToFit()
-                        .padding(10)
+                        .padding(5)
 
                        // .foregroundColor(.accentColor)
                         .minimumScaleFactor(0.5)
@@ -111,6 +115,7 @@ struct EpisodeControlView: View {
             
             
         }
+        
 
        
 

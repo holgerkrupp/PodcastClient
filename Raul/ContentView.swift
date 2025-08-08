@@ -51,16 +51,21 @@ struct ContentView: View {
                 Label("Library", systemImage: "books.vertical")
             }
             
+            Tab {
+                LogView()
+            }label: {
+                Label("Log", systemImage: "book.and.wrench")
+            }
             
             Tab(role: .search) {
-                AddPodcastView()
+                AddPodcastView(search: $search)
             } label: {
-                Label("Search", systemImage: "magnifyingglass")
+                Label("Add", systemImage: "plus")
             }
 
             
         }
-        .searchable(text: $search)
+        .searchable(text: $search, prompt: "URL or Search")
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory {
            

@@ -60,20 +60,16 @@ struct PodcastDetailView: View {
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
-                        if let lastRefreshDate = podcast.metaData?.lastRefresh {
+                        if let lastRefreshDate = podcast.metaData?.feedUpdateCheckDate {
                             Text("Last refresh: \(lastRefreshDate.formatted(date: .numeric, time: .shortened))")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
                     }
-                    if let feedUpdateCheckDate = podcast.metaData?.feedUpdateCheckDate {
-                        Text("Feed update check: \(feedUpdateCheckDate.formatted(date: .numeric, time: .shortened))")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
+
                     HStack {
                         
-                        PodcastCoverView(podcast: podcast)
+                        CoverImageView(podcast: podcast)
                             .frame(width: 50, height: 50)
                             .cornerRadius(8)
                        
@@ -89,8 +85,9 @@ struct PodcastDetailView: View {
                     }
                     if let podcastLink = podcast.link {
                         Link(destination: podcastLink) {
-                            Text("Open in Safari")
+                            Label("Open in Browser", systemImage: "safari")
                         }
+                        .buttonStyle(.glass)
                     }
                     
                     
@@ -103,9 +100,10 @@ struct PodcastDetailView: View {
                 }
             
                 if let desc = podcast.desc {
-                    ExpandableTextView(text: desc)
-                        .font(.caption2)
-                        .lineLimit(4)
+                   // HTMLWebView(html: desc)
+                    Text(desc)
+                  //      .font(.caption2)
+                    //    .lineLimit(4)
                     
                 }
             }

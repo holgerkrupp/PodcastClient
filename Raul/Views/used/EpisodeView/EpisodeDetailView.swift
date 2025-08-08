@@ -6,31 +6,46 @@
 //
 
 import SwiftUI
+import RichText
 
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var context
 
-    enum Selection: String, CaseIterable, Hashable {
-        case chapters
-        case transcript
-    }
-    @State private var listSelection:Selection = .chapters
-    
     
     @Bindable var episode: Episode
-    @State private var image: Image?
-    
-    var episodeDescription: AttributedString {
-        HTMLTextView.parse(html: episode.content ?? episode.desc ?? "") ?? ""
-    }
+    @StateObject private var backgroundImageLoader: ImageLoaderAndCache
 
     
+    init(episode: Episode) {
+        self._episode = Bindable(wrappedValue: episode)
+        let imageURL = episode.imageURL ?? episode.podcast?.imageURL
+        _backgroundImageLoader = StateObject(wrappedValue: ImageLoaderAndCache(imageURL: imageURL ?? URL(string: "about:blank")!))
+    }
+    
     var body: some View {
-        ScrollView {
             
+        GeometryReader { geometry in
+       
+        ZStack {
+            if let image = UIImage(data: backgroundImageLoader.imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+                    .blur(radius: 50)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    
+                    
+            } else {
+                Color.accentColor.ignoresSafeArea()
+            }
+
+            // Main content
+            ScrollView {
+                
                 HStack {
                     
-                    EpisodeCoverView(episode: episode)
+                    CoverImageView(episode: episode)
                         .frame(width: 50, height: 50)
                     VStack(alignment: .leading) {
                         HStack {
@@ -39,30 +54,27 @@ struct EpisodeDetailView: View {
                                     NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                                         Text(podcast.title)
                                     }
-                                }else{
-                                    Text(episode.podcast?.title ?? "")
                                 }
                             }
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
+                            .font(.title2)
+                                .foregroundColor(.primary)
+
+                        }
+
+                        HStack{
+                            if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
+                                Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                            }else{
+                                Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                            }
+                        Spacer()
                             Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
                                 .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Text(episode.title)
-                            .font(.headline)
-                            .lineLimit(4)
-                            .minimumScaleFactor(0.1)
-                            .truncationMode(.tail)
-                        if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                            Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }else{
-                            Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.primary)
                         }
                         
                         
@@ -70,58 +82,95 @@ struct EpisodeDetailView: View {
                 }
                 .padding()
             
-        Spacer(minLength: 10)
-            
+            Spacer(minLength: 10)
+                
+                DownloadControllView(episode: episode, showDelete: false)
+                   .symbolRenderingMode(.hierarchical)
+                  // .scaledToFit()
+                   .padding(8)
+                   .foregroundColor(.accentColor)
+                //   .minimumScaleFactor(0.5)
+                   .labelStyle(.iconOnly)
+     
+                if Player.shared.currentEpisodeID != episode.id {
+                    EpisodeControlView(episode: episode)
+                        .modelContainer(context.container)
+                        .frame(height: 50)
+                        .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                        
+                }
+                
 
-            HTMLTextView(html: episode.content ?? episode.desc ?? "")
-                .padding()
-                .font(.caption)
- 
-            
-       
-       
-        if let episodeLink = episode.link {
-            Link(destination: episodeLink) {
-                Text("Open in Safari")
-            }
-        }
-            
-            Button("Extract Chapters") {
-                Task{
-                    await EpisodeActor(modelContainer: context.container).createChapters(episode.url)
+
+                RichText(html: episode.content ?? episode.desc ?? "")
+                    .richTextBackground(.clear)
+                    .padding()
+                    
+                  
+           
+            if let episodeLink = episode.link {
+                Link(destination: episodeLink) {
+                    Label("Open in Browser", systemImage: "safari")
                 }
+                .buttonStyle(.borderedProminent)
             }
-            
-            Picker("Show", selection: $listSelection) {
-                if episode.preferredChapters.count > 1 {
-                    Text("Chapters").tag(Selection.chapters)
-                }
-                if episode.transcriptLines != nil {
-                    Text("Transcript").tag(Selection.transcript)
-                }
-            }
-            .pickerStyle(.segmented)
-            .id(UUID())
-            
-            switch listSelection {
-            case .chapters:
+                
+
+                
                 if episode.preferredChapters.count > 1 {
                     ChapterListView(episodeURL: episode.url)
                 }
-            case .transcript:
-                if let transcriptLines = episode.transcriptLines?.sorted(by: {$0.startTime < $1.startTime}), !transcriptLines.isEmpty
-                    {
-            
-                    TranscriptListView(transcriptLines: transcriptLines)
-                   
-                }else{
-                    Text("no transcript available")
-                }
             }
+            .background(
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea()
+               
+            )
         }
+       
+        }
+        .navigationTitle(episode.title)
+        .navigationBarTitleDisplayMode(.inline)
+        
        
      
        
     }
 
 }
+
+#Preview {
+    // Sample podcast
+    let samplePodcast = Podcast(feed: URL(string: "https://sample.com/feed.xml")!)
+    samplePodcast.title = "Sample Podcast"
+    samplePodcast.author = "Sample Author"
+    samplePodcast.desc = "A podcast about everything and nothing."
+
+    // Sample episode
+    let sampleEpisode = Episode(
+        id: UUID(),
+        guid: "sample-episode-1",
+        title: "Episode 1: The Beginning",
+        publishDate: .now,
+        url: URL(string: "https://sample.com/episode1.mp3")!,
+        podcast: samplePodcast,
+        duration: 3600,
+        author: "Sample Author"
+    )
+    sampleEpisode.desc = "A fascinating deep dive into the start of something new."
+    sampleEpisode.content = "<p>This is some HTML content for the episode.</p>"
+    sampleEpisode.link = URL(string: "https://sample.com/episode1")
+    sampleEpisode.imageURL = URL(string: "https://sample.com/cover.jpg")
+    sampleEpisode.metaData = EpisodeMetaData()
+    sampleEpisode.metaData?.episode = sampleEpisode
+
+    let tempFolder = FileManager.default.temporaryDirectory
+    let previewFilesManager = DownloadedFilesManager(folder: tempFolder)
+
+    return NavigationStack {
+        EpisodeDetailView(episode: sampleEpisode)
+            .environment(previewFilesManager)
+    }
+}
+

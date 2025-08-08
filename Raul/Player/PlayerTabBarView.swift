@@ -41,7 +41,7 @@ struct PlayerTabBarView: View {
                     HStack{
                         
                         
-                        EpisodeCoverView(episode: episode, timecode: player.playPosition)
+                        CoverImageView(episode: episode, timecode: player.playPosition)
                             .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
                             .scaledToFit()
                             .clipShape(Circle())
@@ -56,6 +56,8 @@ struct PlayerTabBarView: View {
                                 .foregroundStyle(.secondary)
                             Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
                                 .font(.caption)
+                                .foregroundStyle(.primary)
+
                                 .lineLimit(1)
                             
                         }
@@ -93,7 +95,7 @@ struct PlayerTabBarView: View {
                     HStack{
                         
                         
-                        EpisodeCoverView(episode: episode, timecode: player.playPosition)
+                        CoverImageView(episode: episode, timecode: player.playPosition)
                             .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
                             .scaledToFit()
                             .clipShape(Circle())
@@ -108,6 +110,7 @@ struct PlayerTabBarView: View {
                                 .foregroundStyle(.secondary)
                             Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
                                 .font(.caption)
+                                .foregroundStyle(.primary)
                                 .lineLimit(1)
                             
                         }

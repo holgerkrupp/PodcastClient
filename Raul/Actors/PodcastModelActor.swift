@@ -12,17 +12,16 @@ import BasicLogger
 @ModelActor
 actor PodcastModelActor {
     
-    func linkEpisodeToPodcast(_ episodeID: PersistentIdentifier, _ podcastID: PersistentIdentifier)   {
-        guard let episode =   modelContext.model(for: episodeID) as? Episode else {
+    func linkEpisodeToPodcast(_ episodeID: PersistentIdentifier, _ podcastID: PersistentIdentifier) {
+        guard let episode = modelContext.model(for: episodeID) as? Episode else {
             fatalError("Could not load episode \(episodeID)")
         }
-        
-        guard var podcast =   modelContext.model(for: podcastID) as? Podcast else {
+        guard let podcast = modelContext.model(for: podcastID) as? Podcast else {
             return
         }
-        
+        // Force load episodes relationship to ensure it is not a future
+        _ = podcast.episodes
         podcast.episodes.append(episode)
-        
     }
     
     func checkIfFeedHasBeenUpdated(_ podcastID: PersistentIdentifier) async ->Bool?{
@@ -64,11 +63,11 @@ actor PodcastModelActor {
         }
     }
 
-    func updatePodcast(_ podcastID: PersistentIdentifier, force: Bool? = false) async throws {
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
-        guard let feedURL = podcast.feed else { return }
+    func updatePodcast(_ podcastID: PersistentIdentifier, force: Bool? = false, silent: Bool? = false) async throws -> Bool{
+        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return false }
+        guard let feedURL = podcast.feed else { return false }
         if force == false {
-            guard await checkIfFeedHasBeenUpdated(podcastID) != false else { return }
+            guard await checkIfFeedHasBeenUpdated(podcastID) != false else { return false }
         }
         if podcast.metaData == nil {
             podcast.metaData = PodcastMetaData()
@@ -84,8 +83,7 @@ actor PodcastModelActor {
         parser.delegate = podcastParser
 
         let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
-        
-    //    if parser.parse() {
+
             podcast.title = fullPodcast["title"] as? String ?? ""
             podcast.author = fullPodcast["itunes:author"] as? String
             podcast.desc = fullPodcast["description"] as? String
@@ -124,16 +122,23 @@ actor PodcastModelActor {
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
                         newEpisodes.append(episode)
+                        modelContext.saveIfNeeded()
                         
-                            await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
-                        
+                        if silent == false{
+                           // await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title) // moved to EpisodeActor
+                            await EpisodeActor(modelContainer: modelContainer).processAfterCreation(episodeID: episode.id)
+                        }else{
+                            episode.metaData?.isInbox = false
+                            episode.metaData?.status = .archived
+                            modelContext.saveIfNeeded()
+                        }
                     
                     }else{
                         print("Episode already exists")
 
                     }
                 }
-                modelContext.saveIfNeeded()
+                
                 
             }
 
@@ -142,13 +147,7 @@ actor PodcastModelActor {
                 podcast.metaData?.isUpdating = false
                 modelContext.saveIfNeeded()
             
-            
-          
-/*
-        } else {
-            throw parser.parserError ?? NSError(domain: "ParserError", code: -1, userInfo: nil)
-        }
- */
+        return true
  }
     
     func downloadCoverArt(_ podcastID: PersistentIdentifier) async  {
@@ -202,7 +201,7 @@ actor PodcastModelActor {
         if let existingPodcasts = try? modelContext.fetch(descriptor),
            let existingPodcast = existingPodcasts.first {
             // If podcast exists, update it and return its ID
-            try await updatePodcast(existingPodcast.persistentModelID)
+            try await updatePodcast(existingPodcast.persistentModelID, silent: true)
             return existingPodcast.persistentModelID
         }
         
@@ -213,7 +212,7 @@ actor PodcastModelActor {
         modelContext.insert(podcast)
         modelContext.saveIfNeeded()
         do {
-            try await updatePodcast(podcast.persistentModelID)
+            try await updatePodcast(podcast.persistentModelID, silent: true)
             try await archiveEpisodes(of: podcast.persistentModelID)
             /*
              

@@ -229,7 +229,8 @@ class Player: NSObject {
     }
         
     private func unloadEpisode(episodeUUID: UUID) async{
-       
+        print("unloadEpisode \(episodeUUID)")
+
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         currentEpisode = nil
         currentEpisodeID = nil
@@ -251,23 +252,28 @@ class Player: NSObject {
             await playlistActor?.add(episodeID: episodeUUID, to: .front)
 
         }
+        
+        
     }
     
     
     
     func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true, startingAt time: Double? = nil) async {
         
-        
+        print("playEpisode \(episodeUUID)")
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
             await unloadEpisode(episodeUUID: currentEpisodeID)
+            
             await playlistActor?.remove(episodeID: episodeUUID)
+            
         }
-
         episode.metaData?.isInbox = false
 
         currentEpisode = episode
         currentEpisodeID = episode.id
+        print("unloading finihed - new episode: \(currentEpisodeID) - \(episode.title)")
+
         updateChapters()
         
 
@@ -334,7 +340,7 @@ class Player: NSObject {
     var coverImage: some View{
         if let playing = currentEpisode{
             
-             return AnyView(EpisodeCoverView(episode: playing))
+             return AnyView(CoverImageView(episode: playing))
              
              
         }else{
@@ -423,15 +429,16 @@ class Player: NSObject {
     
     func play(){
         loadPlayBackSpeed()
-        Task {
-           
-            await engine.play() // <- maybe i can remove this, i gues "setRate" already starts playing
-            await engine.setRate(playbackRate)
-            isPlaying = true
-        }
         updateLastPlayed()
         startPlaybackUpdates()
         startNowPlayingInfoUpdater()
+        Task {
+           
+        //    await engine.play() // <- maybe i can remove this, i gues "setRate" already starts playing
+            await engine.setRate(playbackRate)
+            isPlaying = true
+        }
+
        
         if let episodeURL =  currentEpisode?.url{
             Task {

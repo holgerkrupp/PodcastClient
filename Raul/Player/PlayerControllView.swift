@@ -20,6 +20,10 @@ struct PlayerControllView: View {
             VStack {
                 
                 HStack {
+                   
+                    AirPlayButtonView()
+                        .tint(.primary)
+                   
                     Spacer()
                     Button {
                         
@@ -40,40 +44,41 @@ struct PlayerControllView: View {
                         
                     }
                     .buttonStyle(.plain)
-                    .sheet(isPresented: $showSpeedSetting, content: {
-                        VStack{
-                            /*
-                             Text("Adjust Sleeptimer")
-                             Toggle(isOn: $player.sleeptimer.activated) {
-                             Text("Activate Sleeptimer")
-                             }
-                             Stepper(value: $player.sleeptimer.minutes, in: 1...60, step: 1) {
-                             Text(player.sleeptimer.secondsLeft?.secondsToHoursMinutesSeconds ?? "00:00")
-                             }
-                             .disabled(!player.sleeptimer.activated)
-                             */
-                            
-                            
-                            Text("Adjust Playback Speed")
-                            Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
-                                Text("\(player.playbackRate.formatted())x")
-                            }
-                            
-                        }.padding()
-                            .presentationDragIndicator(.visible)
-                            .presentationBackground(.ultraThinMaterial)
-                            .presentationDetents([.fraction(0.5)])
-                        
-                    })
-                    Spacer()
+               
+                    
                     
                     
                 }
+                .sheet(isPresented: $showSpeedSetting, content: {
+                    VStack{
+                        /*
+                         Text("Adjust Sleeptimer")
+                         Toggle(isOn: $player.sleeptimer.activated) {
+                         Text("Activate Sleeptimer")
+                         }
+                         Stepper(value: $player.sleeptimer.minutes, in: 1...60, step: 1) {
+                         Text(player.sleeptimer.secondsLeft?.secondsToHoursMinutesSeconds ?? "00:00")
+                         }
+                         .disabled(!player.sleeptimer.activated)
+                         */
+                        
+                        
+                        Text("Adjust Playback Speed")
+                        Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
+                            Text("\(player.playbackRate.formatted())x")
+                        }
+                        
+                    }.padding()
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(.ultraThinMaterial)
+                        .presentationDetents([.fraction(0.5)])
+                    
+                })
                 
                 ZStack() {
                     Color.clear
                     
-                    EpisodeCoverView(episode: episode, timecode: player.currentChapter?.start)
+                    CoverImageView(episode: episode, timecode: player.currentChapter?.start)
                         .id(episode.id)
                         .scaledToFit()
                     /*

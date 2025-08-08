@@ -9,6 +9,7 @@ struct HTMLTextView: View {
 
     var body: some View {
         Text(attributedString)
+            .font(.default)
     }
 
      static func parse(html: String) -> AttributedString? {

@@ -1,5 +1,5 @@
 import SwiftUI
-import GlowEffects
+import RichText
 
 
 struct PlayerView: View {
@@ -15,54 +15,75 @@ struct PlayerView: View {
             
             
                 if let episode = player.currentEpisode {
-                    ZStack{
-                        
-                        // Background layer
-                        
-                        
-                        
-                        EpisodeCoverView(episode: episode)
-                           
-                          
-                            .aspectRatio(1, contentMode: .fill)
-                            .scaledToFill()
-                        
-                        //       .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
-                        
-                            .frame(width: UIScreen.main.bounds.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? UIScreen.main.bounds.height * 1 : 80)
-                            .ignoresSafeArea(.all, edges: .bottom)
-                        // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
-                        
-                        Group{
-                            if fullSize {
-                                VStack{
+                    GeometryReader { geometry in
+                        ZStack{
                             
-                                ScrollView([.vertical]){
-                                    Spacer(minLength: 20)
+                            // Background layer
+                            
+                            
+                            
+                            CoverImageView(episode: episode)
+                               
+                              
+                                .aspectRatio(1, contentMode: .fill)
+                                .scaledToFill()
+                            
+                            //       .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+                            
+                                .frame(width: geometry.size.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? geometry.size.height : 80)
+                                .ignoresSafeArea(.all, edges: .bottom)
+                            // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
+                            
+                            Group{
+                                if fullSize {
+                                    VStack{
+                                
+                                    ScrollView([.vertical]){
+                                        Spacer(minLength: 20)
+                                        PlayerControllView()
+                                            .padding()
+                                        
+                                        if let episodeLink = episode.link {
+                                            Link(destination: episodeLink) {
+                                                Label("Open in Browser", systemImage: "safari")
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .padding()
+                                        }
+                                        
+                                        RichText(html: episode.content ?? episode.desc ?? "")
+                                            .richTextBackground(.clear)
+                                            .padding()
+                                            
+                                          
+                                   
+
+                                        
+                                        
+                                    }
+                                }
+                                    .padding(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
+                                }else{
                                     PlayerControllView()
-                                        .padding()
-                                    EpisodeDetailView(episode: episode)
-                                    
                                 }
                             }
-                                .padding(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
-                            }else{
-                                PlayerControllView()
-                            }
-                        }
-                        
-                            .background(
-                                
-                                Rectangle()
-                                    .fill(.thinMaterial)
-                                
-                            )
                             
-                          
-                        }
+                                .background(
+                                    
+                                    Rectangle()
+                                        .fill(.thinMaterial)
+                                    
+                                )
+                                
+                              
+                            }
+                        
+                        
+    
+                       
+    
+                    }
                     
-
-                   
 
                 } else {
                     PlayerEmptyView()

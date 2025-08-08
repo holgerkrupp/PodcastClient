@@ -8,7 +8,12 @@ class PodcastSearchViewModel: ObservableObject {
     @Published var results: [FyydPodcast] = []
     @Published var isLoading = false
     @Published var hotPodcasts: [FyydPodcast] = []
-    @Published var languages: [String] = [] // Store languages
+    @Published var languages: [String] = [] {
+        didSet {
+            setLanguage()
+        }
+    }
+    @Published var singlePodcast: PodcastFeed?
     @Published var selectedLanguage: String = "en" {
         didSet {
             Task {
@@ -33,6 +38,14 @@ class PodcastSearchViewModel: ObservableObject {
         Task {
             await loadHotPodcasts()
             await loadLanguages()
+            
+        }
+    }
+    
+    func setLanguage(){
+        let identifier = Locale.autoupdatingCurrent.language.languageCode?.identifier ?? "en"
+        if languages.contains(identifier){
+            selectedLanguage = identifier
         }
     }
 
@@ -41,15 +54,52 @@ class PodcastSearchViewModel: ObservableObject {
             results = []
             return
         }
-
         isLoading = true
-        Task {
-            let podcasts = await fyydManager.searchPodcasts(query: searchText) ?? []
-            await MainActor.run {
-                results = podcasts
-                isLoading = false
+        
+        
+        if searchText.isValidURL {
+            print("valid URL found")
+            
+            singlePodcast = PodcastFeed(url: URL(string: searchText)!)
+            results = []
+            isLoading = false
+            return
+        }else{
+            singlePodcast = nil
+            Task {
+                let podcasts = await fyydManager.searchPodcasts(query: searchText) ?? []
+                await MainActor.run {
+                    results = podcasts
+                    isLoading = false
+                }
             }
         }
+        
+        
+
+    }
+    
+    func parseURL(feedURL: URL) async throws -> [String:String]{
+        let (data, _) = try await URLSession.shared.data(from: feedURL)
+        
+        let parser = XMLParser(data: data)
+        let podcastParser = PodcastParser()
+        parser.delegate = podcastParser
+        
+        let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
+        
+        var podcastDetails: [String:String] = [:]
+        podcastDetails["xmlURL"] = feedURL.absoluteString
+        podcastDetails["title"] = fullPodcast["title"] as? String ?? ""
+        podcastDetails["author"]  = fullPodcast["itunes:author"] as? String
+        podcastDetails["desc"]  = fullPodcast["description"] as? String
+        podcastDetails["copyright"]  = fullPodcast["copyright"] as? String
+        podcastDetails["language"]  = fullPodcast["language"] as? String
+        podcastDetails["link"]  = fullPodcast["link"] as? String ?? ""
+        podcastDetails["imageURL"] = fullPodcast["coverImage"] as? String
+        podcastDetails["lastBuildDate"]  = fullPodcast["lastBuildDate"] as? String ?? ""
+        podcastDetails["episodes"] = (fullPodcast["episodes"] as? [[String: Any]])?.count.description ?? ""
+        return podcastDetails
     }
     
     func loadLanguages() async {
@@ -64,7 +114,7 @@ class PodcastSearchViewModel: ObservableObject {
     private func loadHotPodcasts() async {
      
         isLoading = true
-        let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage)
+        let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage, count: 30)
         await MainActor.run {
             hotPodcasts = hotPodcastsList ?? []
             isLoading = false

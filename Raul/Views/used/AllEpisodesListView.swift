@@ -34,7 +34,7 @@ struct AllEpisodesListView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: 0) {
                     ForEach(episodes) { episode in
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EpisodeRowView(episode: episode)

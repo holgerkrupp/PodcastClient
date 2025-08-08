@@ -53,15 +53,7 @@ struct ChapterListView: View {
                     Spacer()
                     Text("Chapters")
                         .font(.title)
-                        .padding()
                     Spacer()
-                    Button(chapters.first?.type.desc ?? "Unknown") {
-                        if let url = episodeURL {
-                            Task{
-                              await EpisodeActor(modelContainer: modelContext.container).updateChapterDurations(episodeURL: url)
-                            }}
-                    }
-                        .font(.caption)
                 }
                 .padding()
                
@@ -73,11 +65,11 @@ struct ChapterListView: View {
                             
                             if chapter.id == player.currentChapter?.id {
                                 Rectangle()
-                                    .fill(Color.yellow.opacity(0.1))
+                                    .fill(Color.accentColor.opacity(0.1))
                                     .frame(width: geometry.size.width * (player.chapterProgress ?? 0.0), height: geometry.size.height)
                             }else{
                                 Rectangle()
-                                    .fill(Color.accentColor.opacity(0.05))
+                                    .fill(Color.accentColor.opacity(0.1))
                                     .frame(width: geometry.size.width * (chapter.progress ?? 0.0), height: geometry.size.height)
                             }
                             
@@ -96,6 +88,16 @@ struct ChapterListView: View {
                     
                    
                 }
+                Spacer()
+                Button(chapters.first?.type.desc ?? "Unknown") {
+                    if let url = episodeURL {
+                        Task{
+                          await EpisodeActor(modelContainer: modelContext.container).updateChapterDurations(episodeURL: url)
+                        }}
+                }
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .padding()
             }
         }
     }

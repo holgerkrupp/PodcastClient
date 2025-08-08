@@ -7,13 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		482249822E4524220001F8E6 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 482249812E4524220001F8E6 /* RichText */; };
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
-		4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
-		484504C62E12C3D400026564 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 484504C52E12C3D400026564 /* mp3ChapterReader */; };
-		484504C92E12C3F400026564 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 484504C82E12C3F400026564 /* mp3ChapterReader */; };
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
 		488591272DE4D66F008604DA /* GlowEffects in Frameworks */ = {isa = PBXBuildFile; productRef = 488591262DE4D66F008604DA /* GlowEffects */; };
+		489BC1DD2E40C63C000C5FA6 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 489BC1DC2E40C63C000C5FA6 /* mp3ChapterReader */; };
 		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
 		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
@@ -72,11 +71,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4827FC7F2DA5A31500FA6778 /* mp3ChapterReader in Frameworks */,
 				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
-				484504C62E12C3D400026564 /* mp3ChapterReader in Frameworks */,
-				484504C92E12C3F400026564 /* mp3ChapterReader in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
+				489BC1DD2E40C63C000C5FA6 /* mp3ChapterReader in Frameworks */,
+				482249822E4524220001F8E6 /* RichText in Frameworks */,
 				48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */,
 				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
 				488591272DE4D66F008604DA /* GlowEffects in Frameworks */,
@@ -137,14 +135,13 @@
 			name = Raul;
 			packageProductDependencies = (
 				48B3BA072DA06825005B40B8 /* fyyd_swift */,
-				4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */,
 				48C078062DB410D000D6DD9C /* DeviceInfo */,
 				48C078082DB4111500D6DD9C /* DeviceInfo */,
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				488591262DE4D66F008604DA /* GlowEffects */,
 				48C7E5E62E10816D007D1CD3 /* SwipeActions */,
-				484504C52E12C3D400026564 /* mp3ChapterReader */,
-				484504C82E12C3F400026564 /* mp3ChapterReader */,
+				489BC1DC2E40C63C000C5FA6 /* mp3ChapterReader */,
+				482249812E4524220001F8E6 /* RichText */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -181,6 +178,7 @@
 				488591252DE4D66F008604DA /* XCLocalSwiftPackageReference "../GlowEffects" */,
 				48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */,
 				484504C72E12C3F400026564 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
+				482249802E4524220001F8E6 /* XCLocalSwiftPackageReference "../RichText" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -353,7 +351,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Raul/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
+				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -391,7 +389,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Raul/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Raúl";
+				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -438,6 +436,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		482249802E4524220001F8E6 /* XCLocalSwiftPackageReference "../RichText" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../RichText;
+		};
 		484504C72E12C3F400026564 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../mp3ChapterReader;
@@ -472,21 +474,18 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		4827FC7E2DA5A31500FA6778 /* mp3ChapterReader */ = {
+		482249812E4524220001F8E6 /* RichText */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = mp3ChapterReader;
-		};
-		484504C52E12C3D400026564 /* mp3ChapterReader */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = mp3ChapterReader;
-		};
-		484504C82E12C3F400026564 /* mp3ChapterReader */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = mp3ChapterReader;
+			productName = RichText;
 		};
 		488591262DE4D66F008604DA /* GlowEffects */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GlowEffects;
+		};
+		489BC1DC2E40C63C000C5FA6 /* mp3ChapterReader */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 484504C72E12C3F400026564 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */;
+			productName = mp3ChapterReader;
 		};
 		48B3BA072DA06825005B40B8 /* fyyd_swift */ = {
 			isa = XCSwiftPackageProductDependency;

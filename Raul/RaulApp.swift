@@ -95,9 +95,9 @@ struct RaulApp: App {
     func bgNewAppRefresh() {
         
         // this should replace scheduleAppRefresh
-        BasicLogger.shared.log("going to background will schedule checkFeedUpdates")
+        BasicLogger.shared.log("schedule checkFeedUpdates")
         let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 30)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 60*30)
         
         do{
             try BGTaskScheduler.shared.submit(request)

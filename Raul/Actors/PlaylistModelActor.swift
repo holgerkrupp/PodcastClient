@@ -135,10 +135,11 @@ actor PlaylistModelActor : ModelActor {
     
     // Add an episode to the playlist
     func add(episodeID: UUID, to position: Playlist.Position = .end) async {
-        
+  
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
+       
         
-        await BasicLogger.shared.log("🎯 Adding episode \(episode.title) to playlist \(playlist.title) at position \(position)")
+        await BasicLogger.shared.log("🎯 Adding episode \(episode.title) to playlist \(playlist.title) at position \(position) - \(episode.id)")
 
         let predicate = #Predicate<Episode> { $0.id == episodeID }
 
@@ -157,7 +158,7 @@ actor PlaylistModelActor : ModelActor {
             if let existingItem = playlist.items.first(where: { $0.episode?.id == episode.id }) {
                 print("Playlist Item is existing")
                 existingItem.order = newPosition
-              
+                
                 await BasicLogger.shared.log("🔄 Moved episode to position \(newPosition)")
             } else {
                 print("Playlist Item is not existing")
@@ -173,8 +174,9 @@ actor PlaylistModelActor : ModelActor {
             episode.metaData?.isInbox = false
             episode.metaData?.isArchived = false
             episode.metaData?.status = .none
-            
-            modelContext.saveIfNeeded()
+            episode.refresh.toggle()
+        
+            normalizeOrder()
             await BasicLogger.shared.log("✅ Saved playlist changes")
 
             if episode.metaData?.calculatedIsAvailableLocally != true {
@@ -189,6 +191,7 @@ actor PlaylistModelActor : ModelActor {
  
     func remove(episodeID: UUID) {
         print("remove episode \(episodeID)")
+        try? refresh()
         do {
             // Find the PlaylistEntry directly using the same filter as your @Query
             let predicate = #Predicate<PlaylistEntry> {
@@ -206,7 +209,7 @@ actor PlaylistModelActor : ModelActor {
             
             // Delete the entry from SwiftData
             modelContext.delete(entry)
-
+            entry.episode?.refresh.toggle()
             // Save changes
             modelContext.saveIfNeeded()
             try? refresh()
@@ -238,7 +241,8 @@ actor PlaylistModelActor : ModelActor {
     }
     
     func normalizeOrder() {
-        print("morlaizing order")
+        print("normalizeOrder")
+        try? refresh()
         for (i, entry) in (playlist.ordered).enumerated() {
             entry.order = i
         }
