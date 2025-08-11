@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import RichText
 
 struct PodcastDetailView: View {
     @State var podcast: Podcast
@@ -100,10 +101,11 @@ struct PodcastDetailView: View {
                 }
             
                 if let desc = podcast.desc {
-                   // HTMLWebView(html: desc)
-                    Text(desc)
-                  //      .font(.caption2)
-                    //    .lineLimit(4)
+                    RichText(html: desc)
+                        .linkColor(light: Color.secondary, dark: Color.secondary)
+                        .richTextBackground(.clear)
+                        .padding()
+                
                     
                 }
             }

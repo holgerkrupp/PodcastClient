@@ -1,0 +1,1 @@
+[{"url":"https:\/\/api.fyyd.de\/0.2\/search\/podcast","name":"unnamed","method":"get","body":"","parameters":[{"active":true,"value":"Dirty Minutes","key":"title"}],"bodyEncoding":"UTF-8","header":[],"parameterEncoding":"Form encoded","follorRedirects":true}]

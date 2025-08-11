@@ -34,7 +34,13 @@ class NotificationPermissionViewModel: ObservableObject {
 
 actor NotificationManager {
     
-   
+    func requestAuthorizationIfUndetermined() async {
+        if await getAuthorizationStatus() == .notDetermined {
+            _ = await requestAuthorization()
+        }
+    }
+    
+
     
     func getPermissionStatus() async -> Bool {
         let authorizationStatus = await isNotificationAuthorized()
@@ -42,12 +48,21 @@ actor NotificationManager {
     }
 
     func requestAuthorization() async -> Bool {
+        
         do {
             return try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
         } catch {
             print("Notification permission error: \(error)")
             return false
+        }
+    }
+    
+    private func getAuthorizationStatus() async -> UNAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus)
+            }
         }
     }
 

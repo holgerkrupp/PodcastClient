@@ -7,18 +7,18 @@
 
 import SwiftUI
 
-struct InboxEmptyView: View {
+struct PodcastsEmptyView: View {
     var body: some View {
         VStack{
-            Text("Your Inbox is empty")
+            Text("Your Library is empty")
                 .font(.headline)
             Divider()
-            Text("New episodes of subscribed podcasts appear here. You can add them to your listening queue or archive them, if you are not interested in an episode.")
+            Text("You have not subscribed to any podcasts yet. Tap the + Button in the bottom right corner to subscribe to some podcasts. You can import a OPML File, search the directory or browse for trending podcasts in different languages.")
         }
         .padding()
     }
 }
 
 #Preview {
-    InboxEmptyView()
+    PodcastsEmptyView()
 }

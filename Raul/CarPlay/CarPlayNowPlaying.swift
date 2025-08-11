@@ -32,6 +32,8 @@ class CarPlayNowPlaying {
         // Configure the now playing template
         template.isUpNextButtonEnabled = false
         template.isAlbumArtistButtonEnabled = false
+        
+        
     
         
         let listButton = CPNowPlayingImageButton(

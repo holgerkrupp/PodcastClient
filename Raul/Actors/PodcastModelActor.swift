@@ -12,16 +12,18 @@ import BasicLogger
 @ModelActor
 actor PodcastModelActor {
     
-    func linkEpisodeToPodcast(_ episodeID: PersistentIdentifier, _ podcastID: PersistentIdentifier) {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else {
-            fatalError("Could not load episode \(episodeID)")
+    func linkEpisodeToPodcast(_ episodeID: UUID, _ podcastID: UUID) {
+        // Fetch fresh in the ModelActor
+        let podcastdescriptor = FetchDescriptor<Podcast>(predicate: #Predicate<Podcast> { $0.id == podcastID })
+        guard let podcast = try? modelContext.fetch(podcastdescriptor).first else { return }
+        let episodedescriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.id == episodeID })
+
+        guard let episode = try? modelContext.fetch(episodedescriptor).first else { return }
+        if !podcast.episodes.contains(where: { $0.id == episodeID }) {
+            episode.podcast = podcast
         }
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else {
-            return
-        }
-        // Force load episodes relationship to ensure it is not a future
-        _ = podcast.episodes
-        podcast.episodes.append(episode)
+      
+        modelContext.saveIfNeeded()
     }
     
     func checkIfFeedHasBeenUpdated(_ podcastID: PersistentIdentifier) async ->Bool?{
@@ -112,9 +114,9 @@ actor PodcastModelActor {
                     if let episodeID {
                       //  print("Episode exists")
                         if !podcast.episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                            linkEpisodeToPodcast(episodeID , podcast.id)
                             modelContext.saveIfNeeded()
-                            linkEpisodeToPodcast(episodeID , podcast.persistentModelID)
-                            
+
                         }
                         continue
                     }
@@ -150,24 +152,16 @@ actor PodcastModelActor {
         return true
  }
     
-    func downloadCoverArt(_ podcastID: PersistentIdentifier) async  {
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
-        guard let coverURL = podcast.imageURL else {
-            print("❌ Podcast does not have a cover")
-            return }
-        let item = await DownloadManager.shared.download(from: coverURL, saveTo: podcast.coverFileLocation)
-        print("saving cover to \(String(describing: podcast.coverFileLocation))")
-       
-    }
 
-    private func checkIfEpisodeExists(_ guid: String) -> PersistentIdentifier? {
+
+    private func checkIfEpisodeExists(_ guid: String) -> UUID? {
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.guid == guid  }
         )
         
         let episodes = try? modelContext.fetch(descriptor)
  //       print("checking if episode exists \(guid) - count: \(episodes?.count.description ?? "nil")")
-        return episodes?.first?.persistentModelID
+        return episodes?.first?.id
     }
     
     func createPodcast(from url: URL) async throws -> PersistentIdentifier {

@@ -86,6 +86,23 @@ class RemoteCommandCenter {
             return .commandFailed
         }
         
+        RCC.nextTrackCommand.isEnabled = true
+        RCC.nextTrackCommand.addTarget { _ in
+            Task{
+                await self.player.skipToNextChapter()
+               
+            }
+            return .success
+        }
+        
+        RCC.previousTrackCommand.isEnabled = true
+        RCC.previousTrackCommand.addTarget { _ in
+            Task{
+                await self.player.skipToChapterStart()
+            }
+                return .success
+        }
+        
         
     }
 }

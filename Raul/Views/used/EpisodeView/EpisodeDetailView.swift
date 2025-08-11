@@ -43,6 +43,51 @@ struct EpisodeDetailView: View {
             // Main content
             ScrollView {
                 
+                
+                if let podcast = episode.podcast {
+                    NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                        HStack {
+                            CoverImageView(episode: episode)
+                                .frame(width: 50, height: 50)
+                            Text(podcast.title)
+                                .font(.title2)
+                                .foregroundColor(.primary)
+                        }
+                    }
+                }
+                    
+                    CoverImageView(episode: episode)
+                        .frame(width: 300, height: 300)
+                    
+                    HStack{
+                        if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
+                            Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.primary)
+                        }else{
+                            Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.primary)
+                        }
+                        Spacer()
+                        if let episodeLink = episode.link {
+                            Link(destination: episodeLink) {
+                                Label("Open in Browser", systemImage: "safari")
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        Spacer()
+                        Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundColor(.primary)
+                    }
+                    .padding()
+                
+                
+                /*
                 HStack {
                     
                     CoverImageView(episode: episode)
@@ -81,7 +126,7 @@ struct EpisodeDetailView: View {
                     }
                 }
                 .padding()
-            
+            */
             Spacer(minLength: 10)
                 
                 DownloadControllView(episode: episode, showDelete: false)
@@ -103,17 +148,13 @@ struct EpisodeDetailView: View {
 
 
                 RichText(html: episode.content ?? episode.desc ?? "")
+                    .linkColor(light: Color.secondary, dark: Color.secondary)
                     .richTextBackground(.clear)
                     .padding()
                     
                   
            
-            if let episodeLink = episode.link {
-                Link(destination: episodeLink) {
-                    Label("Open in Browser", systemImage: "safari")
-                }
-                .buttonStyle(.borderedProminent)
-            }
+
                 
 
                 

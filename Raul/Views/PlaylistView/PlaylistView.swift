@@ -16,14 +16,19 @@ struct PlaylistView: View {
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
+        if playListEntries.isEmpty {
+            PlaylistEmptyView()
+        }else{
         NavigationStack{
+            
+           // PlayerView(fullSize: false)
+            
             List{
-                if playListEntries.isEmpty {
-                    PlaylistEmptyView()
-                }else{
+                
              
                     ForEach(playListEntries, id: \.id) { entry in
                         if let episode = entry.episode {
+                            
                             ZStack {
                                 EpisodeRowView(episode: episode)
                                     .id(episode.id)
@@ -31,6 +36,7 @@ struct PlaylistView: View {
                                     EmptyView()
                                 }.opacity(0)
                             }
+
                             .swipeActions(edge: .trailing){
                                 
                                     Button(role: .none) {
@@ -42,6 +48,8 @@ struct PlaylistView: View {
                                     }
                                 
                             }
+                             
+                           
                             
                             
                                 .listRowSeparator(.hidden)
@@ -64,9 +72,12 @@ struct PlaylistView: View {
                         }
                     }
                 }
-            }
+            .animation(.easeInOut, value: playListEntries)
+
             .listStyle(.plain)
             .navigationTitle("Up Next")
+            }
+            
 
         }
 

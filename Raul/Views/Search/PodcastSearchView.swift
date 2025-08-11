@@ -27,11 +27,11 @@ struct PodcastSearchView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(.init(top: 0,
                                          leading: 0,
-                                         bottom: 1,
+                                         bottom: 0,
                                          trailing: 0))
                 
             } else if !viewModel.results.isEmpty{
-              
+                
                 ForEach(viewModel.results, id: \.id) { podcast in
                     SubscribeToPodcastView(fyydPodcastFeed: podcast)
                         .modelContext(context)
@@ -39,21 +39,54 @@ struct PodcastSearchView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
                                              leading: 0,
-                                             bottom: 1,
+                                             bottom: 0,
                                              trailing: 0))
                 }
                 
                 .navigationTitle("Subscribe")
-
-           
                 
+            }else if !viewModel.searchText.isEmpty{
+                Text("no results for \(search)")
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }else{
-                HotPodcastView()
-               
+                HotPodcastView(viewModel: viewModel)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+            }
+            if let url = URL(string: "https://fyyd.de"){
+                Link(destination: url) {
+                    Label("Search is powered by fyyd", systemImage: "safari")
+                    
+                }
+                .padding()
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
         .onChange(of: search) {
             viewModel.searchText = search
+            
+        }
+        .toolbar {
+            
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if !viewModel.languages.isEmpty {
+                Picker("Language", selection: $viewModel.selectedLanguage) {
+                    ForEach(viewModel.languages, id: \.self) { name in
+                        Text(name.languageName()).tag(name)
+                    }
+                }
+                .pickerStyle(.menu)
+                } else {
+                    ProgressView("Loading languages...")
+                }
+            }
         }
      
 

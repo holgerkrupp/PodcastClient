@@ -106,17 +106,14 @@ struct SubscribeToPodcastView: View {
         
         
         ZStack{
-            
+            GeometryReader { geometry in
+                CoverImageView(imageURL: URL(string: imgURL ?? "") )
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: 200)
+                    .clipped()
+            }
      
-            CoverImageView(imageURL: URL(string: imgURL ?? "") )
-                  
-            
-                .scaledToFill()
-                .id(id)
-            
-                .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
-                .clipped()
-            
+ 
             
 
             VStack(alignment: .leading){
@@ -158,8 +155,10 @@ struct SubscribeToPodcastView: View {
                                         do {
                                             subscribing = true
                                             _ = try await actor.createPodcast(from: url)
-                                            subscribing = false
+                                            await requestNotification()
                                             isSubscribed = true
+                                            subscribing = false
+
                                         } catch {
                                             errorMessage = error.localizedDescription
                                         }
@@ -174,44 +173,9 @@ struct SubscribeToPodcastView: View {
                         }
                     }
                 }
-                /*
-                HStack{
-                    if let lastBuildDate = lastpub {
-                        Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    if !isSubscribed {
-                        Button("Subscribe") {
-                            Task {
-                                guard let url = URL(string: xmlURL) else {
-                                    errorMessage = "Invalid URL"
-                                    return
-                                }
 
-                                let actor = PodcastModelActor(modelContainer: context.container)
-                                do {
-                                    subscribing = true
-                                    _ = try await actor.createPodcast(from: url)
-                                    subscribing = false
-                                    isSubscribed = true
-                                } catch {
-                                    errorMessage = error.localizedDescription
-                                }
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        
-                    } else {
-                        Text("Already subscribed")
-                            .foregroundStyle(.secondary)
-                    }
-
-                }
-            */
                  }
-            .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .padding()
             .background(
                 Rectangle()
@@ -219,6 +183,7 @@ struct SubscribeToPodcastView: View {
                 // .shadow(radius: 3)
             )
         }
+        .frame(height: 200)
         
         
       
@@ -242,6 +207,11 @@ struct SubscribeToPodcastView: View {
             }
             fetchAndPopulateFeedIfNeeded()
         }
+    }
+    
+    private func requestNotification() async{
+        let notificationManager = NotificationManager()
+        await notificationManager.requestAuthorizationIfUndetermined()
     }
 }
 

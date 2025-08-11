@@ -14,14 +14,14 @@ struct PodcastRowView: View {
         
             ZStack{
                 
-                CoverImageView(podcast:podcast)
-                    .scaledToFill()
-                    .id(podcast.id)
+
                 
-                    .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
-                    .clipped()
-                
-                
+                GeometryReader { geometry in
+                    CoverImageView(podcast: podcast)
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: 200)
+                        .clipped()
+                }
 
                 VStack(alignment: .leading){
                     HStack {
@@ -64,7 +64,7 @@ struct PodcastRowView: View {
                         }
                     }
                 }
-                .frame(width: UIScreen.main.bounds.width * 0.9, height: 150)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding()
                 .background(
                     Rectangle()

@@ -82,7 +82,8 @@ struct InboxView: View {
                     }
                 }
                 .listStyle(.plain)
-            
+                .animation(.easeInOut, value: episodes)
+
             .navigationTitle("Inbox")
             .refreshable {
                 Task{

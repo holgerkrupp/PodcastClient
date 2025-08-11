@@ -274,17 +274,7 @@ actor EpisodeActor {
     
     
     
-    func downloadCoverArt(for episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else {
-            print("❌ Could not find episode \(episodeID)")
-            return }
-        guard let coverURL = episode.imageURL else {
-            print("❌ Episode does not have a cover")
-            return }
-        let item = await DownloadManager.shared.download(from: coverURL, saveTo: episode.coverFileLocation, episodeID: episode.id)
-        print("saving cover to \(String(describing: episode.coverFileLocation))")
-       
-    }
+
     
     func unarchiveEpisode(episodeID: UUID) async  {
         

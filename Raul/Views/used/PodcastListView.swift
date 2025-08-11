@@ -43,7 +43,14 @@ struct PodcastListView: View {
     }
 
     var body: some View {
-      
+        if filteredPodcasts.isEmpty{
+            if searchText.isEmpty {
+                PodcastsEmptyView()
+            }else{
+                Text("No results found for \"\(searchText)\"")
+            }
+            
+        } else {
             List {
       
                     NavigationLink(destination: AllEpisodesListView()) {
@@ -65,14 +72,7 @@ struct PodcastListView: View {
                     }
                 
                 
-                if filteredPodcasts.isEmpty{
-                    if searchText.isEmpty {
-                        PodcastsEmptyView()
-                    }else{
-                        Text("No results found for \"\(searchText)\"")
-                    }
-                    
-                } else {
+     
                   
                         ForEach(filteredPodcasts) { podcast in
 
@@ -110,11 +110,8 @@ struct PodcastListView: View {
                 
                     
                 }
-            }
+            .animation(.easeInOut, value: filteredPodcasts)
 
-       
-            
-        
             .listStyle(.plain)
             .navigationTitle("Library")
         
@@ -142,6 +139,12 @@ struct PodcastListView: View {
                     Text(message)
                 }
             }
+            }
+
+       
+            
+        
+
         
         
     }

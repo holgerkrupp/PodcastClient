@@ -34,7 +34,7 @@ struct PodcastCategoryView: View {
                                 .modelContext(context)
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
-                                .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
+                                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                         }
                         
                     }
@@ -96,7 +96,7 @@ private struct PodcastCategoryViewLeaf: View {
                             .modelContext(context)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
+                            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .onAppear {
                                 if podcast == viewModel.podcasts.last,
                                    let nextPage = viewModel.paging?.next_page,

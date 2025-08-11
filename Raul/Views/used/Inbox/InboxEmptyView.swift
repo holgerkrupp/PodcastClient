@@ -1,5 +1,5 @@
 //
-//  PlaylistEmptyView.swift
+//  InboxEmptyView.swift
 //  Raul
 //
 //  Created by Holger Krupp on 18.05.25.
@@ -7,18 +7,18 @@
 
 import SwiftUI
 
-struct PlaylistEmptyView: View {
+struct InboxEmptyView: View {
     var body: some View {
         VStack{
-            Text("Your Playlist is empty")
+            Text("Your Inbox is empty")
                 .font(.headline)
             Divider()
-            Text("Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list.")
+            Text("New episodes of subscribed podcasts appear here. You can add them to your listening queue or archive them, if you are not interested in an episode.")
         }
         .padding()
     }
 }
 
 #Preview {
-    PlaylistEmptyView()
+    InboxEmptyView()
 }

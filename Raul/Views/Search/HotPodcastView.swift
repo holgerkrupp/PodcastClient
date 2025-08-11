@@ -9,24 +9,12 @@ import SwiftUI
 import fyyd_swift
 
 struct HotPodcastView: View {
-    @StateObject private var viewModel = PodcastSearchViewModel()
+    @ObservedObject  var viewModel : PodcastSearchViewModel
     @Environment(\.modelContext) private var context
 
 
     var body: some View {
-        if !viewModel.languages.isEmpty {
-            Picker("Language", selection: $viewModel.selectedLanguage) {
-                ForEach(viewModel.languages, id: \.self) { name in
-                    
-                
-                        Text(name.languageName()).tag(name)
-                }
-            }
-            .pickerStyle(.menu)
-            .padding()
-        } else {
-            ProgressView("Loading languages...") // Show loading indicator if needed
-        }
+
         
         VStack {
             
@@ -45,7 +33,7 @@ struct HotPodcastView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
                                              leading: 0,
-                                             bottom: 1,
+                                             bottom: 0,
                                              trailing: 0))
                     
                 }
@@ -53,11 +41,10 @@ struct HotPodcastView: View {
                 .navigationTitle("Hot")
             }
         }
+
      
 
     }
 }
 
-#Preview {
-    HotPodcastView()
-}
+

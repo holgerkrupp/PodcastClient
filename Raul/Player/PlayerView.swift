@@ -28,14 +28,14 @@ struct PlayerView: View {
                                 .aspectRatio(1, contentMode: .fill)
                                 .scaledToFill()
                             
-                            //       .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+                           
                             
                                 .frame(width: geometry.size.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? geometry.size.height : 80)
                                 .ignoresSafeArea(.all, edges: .bottom)
-                            // .animation(.easeInOut(duration: 0.3), value: episode.playProgress)
+                           
                             
                             Group{
-                                if fullSize {
+                                if fullSize == true {
                                     VStack{
                                 
                                     ScrollView([.vertical]){
@@ -56,15 +56,13 @@ struct PlayerView: View {
                                             .padding()
                                             
                                           
-                                   
-
-                                        
                                         
                                     }
                                 }
                                     .padding(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
                                 }else{
                                     PlayerControllView()
+                                        .padding()
                                 }
                             }
                             
@@ -77,6 +75,7 @@ struct PlayerView: View {
                                 
                               
                             }
+                        .ignoresSafeArea()
                         
                         
     

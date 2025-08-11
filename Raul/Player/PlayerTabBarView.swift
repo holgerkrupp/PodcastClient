@@ -53,10 +53,10 @@ struct PlayerTabBarView: View {
                             Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
                                 .font(.caption2)
                                 .lineLimit(1)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                             Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
                                 .font(.caption)
-                                .foregroundStyle(.primary)
+                                .foregroundColor(.primary)
 
                                 .lineLimit(1)
                             
@@ -107,10 +107,10 @@ struct PlayerTabBarView: View {
                             Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
                                 .font(.caption2)
                                 .lineLimit(1)
-                                .foregroundStyle(.secondary)
+                                .foregroundColor(.secondary)
                             Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
                                 .font(.caption)
-                                .foregroundStyle(.primary)
+                                .foregroundColor(.primary)
                                 .lineLimit(1)
                             
                         }
@@ -147,6 +147,7 @@ struct PlayerTabBarView: View {
                 }
                 
             }
+            .tint(Color.accentColor)
             
             .onTapGesture {
                 presentingModal = true
@@ -157,11 +158,12 @@ struct PlayerTabBarView: View {
             
                 PlayerView(fullSize: true)
                 .presentationDragIndicator(.visible)
-                .padding(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 
             
         })
         }
+           
             
 
     }

@@ -8,11 +8,10 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 
-- [x] Update of Subscribe Views
-- [ ] Replace HTML-View
+- [ ] Rename FyydPodcast to generic PodcastFeed (merge classes)
+- [ ] Integrate iTunes Results to fyyd results (in ViewModel)
 
 - [ ] Integrate Settings (Per Podcasts and global)
-- [x] AutoArchive - Delete files
 
 - [?] fix Skip Chapters (validate skip to and skip last)
 
@@ -47,8 +46,8 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [x] mp3
 - - [x] extracted from shownotes
 - - [x] Update Chapter View more snappy
-- [?] include chapter art for mp3/m4a
-- [?] include chapter links for mp3/m4a
+- [x] include chapter art for mp3/m4a
+- [x] include chapter links for mp3/m4a
 - [x] postprocess chapters to find duration/end if no value is given ( chapter[n].end = chapter[n+1].start ? episode.end)
 - [x] save last played episode and reload when opening the app
 

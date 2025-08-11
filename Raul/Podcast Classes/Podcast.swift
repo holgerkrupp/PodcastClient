@@ -66,7 +66,7 @@ final class Podcast: Identifiable {
     var feedUpdated:Bool? // has the feed been updated and should refresh?
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
     
-    var isUpdating: Bool = false
+    @Transient var isUpdating: Bool = false
     
     var isSubscribed: Bool = true
     

@@ -19,7 +19,7 @@ struct EpisodeRowView: View {
 
     @State private var presentingModal : Bool = false
     @State var episode: Episode
-    @State private var image: Image?
+  
     
     var body: some View {
 
@@ -36,11 +36,7 @@ struct EpisodeRowView: View {
 
                         
                     VStack(alignment: .leading){
-                    /*
-                        HStack{
-                            Image(systemName: episode.podcast?.settings != nil ? "gear.badge.checkmark" : "gear.badge.xmark")
-                        }
-                      */
+  
 
                             HStack{
                                 CoverImageView(episode: episode)
