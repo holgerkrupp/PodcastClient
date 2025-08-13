@@ -11,40 +11,41 @@ import fyyd_swift
 struct HotPodcastView: View {
     @ObservedObject  var viewModel : PodcastSearchViewModel
     @Environment(\.modelContext) private var context
-
-
+    
+    
     var body: some View {
-
         
-        VStack {
+        
+      
+        
+        
+        
+        
+        if viewModel.isLoading {
+            ProgressView()
+        } else {
             
-
             
-
-            if viewModel.isLoading {
-                ProgressView()
-            } else {
-
-
-                ForEach(viewModel.hotPodcasts , id: \.id) { podcast in
-                    SubscribeToPodcastView(fyydPodcastFeed: podcast)
-                        .modelContext(context)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                    
-                }
-                .listStyle(.plain)
-                .navigationTitle("Hot")
+            ForEach(viewModel.hotPodcasts , id: \.id) { podcast in
+                SubscribeToPodcastView(fyydPodcastFeed: podcast)
+                    .modelContext(context)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+                
             }
-        }
-
-     
-
+            
+            .listStyle(.plain)
+            .navigationTitle("Hot")
+        
     }
+    
+    
+    
+}
 }
 
 

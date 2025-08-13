@@ -14,6 +14,8 @@ class PodcastSearchViewModel: ObservableObject {
         }
     }
     @Published var singlePodcast: PodcastFeed?
+    @Published var searchResults: [PodcastFeed] = []
+    
     @Published var selectedLanguage: String? {
         didSet {
             print("did set language: \(selectedLanguage)")
@@ -53,7 +55,8 @@ class PodcastSearchViewModel: ObservableObject {
 
     func performSearch() {
         singlePodcast = nil
-        results = []
+        searchResults.removeAll()
+        results.removeAll()
         
         guard !searchText.isEmpty else {
             return
@@ -68,14 +71,31 @@ class PodcastSearchViewModel: ObservableObject {
      
             isLoading = false
             return
-        }else{
+        } else {
             singlePodcast = nil
+            
+            var fyydFinished = false
+            var iTunesFinished = false
+            
+            // Start fyyd search in its own Task
             Task {
                 let podcasts = await fyydManager.searchPodcasts(query: searchText) ?? []
-               
+                let fyydPodcasts = podcasts.map(PodcastFeed.init)
                 await MainActor.run {
-                    results = podcasts
-                    isLoading = false
+                    self.searchResults = (self.searchResults + fyydPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
+                    self.results = podcasts
+                    fyydFinished = true
+                     self.isLoading = false
+                }
+            }
+
+            // Start iTunes search in its own Task
+            Task {
+                let iTunesPodcasts = await iTunesActor.search(for: searchText) ?? []
+                await MainActor.run {
+                    self.searchResults = (self.searchResults + iTunesPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
+                    iTunesFinished = true
+                     self.isLoading = false 
                 }
             }
         }
@@ -83,6 +103,8 @@ class PodcastSearchViewModel: ObservableObject {
         
 
     }
+    
+  
     
     func parseURL(feedURL: URL) async throws -> [String:String]{
         let (data, _) = try await URLSession.shared.data(from: feedURL)
@@ -126,3 +148,4 @@ class PodcastSearchViewModel: ObservableObject {
         }
     }
 }
+

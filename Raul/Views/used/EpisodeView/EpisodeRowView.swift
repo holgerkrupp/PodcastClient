@@ -19,6 +19,7 @@ struct EpisodeRowView: View {
 
     @State private var presentingModal : Bool = false
     @State var episode: Episode
+    private let height:CGFloat = 210
   
     
     var body: some View {
@@ -29,7 +30,7 @@ struct EpisodeRowView: View {
                     GeometryReader { geometry in
                         CoverImageView(podcast: episode.podcast)
                             .scaledToFill()
-                            .frame(width: geometry.size.width, height: 200)
+                            .frame(width: geometry.size.width, height: height)
                             .clipped()
                     }
                     
@@ -133,19 +134,20 @@ struct EpisodeRowView: View {
                     )
                     
                     GeometryReader { geometry in
-                        Capsule()
+                        Rectangle()
                             .fill(Color.accentColor)
                             .frame(width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)), height: 4)
-                            .position(x: geometry.size.width * CGFloat(max(0.0, min(1.0, episode.maxPlayProgress))) / 2, y: geometry.size.height - 2)
+                            .position(x: geometry.size.width * CGFloat(max(0.0, min(1.0, episode.maxPlayProgress))) / 2, y: height - 2)
                     }
                     .allowsHitTesting(false)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .frame(maxWidth: .infinity)
                     .clipped()
                    
                    
                 
             }
-                .frame(height: 200)
+                
+                .frame(height: height)
         }
             
             .sheet(isPresented: $presentingModal, content: {

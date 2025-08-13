@@ -14,7 +14,8 @@ struct PodcastDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
-    
+    @Environment(\.deviceUIStyle) var style
+
     @State private var showSettings: Bool = false
     
     @State private var searchText = ""
@@ -84,12 +85,24 @@ struct PodcastDetailView: View {
                                 .lineLimit(2)
                         }
                     }
-                    if let podcastLink = podcast.link {
-                        Link(destination: podcastLink) {
-                            Label("Open in Browser", systemImage: "safari")
+                    if podcast.funding.count > 0 {
+                        HStack{
+                            ForEach(podcast.funding ) { fund in
+                                Link(destination: fund.url) {
+                                    Label(fund.label, systemImage: style.currencySFSymbolName)
+                                }
+                                .buttonStyle(.glass)
+                                
+                                if fund != podcast.funding.last {
+                                    Spacer()
+                                }
+                            }
                         }
-                        .buttonStyle(.glass)
                     }
+                    
+                    
+                    
+ 
                     
                     
                     
@@ -107,6 +120,12 @@ struct PodcastDetailView: View {
                         .padding()
                 
                     
+                }
+                if let podcastLink = podcast.link {
+                    Link(destination: podcastLink) {
+                        Label("Open in Browser", systemImage: "safari")
+                    }
+                    .buttonStyle(.glass)
                 }
             }
             .listRowSeparator(.hidden)

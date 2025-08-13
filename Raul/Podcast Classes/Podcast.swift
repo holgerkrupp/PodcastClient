@@ -8,6 +8,13 @@
 import Foundation
 import SwiftData
 
+struct FundingInfo: Codable, Hashable, Identifiable {
+    var id = UUID()
+    
+    var url: URL
+    var label: String
+}
+
 @Model
 final class Podcast: Identifiable {
     var id = UUID()
@@ -26,6 +33,11 @@ final class Podcast: Identifiable {
     @Relationship(deleteRule: .cascade) var metaData: PodcastMetaData?
     @Relationship(deleteRule: .cascade) var settings: PodcastSettings?
    
+    var funding: [FundingInfo] = [] // See also: Episode.funding
+    
+    
+    
+    
     
     // calculated properties that will be generated out of existing properties.
     
@@ -75,7 +87,4 @@ final class Podcast: Identifiable {
     init() {
     }
 }
-
-
-
 

@@ -8,8 +8,8 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-enum ChapterType: String, Codable, Comparable{
-    static func < (lhs: ChapterType, rhs: ChapterType) -> Bool {
+enum MarkerType: String, Codable, Comparable{
+    static func < (lhs: MarkerType, rhs: MarkerType) -> Bool {
         lhs.desc < rhs.desc
     }
     
@@ -19,6 +19,7 @@ enum ChapterType: String, Codable, Comparable{
     case unknown
     case mp3
     case ai
+    case bookmark
     
     var desc:String{
         
@@ -35,6 +36,9 @@ enum ChapterType: String, Codable, Comparable{
             "These Chapters have been extracted from the shownotes using RegEx. They might contain errors. Inserted ads might shift the start and end times of chapters by several minutes."
         case .unknown:
             ""
+        case .bookmark:
+            "Bookmarks can be created when listening to an episode."
+
         }
         
     }
@@ -42,7 +46,7 @@ enum ChapterType: String, Codable, Comparable{
     
 }
 @Model
-class Chapter: Identifiable, Equatable, Hashable{
+class Marker: Identifiable, Equatable, Hashable{
     
     
     var id = UUID()
@@ -53,6 +57,7 @@ class Chapter: Identifiable, Equatable, Hashable{
     var start: Double?
     var endTime: Double?
     var duration: TimeInterval?
+    var creationtime:Date? = Date()
     
     var progress:Double? // 0 -1 
     
@@ -75,7 +80,7 @@ class Chapter: Identifiable, Equatable, Hashable{
     }
     
     
-    var type : ChapterType = ChapterType.unknown
+    var type : MarkerType = MarkerType.unknown
     
     var episode: Episode?
     var shouldPlay:Bool = true
@@ -107,7 +112,7 @@ class Chapter: Identifiable, Equatable, Hashable{
         
     }
     
-    init(start: Double, title: String, type: ChapterType? = .unknown, imageData: Data? = nil, duration: TimeInterval? = nil){
+    init(start: Double, title: String, type: MarkerType? = .unknown, imageData: Data? = nil, duration: TimeInterval? = nil){
         self.start = start
         self.title = title
         self.type = type ?? .unknown
@@ -117,10 +122,10 @@ class Chapter: Identifiable, Equatable, Hashable{
             self.endTime = start + duration
         }
         
-        print("init Chapter \(title)")
+        print("init Marker \(title)")
     }
     
-    static func ==(lhs: Chapter, rhs: Chapter) -> Bool {
+    static func ==(lhs: Marker, rhs: Marker) -> Bool {
         
         if lhs.episode != rhs.episode, lhs.episode != nil{
             return false

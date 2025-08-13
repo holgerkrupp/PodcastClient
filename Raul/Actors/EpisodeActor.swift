@@ -137,7 +137,8 @@ actor EpisodeActor {
     }
     
     
-    
+
+        
     
     
 
@@ -192,8 +193,9 @@ actor EpisodeActor {
     }
     
     func removeFromPlaylist(_ episodeID: UUID) async {
-        let PlaylistmodelActor = PlaylistModelActor(modelContainer: modelContainer)
-        await PlaylistmodelActor.remove(episodeID: episodeID)
+        if let PlaylistmodelActor = try? PlaylistModelActor(modelContainer: modelContainer){
+            try? await PlaylistmodelActor.remove(episodeID: episodeID)
+        }
     }
     
     func archiveEpisode(episodeID: UUID) async {
@@ -261,18 +263,43 @@ actor EpisodeActor {
         await BasicLogger.shared.log("processAfterCreation  - \(episode.podcast?.title ?? "Unknown Podcast") - \(episode.title)")
         
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
-
-        
-        
         let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
         await BasicLogger.shared.log("processAfterCreation - \(episode.title) playnext \(playnext)")
         if playnext != .none {
-            await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
+            try? await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
         }
+        
+        await getRemoteChapters(episodeID: episodeID)
 
     }
     
+    func getRemoteChapters(episodeID: UUID) async {
+      
+        guard let episode = await fetchEpisode(byID: episodeID) else {
+            return }
+        print("check if remote Chapters shall be created for \(episode.title)")
+            if let pubDate = episode.publishDate,
+               let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
+               pubDate > oneWeekAgo{
+                // pubDate is less than 7 days old
+             
+                await extractRemoteMP3Chapters(episode.url)
+                    
+                
+            
+        }
+    }
     
+    
+    func createBookMarkfor(episodeID: UUID, at playPosition: Double) async{
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+
+        let bookmarkTitle = episode.transcriptLines?.sorted(by: { $0.startTime < $1.startTime }).last(where: { $0.startTime < playPosition })?.text ?? ""
+        let bookmark = Marker(start: playPosition, title: bookmarkTitle, type: .bookmark)
+        episode.bookmarks.append(bookmark)
+        modelContext.saveIfNeeded()
+
+    }
     
 
     
@@ -440,12 +467,11 @@ actor EpisodeActor {
         }
         return transcript
     }
-    
 
 
     func createChapters(_ fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        
+        await BasicLogger.shared.log("creating Chapters for \(episode.title)")
         
         // Check if there is an external chapter file
         if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
@@ -490,6 +516,42 @@ actor EpisodeActor {
         }
 
        await updateChapterDurations(episodeURL: episode.url)
+        await applyAutoSkipWords(episodeID: episode.id)
+    }
+    
+    private func applyAutoSkipWords(episodeID: UUID) async{
+
+        guard let episode = await fetchEpisode(byID: episodeID) else {
+            return
+        }
+        await BasicLogger.shared.log("apply Auto Skip Chapters for \(episode.title)")
+
+        let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.id) else {
+            return
+        }
+        for skipWord in skipWord {
+            guard let keyword = skipWord.keyWord?.lowercased(), !keyword.isEmpty else { continue }
+            let matches: (String) -> Bool
+            switch skipWord.keyOperator {
+            case .Contains:
+                matches = { $0.contains(keyword) }
+            case .Is:
+                matches = { $0 == keyword }
+            case .StartsWith:
+                matches = { $0.hasPrefix(keyword) }
+            case .EndsWith:
+                matches = { $0.hasSuffix(keyword) }
+            }
+            for chapter in episode.chapters {
+                if matches(chapter.title.lowercased()) {
+                    await BasicLogger.shared.log("Chapter \(chapter.title) should be skipped")
+
+                    chapter.shouldPlay = false
+                }
+            }
+        }
+        modelContext.saveIfNeeded()
     }
     
 
@@ -539,32 +601,30 @@ actor EpisodeActor {
             return
         }
     }
-    /*
-     
-     I WANT TO LOAD Chapters from remote mp3 files in order to show the chapters prior to downloading the file. but i have a concurrency problem.
-     
-     
-    private func readRemoteMP3Chapters(fileURL: URL) async  {
-        
+    
+    func extractRemoteMP3Chapters(_ fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        Task {
-            if let reader = await mp3ChapterReader.fromRemoteURL(fileURL) {
-                let dict = reader.getID3Dict()
-                let chapters = parse(chapters: dict)
-            } else {
-                print("Failed to load ID3 tag.")
+        print("extractRemoteMP3Chapters for \(episode.title)")
+        let remoteURL = episode.url
+        if let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
+            let dict = mp3Reader.getID3Dict()
+            if let chapters = parse(chapters: dict) {
+                print("got \(chapters.count) Remote Chapters")
+                episode.chapters.removeAll(where: { $0.type == .mp3 })
+                episode.chapters.append(contentsOf: chapters)
+                modelContext.saveIfNeeded()
             }
         }
-        
     }
-    */
-    private func parse(chapters: [String: Any]) -> [Chapter]?{
+
+    
+    private func parse(chapters: [String: Any]) -> [Marker]?{
         print("parse chapters")
         if let chaptersDict = chapters["Chapters"] as? [String:[String:Any]]{
-            var chapters: [Chapter] = []
+            var chapters: [Marker] = []
             for chapter in chaptersDict {
                 
-                let newChaper = Chapter()
+                let newChaper = Marker()
                 newChaper.title = chapter.value["TIT2"] as? String ?? ""
                 newChaper.start = chapter.value["startTime"] as? Double ?? 0
                
@@ -585,13 +645,13 @@ actor EpisodeActor {
     /// Parses JSON formatted chapters data into an array of Chapter models asynchronously.
     /// - Parameter jsonData: The JSON data representing chapters.
     /// - Returns: An optional array of Chapter objects or nil if decoding fails.
-    func parseJSONChapters(jsonData: Data) async -> [Chapter]? {
+    func parseJSONChapters(jsonData: Data) async -> [Marker]? {
         do {
             let decoder = JSONDecoder()
             let chapterList = try decoder.decode(JSONChapterList.self, from: jsonData)
-            var chapters: [Chapter] = []
+            var chapters: [Marker] = []
             for ch in chapterList.chapters {
-                let chapter = Chapter()
+                let chapter = Marker()
                 chapter.title = ch.title
                 chapter.start = ch.startTime
                 chapter.type = .extracted
@@ -640,7 +700,7 @@ actor EpisodeActor {
             
             // Create Chapter objects within the actor context
             let chapters = chapterData.map { data in
-                let chapter = Chapter()
+                let chapter = Marker()
                 chapter.title = data.title
                 chapter.start = data.start
                 chapter.duration = data.duration
@@ -666,11 +726,11 @@ actor EpisodeActor {
         
         let extractedData = await generateAIChapters(from: transcriptLines)
         if !extractedData.isEmpty {
-            var newchapters:[Chapter] = []
+            var newchapters:[Marker] = []
             for extractedChapter in extractedData{
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
                     print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
-                    let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
+                    let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
                 }
             }
@@ -694,11 +754,11 @@ actor EpisodeActor {
         }
        
         if let extractedData {
-            var newchapters:[Chapter] = []
+            var newchapters:[Marker] = []
             for extractedChapter in extractedData{
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
                     print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
-                    let newChapter = Chapter(start: startingTime, title: extractedChapter.value, type: .extracted)
+                    let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
                 }
             }

@@ -16,7 +16,7 @@ class ModelContainerManager: ObservableObject {
             cloudKitDatabase: .automatic
         )
         do {
-            container = try ModelContainer(for: Podcast.self, PodcastMetaData.self, Episode.self, EpisodeMetaData.self, Playlist.self, PlaylistEntry.self, Chapter.self, configurations: configuration)
+            container = try ModelContainer(for: Podcast.self, PodcastMetaData.self, Episode.self, EpisodeMetaData.self, Playlist.self, PlaylistEntry.self, Marker.self, configurations: configuration)
         } catch {
             print("Failed to initialize ModelContainer: \(error)")
             container = nil

@@ -8,6 +8,33 @@
 //
 
 import Foundation
+
+extension Sequence where Element: Hashable {
+    func uniqued() -> [Element] {
+        var set = Set<Element>()
+        return filter { set.insert($0).inserted }
+    }
+}
+
+extension Sequence {
+    func uniqued(by keyPaths: [ (Element) -> AnyHashable ]) -> [Element] {
+        var seen = Set<KeyArray>()
+        return filter { element in
+            let keyTuple = keyPaths.map { $0(element) }
+            let compositeKey = KeyArray(keyTuple)
+            return seen.insert(compositeKey).inserted
+        }
+    }
+}
+
+// Helper wrapper to allow an array of Hashable to be itself Hashable
+private struct KeyArray: Hashable {
+    let keys: [AnyHashable]
+    init(_ keys: [AnyHashable]) {
+        self.keys = keys
+    }
+}
+
 extension Sequence {
     func asyncMap<T>(
         _ transform: (Element) async throws -> T

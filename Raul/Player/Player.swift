@@ -35,7 +35,7 @@ class Player: NSObject {
             print("Warning: Could not create PlaylistModelActor because ModelContainer is nil.")
             return nil
         }
-        return PlaylistModelActor(modelContainer: container)
+        return try? PlaylistModelActor(modelContainer: container)
     }()
     
     let settingsActor: PodcastSettingsModelActor? = {
@@ -80,9 +80,9 @@ class Player: NSObject {
     var isPlaying: Bool = false
     
     var chapterProgress: Double?
-    var currentChapter: Chapter?
-    var nextChapter: Chapter?
-    var chapters: [Chapter]?
+    var currentChapter: Marker?
+    var nextChapter: Marker?
+    var chapters: [Marker]?
 
     
 
@@ -153,42 +153,53 @@ class Player: NSObject {
         }
     }
     
-    private func fetchChapters(for episodeID: UUID)  -> [Chapter]? {
-        do {
-            let descriptor = FetchDescriptor<Chapter>(predicate: #Predicate { $0.episode?.id == episodeID })
-            if let chapters: [Chapter]? = try   episodeActor?.modelContainer.mainContext.fetch(descriptor) {
+
+    
+    private func fetchChapters(for episodeID: UUID)  async -> [Marker]? {
+        
+        guard let episode = await fetchEpisode(with: episodeID) else { return [] }
+        print(" fetchChapters")
+
+           
+             let chapters = episode.chapters
+            
+            if !chapters.isEmpty{
+            
                 
                 
-                let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+                let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
                 
                 let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
                 
                 return categoryGroups.values.flatMap { group in
                 let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
                  
+                    print("highest category: \(highestCategory?.rawValue ?? "nil")")
+                    
                 return group.filter { $0.type == highestCategory }
                 }
-            }else{
-                return nil
-            }
             
-        } catch {
+            
+        } else {
+            print("empty")
             return []
         }
     }
     
-    private func updateChapters(){
-        guard let currentEpisodeID else { return }
-        chapters = fetchChapters(for: currentEpisodeID)
+    private func updateChapters() {
+        Task{
+            guard let currentEpisodeID else { return }
+            chapters = await fetchChapters(for: currentEpisodeID)
+        }
     }
     
     private func updateCurrentChapter() -> Bool{
-        
         let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
-        
+        print(playingChapter?.title ?? "nil")
         if currentChapter != playingChapter {
-            updateChapters()
-            if let chapterProgress, let currentChapter  {
+             updateChapters()
+            
+                if let chapterProgress, let currentChapter  {
                 saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
             }
             currentChapter = playingChapter
@@ -203,6 +214,7 @@ class Player: NSObject {
             
             return true
         }else{
+            print("return false")
             return false
         }
         
@@ -219,7 +231,7 @@ class Player: NSObject {
         }
     }
     
-    private func saveChapterProgress(chapter: Chapter, progress: Double){
+    private func saveChapterProgress(chapter: Marker, progress: Double){
         let chapterID = chapter.id
        
             Task.detached(priority: .background) {
@@ -249,7 +261,7 @@ class Player: NSObject {
             
         }else{
 
-            await playlistActor?.add(episodeID: episodeUUID, to: .front)
+            try? await playlistActor?.add(episodeID: episodeUUID, to: .front)
 
         }
         
@@ -265,7 +277,7 @@ class Player: NSObject {
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
             await unloadEpisode(episodeUUID: currentEpisodeID)
             
-            await playlistActor?.remove(episodeID: episodeUUID)
+            try? await playlistActor?.remove(episodeID: episodeUUID)
             
         }
         episode.metaData?.isInbox = false
@@ -317,12 +329,18 @@ class Player: NSObject {
             await engine.replaceCurrentItem(with: item)
             BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
             if let time  {
+                BasicLogger.shared.log("Time provided when calling the playEpisode function: \(time)")
+
                 jumpTo(time: time)
             }else if let lastPlayPosition = currentEpisode?.metaData?.playPosition, lastPlayPosition < ((currentEpisode?.duration ?? 1.0) * progressThreshold) {
-                BasicLogger.shared.log("last position: \(lastPlayPosition)")
+             
+
+                BasicLogger.shared.log("jump to last position: \(lastPlayPosition)")
                 
                 jumpTo(time: lastPlayPosition)
             } else {
+                BasicLogger.shared.log("no time - jump to beginning")
+
                 jumpTo(time: 0)
             }
             _ = updateCurrentChapter()
@@ -602,7 +620,7 @@ class Player: NSObject {
     
     
     
-    func skipTo(chapter: Chapter) async{
+    func skipTo(chapter: Marker) async{
         print("skip to chapter \(chapter.title)")
             if let newEpisode = chapter.episode, let start = chapter.start{
                 await playEpisode(newEpisode.id, playDirectly: true, startingAt: start)
@@ -649,7 +667,7 @@ class Player: NSObject {
         print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
      //   if currentEpisode?.playProgress ?? 0 >= progressThreshold {
             Task{
-                if let nextEpisodeID = await playlistActor?.nextEpisode(){
+                if let nextEpisodeID = try? await playlistActor?.nextEpisode(){
                     BasicLogger.shared.log("Playing next episode")
                     await playEpisode(nextEpisodeID, playDirectly: true)
                 }else{
@@ -702,6 +720,12 @@ class Player: NSObject {
             Task { @MainActor in
                 self.updateNowPlayingInfo()
             }
+        }
+    }
+    
+    func createBookmark() async{
+        if let container = ModelContainerManager().container, let currentEpisodeID{
+            await EpisodeActor(modelContainer: container).createBookMarkfor(episodeID: currentEpisodeID, at: playPosition)
         }
     }
     

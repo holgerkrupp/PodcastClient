@@ -10,15 +10,16 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self.interfaceController = interfaceController
 
        // let playlistActor = PlaylistModelActor(modelContainer: ModelContainerManager().container!)
-         let playlistActor = PlaylistModelActor()
-
-        let playNext = CarPlayPlayNext(playlistActor: playlistActor, interfaceController: interfaceController)
-        self.playNext = playNext
-        
-        let nowPlaying = CarPlayNowPlaying(interfaceController: interfaceController)
-        self.nowPlaying = nowPlaying
-        
-        self.interfaceController?.setRootTemplate(playNext.template, animated: false, completion: nil)
+        if let playlistActor = try? PlaylistModelActor(){
+            
+            let playNext = CarPlayPlayNext(playlistActor: playlistActor, interfaceController: interfaceController)
+            self.playNext = playNext
+            
+            let nowPlaying = CarPlayNowPlaying(interfaceController: interfaceController)
+            self.nowPlaying = nowPlaying
+            
+            self.interfaceController?.setRootTemplate(playNext.template, animated: false, completion: nil)
+        }
     }
     
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {

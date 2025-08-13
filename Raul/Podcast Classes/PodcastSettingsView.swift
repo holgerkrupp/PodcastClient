@@ -24,7 +24,7 @@ struct PodcastSettingsView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .onChange(of: useCustomSettings) {
-                printAllSettings()
+             
                 if useCustomSettings == true {
                     if podcast.settings == nil || podcast.settings?.isEnabled == false {
                         if let existing = allSettings.first(where: { $0.podcast?.id == podcast.id }) {

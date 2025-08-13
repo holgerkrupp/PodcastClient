@@ -8,15 +8,15 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 
-- [ ] Rename FyydPodcast to generic PodcastFeed (merge classes)
-- [ ] Integrate iTunes Results to fyyd results (in ViewModel)
+- [x] Rename FyydPodcast to generic PodcastFeed (merge classes)
+- [x] Integrate iTunes Results to fyyd results (in ViewModel)
 
 - [ ] Integrate Settings (Per Podcasts and global)
 
 - [?] fix Skip Chapters (validate skip to and skip last)
 
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
-- [ ] mp3ChapterReader work with remote files
+- [x] mp3ChapterReader work with remote files
 
 
 
@@ -59,13 +59,13 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 - - [ ] Show import progress
 - - [x] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
 - [x] podcast directory search
-- - [ ] iTunes Directory Search (basic)
+- - [x] iTunes Directory Search (basic)
 - - [x] Fyyd Directory Search
 - - [x] Fyyd recomendations
 
 
 ### Refresh and Downloads
-- [ ] auto download/refresh feeds
+- [x] auto download/refresh feeds
 
 ### Player
 - [x] skip manually selected chapters
@@ -87,9 +87,7 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ### Subscription Management
 - [x] OPML export
 
-- [ ] accept opml from share sheet
-- [ ] accept rss / xml from share sheet 
-- [ ] accept any URL that could be a feed
+
 
 
 ### Refresh and Downloads
@@ -113,6 +111,10 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 ### Subscription Management
 - [ ] Sideloads via iCloud Drive
 - [ ] Downloads of Episodes withouth subscribing to a feed
+
+- [ ] accept opml from share sheet
+- [ ] accept rss / xml from share sheet 
+- [ ] accept any URL that could be a feed
 
 ### Refresh and Downloads
 

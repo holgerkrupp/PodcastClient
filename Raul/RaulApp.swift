@@ -127,4 +127,34 @@ extension DeviceUIStyle {
         case .macDesktop: return "desktopcomputer"
         }
     }
+    
+    var currencySFSymbolName: String {
+        let code = Locale.current.currency?.identifier  ?? ""
+        
+        // Map ISO currency codes to SF Symbol currency names
+        let map: [String: String] = [
+            "USD": "dollarsign",
+            "EUR": "eurosign",
+            "JPY": "yensign",
+            "GBP": "sterlingsign",
+            "KRW": "wonsign",
+            "INR": "indianrupeesign",
+            "RUB": "rublesign",
+            "TRY": "turkishlirasign",
+            "VND": "vietnamesedongsign",
+            "ILS": "shekelsign",
+            "THB": "bahtsign",
+            "PLN": "zlotysign",
+            "CZK": "czechkorunasign",
+            "HUF": "forintsign",
+            "NGN": "nairasign",
+            "BRL": "brazilsign",
+            "ZAR": "randsign",
+            "PHP": "philippinepesosign",
+            "MXN": "pesosign"
+        ]
+        
+        let symbolBase = map[code] ?? "creditcard"
+        return "\(symbolBase).circle"
+    }
 }

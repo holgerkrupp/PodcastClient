@@ -14,7 +14,7 @@ Notable Tags (under podlove:):
 - [ ] Podlove Alternate Feeds
 
 - [x] Podlove Paged Feeds
-- [ ] Podlove Deep Linking
+- [x] Podlove Deep Linking
 
 
 ✅ Podcasting 2.0 Namespace
@@ -31,7 +31,7 @@ Notable Tags:
 - - [x] SRT
 - - [x] JSON
 - [x] <podcast:chapters> — Link to chapter file (e.g. JSON format).
-- [ ] <podcast:funding> — Monetization URL with description (e.g. Patreon).
+- [x] <podcast:funding> — Monetization URL with description (e.g. Patreon).
 - [ ] <podcast:medium> — Show type (e.g. audio, video, music).
 - [x] <podcast:guid> — Global unique identifier (permanent).
 - [ ] <podcast:license> — Licensing info (e.g. Creative Commons).

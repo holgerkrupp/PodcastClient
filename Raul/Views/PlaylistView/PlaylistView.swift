@@ -21,10 +21,45 @@ struct PlaylistView: View {
         }else{
         NavigationStack{
             
-           // PlayerView(fullSize: false)
+           
             
             List{
-                
+
+                if let episode = Player.shared.currentEpisode {
+                    ZStack {
+                        EpisodeRowView(episode: episode)
+                            .id(episode.id)
+                        Rectangle()
+                            .fill(Color.background)
+                            .opacity(0.9)
+                            .allowsHitTesting(false)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Group {
+                            if Player.shared.isPlaying {
+                                Label("Now Playing", systemImage: "waveform")
+                                    .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                            } else {
+                                Label("Now Playing", systemImage: "waveform.low")
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                            }
+                        }
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                            EmptyView()
+                        }.opacity(0)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+                    .animation(.easeInOut, value: Player.shared.currentEpisode)
+
+                    
+                }
              
                     ForEach(playListEntries, id: \.id) { entry in
                         if let episode = entry.episode {

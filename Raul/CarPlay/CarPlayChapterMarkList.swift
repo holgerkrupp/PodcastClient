@@ -5,7 +5,7 @@ import CarPlay
 class CarPlayChapterMarkList {
     let interfaceController: CPInterfaceController
     var template: CPListTemplate
-    private var chapters: [Chapter] = []
+    private var chapters: [Marker] = []
     private var images: [UIImage?] = []
     
     init(interfaceController: CPInterfaceController) {
@@ -61,7 +61,7 @@ class CarPlayChapterMarkList {
         return String(format: "%02d:%02d", mins, secs)
     }
     
-    private func loadImage(chapter: Chapter) async -> UIImage?{
+    private func loadImage(chapter: Marker) async -> UIImage?{
         if let imageData = chapter.imageData,
            let uiImage = UIImage(data: imageData) {
             

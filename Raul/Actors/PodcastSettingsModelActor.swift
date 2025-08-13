@@ -118,10 +118,31 @@ actor PodcastSettingsModelActor {
     }
     
     
+    func getChapterSkipKeywords(for podcastID: UUID?) async -> [skipKey]?{
+        guard let podcastID,let playbackSpeed = await fetchPodcastSettings(for: podcastID)?.autoSkipKeywords  else {
+            await BasicLogger.shared.log("getChapterSkipKeywords no PodcastID -> standard")
+            return await standardSettings().autoSkipKeywords
+        }
+        return playbackSpeed
+    }
+    
+    func setChapterSkipKeywords(for podcastID: UUID?, to value: [skipKey]) async {
+        guard let podcastID  else {
+            await BasicLogger.shared.log("no PodcastID - not saving")
+            return
+        }
+        guard var settings = await fetchPodcastSettings(for: podcastID) else {
+            await BasicLogger.shared.log("no Podcast Settings - not saving")
+            return
+        }
+        
+        settings.autoSkipKeywords = value
+    }
+    
     
     func getPlaybackSpeed(for podcastID: UUID?) async -> Float?{
         
-        guard let podcastID else {
+        guard let podcastID  else {
             await BasicLogger.shared.log("no PodcastID - standard PlaybackSpeed")
             return await standardSettings().playbackSpeed // is no podcastID is given, the global Settings are returned
         }

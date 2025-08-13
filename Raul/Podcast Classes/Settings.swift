@@ -58,7 +58,7 @@ enum Operator:Codable {
     case Is, Contains, StartsWith, EndsWith
 }
 
-struct skipKey:Codable{
+struct skipKey:Codable, Sendable{
     
     var keyWord:String?
     var keyOperator:Operator = .Contains

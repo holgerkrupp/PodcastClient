@@ -80,7 +80,7 @@ actor SubscriptionManager:NSObject{
     enum SubscribeError: Error {
         case existing, parsing, loadfeed
         
-        var description:String{
+        var localizedDescription:String{
             switch self {
             case .existing:
                 "Podcast already subscribed to"
@@ -90,6 +90,8 @@ actor SubscriptionManager:NSObject{
                 "Could not load feed"
             }
         }
+        
+        
         
     }
 

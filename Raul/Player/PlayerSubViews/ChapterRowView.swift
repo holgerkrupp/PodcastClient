@@ -8,8 +8,11 @@
 import SwiftUI
 
 struct ChapterRowView: View {
-    @Bindable var chapter: Chapter
+    @Bindable var chapter: Marker
     var player = Player.shared
+    
+
+    
     var body: some View {
 
             HStack {
@@ -72,7 +75,7 @@ struct ChapterRowView: View {
 }
 
 #Preview {
-    let chapter = Chapter(start: 5651.469, title: "Epilog", type: .mp3, duration: 226.507)
+    let chapter = Marker(start: 5651.469, title: "Epilog", type: .mp3, duration: 226.507)
         
 
 //    ChapterRowView(chapter: chapter)

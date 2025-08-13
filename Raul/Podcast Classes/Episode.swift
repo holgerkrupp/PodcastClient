@@ -7,6 +7,7 @@
 import SwiftData
 import Foundation
 import SwiftUI
+import mp3ChapterReader
 
 
 
@@ -62,6 +63,7 @@ class EpisodeDownloadStatus{
     
     var publishDate: Date?
     var url: URL // episodeURL - the mp3/m4a file
+    var deeplinks: [URL]?
     var fileSize: Int64?
     var link: URL? // Link to the episode webpage
     var imageURL: URL? // Episode Image
@@ -74,8 +76,16 @@ class EpisodeDownloadStatus{
     var transcriptLines: [TranscriptLineAndTime]?
     
     var externalFiles:[ExternalFile] = []
-
-    @Relationship(deleteRule: .cascade) var chapters: [Chapter] = []
+    
+    // See also: Podcast.funding
+    var funding: [FundingInfo] = []
+ 
+    
+    
+    
+    @Relationship(deleteRule: .cascade) var chapters: [Marker] = []
+    @Relationship(deleteRule: .cascade) var bookmarks: [Marker] = []
+    
     @Relationship(deleteRule: .cascade) var metaData: EpisodeMetaData?
     @Relationship var playlist: [PlaylistEntry] = []
     
@@ -122,10 +132,7 @@ class EpisodeDownloadStatus{
 
         let uniqueURL = baseURL?.appendingPathComponent("\(id.uuidString)_\(sanitizedFileName)")
         
-      /*  try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
-                                               withIntermediateDirectories: true,
-                                               attributes: nil)
-        */
+ 
         
         return uniqueURL
     }
@@ -150,15 +157,14 @@ class EpisodeDownloadStatus{
 
 
     
-    @Transient var preferredChapters: [Chapter] {
+    @Transient var preferredChapters: [Marker] {
 
-        let preferredOrder: [ChapterType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
 
         let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
-          
             return group.filter { $0.type == highestCategory }
         }
     }
@@ -218,7 +224,7 @@ class EpisodeDownloadStatus{
         }
         if let chaptersData = episodeData["psc:chapters"] as? [[String: Any]] {
             for chapterData in chaptersData {
-                let chapter = Chapter(details: chapterData)
+                let chapter = Marker(details: chapterData)
                 chapter.episode = self
                 self.chapters.append(chapter)
             }
@@ -236,6 +242,22 @@ class EpisodeDownloadStatus{
             
         }
         
+        if let deepLinks = episodeData["deepLinks"] as? [String] {
+            self.deeplinks = deepLinks.compactMap { URL(string: $0) }
+        } else {
+            self.deeplinks = nil
+        }
+        
+        if let fundingArr = episodeData["funding"] as? [[String: String]] {
+            self.funding = fundingArr.compactMap { dict in
+                guard let string = dict["url"], let url = URL(string: string), let label = dict["label"] else { return nil }
+                return FundingInfo(url: url, label: label)
+            }
+        } else if let fundingArr = episodeData["funding"] as? [FundingInfo] {
+            self.funding = fundingArr
+        }
+        
+        
         if self.metaData == nil {
             let metadata = EpisodeMetaData()
             metadata.episode = self
@@ -246,7 +268,6 @@ class EpisodeDownloadStatus{
     
 
     
-    
     convenience init?(from episodeData: [String: Any], podcast: Podcast) {
         guard let title = episodeData["itunes:title"] as? String ?? episodeData["title"] as? String,
               let urlString = episodeData["enclosure"] as? [[String: Any]],
@@ -256,6 +277,7 @@ class EpisodeDownloadStatus{
               else {
             return nil
         }
+
         
         let uuid = UUID()
         
@@ -266,6 +288,7 @@ class EpisodeDownloadStatus{
         updateEpisodeData(from: episodeData)
 
     }
+    
     
     
     
@@ -329,3 +352,4 @@ enum EpisodeStatus: String, Codable{
                
     }
 }
+

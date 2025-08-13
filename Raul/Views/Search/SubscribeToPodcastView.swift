@@ -9,6 +9,7 @@ import SwiftUI
 import fyyd_swift
 import SwiftData
 
+
 struct SubscribeToPodcastView: View {
     var formatStyle = Date.RelativeFormatStyle()
     @Environment(\.modelContext) private var context
@@ -29,6 +30,8 @@ struct SubscribeToPodcastView: View {
     
     private var xmlURL: String
     
+    @State private var canBeSubscribed: Bool = false
+    
     private var id: Int
     
     init(fyydPodcastFeed: FyydPodcast) {
@@ -41,7 +44,8 @@ struct SubscribeToPodcastView: View {
         self._author = State(initialValue: fyydPodcastFeed.author)
         self._lastpub = State(initialValue: ISO8601DateFormatter().date(from: (fyydPodcastFeed.lastpub)))
         self._description = State(initialValue: fyydPodcastFeed.description)
-        
+        self.canBeSubscribed = true
+
         _allPodcasts = Query()
     }
     
@@ -55,7 +59,7 @@ struct SubscribeToPodcastView: View {
         self._author = State(initialValue: newPodcastFeed.artist)
         self._lastpub = State(initialValue: newPodcastFeed.lastRelease)
         self._description = State(initialValue: newPodcastFeed.description)
-        
+        self.canBeSubscribed = true
         _allPodcasts = Query()
     }
     
@@ -91,9 +95,11 @@ struct SubscribeToPodcastView: View {
                     if let lastBuildDateString = newLastRelease, let date = Date.dateFromRFC1123(dateString: lastBuildDateString) {
                         self.newPodcastFeed?.lastRelease = date
                     }
+                    self.canBeSubscribed = true
                 }
             } catch {
                 await MainActor.run {
+                    self.canBeSubscribed = false
                     self.errorMessage = "Failed to fetch podcast info: \(error.localizedDescription)"
                 }
             }
@@ -142,34 +148,36 @@ struct SubscribeToPodcastView: View {
                         }
                         HStack{
                             Spacer()
-                            if !isSubscribed {
-                                Button("Subscribe") {
-                                    print("Subscribe clicked")
-                                    Task {
-                                        guard let url = URL(string: xmlURL) else {
-                                            errorMessage = "Invalid URL"
-                                            return
-                                        }
+                            
+                                if !isSubscribed {
+                                    Button("Subscribe") {
                                         
-                                        let actor = PodcastModelActor(modelContainer: context.container)
-                                        do {
-                                            subscribing = true
-                                            _ = try await actor.createPodcast(from: url)
-                                            await requestNotification()
-                                            isSubscribed = true
-                                            subscribing = false
-
-                                        } catch {
-                                            errorMessage = error.localizedDescription
+                                        Task {
+                                            guard let url = URL(string: xmlURL) else {
+                                                errorMessage = "Invalid URL"
+                                                return
+                                            }
+                                            
+                                            let actor = PodcastModelActor(modelContainer: context.container)
+                                            do {
+                                                subscribing = true
+                                                _ = try await actor.createPodcast(from: url)
+                                                await requestNotification()
+                                                isSubscribed = true
+                                                subscribing = false
+                                                
+                                            } catch {
+                                                errorMessage = error.localizedDescription
+                                            }
                                         }
                                     }
+                                    .buttonStyle(.borderedProminent)
+                                    
+                                } else {
+                                    Text("subscribed")
+                                        .foregroundStyle(.secondary)
                                 }
-                                .buttonStyle(.borderedProminent)
-                                
-                            } else {
-                                Text("Already subscribed")
-                                    .foregroundStyle(.secondary)
-                            }
+                            
                         }
                     }
                 }
@@ -197,6 +205,17 @@ struct SubscribeToPodcastView: View {
                         .frame(width: 100, height: 50)
                      //   .background(Material.ultraThin)
                        // .cornerRadius(12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if let errorMessage{
+                ZStack {
+                    Rectangle()
+                        .fill(Material.ultraThin)
+                        .ignoresSafeArea()
+                    Text(errorMessage)
+                        .font(.title2)
+                     
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

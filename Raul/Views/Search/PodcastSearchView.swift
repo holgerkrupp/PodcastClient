@@ -13,7 +13,7 @@ struct PodcastSearchView: View {
     @Environment(\.modelContext) private var context
     @Binding var search: String
     var body: some View {
-        VStack {
+   
 
             if viewModel.isLoading {
                 ProgressView()
@@ -29,6 +29,28 @@ struct PodcastSearchView: View {
                                          leading: 0,
                                          bottom: 0,
                                          trailing: 0))
+                
+                
+          
+          //  THIS WOULD BE FOR A COMBINED SEARCH of Fyyd and iTunes
+           
+           } else if !viewModel.searchResults.isEmpty{
+                
+                ForEach(viewModel.searchResults, id: \.self) { podcast in
+                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                        .modelContext(context)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .overlay(Text(podcast.url?.absoluteString ?? "--"), alignment: .bottom)
+                        .overlay(Text(podcast.source?.description ?? "-"), alignment: Alignment(horizontal: .trailing, vertical: .top))
+                }
+                
+                .navigationTitle("Subscribe")
+           
                 
             } else if !viewModel.results.isEmpty{
                 
@@ -64,10 +86,12 @@ struct PodcastSearchView: View {
                     
                 }
                 .padding()
+                .buttonStyle(.borderedProminent)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             }
-        }
+        
+        EmptyView()
         .onChange(of: search) {
             viewModel.searchText = search
             

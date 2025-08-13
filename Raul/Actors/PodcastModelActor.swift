@@ -103,6 +103,16 @@ actor PodcastModelActor {
             podcast.lastBuildDate = Date.dateFromRFC1123(
                 dateString: fullPodcast["lastBuildDate"] as? String ?? ""
             )
+        
+        if let fundingArr = fullPodcast["funding"] as? [[String: String]] {
+            podcast.funding = fundingArr.compactMap { dict in
+                guard let string = dict["url"], let url = URL(string: string), let label = dict["label"] else { return nil }
+                return FundingInfo(url: url, label: label)
+            }
+        } else if let fundingArr = fullPodcast["funding"] as? [FundingInfo] {
+            podcast.funding = fundingArr
+        }
+       
             
             // Update episodes
             if let episodesData = fullPodcast["episodes"] as? [[String: Any]] {

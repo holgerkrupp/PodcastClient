@@ -11,6 +11,17 @@ struct PlayerChapterView: View {
     @State var player = Player.shared
     @State var presentingModal = false
 
+    
+    init(){
+        print("PlayerChapterView \(player.currentEpisode?.id.uuidString ?? "NO UUID")")
+        print("loading PlayerChapterView with \(player.currentEpisode?.preferredChapters.count.description) Chapters")
+        print("currentChapter: \(player.currentChapter?.title ?? "nil")")
+        
+        for chapter in player.currentEpisode?.preferredChapters ?? [] {
+            print("\(chapter.title): \(chapter.start?.description) - \(chapter.endTime?.description) - \(chapter.type.rawValue)")
+        }
+    }
+    
     var body: some View {
         if player.currentEpisode?.preferredChapters.count ?? 0 > 1{
            
@@ -52,17 +63,22 @@ struct PlayerChapterView: View {
                             
                         } label: {
                             
-                            Text(player.currentChapter?.title ?? "")
+                            Text(player.currentChapter?.title ?? "unknown current Chapter")
                                 .foregroundStyle(Color.primary)
                                 .minimumScaleFactor(0.5)
                             
                         }
                         .buttonStyle(.plain)
+                        
                         .sheet(isPresented: $presentingModal, content: {
-                            ChapterListView(episodeURL: player.currentEpisode?.url)
-                                .presentationDragIndicator(.visible)
-                                .presentationBackground(.thinMaterial)
+                            if let episode = player.currentEpisode{
+                                ChapterListView(episode: episode)
+                                    .presentationDragIndicator(.visible)
+                                    .presentationBackground(.thinMaterial)
+                            }
+                            
                         })
+                         
                         if let remaining = player.currentChapter?.remainingTime {
                             Text(Duration.seconds(remaining).formatted(.units(width: .narrow)))
                                 .font(.caption)

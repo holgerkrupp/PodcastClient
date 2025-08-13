@@ -8,12 +8,19 @@
 import SwiftUI
 import RichText
 
+private struct IdentifiableURL: Identifiable, Equatable {
+    let url: URL
+    var id: URL { url }
+}
+
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.deviceUIStyle) var style
 
     
     @Bindable var episode: Episode
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
+    @State private var shareURL: IdentifiableURL?
 
     
     init(episode: Episode) {
@@ -71,13 +78,7 @@ struct EpisodeDetailView: View {
                                 .monospacedDigit()
                                 .foregroundColor(.primary)
                         }
-                        Spacer()
-                        if let episodeLink = episode.link {
-                            Link(destination: episodeLink) {
-                                Label("Open in Browser", systemImage: "safari")
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
+
                         Spacer()
                         Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
                             .font(.caption)
@@ -86,47 +87,23 @@ struct EpisodeDetailView: View {
                     }
                     .padding()
                 
-                
-                /*
-                HStack {
-                    
-                    CoverImageView(episode: episode)
-                        .frame(width: 50, height: 50)
-                    VStack(alignment: .leading) {
-                        HStack {
-                            Group{
-                                if let podcast = episode.podcast {
-                                    NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                                        Text(podcast.title)
-                                    }
-                                }
+   
+                if episode.funding.count > 0 {
+                  
+                    HStack{
+                        ForEach(episode.funding ) { fund in
+                            Link(destination: fund.url) {
+                                Label(fund.label, systemImage: style.currencySFSymbolName)
+                                
                             }
-                            .font(.title2)
-                                .foregroundColor(.primary)
-
-                        }
-
-                        HStack{
-                            if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                                Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                                    .font(.caption)
-                                    .foregroundColor(.primary)
-                            }else{
-                                Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                    .font(.caption)
-                                    .foregroundColor(.primary)
+                            .buttonStyle(.glass)
+                            if fund != episode.funding.last {
+                                Spacer()
                             }
-                        Spacer()
-                            Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
-                                .font(.caption)
-                                .foregroundColor(.primary)
                         }
-                        
-                        
                     }
                 }
-                .padding()
-            */
+                
             Spacer(minLength: 10)
                 
                 DownloadControllView(episode: episode, showDelete: false)
@@ -144,6 +121,28 @@ struct EpisodeDetailView: View {
                         .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
                         
                 }
+                HStack{
+                  
+                    if let episodeLink = episode.link {
+
+                        
+                        Link(destination: episodeLink) {
+                            Label("Open in Browser", systemImage: "safari")
+                        }
+                        .buttonStyle(.glass)
+                    }
+                    Spacer()
+                    if let url = episode.deeplinks?.first ?? episode.link {
+                      //  shareURL = IdentifiableURL(url: url)
+                        ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up")
+                            .labelStyle(.iconOnly) }
+                        .buttonStyle(.glass)
+
+                    }
+                    
+                 
+                }
+                .padding()
                 
 
 
@@ -159,7 +158,8 @@ struct EpisodeDetailView: View {
 
                 
                 if episode.preferredChapters.count > 1 {
-                    ChapterListView(episodeURL: episode.url)
+                    ChapterListView(episode: episode)
+          //          ChapterListView(chaptes: episode.chapters)
                 }
             }
             .background(
@@ -168,6 +168,10 @@ struct EpisodeDetailView: View {
                     .ignoresSafeArea()
                
             )
+        }
+        .sheet(item: $shareURL) { identifiable in
+            ShareLink(item: identifiable.url) { Text("Share Episode") }
+            
         }
        
         }

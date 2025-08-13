@@ -92,7 +92,7 @@ struct PodcastListView: View {
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0,
                                                  leading: 0,
-                                                 bottom: 2,
+                                                 bottom: 0,
                                                  trailing: 0))
                              
                             

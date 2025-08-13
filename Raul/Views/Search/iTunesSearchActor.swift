@@ -46,6 +46,7 @@ actor ITunesSearchActor {
                         for podcast in podcasts {
                             if  let urlString = podcast["feedUrl"] as? String, let url = URL(string: urlString){
                                 let newFeed = PodcastFeed(url: url)
+                                newFeed.source = .iTunes
                                 newFeed.artist = podcast["artistName"] as? String
                                 newFeed.title = podcast["collectionName"] as? String
                                 newFeed.artworkURL = URL(string: podcast["artworkUrl100"] as? String ?? "")
@@ -53,11 +54,11 @@ actor ITunesSearchActor {
                                 iTunesFeeds.append(newFeed)
                             }
                         }
-         
+                        print("iTunes found : \(iTunesFeeds.count)")
                         return iTunesFeeds
                     }
                     
-                    
+                    print("iTunes no podcasts found")
                     return nil
                 }catch{
                     print(error)

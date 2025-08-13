@@ -63,10 +63,17 @@ class CarPlayNowPlaying {
                 await self?.player.skipToNextChapter()
             }
         }
+        
+        let bookmarkButton = CPNowPlayingImageButton(
+            image: UIImage(systemName: "bookmark") ?? UIImage()
+        ) { [weak self] _ in
+            Task{
+                await self?.player.createBookmark()
+            }
+        }
 
         
-        template.updateNowPlayingButtons([previousChapterButton, listButton, nextChapterButton])
-        print("updateNowPlayingButtons")
+        template.updateNowPlayingButtons([previousChapterButton, listButton, nextChapterButton, bookmarkButton])
     }
     
 }

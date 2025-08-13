@@ -9,6 +9,7 @@ enum elements:String, CaseIterable{
 
 class PodcastParser:NSObject, XMLParserDelegate{
     
+    var episodeDeepLinks: [String] = []
 
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
@@ -29,6 +30,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var prevPageURL: String?
     var firstPageURL: String?
     var lastPageURL: String?
+    
+    var podcastFundingArray = [[String: String]]()
+    var episodeFundingArray = [[String: String]]()
+    private var currentFundingURL: String = ""
     
     var currentElement:String {
         set {
@@ -61,6 +66,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     func parserDidStartDocument(_ parser: XMLParser)  {
         print("parserDidStartDocument")
         episodeDict.removeAll()
+        episodeDeepLinks.removeAll()
         enclosureArray.removeAll()
         episodesArray.removeAll()
         attributes.removeAll()
@@ -74,6 +80,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
         prevPageURL = nil
         firstPageURL = nil
         lastPageURL = nil
+        
+        podcastFundingArray.removeAll()
+        episodeFundingArray.removeAll()
     }
     
     
@@ -97,7 +106,18 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 default:
                     break
                 }
+                
+                if rel == "http://podlove.org/deep-link", !isHeader {
+                    episodeDeepLinks.append(href)
+                }
             }
+        }
+        
+        if currentElement == "podcast:funding" {
+            currentFundingURL = attributeDict["url"] ?? ""
+            currentValue = ""
+        } else {
+            currentFundingURL = ""
         }
         
         attributes.removeAll()
@@ -108,6 +128,8 @@ class PodcastParser:NSObject, XMLParserDelegate{
             // new PodcastEpisode found
          //   isHeader = false
             episodeDict = [:]
+            episodeDeepLinks.removeAll()
+            episodeFundingArray.removeAll()
         }
         
         if currentElement == "psc:chapters"{
@@ -206,6 +228,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     //   isHeader = true // go back to header Level
                     episodeDict.updateValue(externalFilesArray, forKey: "transcripts") // to be removed in the future
                     episodeDict.updateValue(externalFilesArray, forKey: "externalFiles")
+                    episodeDict.updateValue(episodeDeepLinks, forKey: "deepLinks")
+                    if !episodeFundingArray.isEmpty {
+                        episodeDict.updateValue(episodeFundingArray, forKey: "funding")
+                        episodeFundingArray.removeAll()
+                    }
+                    episodeDeepLinks.removeAll()
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
                     externalFilesArray.removeAll()
@@ -226,6 +254,17 @@ class PodcastParser:NSObject, XMLParserDelegate{
                 }
             
         }
+
+        if elementName == "podcast:funding" {
+            let fundingDict = ["url": currentFundingURL, "label": currentValue.trimmingCharacters(in: .whitespacesAndNewlines)]
+            if isHeader {
+                podcastFundingArray.append(fundingDict)
+            } else {
+                episodeFundingArray.append(fundingDict)
+            }
+            currentFundingURL = ""
+        }
+
         if currentElements.count > 0{
             currentElements.removeLast()
 
@@ -235,6 +274,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     func parserDidEndDocument(_ parser: XMLParser)   {
         podcastDictArr.updateValue(episodesArray, forKey: "episodes")
+        if !podcastFundingArray.isEmpty {
+            podcastDictArr.updateValue(podcastFundingArray, forKey: "funding")
+        }
     }
 
     
@@ -279,3 +321,4 @@ extension PodcastParser {
         return podcastHeader
     }
 }
+

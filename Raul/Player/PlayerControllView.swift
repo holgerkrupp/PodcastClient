@@ -22,7 +22,7 @@ struct PlayerControllView: View {
                 HStack {
                    
                     AirPlayButtonView()
-                        .tint(.primary)
+                        .tint(.accent)
                    
                     Spacer()
                     Button {
@@ -120,7 +120,7 @@ struct PlayerControllView: View {
                     
                 }
                 
-                if let transcripts = episode.transcriptLines, transcripts.count > 0 {
+                if let transcripts = player.currentEpisode?.transcriptLines, transcripts.count > 0 {
                     HStack {
                         if showTranscripts{
                             Image("custom.quote.bubble.slash")
@@ -158,6 +158,24 @@ struct PlayerControllView: View {
                         Text(Duration.seconds(player.playPosition).formatted(.units(width: .narrow)))
                             .monospacedDigit()
                             .font(.caption)
+                        Spacer()
+                        if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
+                            Button(action: { player.jumpTo(time: maxPlay) }) {
+                                Label {
+                                    Text("continue")
+                                        .monospaced()
+                                        .font(.caption)
+                                } icon: {
+                                    Image(systemName: "arrow.right.to.line.compact")
+                                        .resizable()
+                                        .scaledToFit()
+                                    
+                                }
+                                .labelStyle(.titleOnly)
+                                
+                            }
+                            .buttonStyle(.borderless)
+                        }
                         Spacer()
                         Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
 
@@ -228,3 +246,4 @@ struct PlayerControllView: View {
         }
     }
 }
+

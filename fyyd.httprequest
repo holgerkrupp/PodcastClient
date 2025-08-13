@@ -1,1 +1,1 @@
-[{"url":"https:\/\/api.fyyd.de\/0.2\/search\/podcast","name":"unnamed","method":"get","body":"","parameters":[{"active":true,"value":"Dirty Minutes","key":"title"}],"bodyEncoding":"UTF-8","header":[],"parameterEncoding":"Form encoded","follorRedirects":true}]
+[{"name":"unnamed","parameterEncoding":"Form encoded","header":[],"follorRedirects":true,"body":"","url":"https:\/\/feeds.feedburner.com\/bitsundso\/audio","method":"get","bodyEncoding":"UTF-8","parameters":[{"value":"Dirty Minutes","active":true,"key":"title"}]}]

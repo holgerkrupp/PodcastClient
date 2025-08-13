@@ -28,7 +28,7 @@ class CarPlayPlayNext {
     
     private func setupTemplate() async {
         // Fetch ordered episodes from the playlist
-        self.episodes = await playlistActor.orderedEpisodeSummaries()
+        self.episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
         // Load images asynchronously for all episodes
         let images: [UIImage?]? = try? await withThrowingTaskGroup(of: (Int, UIImage?).self) { group in
             for (index, episode) in episodes.enumerated() {
