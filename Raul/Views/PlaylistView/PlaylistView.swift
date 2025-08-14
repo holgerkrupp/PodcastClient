@@ -29,6 +29,7 @@ struct PlaylistView: View {
                     ZStack {
                         EpisodeRowView(episode: episode)
                             .id(episode.id)
+                            .allowsHitTesting(false)
                         Rectangle()
                             .fill(Color.background)
                             .opacity(0.9)

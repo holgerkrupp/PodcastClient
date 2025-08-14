@@ -32,7 +32,7 @@ struct EpisodeRowView: View {
                             .scaledToFill()
                             .frame(width: geometry.size.width, height: height)
                             .clipped()
-                    
+                    }
                     
 
                         
@@ -135,7 +135,7 @@ struct EpisodeRowView: View {
                        
                     )
                      
-                    
+                        GeometryReader { geometry in
                         Rectangle()
                             .fill(Color.accentColor)
                             .frame(width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)), height: 4)
@@ -151,6 +151,7 @@ struct EpisodeRowView: View {
             }
                 
                 .frame(height: height)
+            
         }
             
             .sheet(isPresented: $presentingModal, content: {
