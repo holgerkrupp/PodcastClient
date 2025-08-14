@@ -19,7 +19,7 @@ actor PodcastModelActor {
         let episodedescriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.id == episodeID })
 
         guard let episode = try? modelContext.fetch(episodedescriptor).first else { return }
-        if !podcast.episodes.contains(where: { $0.id == episodeID }) {
+        if let episodes = podcast.episodes, !episodes.contains(where: { $0.id == episodeID }) {
             episode.podcast = podcast
         }
       
@@ -123,7 +123,7 @@ actor PodcastModelActor {
                     let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "")
                     if let episodeID {
                       //  print("Episode exists")
-                        if !podcast.episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                        if let episodes = podcast.episodes, !episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
                             linkEpisodeToPodcast(episodeID , podcast.id)
                             modelContext.saveIfNeeded()
 
@@ -234,13 +234,13 @@ actor PodcastModelActor {
     
     func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
-      
-        for episode in podcast.episodes {
-            let episodeActor = EpisodeActor(modelContainer: modelContainer)
-            await episodeActor.archiveEpisode(episodeID: episode.id)
+        if let episodes = podcast.episodes{
+            for episode in episodes {
+                let episodeActor = EpisodeActor(modelContainer: modelContainer)
+                await episodeActor.archiveEpisode(episodeID: episode.id)
+            }
+            modelContext.saveIfNeeded()
         }
-        modelContext.saveIfNeeded()
-
     }
     
     func archiveEpisodes(episodeIDs: [UUID]) async throws {

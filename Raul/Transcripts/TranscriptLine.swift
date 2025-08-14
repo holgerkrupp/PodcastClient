@@ -11,10 +11,10 @@ import SwiftData
  @Model final class TranscriptLineAndTime {
  var id = UUID()
  var speaker: String?
- var text: String
- var startTime: TimeInterval
+ var text: String = ""
+     var startTime: TimeInterval = 0.0
  var endTime: TimeInterval?
- 
+ var episode: Episode?
  init( speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil) {
 
  self.speaker = speaker

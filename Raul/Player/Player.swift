@@ -163,7 +163,7 @@ class Player: NSObject {
            
              let chapters = episode.chapters
             
-            if !chapters.isEmpty{
+        if !(chapters?.isEmpty ?? true){
             
                 
                 
@@ -314,7 +314,7 @@ class Player: NSObject {
                 } else {
                     print("loading remote - local file \(episode.localFile?.absoluteString ?? "") not available")
 
-                    return AVPlayerItem(url: episode.url)
+                    return AVPlayerItem(url: episode.url ?? URL(string: "")!)
                 }
             }.value
            
@@ -609,7 +609,7 @@ class Player: NSObject {
         Task.detached(priority: .background) {
             await self.episodeActor?.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
              episode.modelContext?.saveIfNeeded()
-            if episode.chapters.isEmpty == false {
+            if episode.chapters?.isEmpty == false {
                 await self.chapterActor?.saveAllChanges()
             }
           

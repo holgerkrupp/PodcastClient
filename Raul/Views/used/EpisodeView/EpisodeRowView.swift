@@ -89,7 +89,7 @@ struct EpisodeRowView: View {
                                             }
                                         }
                                         
-                                        if episode.chapters.count > 0 {
+                                        if (episode.chapters?.count ?? 0)  > 0 {
                                             Image(systemName: "list.bullet")
                                         }
                                         if episode.externalFiles.contains(where: {$0.category == .transcript}) || episode.transcriptLines?.count ?? 0 > 0 {

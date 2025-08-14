@@ -10,14 +10,14 @@ import SwiftData
 
 @Model
 class Playlist{
-    var title: String
+    var title: String = ""
     var id: UUID = UUID()
     var deleteable:Bool = true // to enable standard lists like "play next queue" or similar that can't be deleted by the user
     var hidden: Bool = false
-    @Relationship var items: [PlaylistEntry] = [] // we need to ensure that we can create an ordered list. Swiftdata won't ensure that the items are kept in the same order without manually managing that.
+    @Relationship var items: [PlaylistEntry]? = [] // we need to ensure that we can create an ordered list. Swiftdata won't ensure that the items are kept in the same order without manually managing that.
     
     @Transient var ordered:[PlaylistEntry]{
-        items.sorted(by: {$0.order < $1.order}) 
+        items?.sorted(by: {$0.order < $1.order}) ?? []
     }
     
     init(){
