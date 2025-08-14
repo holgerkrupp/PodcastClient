@@ -1,0 +1,145 @@
+//
+//  PlaylistView.swift
+//  PodcastClient
+//
+//  Created by Holger Krupp on 01.12.23.
+//
+
+
+
+import SwiftUI
+import SwiftData
+
+struct PlaylistView: View {
+    @Query(filter: #Predicate<PlaylistEntry> { $0.playlist?.title == "de.holgerkrupp.podbay.queue" },
+           sort: [SortDescriptor(\PlaylistEntry.order)] ) var playListEntries: [PlaylistEntry]
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        if playListEntries.isEmpty {
+            PlaylistEmptyView()
+        }else{
+        NavigationStack{
+            
+           
+            
+            List{
+
+                if let episode = Player.shared.currentEpisode {
+                    ZStack {
+                        EpisodeRowView(episode: episode)
+                            .id(episode.id)
+                        Rectangle()
+                            .fill(Color.background)
+                            .opacity(0.9)
+                            .allowsHitTesting(false)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Group {
+                            if Player.shared.isPlaying {
+                                Label("Now Playing", systemImage: "waveform")
+                                    .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                            } else {
+                                Label("Now Playing", systemImage: "waveform.low")
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                            }
+                        }
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                            EmptyView()
+                        }.opacity(0)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+                    .animation(.easeInOut, value: Player.shared.currentEpisode)
+
+                    
+                }
+             
+                    ForEach(playListEntries, id: \.id) { entry in
+                        if let episode = entry.episode {
+                            
+                            ZStack {
+                                EpisodeRowView(episode: episode)
+                                    .id(episode.id)
+                                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                    EmptyView()
+                                }.opacity(0)
+                            }
+
+                            .swipeActions(edge: .trailing){
+                                
+                                    Button(role: .none) {
+                                        Task { @MainActor in
+                                            await archiveEpisode(episode)
+                                        }
+                                    } label: {
+                                        Label("Archive Episode", systemImage: "archivebox.fill")
+                                    }
+                                
+                            }
+                             
+                           
+                            
+                            
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(.init(top: 0,
+                                                     leading: 0,
+                                                     bottom: 0,
+                                                     trailing: 0))
+                                .ignoresSafeArea()
+                        }
+                        
+                    }
+                    
+                    
+                    .onMove { indices, newOffset in
+                        Task {
+                            if let from = indices.first {
+                                moveEntry(from: from, to: newOffset)
+                            }
+                        }
+                    }
+                }
+            .animation(.easeInOut, value: playListEntries)
+
+            .listStyle(.plain)
+            .navigationTitle("Up Next")
+            }
+            
+
+        }
+
+        
+    }
+    
+    private func archiveEpisode(_ episode: Episode) async {
+        print("archiveEpisode from PlaylistView - \(episode.title)")
+        let episodeActor = EpisodeActor(modelContainer: modelContext.container)
+        await episodeActor.archiveEpisode(episodeID: episode.id)
+    }
+    
+    private func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {
+
+
+            let sorted = playListEntries.sorted { $0.order < $1.order }
+
+            guard sourceIndex < sorted.count, destinationIndex < sorted.count else { return }
+
+            let movedEntry = sorted[sourceIndex]
+            var reordered = sorted
+            reordered.remove(at: sourceIndex)
+            reordered.insert(movedEntry, at: destinationIndex)
+
+            for (i, entry) in reordered.enumerated() {
+                entry.order = i
+            }
+            
+    }
+}

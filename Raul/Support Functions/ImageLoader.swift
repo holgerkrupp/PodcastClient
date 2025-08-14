@@ -1,56 +1,72 @@
 import SwiftUI
 
+
+
 struct ImageWithURL: View {
-    
-   @ObservedObject var imageLoader: ImageLoaderAndCache
-    
-    
-    init(_ url: URL) {
-        imageLoader = ImageLoaderAndCache(imageURL: url)
+    @StateObject private var loader: ImageLoaderAndCache
+
+    init(_ url: URL, saveTo: URL? = nil) {
+        _loader = StateObject(wrappedValue: ImageLoaderAndCache(imageURL: url, saveTo: saveTo))
     }
     
-    
-    
+    func uiImage() -> UIImage{
+        return UIImage(data: loader.imageData) ??  UIImage()
+    }
+
     var body: some View {
-        Image(uiImage: (UIImage(data: self.imageLoader.imageData) ?? UIImage()))
-            .resizable()
-            .clipped()
+        Group {
+            if let image = UIImage(data: loader.imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .clipped()
+            } else {
+                ProgressView()
+            }
+        }
     }
 }
 
-
 @MainActor
 class ImageLoaderAndCache: ObservableObject {
-    
     @Published var imageData = Data()
-    
-    init(imageURL: URL) {
-        
-        let cache = URLCache()
-        cache.diskCapacity = 100 * 1024 * 1024 // 100MB
-        
-        // let cache = URLCache.shared
-        let request = URLRequest(url: imageURL, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 60.0)
-        
-        if let data = cache.cachedResponse(for: request)?.data {
-            self.imageData = data
-        } else {
-            // Weakly capture self to avoid a strong reference cycle
-            URLSession.shared.dataTask(with: request) { [weak self] (data, response, error) in
-                // Ensure self is still available
-                guard let self = self else { return }
-                
-                if let data = data, let response = response {
-                    let cachedData = CachedURLResponse(response: response, data: data)
-                    cache.storeCachedResponse(cachedData, for: request)
-                    
-                    // Ensure updates to @Published properties are done on the main thread
-                    DispatchQueue.main.async {
-                        self.imageData = data
-                    }
-                }
-            }.resume()
+
+    init(imageURL: URL, saveTo: URL? = nil) {
+        Task {
+            self.imageData = await Self.loadImageData(from: imageURL, saveTo: saveTo) ?? Data()
         }
+    }
+
+    static func loadImageData(from url: URL, saveTo: URL?) async -> Data? {
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+        let cache = URLCache.shared
+        cache.diskCapacity = 1024 * 1024 * 200
+        
+        if let cached = cache.cachedResponse(for: request)?.data {
+          
+            return cached
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let cachedResponse = CachedURLResponse(response: response, data: data)
+            cache.storeCachedResponse(cachedResponse, for: request)
+
+            if let saveTo {
+                try? data.write(to: saveTo)
+            }
+           
+            return data
+        } catch {
+            print("Image loading failed: \(error)")
+            return nil
+        }
+    }
+    
+    static func loadUIImage(from url: URL, saveTo: URL? = nil) async -> UIImage? {
+        if let data = await loadImageData(from: url, saveTo: saveTo) {
+            return UIImage(data: data)
+        }
+        return nil
     }
 }
 

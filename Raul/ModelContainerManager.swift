@@ -2,22 +2,24 @@ import SwiftData
 import SwiftUI
 
 class ModelContainerManager: ObservableObject {
-    let container: ModelContainer
+    let container: ModelContainer?
 
     init() {
         guard let sharedContainerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient") else {
-            fatalError("Shared container URL not found.")
+            print("Shared container URL not found. Returning nil container.")
+            container = nil
+            return
         }
 
         let configuration = ModelConfiguration(
             url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
             cloudKitDatabase: .automatic
         )
-        
         do {
-            container = try ModelContainer(for: Podcast.self, Episode.self, configurations: configuration)
+            container = try ModelContainer(for: Podcast.self, PodcastMetaData.self, Episode.self, EpisodeMetaData.self, Playlist.self, PlaylistEntry.self, Marker.self, configurations: configuration)
         } catch {
-            fatalError("Failed to initialize ModelContainer: \(error)")
+            print("Failed to initialize ModelContainer: \(error)")
+            container = nil
         }
     }
 }

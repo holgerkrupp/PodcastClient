@@ -35,15 +35,16 @@ class OPMLParser: NSObject, XMLParserDelegate{
         case "outline":
             print("outline attributes: \(attributeDict)")
             if attributeDict["type"] == "rss"{
-                let newPodcast = PodcastFeed()
-                
-                newPodcast.title = attributeDict["text"]
+
                 
                 if let feedURL = URL(string: attributeDict["xmlUrl"] ?? ""){
-                    newPodcast.url = feedURL
+                    let newPodcast = PodcastFeed(url: feedURL)
+                    
+                    newPodcast.title = attributeDict["text"]
+                    podcastFeeds.append(newPodcast)
                 }
                 
-                podcastFeeds.append(newPodcast)
+                
             }
 
             

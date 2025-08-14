@@ -9,48 +9,43 @@ import SwiftUI
 import fyyd_swift
 
 struct HotPodcastView: View {
-    @StateObject private var viewModel = PodcastSearchViewModel()
+    @ObservedObject  var viewModel : PodcastSearchViewModel
     @Environment(\.modelContext) private var context
-
-
+    
+    
     var body: some View {
-        VStack {
+        
+        
+      
+        
+        
+        
+        
+        if viewModel.isLoading {
+            ProgressView()
+        } else {
             
-            if !viewModel.languages.isEmpty {
-                Picker("Language", selection: $viewModel.selectedLanguage) {
-                    ForEach(viewModel.languages, id: \.self) { name in
-                        
-                    
-                            Text(name.languageName()).tag(name)
-                    }
-                }
-                .pickerStyle(MenuPickerStyle())
-                .padding()
-            } else {
-                ProgressView("Loading languages...") // Show loading indicator if needed
-            }
             
-
-            if viewModel.isLoading {
-                ProgressView()
-            } else {
-
-                Text("Hot Podcasts")
-                    .font(.headline)
-                    .padding(.top)
+            ForEach(viewModel.hotPodcasts , id: \.id) { podcast in
+                SubscribeToPodcastView(fyydPodcastFeed: podcast)
+                    .modelContext(context)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
                 
-                List(viewModel.hotPodcasts , id: \.id) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
-                        .modelContext(context)
-                    
-                }
             }
-        }
-     
-
+            
+            .listStyle(.plain)
+            .navigationTitle("Hot")
+        
     }
+    
+    
+    
+}
 }
 
-#Preview {
-    HotPodcastView()
-}
+
