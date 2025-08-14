@@ -52,9 +52,9 @@ class EpisodeDownloadStatus{
 
 
 @Model final class Episode {
-    var id: UUID
-    @Attribute(.unique) var guid: String?
-    var title: String
+    var id: UUID = UUID()
+    var guid: String?
+    var title: String = ""
     var author: String?
     var desc: String?
     var subtitle: String?
@@ -62,7 +62,7 @@ class EpisodeDownloadStatus{
     
     
     var publishDate: Date?
-    var url: URL // episodeURL - the mp3/m4a file
+    var url: URL? // episodeURL - the mp3/m4a file
     var deeplinks: [URL]?
     var fileSize: Int64?
     var link: URL? // Link to the episode webpage
@@ -83,11 +83,11 @@ class EpisodeDownloadStatus{
     
     
     
-    @Relationship(deleteRule: .cascade) var chapters: [Marker] = []
-    @Relationship(deleteRule: .cascade) var bookmarks: [Marker] = []
+    @Relationship(deleteRule: .cascade) var chapters: [Marker]? = []
+    @Relationship(deleteRule: .cascade) var bookmarks: [Marker]? = []
     
     @Relationship(deleteRule: .cascade) var metaData: EpisodeMetaData?
-    @Relationship var playlist: [PlaylistEntry] = []
+    @Relationship var playlist: [PlaylistEntry]? = []
     
     // temporary values that don't need to survive an app restart
     @Transient @Published var refresh: Bool = false
@@ -123,11 +123,11 @@ class EpisodeDownloadStatus{
     
     //MARK: calculated properties that will be generated out of existing properties.
     var localFile: URL? {
-        let fileName = url.lastPathComponent
+        let fileName = url?.lastPathComponent
          let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
         
         // Create a sanitized filename
-        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
+        let sanitizedFileName = fileName?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
         let sanitizedguid = guid?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
 
         let uniqueURL = baseURL?.appendingPathComponent("\(id.uuidString)_\(sanitizedFileName)")
@@ -161,7 +161,7 @@ class EpisodeDownloadStatus{
 
         let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
 
-        let categoryGroups = Dictionary(grouping: chapters, by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
+        let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
         
         return categoryGroups.values.flatMap { group in
             let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
@@ -226,16 +226,16 @@ class EpisodeDownloadStatus{
             for chapterData in chaptersData {
                 let chapter = Marker(details: chapterData)
                 chapter.episode = self
-                self.chapters.append(chapter)
+                self.chapters?.append(chapter)
             }
-            chapters.sort { $0.start ?? 0.0 < $1.start ?? 0.0 }
-            for i in 0..<chapters.count {
-                if chapters[i].duration == nil {
+            chapters?.sort { $0.start ?? 0.0 < $1.start ?? 0.0 }
+            for i in 0..<(chapters?.count ?? 0){
+                if chapters?[i].duration == nil {
                     
-                    if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
-                        chapters[i].duration = nextStart - (chapters[i].start ?? 0.0)
+                    if i + 1 < (chapters?.count ?? 0), let nextStart = chapters?[i + 1].start {
+                        chapters?[i].duration = nextStart - (chapters?[i].start ?? 0.0)
                     } else {
-                        chapters[i].duration = (duration ?? 0.0) - (chapters[i].start ?? 0.0)
+                        chapters?[i].duration = (duration ?? 0.0) - (chapters?[i].start ?? 0.0)
                     }
                 }
             }

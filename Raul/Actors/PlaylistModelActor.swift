@@ -140,14 +140,14 @@ actor PlaylistModelActor {
         }
 
         // Update if exists; otherwise create entry and link
-        if let existingItem = playlist.items.first(where: { $0.episode?.id == episode.id }) {
+        if let existingItem = playlist.items?.first(where: { $0.episode?.id == episode.id }) {
             existingItem.order = newPosition
             await BasicLogger.shared.log("🔄 Moved existing entry to \(newPosition)")
         } else {
             let newEntry = PlaylistEntry(episode: episode, order: newPosition)
             modelContext.insert(newEntry)
             newEntry.playlist = playlist
-            episode.playlist.append(newEntry)
+            episode.playlist?.append(newEntry)
             await BasicLogger.shared.log("➕ Created PlaylistEntry at \(newPosition) for \(playlist.title)")
         }
 
@@ -169,7 +169,7 @@ actor PlaylistModelActor {
     func remove(episodeID: UUID) throws {
         guard let playlist = try fetchPlaylist() else { return }
         
-        if let entry = playlist.items.first(where: { $0.episode?.id == episodeID }){
+        if let entry = playlist.items?.first(where: { $0.episode?.id == episodeID }){
             
             modelContext.delete(entry)
             normalizeOrder()
@@ -194,19 +194,19 @@ actor PlaylistModelActor {
     func moveEntry(from sourceIndex: Int, to destinationIndex: Int) throws {
         guard let playlist = try fetchPlaylist() else { return }
 
-        let sorted = playlist.items.sorted { $0.order < $1.order }
-        guard sourceIndex < sorted.count, destinationIndex < sorted.count else { return }
-
-        let moved = sorted[sourceIndex]
-        var reordered = sorted
-        reordered.remove(at: sourceIndex)
-        reordered.insert(moved, at: destinationIndex)
-
-        for (i, entry) in reordered.enumerated() {
-            entry.order = i
+        if let sorted = playlist.items?.sorted(by: { $0.order < $1.order }){
+            guard sourceIndex < sorted.count, destinationIndex < sorted.count else { return }
+            
+            let moved = sorted[sourceIndex]
+            var reordered = sorted
+            reordered.remove(at: sourceIndex)
+            reordered.insert(moved, at: destinationIndex)
+            
+            for (i, entry) in reordered.enumerated() {
+                entry.order = i
+            }
+            normalizeOrder()
         }
-       normalizeOrder()
-
     }
 
     // MARK: - Convenience helpers callable from outside

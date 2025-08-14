@@ -32,7 +32,7 @@ actor CleanUpActor {
                 lastPlayed < oneWeekAgo,
                 episode.metaData?.isAvailableLocally == true else { continue }
             
-            if episode.playlist.count == 0 {
+            if episode.playlist?.count == 0 {
                 print("🗑️ Deleting old download for episode: \(episode.title)")
                 await episodeActor.deleteFile(episodeID: episode.id)
             }

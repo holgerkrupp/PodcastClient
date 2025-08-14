@@ -62,7 +62,7 @@ struct EpisodeControlView: View {
                 }
             } label: {
                 
-                Label("Play Next", systemImage: (!episode.playlist.isEmpty || episode.playlist.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
+                Label("Play Next", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
                     .padding(5)
@@ -81,7 +81,7 @@ struct EpisodeControlView: View {
                     await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
                 }
             } label: {
-                Label("Play Last", systemImage: (!episode.playlist.isEmpty || episode.playlist.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
+                Label("Play Last", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
                     .padding(5)

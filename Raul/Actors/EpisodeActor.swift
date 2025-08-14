@@ -77,17 +77,18 @@ actor EpisodeActor {
     
     func updateChapterDurations(fileURL: URL) async{
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        guard !episode.chapters.isEmpty else { return }
+        guard !(episode.chapters?.isEmpty ?? true) else { return }
         guard let totalDuration = episode.duration else { return }
         
         print("updateChapterDurations")
         
-        var chapters = episode.chapters
-        var lastEnd = totalDuration
-        for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
-            if chapter.duration == nil{
-                chapter.duration = lastEnd - (chapter.start ?? 0.0)
-                lastEnd = chapter.start ?? 0.0
+        if let  chapters = episode.chapters{
+            var lastEnd = totalDuration
+            for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
+                if chapter.duration == nil{
+                    chapter.duration = lastEnd - (chapter.start ?? 0.0)
+                    lastEnd = chapter.start ?? 0.0
+                }
             }
         }
     }
@@ -242,7 +243,7 @@ actor EpisodeActor {
             return }
 
         if let localFile = episode.localFile {
-            if await DownloadManager.shared.download(from: episode.url, saveTo: localFile, episodeID: episode.id) != nil {
+            if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile, episodeID: episode.id) != nil {
                 print("✅ Episode download started - from \(episode.url) to \(localFile)")
             }else{
                 print("❌ Could not download Episode \(episodeID)")
@@ -278,12 +279,12 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return }
         print("check if remote Chapters shall be created for \(episode.title)")
-            if let pubDate = episode.publishDate,
+        if let url = episode.url, let pubDate = episode.publishDate,
                let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
                pubDate > oneWeekAgo{
                 // pubDate is less than 7 days old
              
-                await extractRemoteMP3Chapters(episode.url)
+                await extractRemoteMP3Chapters(url)
                     
                 
             
@@ -296,7 +297,7 @@ actor EpisodeActor {
 
         let bookmarkTitle = episode.transcriptLines?.sorted(by: { $0.startTime < $1.startTime }).last(where: { $0.startTime < playPosition })?.text ?? ""
         let bookmark = Marker(start: playPosition, title: bookmarkTitle, type: .bookmark)
-        episode.bookmarks.append(bookmark)
+        episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
 
     }
@@ -337,12 +338,15 @@ actor EpisodeActor {
             await BasicLogger.shared.log("Could not mark Episode As Available")
             return }
 
+        guard let url = episode.url else {
+            return
+        }
         episode.metaData?.isAvailableLocally = true
         await updateDuration(fileURL: fileURL)
 
-        await createChapters(episode.url)
+        await createChapters(url)
   
-        await transcribe(episode.url)
+        await transcribe(url)
         modelContext.saveIfNeeded()
         print("✅ Metadata updated")
         await BasicLogger.shared.log("Did mark Episode As Available")
@@ -484,8 +488,8 @@ actor EpisodeActor {
                     if let jsonString = await downloadAndParseStringFile(url: url),
                        let jsonData = jsonString.data(using: .utf8),
                        let chapters = await parseJSONChapters(jsonData: jsonData) {
-                        episode.chapters.removeAll(where: { $0.type == .extracted })
-                        episode.chapters.append(contentsOf: chapters)
+                        episode.chapters?.removeAll(where: { $0.type == .extracted })
+                        episode.chapters?.append(contentsOf: chapters)
                         modelContext.saveIfNeeded()
                         print("Imported \(chapters.count) chapters from JSON.")
                     }
@@ -494,7 +498,7 @@ actor EpisodeActor {
         }
         
 
-        if episode.chapters.isEmpty {
+        if let chapers = episode.chapters, chapers.isEmpty{
             guard let url = episode.localFile else {
                 print("no local file")
                 return
@@ -511,11 +515,12 @@ actor EpisodeActor {
                 print("Error determining audio format: \(error)")
             }
         }
-        if episode.chapters.isEmpty {
-            await extractShownotesChapters(fileURL: episode.url)
+        if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
+            await extractShownotesChapters(fileURL: url)
         }
-
-       await updateChapterDurations(episodeURL: episode.url)
+        if let url = episode.url{
+            await updateChapterDurations(episodeURL: url)
+        }
         await applyAutoSkipWords(episodeID: episode.id)
     }
     
@@ -543,11 +548,13 @@ actor EpisodeActor {
             case .EndsWith:
                 matches = { $0.hasSuffix(keyword) }
             }
-            for chapter in episode.chapters {
-                if matches(chapter.title.lowercased()) {
-                    await BasicLogger.shared.log("Chapter \(chapter.title) should be skipped")
-
-                    chapter.shouldPlay = false
+            if let chapters = episode.chapters{
+                for chapter in chapters {
+                    if matches(chapter.title.lowercased()) {
+                        await BasicLogger.shared.log("Chapter \(chapter.title) should be skipped")
+                        
+                        chapter.shouldPlay = false
+                    }
                 }
             }
         }
@@ -588,8 +595,8 @@ actor EpisodeActor {
                 
                 if let chapters = parse(chapters: dict){
                    
-                    episode.chapters.removeAll(where: { $0.type == .mp3 })
-                    episode.chapters.append(contentsOf: chapters)
+                    episode.chapters?.removeAll(where: { $0.type == .mp3 })
+                    episode.chapters?.append(contentsOf: chapters)
                      modelContext.saveIfNeeded()
                 }
 
@@ -605,13 +612,13 @@ actor EpisodeActor {
     func extractRemoteMP3Chapters(_ fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         print("extractRemoteMP3Chapters for \(episode.title)")
-        let remoteURL = episode.url
-        if let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
+        
+        if let remoteURL = episode.url, let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
             let dict = mp3Reader.getID3Dict()
             if let chapters = parse(chapters: dict) {
                 print("got \(chapters.count) Remote Chapters")
-                episode.chapters.removeAll(where: { $0.type == .mp3 })
-                episode.chapters.append(contentsOf: chapters)
+                episode.chapters?.removeAll(where: { $0.type == .mp3 })
+                episode.chapters?.append(contentsOf: chapters)
                 modelContext.saveIfNeeded()
             }
         }
@@ -709,8 +716,8 @@ actor EpisodeActor {
                 return chapter
             }
             
-            episode.chapters.removeAll(where: { $0.type == .mp4 })
-            episode.chapters.append(contentsOf: chapters)
+            episode.chapters?.removeAll(where: { $0.type == .mp4 })
+            episode.chapters?.append(contentsOf: chapters)
             modelContext.saveIfNeeded()
         } catch {
             print("Error loading chapters: \(error)")
@@ -735,8 +742,8 @@ actor EpisodeActor {
                 }
             }
             print("returning \(newchapters.count.formatted()) Chapters")
-            episode.chapters.removeAll(where: { $0.type == .ai })
-            episode.chapters.append(contentsOf: newchapters)
+            episode.chapters?.removeAll(where: { $0.type == .ai })
+            episode.chapters?.append(contentsOf: newchapters)
             modelContext.saveIfNeeded()
         }
         
@@ -763,8 +770,8 @@ actor EpisodeActor {
                 }
             }
             print("returning \(newchapters.count.formatted()) Chapters")
-            episode.chapters.removeAll(where: { $0.type == .extracted })
-            episode.chapters.append(contentsOf: newchapters)
+            episode.chapters?.removeAll(where: { $0.type == .extracted })
+            episode.chapters?.append(contentsOf: newchapters)
             modelContext.saveIfNeeded()
         }
     }

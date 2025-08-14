@@ -14,6 +14,15 @@
             symbolName = "print_cycle"
             moduleName = "">
             <Locations>
+               <Location
+                  uuid = "971FFDD0-B722-407D-BF7A-5DE5E6EEE650 - cc86abe8c9557793"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "AG::Graph::print_cycle(AG::data::ptr&lt;AG::Node&gt;) const"
+                  moduleName = "AttributeGraph"
+                  usesParentBreakpointCondition = "Yes">
+               </Location>
             </Locations>
          </BreakpointContent>
       </BreakpointProxy>

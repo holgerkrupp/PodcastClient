@@ -58,6 +58,9 @@ class Marker: Identifiable, Equatable, Hashable{
     var endTime: Double?
     var duration: TimeInterval?
     var creationtime:Date? = Date()
+    @Relationship(inverse: \Episode.chapters) var episode: Episode?
+    @Relationship(inverse: \Episode.bookmarks) var bookmarkEpisode: Episode?
+
     
     var progress:Double? // 0 -1 
     
@@ -82,7 +85,6 @@ class Marker: Identifiable, Equatable, Hashable{
     
     var type : MarkerType = MarkerType.unknown
     
-    var episode: Episode?
     var shouldPlay:Bool = true
     
     

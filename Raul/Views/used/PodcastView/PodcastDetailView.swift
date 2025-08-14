@@ -71,9 +71,9 @@ struct PodcastDetailView: View {
     @State private var searchInTranscript = true
 
     var filteredPodcasts: [Episode] {
-        if searchText.isEmpty { return podcast.episodes }
+        if searchText.isEmpty { return podcast.episodes ?? [] }
 
-        return podcast.episodes.filter { episode in
+        return podcast.episodes?.filter { episode in
             let lowercased = searchText.lowercased()
 
             var matches = false
@@ -88,7 +88,7 @@ struct PodcastDetailView: View {
             }
 
             return matches
-        }
+        } ?? []
     }
     
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
@@ -229,9 +229,9 @@ struct PodcastDetailView: View {
                     .onDelete { indexSet in
                         Task {
                             for index in indexSet {
-                                let episodeID = podcast.episodes.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()})[index].persistentModelID
-                                try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
-                                
+                                if let episodeID = podcast.episodes?.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()})[index].persistentModelID{
+                                    try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
+                                }
                             }
                         }
                     }

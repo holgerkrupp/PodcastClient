@@ -27,7 +27,7 @@ final class Podcast: Identifiable {
     var language: String?
     
     var copyright: String?
-    @Relationship(deleteRule: .cascade) var episodes: [Episode] = []
+    @Relationship(deleteRule: .cascade) var episodes: [Episode]? = []
     var lastBuildDate: Date?
     var imageURL: URL?
     @Relationship(deleteRule: .cascade) var metaData: PodcastMetaData?

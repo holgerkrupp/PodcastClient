@@ -26,8 +26,8 @@ struct PodcastListView: View {
             if searchInTitle {
                 matches = matches || podcast.title.localizedStandardContains(lowercased)
             }
-            if searchInTitle, searchInEpisodes {
-                matches = matches || podcast.episodes.contains(where: { $0.title.localizedStandardContains(lowercased) })
+            if let episodes = podcast.episodes, searchInTitle, searchInEpisodes {
+                matches = matches || episodes.contains(where: { $0.title.localizedStandardContains(lowercased) })
             }
             if searchInAuthor, let author = podcast.author {
                 matches = matches || author.localizedStandardContains(lowercased)
@@ -35,8 +35,8 @@ struct PodcastListView: View {
             if searchInDescription, let desc = podcast.desc {
                 matches = matches || desc.localizedStandardContains(lowercased)
             }
-            if searchInDescription, searchInEpisodes {
-                matches = matches || podcast.episodes.contains(where: { $0.desc?.localizedStandardContains(lowercased) ?? false })
+            if let episodes = podcast.episodes, searchInDescription, searchInEpisodes {
+                matches = matches || episodes.contains(where: { $0.desc?.localizedStandardContains(lowercased) ?? false })
             }
             return matches
         }

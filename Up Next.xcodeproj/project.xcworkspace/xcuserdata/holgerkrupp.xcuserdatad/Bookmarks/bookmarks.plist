@@ -37,12 +37,12 @@
 				<string>        
 </string>
 				<key>leading</key>
-				<string>        let fileName = url.lastPathComponent
+				<string>        let fileName = url?.lastPathComponent
          let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
 </string>
 				<key>trailing</key>
 				<string>        // Create a sanitized filename
-        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
+        let sanitizedFileName = fileName?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
         let sanitizedguid = guid?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
 </string>
 			</dict>
