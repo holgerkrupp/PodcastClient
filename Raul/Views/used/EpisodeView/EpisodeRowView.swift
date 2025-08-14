@@ -32,7 +32,7 @@ struct EpisodeRowView: View {
                             .scaledToFill()
                             .frame(width: geometry.size.width, height: height)
                             .clipped()
-                    }
+                    
                     
 
                         
@@ -117,6 +117,7 @@ struct EpisodeRowView: View {
                                  
 
                                 }
+                                .frame(height: 120)
                             }
                            
                         EpisodeControlView(episode: episode)
@@ -127,13 +128,14 @@ struct EpisodeRowView: View {
 
                            
                         }.padding()
+                    
                     .background(
                         Rectangle()
                             .fill(.ultraThinMaterial)
                        
                     )
+                     
                     
-                    GeometryReader { geometry in
                         Rectangle()
                             .fill(Color.accentColor)
                             .frame(width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)), height: 4)
@@ -142,6 +144,7 @@ struct EpisodeRowView: View {
                     .allowsHitTesting(false)
                     .frame(maxWidth: .infinity)
                     .clipped()
+                    
                    
                    
                 

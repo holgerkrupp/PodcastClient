@@ -19,7 +19,7 @@ struct PodcastRowView: View {
                 GeometryReader { geometry in
                     CoverImageView(podcast: podcast)
                         .scaledToFill()
-                        .frame(width: geometry.size.width, height: 200)
+                        .frame(width: geometry.size.width, height: 180)
                         .clipped()
                 }
 
@@ -48,8 +48,9 @@ struct PodcastRowView: View {
                                 Spacer()
                             }
                         }
+                        .frame(height: 150)
                     }
-                    
+                    /*
                     HStack{
                         if let lastBuildDate = podcast.lastBuildDate {
                             Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
@@ -63,6 +64,7 @@ struct PodcastRowView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                     */
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding()

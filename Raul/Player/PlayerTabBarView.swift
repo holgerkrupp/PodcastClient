@@ -17,7 +17,15 @@ struct PlayerTabBarView: View {
     @Bindable private var player = Player.shared
     
     @State private var fakeProgress : Double?
-
+    
+    // The following is, because iOS26 Beta 5 (maybe following as well) don't propperly change the text color and often it's not readable.
+    @Environment(\.colorScheme) var colorScheme
+    private var dynamicPrimaryColor: Color {
+        colorScheme == .dark ? Color.white : Color.black
+    }
+    private var dynamicSecondaryColor: Color {
+        colorScheme == .dark ? Color(white: 0.7) : Color(white: 0.3)
+    }
     
     init(fakeProgress : Double? = nil){
         self.fakeProgress = fakeProgress
@@ -53,11 +61,10 @@ struct PlayerTabBarView: View {
                             Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
                                 .font(.caption2)
                                 .lineLimit(1)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(dynamicSecondaryColor)
                             Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
                                 .font(.caption)
-                                .foregroundColor(.primary)
-
+                                .foregroundColor(dynamicPrimaryColor)
                                 .lineLimit(1)
                             
                         }
@@ -107,10 +114,10 @@ struct PlayerTabBarView: View {
                             Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
                                 .font(.caption2)
                                 .lineLimit(1)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(dynamicSecondaryColor)
                             Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
                                 .font(.caption)
-                                .foregroundColor(.primary)
+                                .foregroundColor(dynamicPrimaryColor)
                                 .lineLimit(1)
                             
                         }

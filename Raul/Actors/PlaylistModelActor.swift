@@ -52,23 +52,29 @@ actor PlaylistModelActor {
             try modelContext.save()
             self.playlistID = newPlaylist.id
         }
+        
     }
 
     // MARK: - Private helpers
 
     /// Always fetch the current playlist in this actor’s context.
     private func fetchPlaylist() throws -> Playlist? {
+
         let predicate = #Predicate<Playlist> { $0.id == playlistID }
         let descriptor = FetchDescriptor<Playlist>(predicate: predicate)
         return try modelContext.fetch(descriptor).first
     }
 
     private func fetchEpisode(byID episodeID: UUID) throws -> Episode? {
+        normalizeOrder() // will save
+
         let predicate = #Predicate<Episode> { $0.id == episodeID }
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
     }
 
     private func fetchEpisode(byURL fileURL: URL) throws -> Episode? {
+        normalizeOrder() // will save
+
         let predicate = #Predicate<Episode> { $0.url == fileURL }
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
     }
@@ -82,16 +88,22 @@ actor PlaylistModelActor {
             throw NSError(domain: "PlaylistModelActor", code: 404,
                           userInfo: [NSLocalizedDescriptionKey: "Playlist not found during refresh"])
         }
+        normalizeOrder() // will save
+
         return p
     }
 
     func orderedEpisodes() throws -> [Episode] {
         guard let playlist = try fetchPlaylist() else { return [] }
+        normalizeOrder() // will save
+
         return playlist.ordered.compactMap { $0.episode }
     }
 
     func nextEpisode() throws -> UUID? {
-        try orderedEpisodes().first?.id
+        normalizeOrder() // will save
+
+         return try orderedEpisodes().first?.id
     }
 
     func orderedEpisodeSummaries() throws -> [EpisodeSummary] {
@@ -145,7 +157,7 @@ actor PlaylistModelActor {
         episode.metaData?.status = .none
         episode.refresh.toggle()
 
-        try normalizeOrder() // will save
+         normalizeOrder() // will save
         await BasicLogger.shared.log("✅ Saved playlist changes")
 
         if episode.metaData?.calculatedIsAvailableLocally != true {
@@ -160,8 +172,9 @@ actor PlaylistModelActor {
         if let entry = playlist.items.first(where: { $0.episode?.id == episodeID }){
             
             modelContext.delete(entry)
+            normalizeOrder()
             entry.episode?.refresh.toggle()
-            try modelContext.save()
+           modelContext.saveIfNeeded()
             print("✅ PlaylistEntry deleted and context saved")
         }else{
             print("No such episode")
@@ -169,12 +182,12 @@ actor PlaylistModelActor {
     }
 
     /// Reorders by reindexing .ordered (sorted view) to contiguous 0...n and saves.
-    func normalizeOrder() throws {
-        guard let playlist = try fetchPlaylist() else { return }
+    func normalizeOrder()  {
+        guard let playlist = try? fetchPlaylist() else { return }
         for (i, entry) in playlist.ordered.enumerated() {
             entry.order = i
         }
-        try modelContext.save()
+        modelContext.saveIfNeeded()
     }
 
     /// Move an entry by source/destination indices as seen in sorted order.
@@ -192,7 +205,8 @@ actor PlaylistModelActor {
         for (i, entry) in reordered.enumerated() {
             entry.order = i
         }
-        try modelContext.save()
+       normalizeOrder()
+
     }
 
     // MARK: - Convenience helpers callable from outside

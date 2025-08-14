@@ -162,7 +162,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Raul" */;
+			buildConfigurationList = 487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Up Next" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -344,7 +344,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -363,7 +363,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2025.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -382,7 +382,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -401,7 +401,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2025.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -415,7 +415,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Raul" */ = {
+		487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Up Next" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				487F5C7E2D9D4F0D00056D08 /* Debug */,

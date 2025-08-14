@@ -39,13 +39,17 @@ struct EpisodeDetailView: View {
                     .resizable()
                     .scaledToFill()
                     .ignoresSafeArea()
-                    .blur(radius: 50)
+                   // .blur(radius: 50)
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     
                     
             } else {
                 Color.accentColor.ignoresSafeArea()
             }
+            
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
 
             // Main content
             ScrollView {
@@ -162,12 +166,7 @@ struct EpisodeDetailView: View {
           //          ChapterListView(chaptes: episode.chapters)
                 }
             }
-            .background(
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .ignoresSafeArea()
-               
-            )
+
         }
         .sheet(item: $shareURL) { identifiable in
             ShareLink(item: identifiable.url) { Text("Share Episode") }
