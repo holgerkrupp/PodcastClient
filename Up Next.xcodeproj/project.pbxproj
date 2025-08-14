@@ -1,0 +1,513 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		482249822E4524220001F8E6 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 482249812E4524220001F8E6 /* RichText */; };
+		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
+		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
+		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
+		488591272DE4D66F008604DA /* GlowEffects in Frameworks */ = {isa = PBXBuildFile; productRef = 488591262DE4D66F008604DA /* GlowEffects */; };
+		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
+		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
+		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
+		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
+		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
+		48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */ = {isa = PBXBuildFile; productRef = 48C7E5E62E10816D007D1CD3 /* SwipeActions */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		480234B92E0560EE0013C50D /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Entitlements.plist; sourceTree = "<group>"; };
+		4827FCD32DA5AC0500FA6778 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
+		487F5C6F2D9D4F0C00056D08 /* Raul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Raul.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		487F5CC22D9FF19000056D08 /* Exceptions for "Raul" folder in "Raul" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 487F5C6E2D9D4F0C00056D08 /* Raul */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		480234AC2E0560EE0013C50D /* PlayerIntentsExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PlayerIntentsExtension;
+			sourceTree = "<group>";
+		};
+		487F5C712D9D4F0C00056D08 /* Raul */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				487F5CC22D9FF19000056D08 /* Exceptions for "Raul" folder in "Raul" target */,
+			);
+			path = Raul;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		487F5C6C2D9D4F0C00056D08 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
+				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
+				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
+				482249822E4524220001F8E6 /* RichText in Frameworks */,
+				48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */,
+				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
+				488591272DE4D66F008604DA /* GlowEffects in Frameworks */,
+				48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		487F5C662D9D4F0C00056D08 = {
+			isa = PBXGroup;
+			children = (
+				4827FCD32DA5AC0500FA6778 /* README.md */,
+				4878D3802DDA612600BA3D92 /* PodcastFeactures.md */,
+				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
+				487F5C712D9D4F0C00056D08 /* Raul */,
+				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
+				487F5C962D9D59D000056D08 /* Frameworks */,
+				487F5C702D9D4F0C00056D08 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		487F5C702D9D4F0C00056D08 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				487F5C6F2D9D4F0C00056D08 /* Raul.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		487F5C962D9D59D000056D08 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		487F5C6E2D9D4F0C00056D08 /* Raul */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 487F5C802D9D4F0D00056D08 /* Build configuration list for PBXNativeTarget "Raul" */;
+			buildPhases = (
+				487F5C6B2D9D4F0C00056D08 /* Sources */,
+				487F5C6C2D9D4F0C00056D08 /* Frameworks */,
+				487F5C6D2D9D4F0C00056D08 /* Resources */,
+				480234B92E0560EE0013C50D /* Embed ExtensionKit Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				487F5C712D9D4F0C00056D08 /* Raul */,
+			);
+			name = Raul;
+			packageProductDependencies = (
+				48B3BA072DA06825005B40B8 /* fyyd_swift */,
+				48C078062DB410D000D6DD9C /* DeviceInfo */,
+				48C078082DB4111500D6DD9C /* DeviceInfo */,
+				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
+				488591262DE4D66F008604DA /* GlowEffects */,
+				48C7E5E62E10816D007D1CD3 /* SwipeActions */,
+				482249812E4524220001F8E6 /* RichText */,
+				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
+			);
+			productName = Raul;
+			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		487F5C672D9D4F0C00056D08 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					487F5C6E2D9D4F0C00056D08 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+				};
+			};
+			buildConfigurationList = 487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Up Next" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 487F5C662D9D4F0C00056D08;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
+				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
+				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
+				488591252DE4D66F008604DA /* XCLocalSwiftPackageReference "../GlowEffects" */,
+				48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */,
+				482249802E4524220001F8E6 /* XCLocalSwiftPackageReference "../RichText" */,
+				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				487F5C6E2D9D4F0C00056D08 /* Raul */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		487F5C6D2D9D4F0C00056D08 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4827FCD42DA5AC0500FA6778 /* README.md in Resources */,
+				4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */,
+				4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		487F5C6B2D9D4F0C00056D08 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		487F5C7E2D9D4F0D00056D08 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		487F5C7F2D9D4F0D00056D08 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		487F5C812D9D4F0D00056D08 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Raul/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2025.1;
+				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		487F5C822D9D4F0D00056D08 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Raul/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2025.1;
+				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Up Next" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				487F5C7E2D9D4F0D00056D08 /* Debug */,
+				487F5C7F2D9D4F0D00056D08 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		487F5C802D9D4F0D00056D08 /* Build configuration list for PBXNativeTarget "Raul" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				487F5C812D9D4F0D00056D08 /* Debug */,
+				487F5C822D9D4F0D00056D08 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		482249802E4524220001F8E6 /* XCLocalSwiftPackageReference "../RichText" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../RichText;
+		};
+		488591252DE4D66F008604DA /* XCLocalSwiftPackageReference "../GlowEffects" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../GlowEffects;
+		};
+		48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../fyyd-swift";
+		};
+		48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../DeviceInfo;
+		};
+		48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../BasicLogger;
+		};
+		48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../mp3ChapterReader;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/c-villain/SwipeActions";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		482249812E4524220001F8E6 /* RichText */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RichText;
+		};
+		488591262DE4D66F008604DA /* GlowEffects */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GlowEffects;
+		};
+		48B3BA072DA06825005B40B8 /* fyyd_swift */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = fyyd_swift;
+		};
+		48C078062DB410D000D6DD9C /* DeviceInfo */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DeviceInfo;
+		};
+		48C078082DB4111500D6DD9C /* DeviceInfo */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DeviceInfo;
+		};
+		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BasicLogger;
+		};
+		48C30C262E4B5B8200E51444 /* mp3ChapterReader */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = mp3ChapterReader;
+		};
+		48C7E5E62E10816D007D1CD3 /* SwipeActions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */;
+			productName = SwipeActions;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 487F5C672D9D4F0C00056D08 /* Project object */;
+}

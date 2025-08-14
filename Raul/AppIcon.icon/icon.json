@@ -1,0 +1,87 @@
+{
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "display-p3:0.81397,0.45940,0.62621,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.81397,0.45940,0.62621,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "play.svg",
+          "name" : "play",
+          "opacity-specializations" : [
+            {
+              "value" : 0.7
+            },
+            {
+              "appearance" : "dark",
+              "value" : 0.9
+            }
+          ],
+          "position" : {
+            "scale" : 0.7,
+            "translation-in-points" : [
+              -355.8828125,
+              -516.03125
+            ]
+          }
+        },
+        {
+          "blend-mode" : "normal",
+          "fill" : {
+            "linear-gradient" : [
+              "srgb:1.00000,0.94206,0.68036,1.00000",
+              "srgb:0.00000,0.47843,1.00000,1.00000"
+            ]
+          },
+          "hidden" : false,
+          "image-name" : "playlist.svg",
+          "name" : "playlist",
+          "opacity" : 0.8,
+          "position" : {
+            "scale" : 0.8,
+            "translation-in-points" : [
+              -386.6640625,
+              -507.390625
+            ]
+          }
+        }
+      ],
+      "position" : {
+        "scale" : 1,
+        "translation-in-points" : [
+          386.3203125,
+          506.1171875
+        ]
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

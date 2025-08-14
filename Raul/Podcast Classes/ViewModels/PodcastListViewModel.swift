@@ -3,9 +3,9 @@ import SwiftData
 
 @MainActor
 class PodcastListViewModel: ObservableObject {
-    @Published var podcasts: [Podcast] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var lastFetchDate: Date?
     
     private let modelContainer: ModelContainer
     private var podcastActor: PodcastModelActor
@@ -13,15 +13,7 @@ class PodcastListViewModel: ObservableObject {
     init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
         self.podcastActor = PodcastModelActor(modelContainer: modelContainer)
-    }
-    
-    func loadPodcasts() {
-        let descriptor = FetchDescriptor<Podcast>(sortBy: [SortDescriptor(\.title)])
-        do {
-            podcasts = try modelContainer.mainContext.fetch(descriptor)
-        } catch {
-            errorMessage = "Failed to load podcasts: \(error.localizedDescription)"
-        }
+       
     }
     
     func refreshPodcasts() async {
@@ -30,7 +22,6 @@ class PodcastListViewModel: ObservableObject {
         
         do {
             try await podcastActor.refreshAllPodcasts()
-            loadPodcasts()
         } catch {
             errorMessage = "Failed to refresh podcasts: \(error.localizedDescription)"
         }
@@ -41,7 +32,6 @@ class PodcastListViewModel: ObservableObject {
     func deletePodcast(_ podcast: Podcast) async {
         do {
             try await podcastActor.deletePodcast(podcast.persistentModelID)
-            loadPodcasts()
         } catch {
             errorMessage = "Failed to delete podcast: \(error.localizedDescription)"
         }
@@ -53,11 +43,19 @@ class PodcastListViewModel: ObservableObject {
         
         do {
             _ = try await podcastActor.createPodcast(from: url)
-            loadPodcasts()
         } catch {
             errorMessage = "Failed to add podcast: \(error.localizedDescription)"
         }
         
         isLoading = false
     }
-} 
+    
+    func getlastFetchedDate() async -> Date? {
+        guard let container = ModelContainerManager().container else {
+            print("Warning: Could not get last Fetched Date because ModelContainer is nil.")
+            return nil
+        }
+       lastFetchDate =  await SubscriptionManager(modelContainer: container).getLastRefreshDate()
+        return lastFetchDate
+    }
+}

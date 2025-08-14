@@ -11,25 +11,105 @@ import fyyd_swift
 struct PodcastSearchView: View {
     @StateObject private var viewModel = PodcastSearchViewModel()
     @Environment(\.modelContext) private var context
-
+    @Binding var search: String
     var body: some View {
-        VStack {
-            
-            // Search bar
-            TextField("Search for podcasts...", text: $viewModel.searchText)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()
+   
 
             if viewModel.isLoading {
                 ProgressView()
-            } else {
-                List(viewModel.results, id: \.id) { podcast in
+            }
+            
+            
+            else if let singlePodcast = viewModel.singlePodcast{
+                SubscribeToPodcastView(newPodcastFeed: singlePodcast)
+                    .modelContext(context)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+                
+                
+          
+          //  THIS WOULD BE FOR A COMBINED SEARCH of Fyyd and iTunes
+           
+           } else if !viewModel.searchResults.isEmpty{
+                
+                ForEach(viewModel.searchResults, id: \.self) { podcast in
                     SubscribeToPodcastView(newPodcastFeed: podcast)
                         .modelContext(context)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .overlay(Text(podcast.url?.absoluteString ?? "--"), alignment: .bottom)
+                        .overlay(Text(podcast.source?.description ?? "-"), alignment: Alignment(horizontal: .trailing, vertical: .top))
                 }
-
+                
+                .navigationTitle("Subscribe")
            
                 
+            } else if !viewModel.results.isEmpty{
+                
+                ForEach(viewModel.results, id: \.id) { podcast in
+                    SubscribeToPodcastView(fyydPodcastFeed: podcast)
+                        .modelContext(context)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                }
+                
+                .navigationTitle("Subscribe")
+                
+            }else if !viewModel.searchText.isEmpty{
+                Text("no results for \(search)")
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }else{
+                HotPodcastView(viewModel: viewModel)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+            }
+            if let url = URL(string: "https://fyyd.de"){
+                Link(destination: url) {
+                    Label("Search is powered by fyyd", systemImage: "safari")
+                    
+                }
+                .padding()
+                .buttonStyle(.borderedProminent)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+        
+        EmptyView()
+        .onChange(of: search) {
+            viewModel.searchText = search
+            
+        }
+        .toolbar {
+            
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if !viewModel.languages.isEmpty {
+                Picker("Language", selection: $viewModel.selectedLanguage) {
+                    ForEach(viewModel.languages, id: \.self) { name in
+                        Text(name.languageName()).tag(name)
+                    }
+                }
+                .pickerStyle(.menu)
+                } else {
+                    ProgressView("Loading languages...")
+                }
             }
         }
      
@@ -38,5 +118,6 @@ struct PodcastSearchView: View {
 }
 
 #Preview {
-    PodcastSearchView()
+    @Previewable @State var search: String = ""
+    PodcastSearchView(search: $search)
 }
