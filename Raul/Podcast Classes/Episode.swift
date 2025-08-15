@@ -123,17 +123,12 @@ class EpisodeDownloadStatus{
     
     //MARK: calculated properties that will be generated out of existing properties.
     var localFile: URL? {
-        let fileName = url?.lastPathComponent
+       
          let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
         
-        // Create a sanitized filename
-        let sanitizedFileName = fileName?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
-        let sanitizedguid = guid?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
-
+        guard let fileName = url?.lastPathComponent else { return nil }
+        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
         let uniqueURL = baseURL?.appendingPathComponent("\(id.uuidString)_\(sanitizedFileName)")
-        
- 
-        
         return uniqueURL
     }
     

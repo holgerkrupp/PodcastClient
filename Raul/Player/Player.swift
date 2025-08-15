@@ -284,7 +284,7 @@ class Player: NSObject {
 
         currentEpisode = episode
         currentEpisodeID = episode.id
-        print("unloading finihed - new episode: \(currentEpisodeID) - \(episode.title)")
+        print("unloading finished - new episode: \(currentEpisodeID) - \(episode.title)")
 
         updateChapters()
         
@@ -292,31 +292,38 @@ class Player: NSObject {
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
 
         Task { @MainActor in
+            print("loading new AVPlayerItem - \(isCurrentEpisodeDownloaded) - \(episode.localFile?.path ?? "nil")")
             // Load the AVPlayerItem asynchronously
-            let item = await Task {
-                if isCurrentEpisodeDownloaded,
-                   let localFile = episode.localFile {
-                    
-                    print("loading local file from \(localFile.path)")
-                    
-                    // Prepend Documents directory if localFile is not an absolute URL
+            let item: AVPlayerItem = {
+                if isCurrentEpisodeDownloaded, let localFile = episode.localFile {
+                
                     let localURL: URL
-                    if localFile.isFileURL && localFile.path.hasPrefix("/") {
-                        // Already a full path
+                    if localFile.isFileURL && FileManager.default.fileExists(atPath: localFile.path) {
+                       
                         localURL = localFile
+                        print("file Exists - \(localURL.path)")
                     } else {
-                        // Treat as relative to Documents
-                        let documents = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-                        localURL = documents.appendingPathComponent(localFile.path)
-                    }
-                    print("loading local file from URL \(localURL.absoluteString)")
-                    return AVPlayerItem(url: localURL)
-                } else {
-                    print("loading remote - local file \(episode.localFile?.absoluteString ?? "") not available")
+                        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+                        localURL = caches.appendingPathComponent(localFile.path)
+                        print("file does not exist - \(localURL.path)")
 
-                    return AVPlayerItem(url: episode.url ?? URL(string: "")!)
+                    }
+                    guard FileManager.default.fileExists(atPath: localURL.path) else {
+                        print("Local file does not exist at \(localURL.path), falling back to remote.")
+                        if let remoteURL = episode.url {
+                            return AVPlayerItem(url: remoteURL)
+                        } else {
+                            fatalError("No valid URL for playback.")
+                        }
+                    }
+                    return AVPlayerItem(url: localURL)
+                } else if let remoteURL = episode.url {
+                    print("loading remote file from \(remoteURL.absoluteString)")
+                    return AVPlayerItem(url: remoteURL)
+                } else {
+                    fatalError("No valid URL for playback.")
                 }
-            }.value
+            }()
            
             let duration = item.duration.seconds
             
