@@ -3,16 +3,22 @@ import SwiftData
 
 struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
+  //  @Environment(\.modelContainer) private var modelContainer
 
     @Bindable var podcast: Podcast
     @State private var useCustomSettings: Bool
     var podcastTitle: String { podcast.title }
     var settings: PodcastSettings? {podcast.settings }
+    private var defaultSettings: PodcastSettings?
     @Query private var allSettings: [PodcastSettings]
+    @State private var actor: PodcastSettingsModelActor
   
-    init(podcast: Podcast) {
+    init(podcast: Podcast, modelContainer: ModelContainer) {
         self._podcast = .init(wrappedValue: podcast)
+        self.actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         self._useCustomSettings = State(initialValue: podcast.settings != nil && podcast.settings?.isEnabled == true)
+        self.defaultSettings = allSettings.first(where: { $0.title == "de.holgerkrupp.podbay.queue" }) ?? PodcastSettings(defaultSettings: true)
+        
     }
 
     var body: some View {
@@ -24,35 +30,65 @@ struct PodcastSettingsView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .onChange(of: useCustomSettings) {
-             
-                if useCustomSettings == true {
-                    if podcast.settings == nil || podcast.settings?.isEnabled == false {
-                        if let existing = allSettings.first(where: { $0.podcast?.id == podcast.id }) {
-                            podcast.settings = existing
-                        } else {
-                            podcast.settings = PodcastSettings(podcast: podcast)
-                        }
+                Task {
+                    if useCustomSettings == true {
+                        await actor.enableCustomSettings(for: podcast.id)
+                    } else {
+                        await actor.disableCustomSettings(for: podcast.id)
                     }
-                    podcast.settings?.isEnabled = true
-                } else {
-                    podcast.settings?.isEnabled = false
                 }
             }
 
             Form {
                 if let settings = settings, useCustomSettings {
-                    Section(header: Text("Podcast Settings for \(podcastTitle)")) {
+                    Text("Podcast Settings for \(podcastTitle)")
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .padding()
                         settingsSections(settings: settings)
-                    }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                    
                 } else {
-                    Section {
+               
                         Text("This podcast uses the global settings. To customize, switch to 'Custom Settings'.")
+                        .padding()
                             .foregroundStyle(.secondary)
-                    }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 0,
+                                                 trailing: 0))
+                    
+                        if let settings = defaultSettings {
+                            settingsSections(settings: settings)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(.init(top: 0,
+                                                     leading: 0,
+                                                     bottom: 0,
+                                                     trailing: 0))
+                        }
+                        
+                    
                 }
             }
             .navigationTitle(podcastTitle)
+            .formStyle(.grouped)
+            .background(Color.clear)
+            .tint(Color.accent)
         }
+        .padding()
+
     }
 
     func printAllSettings() {
@@ -65,13 +101,19 @@ struct PodcastSettingsView: View {
     // All editable sections for PodcastSettings
     @ViewBuilder
     func settingsSections(settings: PodcastSettings) -> some View {
-        Section(header: Text("Playback")) {
-            Toggle("Auto Download", isOn: binding(for: \.autoDownload, in: settings))
-            Picker("Play Next Position", selection: binding(for: \.playnextPosition, in: settings)) {
-                Text("None").tag(Playlist.Position.none)
+        Section(header: Text("Subscription"), footer: Text("Where should a new Episode be added to the playlist?")) {
+       //     Toggle("Auto Download", isOn: binding(for: \.autoDownload, in: settings))
+            Picker("Up Next Position", selection: binding(for: \.playnextPosition, in: settings)) {
+                Text("Inbox").tag(Playlist.Position.none)
                 Text("Top").tag(Playlist.Position.front)
                 Text("Bottom").tag(Playlist.Position.end)
             }
+            
+        }
+        
+        
+        Section(header: Text("Playback"), footer: Text("")) {
+
             HStack {
                 Text("Playback Speed")
                 Spacer()
@@ -82,9 +124,11 @@ struct PodcastSettingsView: View {
                 set: { settings.playbackSpeed = $0 }
             ), in: 0.5...3.0, step: 0.1)
         }
+        
 
 
-        Section(header: Text("Chapter Skip Keywords")) {
+
+        Section(header: Text("Chapter Skip Keywords"), footer: Text("Chapters containing any of these keywords will be skipped during playback.")) {
             ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \ .offset) { idx, skipKey in
                 HStack {
                     TextField("Keyword", text: Binding(
@@ -105,6 +149,7 @@ struct PodcastSettingsView: View {
                     } label: {
                         Image(systemName: "minus.circle")
                     }
+                    .buttonStyle(.plain)
                 }
             }
             Button(action: {
@@ -113,7 +158,7 @@ struct PodcastSettingsView: View {
                 Label("Add Keyword", systemImage: "plus")
             }
         }
-
+/*
         Section(header: Text("Trimming")) {
             Stepper(value: Binding(
                 get: { settings.cutFront ?? 0 },
@@ -129,7 +174,7 @@ struct PodcastSettingsView: View {
             }
         }
 
-
+*/
 
      
     }
@@ -150,13 +195,15 @@ struct PodcastSettingsView_Previews: PreviewProvider {
     static var previews: some View {
         Group {
             let podcastWithCustomSettings = Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!)
-           
-            PodcastSettingsView(podcast: podcastWithCustomSettings)
-                .previewDisplayName("Podcast with Custom Settings")
-
-            let podcastWithoutCustomSettings = Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!)
-            PodcastSettingsView(podcast: podcastWithoutCustomSettings)
-                .previewDisplayName("Podcast with Global Settings")
+            if let container = ModelContainerManager().container{
+                // Pass a valid ModelContainer instance for previews
+                PodcastSettingsView(podcast: podcastWithCustomSettings, modelContainer:container)
+                    .previewDisplayName("Podcast with Custom Settings")
+                
+                let podcastWithoutCustomSettings = Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!)
+                PodcastSettingsView(podcast: podcastWithoutCustomSettings, modelContainer: container)
+                    .previewDisplayName("Podcast with Global Settings")
+            }
         }
     }
 }

@@ -52,6 +52,12 @@ class PodcastSettings {
         self.podcast = podcast
         print("INIT SETTINGS WITH: \(podcast.title) - \(podcast.id)")
     }
+    
+    init(defaultSettings: Bool){
+        if defaultSettings{
+            self.title = "de.holgerkrupp.podbay.queue"
+        }
+    }
 }
 
 enum Operator:Codable {

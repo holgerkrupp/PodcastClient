@@ -49,22 +49,10 @@ struct PodcastRowView: View {
                             }
                         }
                         .frame(height: 150)
-                    }
-                    /*
-                    HStack{
-                        if let lastBuildDate = podcast.lastBuildDate {
-                            Text("Last updated: \(lastBuildDate.formatted(.relative(presentation: .named)))")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
+                        
                         Spacer()
-                        if let lastRefreshDate = podcast.metaData?.feedUpdateCheckDate {
-                            Text("Last checked: \(lastRefreshDate.formatted(.relative(presentation: .named)))")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
                     }
-                     */
+ 
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding()
