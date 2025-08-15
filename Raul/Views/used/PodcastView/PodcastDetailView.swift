@@ -279,7 +279,7 @@ struct PodcastDetailView: View {
                 
             }
             .sheet(isPresented: $showSettings) {
-                PodcastSettingsView(podcast: podcast)
+                PodcastSettingsView(podcast: podcast, modelContainer: modelContext.container)
             }
         }}
 

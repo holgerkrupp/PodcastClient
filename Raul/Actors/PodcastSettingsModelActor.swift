@@ -117,6 +117,36 @@ actor PodcastSettingsModelActor {
         }
     }
     
+    /// Enable custom settings for a podcast (creates or re-enables custom settings)
+    func enableCustomSettings(for podcastID: UUID) async {
+        guard let podcast = fetchPodcast(podcastID) else { return }
+
+        // Try to find existing settings for this podcast
+        let predicate = #Predicate<PodcastSettings> {
+            $0.podcast?.id == podcastID
+        }
+        let existingSettings = (try? modelContext.fetch(FetchDescriptor<PodcastSettings>(predicate: predicate)).first)
+
+        if let settings = existingSettings {
+            settings.isEnabled = true
+            podcast.settings = settings
+        } else {
+            let newSettings = PodcastSettings(podcast: podcast)
+            newSettings.isEnabled = true
+            modelContext.insert(newSettings)
+            podcast.settings = newSettings
+        }
+        modelContext.saveIfNeeded()
+    }
+
+    /// Disable custom settings for a podcast
+    func disableCustomSettings(for podcastID: UUID) async {
+        guard let podcast = fetchPodcast(podcastID) else { return }
+        if let settings = podcast.settings {
+            settings.isEnabled = false
+        }
+        modelContext.saveIfNeeded()
+    }
     
     func getChapterSkipKeywords(for podcastID: UUID?) async -> [skipKey]?{
         guard let podcastID,let playbackSpeed = await fetchPodcastSettings(for: podcastID)?.autoSkipKeywords  else {
@@ -183,3 +213,4 @@ actor PodcastSettingsModelActor {
         }
     }
 }
+

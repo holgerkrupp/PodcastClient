@@ -29,7 +29,7 @@ struct EpisodeControlView: View {
 
     var body: some View {
 
-        HStack{
+        HStack {
             Button(action: {
                 Task{
                     await Player.shared.playEpisode(episode.id)
@@ -42,75 +42,75 @@ struct EpisodeControlView: View {
                     // .foregroundColor(.accentColor)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
+                    .clipShape(Circle())
+                    .frame(width: 50)
             }
             .buttonStyle(.glass)
-           
-           
-            
-           
-          
             
             Spacer()
             
-            
-                
-            
-            Button {
-                Task{
-                    await PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).addEpisode(episode, to: .front)
+            GlassEffectContainer(spacing: 20.0) {
+                HStack(spacing: 0.0) {
                     
-                }
-            } label: {
-                
-                Label("Play Next", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
-                    .symbolRenderingMode(.hierarchical)
-                    .scaledToFit()
-                    .padding(5)
-
-                    // .foregroundColor(.accentColor)
-                    .minimumScaleFactor(0.5)
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.glass)
-            
-        
-            
-                Spacer()
-            Button {
-                Task{
-                    await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
-                }
-            } label: {
-                Label("Play Last", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
-                    .symbolRenderingMode(.hierarchical)
-                    .scaledToFit()
-                    .padding(5)
-
-                    // .foregroundColor(.accentColor)
-                    .minimumScaleFactor(0.5)
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.glass)
-   
-           
-            
-            Spacer()
-                Button {
-                    Task{
-                        await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                    Button {
+                        Task{
+                            await PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).addEpisode(episode, to: .front)
+                            
+                        }
+                    } label: {
+                        
+                        Label("Play Next", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
+                            .symbolRenderingMode(.hierarchical)
+                            .scaledToFit()
+                            .padding(5)
+                            .minimumScaleFactor(0.5)
+                            .labelStyle(.iconOnly)
+                            .frame(width: 50)
+                           
                     }
-                } label: {
+                    .buttonStyle(.glass)
+                    .clipShape(Circle())
                     
-                    Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                        .symbolRenderingMode(.hierarchical)
-                        .scaledToFit()
-                        .padding(5)
-
-                       // .foregroundColor(.accentColor)
-                        .minimumScaleFactor(0.5)
-                        .labelStyle(.iconOnly)
+                 
+                    Button {
+                        Task{
+                            await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
+                        }
+                    } label: {
+                        Label("Play Last", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
+                            .symbolRenderingMode(.hierarchical)
+                            .scaledToFit()
+                            .padding(5)
+                            .minimumScaleFactor(0.5)
+                            .labelStyle(.iconOnly)
+                            .frame(width: 50)
+                    }
+                    .buttonStyle(.glass)
+                    .clipShape(Circle())
+                    
                 }
-                .buttonStyle(.glass)
+            }
+            
+            Spacer()
+            
+            Button {
+                Task{
+                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                }
+            } label: {
+                
+                Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                    .symbolRenderingMode(.hierarchical)
+                    .scaledToFit()
+                    .padding(5)
+
+                   // .foregroundColor(.accentColor)
+                    .minimumScaleFactor(0.5)
+                    .labelStyle(.iconOnly)
+                    .clipShape(Circle())
+                    .frame(width: 50)
+            }
+            .buttonStyle(.glass)
 
             
             
@@ -143,3 +143,4 @@ struct EpisodeControlView: View {
 
     return EpisodeControlView(episode: episode)
 }
+

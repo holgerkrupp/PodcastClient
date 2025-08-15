@@ -497,8 +497,10 @@ actor EpisodeActor {
             }
         }
         
-
-        if let chapers = episode.chapters, chapers.isEmpty{
+        if episode.chapters == nil {
+            episode.chapters = []
+        }
+        if let chapters = episode.chapters, chapters.isEmpty || !(chapters.contains(where: { $0.type == .mp3 }) || chapters.contains(where: { $0.type == .mp4 })) {
             guard let url = episode.localFile else {
                 print("no local file")
                 return
@@ -1022,4 +1024,3 @@ private struct JSONChapter: Decodable {
     let img: String?
     let url: String?
 }
-
