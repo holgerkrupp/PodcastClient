@@ -45,8 +45,8 @@ struct PodcastSearchView: View {
                                              leading: 0,
                                              bottom: 0,
                                              trailing: 0))
-                        .overlay(Text(podcast.url?.absoluteString ?? "--"), alignment: .bottom)
-                        .overlay(Text(podcast.source?.description ?? "-"), alignment: Alignment(horizontal: .trailing, vertical: .top))
+                     //   .overlay(Text(podcast.url?.absoluteString ?? "--"), alignment: .bottom)
+                     //   .overlay(Text(podcast.source?.description ?? "-"), alignment: Alignment(horizontal: .trailing, vertical: .top))
                 }
                 
                 .navigationTitle("Subscribe")
