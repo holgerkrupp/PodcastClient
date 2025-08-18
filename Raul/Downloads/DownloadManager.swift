@@ -73,12 +73,9 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         FileManager.default.fileExists(atPath: url.path)
     }
     private func markDownloaded(for url: URL) async {
-        guard let container = ModelContainerManager().container else {
-            print("Warning: Could not mark Downloaded because ModelContainer is nil.")
-            return
-        }
+
         refreshDownloadedFiles()
-        let episodeActor = EpisodeActor(modelContainer: container)
+        let episodeActor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
         await episodeActor.markEpisodeAvailable(fileURL: url)
       //  await episodeActor.updateDuration(fileURL: url)
     }

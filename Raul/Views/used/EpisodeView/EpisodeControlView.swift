@@ -17,15 +17,6 @@ struct EpisodeControlView: View {
     @State private var downloadProgress: Double = 0.0
     @State private var isDownloading: Bool = false
     
-    var playlistViewModel: PlaylistViewModel? = {
-        guard let container = ModelContainerManager().container else {
-            print("Warning: Could not create PlaylistViewModel because ModelContainer is nil.")
-            return nil
-        }
-        return PlaylistViewModel(container: container)
-    }()
- 
-
 
     var body: some View {
 

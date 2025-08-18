@@ -6,9 +6,8 @@ import BasicLogger
 
 @main
 struct RaulApp: App {
-    @StateObject private var modelContainerManager = ModelContainerManager()
+    @StateObject private var modelContainerManager = ModelContainerManager.shared
     @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
-
     @Environment(\.scenePhase) private var phase
     
 
@@ -19,9 +18,9 @@ struct RaulApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if let container = modelContainerManager.container{
+           
                 ContentView()
-                    .modelContainer(container)
+                    .modelContainer(modelContainerManager.container)
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
@@ -31,7 +30,7 @@ struct RaulApp: App {
                             await DownloadManager.shared.injectDownloadedFilesManager(manager)
                         }
                     }
-            }
+            
         }
         .onChange(of: phase, {
             switch phase {
@@ -47,20 +46,20 @@ struct RaulApp: App {
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
             await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
-            if let container =  ModelContainerManager().container {
-                await SubscriptionManager(modelContainer: container).bgupdateFeeds()
+       
+                await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
 
-            }
+            
         }
     }
 
     func cleanUp()  {
-        if let container = modelContainerManager.container {
+    
             Task{
-                let janitor = CleanUpActor(modelContainer: container)
+                let janitor = CleanUpActor(modelContainer: modelContainerManager.container)
                 await janitor.cleanUpOldDownloads()
             }
-        }
+        
         
     }
 

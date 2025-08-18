@@ -61,10 +61,10 @@ class AITranscripts {
     }
     
     func logEpisodeTitle(for url: URL) async {
-        if let container = ModelContainerManager().container {
-            let title = await EpisodeActor(modelContainer: container).getEpisodeTitlefrom(url: url)
+        
+            let title = await EpisodeActor(modelContainer: ModelContainerManager.shared.container).getEpisodeTitlefrom(url: url)
             await BasicLogger.shared.log("Episode title: \(title ?? "unknown")")
-        }
+        
     }
     
     /// Maps language codes to preferred region-specific locales if present in supportedLocales.

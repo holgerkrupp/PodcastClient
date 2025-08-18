@@ -15,35 +15,23 @@ class Player: NSObject {
     
     
     static let shared = Player()
-  //  private let modelContext = ModelContainerManager().container.mainContext
+  //  private let modelContext = ModelContainerManager.shared.container.mainContext
      let episodeActor: EpisodeActor? = {
-         guard let container = ModelContainerManager().container else {
-             print("Warning: Could not create EpisodeActor because ModelContainer is nil.")
-             return nil
-         }
-         return EpisodeActor(modelContainer: container)
+
+         return EpisodeActor(modelContainer: ModelContainerManager.shared.container)
      }()
      let chapterActor: ChapterModelActor? = {
-         guard let container = ModelContainerManager().container else {
-             print("Warning: Could not create ChapterModelActor because ModelContainer is nil.")
-             return nil
-         }
-         return ChapterModelActor(modelContainer: container)
+
+         return ChapterModelActor(modelContainer: ModelContainerManager.shared.container)
      }()
     let playlistActor: PlaylistModelActor? = {
-        guard let container = ModelContainerManager().container else {
-            print("Warning: Could not create PlaylistModelActor because ModelContainer is nil.")
-            return nil
-        }
-        return try? PlaylistModelActor(modelContainer: container)
+
+        return try? PlaylistModelActor(modelContainer: ModelContainerManager.shared.container)
     }()
     
     let settingsActor: PodcastSettingsModelActor? = {
-        guard let container = ModelContainerManager().container else {
-            print("Warning: Could not create PlaylistModelActor because ModelContainer is nil.")
-            return nil
-        }
-        return PodcastSettingsModelActor(modelContainer: container)
+
+        return PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
     }()
 
     
@@ -91,7 +79,7 @@ class Player: NSObject {
 
     
     override init()  {
-      //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager().container)
+      //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
         
         super.init()
         loadLastPlayedEpisode()
@@ -192,30 +180,28 @@ class Player: NSObject {
     }
     
     private func updateCurrentChapter() -> Bool{
-        updateChapters()
-        let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
-        print(playingChapter?.title ?? "nil")
-        if currentChapter != playingChapter {
-             
+        if currentEpisode?.chapters != nil, currentEpisode?.chapters?.isEmpty == false {
+            updateChapters()
+            let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
+            if currentChapter != playingChapter {
+                
                 if let chapterProgress, let currentChapter  {
-                saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
+                    saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
                 }
-            currentChapter = playingChapter
-            if let currentChapterID = currentChapter?.id{
-                Task{
-                    currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true // check that the user has not recently changed the toggle to play this chapter
+                currentChapter = playingChapter
+                if let currentChapterID = currentChapter?.id{
+                    Task{
+                        currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true // check that the user has not recently changed the toggle to play this chapter
+                    }
                 }
+                chapterProgress = 0.0
+                updateChapterProgress()
+                nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+                
+                return true
             }
-            chapterProgress = 0.0
-            updateChapterProgress()
-            nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
-            
-            return true
-        }else{
-            print("return false")
-            return false
         }
-        
+        return false
     }
     
     private func updateChapterProgress(){
@@ -572,11 +558,12 @@ class Player: NSObject {
         guard isPlaying == true else { return }
         
             
-       
+        if let chapters = currentEpisode?.chapters, chapters.count > 0 {
             let chapterChange = updateCurrentChapter()
-            
             updateChapterProgress()
             skipIfNeeded(chapterChange: chapterChange)
+        }
+
             updateNowPlayingInfo()
         
         
@@ -731,8 +718,8 @@ class Player: NSObject {
     }
     
     func createBookmark() async{
-        if let container = ModelContainerManager().container, let currentEpisodeID{
-            await EpisodeActor(modelContainer: container).createBookMarkfor(episodeID: currentEpisodeID, at: playPosition)
+        if  let currentEpisodeID{
+            await EpisodeActor(modelContainer: ModelContainerManager.shared.container).createBookMarkfor(episodeID: currentEpisodeID, at: playPosition)
         }
     }
     

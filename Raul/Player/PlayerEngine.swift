@@ -24,8 +24,7 @@ actor PlayerEngine {
      init() {
         avPlayer = AVPlayer()
         do{
-            // try session.setCategory(.playback, mode: .spokenAudio)
-            // removed to avoid setting category on init
+            try session.setCategory(.playback, mode: .spokenAudio)
            
         }catch{
             print("Audio session setup failed:", error)
@@ -97,13 +96,12 @@ actor PlayerEngine {
         print("sendInterrupt type: \(type)")
         switch type {
         case .began:
-            try? self.session.setActive(false)
+            deactiveSession()
             self.interruptionHandler?(.began)
         case .ended:
             break
         case .pause:
-            //   self.avPlayer.pause()
-               try? self.session.setActive(false)
+                deactiveSession()
                self.interruptionHandler?(.pause)
         case .resume:
             activateSession()
@@ -131,8 +129,8 @@ actor PlayerEngine {
             NotificationCenter.default.removeObserver(observer)
             endObserver = nil
         }
-      //  activateSession()
-        // Observe end of playback
+
+        /*
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -141,19 +139,14 @@ actor PlayerEngine {
             Task {
             }
         }
+        */
     }
     
 
 
     func play() {
-        do{
-            try session.setCategory(.playback, mode: .spokenAudio)
-            activateSession()
-        }catch{
-            print(error)
-
-        }
-            avPlayer.play()
+        activateSession()
+        avPlayer.play()
     }
     
     func setRate(_ newRate: Float) async {
@@ -163,7 +156,7 @@ actor PlayerEngine {
 
     func pause() {
         avPlayer.pause()
-        try? session.setActive(false)
+        deactiveSession()
     }
 
     func seek(to time: CMTime) {
@@ -174,6 +167,15 @@ actor PlayerEngine {
     func isPlaying() -> Bool {
          return avPlayer.rate != 0
      }
+    
+    private func deactiveSession()  {
+        print ("deactiveSession called")
+        do{
+            try session.setActive(false)
+        }catch{
+            print(error)
+        }
+    }
     
     private func activateSession()  {
         print ("activateSession called")

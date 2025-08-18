@@ -23,8 +23,9 @@ actor PlaylistModelActor {
 
     /// Initialize by known playlist ID. Throws if playlist can't be found.
     public init(modelContainer: ModelContainer? = nil, playlistID: UUID) throws {
-        // Prefer a shared container if you have one; fall back to provided or new
-        let container = modelContainer ?? (ModelContainerManager().container ?? ModelContainerManager().container!)
+        guard let container = modelContainer else {
+            fatalError("PlaylistModelActor requires a modelContainer to be passed in from the main actor.")
+        }
         self.modelContainer = container
         self.modelContext = ModelContext(container)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
@@ -36,7 +37,9 @@ actor PlaylistModelActor {
     /// Initialize by title; creates the playlist if it doesn't exist.
     public init(modelContainer: ModelContainer? = nil,
                 playlistTitle: String = "de.holgerkrupp.podbay.queue") throws {
-        let container = modelContainer ?? (ModelContainerManager().container ?? ModelContainerManager().container!)
+        guard let container = modelContainer else {
+            fatalError("PlaylistModelActor requires a modelContainer to be passed in from the main actor.")
+        }
         self.modelContainer = container
         self.modelContext = ModelContext(container)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)

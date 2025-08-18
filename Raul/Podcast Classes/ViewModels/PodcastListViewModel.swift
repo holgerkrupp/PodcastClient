@@ -51,11 +51,8 @@ class PodcastListViewModel: ObservableObject {
     }
     
     func getlastFetchedDate() async -> Date? {
-        guard let container = ModelContainerManager().container else {
-            print("Warning: Could not get last Fetched Date because ModelContainer is nil.")
-            return nil
-        }
-       lastFetchDate =  await SubscriptionManager(modelContainer: container).getLastRefreshDate()
+ 
+       lastFetchDate =  await SubscriptionManager(modelContainer: modelContainer).getLastRefreshDate()
         return lastFetchDate
     }
 }
