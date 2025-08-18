@@ -3,13 +3,12 @@ import SwiftData
 
 struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
-  //  @Environment(\.modelContainer) private var modelContainer
 
     @Bindable var podcast: Podcast
     @State private var useCustomSettings: Bool
     var podcastTitle: String { podcast.title }
     var settings: PodcastSettings? {podcast.settings }
-    private var defaultSettings: PodcastSettings?
+    @State private var defaultSettings: PodcastSettings? = nil
     @Query private var allSettings: [PodcastSettings]
     @State private var actor: PodcastSettingsModelActor
   
@@ -17,8 +16,6 @@ struct PodcastSettingsView: View {
         self._podcast = .init(wrappedValue: podcast)
         self.actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         self._useCustomSettings = State(initialValue: podcast.settings != nil && podcast.settings?.isEnabled == true)
-        self.defaultSettings = allSettings.first(where: { $0.title == "de.holgerkrupp.podbay.queue" }) ?? PodcastSettings(defaultSettings: true)
-        
     }
 
     var body: some View {
@@ -81,6 +78,17 @@ struct PodcastSettingsView: View {
                         
                     
                 }
+                if let defaultSettings {
+                    Text("Global Settings regarding App behavior. These are applied to all podcasts.")
+                    golbalSections(settings: defaultSettings)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                }
+                
             }
             .navigationTitle(podcastTitle)
             .formStyle(.grouped)
@@ -88,6 +96,12 @@ struct PodcastSettingsView: View {
             .tint(Color.accent)
         }
         .padding()
+        // Load default settings asynchronously here instead of init to avoid async tasks in initializers
+        .task {
+            if defaultSettings == nil {
+             //   defaultSettings = await actor.standardSettings()
+            }
+        }
 
     }
 
@@ -125,9 +139,6 @@ struct PodcastSettingsView: View {
             ), in: 0.5...3.0, step: 0.1)
         }
         
-
-
-
         Section(header: Text("Chapter Skip Keywords"), footer: Text("Chapters containing any of these keywords will be skipped during playback.")) {
             ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \ .offset) { idx, skipKey in
                 HStack {
@@ -175,8 +186,22 @@ struct PodcastSettingsView: View {
         }
 
 */
+    }
+    
+    @ViewBuilder
+    func golbalSections(settings: PodcastSettings) -> some View {
+        Section(header: Text("Progress Slider"), footer: Text("How should the progress slider behave?")) {
 
-     
+            Toggle(isOn: binding(for: \.enableInAppSlider, in: settings)) {
+                Text("Now Playing Screen Slider")
+            }
+            Toggle(isOn: binding(for: \.enableLockscreenSlider, in: settings)) {
+                Text("Lockscreen Slider")
+            }
+            
+        }
+        
+        
     }
 
     private func binding<Value>(for keyPath: ReferenceWritableKeyPath<PodcastSettings, Value>, in settings: PodcastSettings) -> Binding<Value> {
@@ -208,3 +233,4 @@ struct PodcastSettingsView_Previews: PreviewProvider {
     }
 }
 #endif
+

@@ -2,12 +2,14 @@ import SwiftUI
 import RichText
 
 
+
 struct PlayerView: View {
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
    
+
 
     let fullSize: Bool
 

@@ -5,15 +5,18 @@
 //  Created by Holger Krupp on 27.06.25.
 //
 import SwiftUI
+import SwiftData
 
 
 struct PlayerControllView: View {
+    @Environment(\.modelContext) private var context
+
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
     
-    
+    @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var podcastSettings: [PodcastSettings]
     
     var body: some View {
         if let episode = player.currentEpisode {
@@ -22,7 +25,7 @@ struct PlayerControllView: View {
                 HStack {
                    
                     AirPlayButtonView()
-                        .tint(.accent)
+                        
                    
                     Spacer()
                     Button {
@@ -150,7 +153,7 @@ struct PlayerControllView: View {
                 
                 
                 VStack {
-                    PlayerProgressSliderView(value: $player.progress, allowTouch: false, sliderRange: 0...1)
+                    PlayerProgressSliderView(value: $player.progress, allowTouch: podcastSettings.first?.enableInAppSlider ?? true, sliderRange: 0...1)
                         .frame(height: 30)
                     
                     

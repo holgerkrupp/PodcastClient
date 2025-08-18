@@ -11,7 +11,7 @@ class Player: NSObject {
     
 
   
-     let progressThreshold: Double = 0.95 // how much of an episode must be played before it is considered "played"
+    let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
     
     static let shared = Player()
@@ -137,8 +137,6 @@ class Player: NSObject {
                 playbackRate = savedPlaybackRate
                 Task {
                     await engine.setRate(playbackRate)
-                  
-                    // pause()
                 }
             }
         }
@@ -194,14 +192,14 @@ class Player: NSObject {
     }
     
     private func updateCurrentChapter() -> Bool{
+        updateChapters()
         let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
         print(playingChapter?.title ?? "nil")
         if currentChapter != playingChapter {
-             updateChapters()
-            
+             
                 if let chapterProgress, let currentChapter  {
                 saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
-            }
+                }
             currentChapter = playingChapter
             if let currentChapterID = currentChapter?.id{
                 Task{
@@ -255,7 +253,7 @@ class Player: NSObject {
         UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeUUID")
         
         
-        if episode.playProgress > progressThreshold {
+        if episode.playProgress >= progressThreshold {
 
             await episodeActor?.markasPlayed(episodeUUID)
             
@@ -334,6 +332,7 @@ class Player: NSObject {
             }
             
             await engine.replaceCurrentItem(with: item)
+            
             BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
             if let time  {
                 BasicLogger.shared.log("Time provided when calling the playEpisode function: \(time)")
@@ -458,8 +457,7 @@ class Player: NSObject {
         startPlaybackUpdates()
         startNowPlayingInfoUpdater()
         Task {
-           
-        //    await engine.play() // <- maybe i can remove this, i gues "setRate" already starts playing
+            
             await engine.setRate(playbackRate)
             isPlaying = true
         }
@@ -599,8 +597,10 @@ class Player: NSObject {
             Task.detached(priority: .background) {
                 await self.chapterActor?.markChapterAsSkipped(id)
             }
-            if let end = currentChapter.end, end < (currentEpisode?.duration ?? .greatestFiniteMagnitude) {
-                jumpTo(time: end)
+            let nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+
+            if let start = nextChapter?.start, start < (currentEpisode?.duration ?? .greatestFiniteMagnitude) {
+                jumpTo(time: start)
                 _ = updateCurrentChapter()
             } else {
                 // If this is the last chapter, finish playback

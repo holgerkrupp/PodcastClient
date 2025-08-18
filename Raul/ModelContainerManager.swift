@@ -3,7 +3,7 @@ import SwiftUI
 
 class ModelContainerManager: ObservableObject {
     let container: ModelContainer?
-
+    
     init() {
         guard let sharedContainerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient") else {
             print("Shared container URL not found. Returning nil container.")

@@ -24,8 +24,9 @@ actor PlayerEngine {
      init() {
         avPlayer = AVPlayer()
         do{
-            try session.setCategory(.playback, mode: .spokenAudio)
-            try session.setActive(true)
+            // try session.setCategory(.playback, mode: .spokenAudio)
+            // removed to avoid setting category on init
+           
         }catch{
             print("Audio session setup failed:", error)
         }
@@ -105,7 +106,7 @@ actor PlayerEngine {
                try? self.session.setActive(false)
                self.interruptionHandler?(.pause)
         case .resume:
-            try? self.session.setActive(true)
+            activateSession()
             self.interruptionHandler?(.resume)
         case .finished:
             break
@@ -113,9 +114,7 @@ actor PlayerEngine {
     }
     
     
-    func setRate(_ newRate: Float) async {
-        avPlayer.rate = newRate
-    }
+
 
     func getRate() async -> Float {
         return avPlayer.rate
@@ -132,7 +131,7 @@ actor PlayerEngine {
             NotificationCenter.default.removeObserver(observer)
             endObserver = nil
         }
-        try? session.setActive(true)
+      //  activateSession()
         // Observe end of playback
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -148,20 +147,23 @@ actor PlayerEngine {
 
     func play() {
         do{
-            try session.setActive(true)
+            try session.setCategory(.playback, mode: .spokenAudio)
+            activateSession()
         }catch{
             print(error)
 
         }
             avPlayer.play()
     }
+    
+    func setRate(_ newRate: Float) async {
+        activateSession()
+        avPlayer.rate = newRate
+    }
 
     func pause() {
         avPlayer.pause()
-    }
-    
-    func setRate(_ rate: Float) {
-        avPlayer.rate = rate
+        try? session.setActive(false)
     }
 
     func seek(to time: CMTime) {
@@ -172,6 +174,16 @@ actor PlayerEngine {
     func isPlaying() -> Bool {
          return avPlayer.rate != 0
      }
+    
+    private func activateSession()  {
+        print ("activateSession called")
+        
+        do{
+            try session.setActive(true)
+        }catch{
+            print(error)
+        }
+    }
 
     
     func playbackStream(interval: TimeInterval = 0.5) -> AsyncStream<PlaybackEvent> {
@@ -184,7 +196,7 @@ actor PlayerEngine {
                 }
             }
 
-            let endObserver = NotificationCenter.default.addObserver(
+            NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: avPlayer.currentItem,
                 queue: .main
