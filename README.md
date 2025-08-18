@@ -1,16 +1,15 @@
 # PodcastClient
 An Open Source Podcast client. 
 
-I've started the development of an open source Podcast client that doesn't rely on a server back in 2023. I got a first working Alpha in 2024 that already incloded Transcripts, accidental skip detection and other features that I missed in other PodcastClients. Then life happend and I wouldn't find the time needed to work on the App. Now I have restarted. I'm removing my old code base and starting from scratch (nearly, I'm reusing parts that are reusable). I'm targetting iOS18 (or 19) - I will follow all restrictions Swift6 brings to avoid any race conditions. I hope this new approach will go better than before. I'm not relying on any outside code. All included packages have been written by me and are available to use in other apps.
+I've started the development of an open source Podcast client that doesn't rely on a server back in 2023. I got a first working Alpha in 2024 that already included Transcripts, accidental skip detection and other features that I missed in other PodcastClients. Then life happend and I wouldn't find the time needed to work on the App. Now I have restarted. I'm removing my old code base and starting from scratch (nearly, I'm reusing parts that are reusable). I'm targetting iOS26 - I will follow all restrictions Swift6 brings to avoid any race conditions. I hope this new approach will go better than before. 
 
-I'm, currently building the base functionallity, reimplementing what I have and focus on a modern design later. My first approach was to mimic a existing app that was no longer maintained. As that app now has a new owner and receives updates, I will use my own design approach.
+The goal is to give back to the community. I have listened to many free podcasts in the past 20 years. I'm using free tools to publish my podcasts (Podlove Publisher, Ultraschall,…) and want to help protecting this free medium from companies who try to control it. My app is based on a comunity developed podcast catalog (fyyd), is independed from any app specific server (all refreshes are working locally on the device). The app is open source and will be free to use. No restrictions in functionallity.
 
 
 ### Next Steps
 
 - [ ] Integrate Settings (Per Podcasts and global)
 - [ ] Use Notification Center to send notification to the player if settings are changed.
-- [ ] Remove ModelContainerManager
 
 - [?] fix Skip Chapters (validate skip to and skip last)
 

@@ -220,15 +220,15 @@ struct PodcastSettingsView_Previews: PreviewProvider {
     static var previews: some View {
         Group {
             let podcastWithCustomSettings = Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!)
-            if let container = ModelContainerManager().container{
+          
                 // Pass a valid ModelContainer instance for previews
-                PodcastSettingsView(podcast: podcastWithCustomSettings, modelContainer:container)
+                PodcastSettingsView(podcast: podcastWithCustomSettings, modelContainer:ModelContainerManager.shared.container)
                     .previewDisplayName("Podcast with Custom Settings")
                 
                 let podcastWithoutCustomSettings = Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!)
-                PodcastSettingsView(podcast: podcastWithoutCustomSettings, modelContainer: container)
+                PodcastSettingsView(podcast: podcastWithoutCustomSettings, modelContainer: ModelContainerManager.shared.container)
                     .previewDisplayName("Podcast with Global Settings")
-            }
+            
         }
     }
 }

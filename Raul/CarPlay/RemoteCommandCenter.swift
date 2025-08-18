@@ -16,9 +16,9 @@ class RemoteCommandCenter {
     
     private init() {
         Task{
-            if let container = ModelContainerManager().container {
-                settingLockScreenScrubbing = await PodcastSettingsModelActor(modelContainer: container).getLockScreenSliderEnable()
-            }
+           
+                settingLockScreenScrubbing = await PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container).getLockScreenSliderEnable()
+            
         }
         let RCC = MPRemoteCommandCenter.shared()
         
