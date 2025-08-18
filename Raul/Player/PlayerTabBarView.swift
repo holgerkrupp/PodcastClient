@@ -87,7 +87,7 @@ struct PlayerTabBarView: View {
                                     .scaledToFit()
                             }
                             .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 12))
+                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 15))
                             
                             
 

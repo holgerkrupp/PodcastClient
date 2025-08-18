@@ -25,10 +25,7 @@ class CarPlayNowPlaying {
     
     func setupTempate(interfaceController: CPInterfaceController) {
         print("setupTempate")
-        guard let container = ModelContainerManager().container else {
-            print("Warning: Could not setupTempate because ModelContainer is nil.")
-            return
-        }
+ 
         // Configure the now playing template
         template.isUpNextButtonEnabled = false
         template.isAlbumArtistButtonEnabled = false

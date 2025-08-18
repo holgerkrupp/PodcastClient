@@ -8,10 +8,9 @@ I'm, currently building the base functionallity, reimplementing what I have and 
 
 ### Next Steps
 
-- [x] Rename FyydPodcast to generic PodcastFeed (merge classes)
-- [x] Integrate iTunes Results to fyyd results (in ViewModel)
-
 - [ ] Integrate Settings (Per Podcasts and global)
+- [ ] Use Notification Center to send notification to the player if settings are changed.
+- [ ] Remove ModelContainerManager
 
 - [?] fix Skip Chapters (validate skip to and skip last)
 

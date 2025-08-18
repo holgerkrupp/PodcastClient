@@ -212,5 +212,14 @@ actor PodcastSettingsModelActor {
             return await standardSettings().playnextPosition
         }
     }
+    
+    func getAppSliderEnable() async -> Bool{
+        return await standardSettings().enableInAppSlider
+    }
+    
+    func getLockScreenSliderEnable() async -> Bool{
+        return await standardSettings().enableLockscreenSlider
+
+    }
 }
 

@@ -15,6 +15,11 @@ class RemoteCommandCenter {
     var settingLockScreenScrubbing: Bool = false
     
     private init() {
+        Task{
+            if let container = ModelContainerManager().container {
+                settingLockScreenScrubbing = await PodcastSettingsModelActor(modelContainer: container).getLockScreenSliderEnable()
+            }
+        }
         let RCC = MPRemoteCommandCenter.shared()
         
         RCC.bookmarkCommand.isEnabled = true

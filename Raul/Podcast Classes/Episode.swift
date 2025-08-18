@@ -73,7 +73,7 @@ class EpisodeDownloadStatus{
     var number: String?
     var type: EpisodeType?
     
-    var transcriptLines: [TranscriptLineAndTime]?
+    @Relationship(deleteRule: .cascade) var transcriptLines: [TranscriptLineAndTime]?
     
     var externalFiles:[ExternalFile] = []
     
