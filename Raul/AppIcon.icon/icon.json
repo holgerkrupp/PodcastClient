@@ -9,7 +9,7 @@
           "fill-specializations" : [
             {
               "value" : {
-                "automatic-gradient" : "display-p3:0.81397,0.45940,0.62621,1.00000"
+                "automatic-gradient" : "srgb:0.00000,0.99144,1.00000,1.00000"
               }
             },
             {
@@ -25,7 +25,7 @@
           "name" : "play",
           "opacity-specializations" : [
             {
-              "value" : 0.6
+              "value" : 0.9
             },
             {
               "appearance" : "dark",

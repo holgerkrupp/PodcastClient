@@ -28,6 +28,7 @@ class NotificationPermissionViewModel: ObservableObject {
         Task {
             let granted = await notificationManager.requestAuthorization()
             isAuthorized = granted
+            
         }
     }
 }
@@ -114,21 +115,35 @@ actor NotificationManager {
 
 struct NotificationSettingsView: View {
     @StateObject private var viewModel = NotificationPermissionViewModel()
-
+    
     var body: some View {
-        VStack {
-            Text(viewModel.isAuthorized ? "✅ Notifications On" : "❌ Notifications Off")
-
-            Button("Request Notifications") {
-                viewModel.requestPermission()
-            }
-
-            Button("Refresh Status") {
-                viewModel.refreshPermissionStatus()
+        VStack(spacing: 20) {
+            if !viewModel.isAuthorized {
+                Toggle(isOn: Binding(
+                    get: { viewModel.isAuthorized },
+                    set: { newValue in
+                        if newValue {
+                            viewModel.requestPermission()
+                        }
+                    }
+                )) {
+                    Text("Enable Notifications")
+                }
+            } else {
+                Button("Open Notification Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
             }
         }
+        .padding()
         .onAppear {
             viewModel.refreshPermissionStatus()
         }
     }
+}
+
+#Preview {
+    NotificationSettingsView()
 }
