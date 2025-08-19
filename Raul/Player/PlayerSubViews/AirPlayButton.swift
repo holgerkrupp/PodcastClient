@@ -11,7 +11,6 @@ import AVKit
 struct AirPlayButtonView: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let routePickerView = AVRoutePickerView()
-    //    routePickerView.tintColor = .accent
         return routePickerView
     }
     

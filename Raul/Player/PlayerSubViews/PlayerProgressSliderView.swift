@@ -31,12 +31,21 @@ struct PlayerProgressSliderView: View {
             let lower = sliderRange.lowerBound
             let sliderVal = abs((self.value - lower) * scaleFactor + minValue)
             
+            let maxProgress = player.maxPlayProgress ?? 0.0
+            let maxPlayProgressVal = abs((maxProgress - lower) * scaleFactor + minValue)
+            
             ZStack {
                 RoundedRectangle(cornerRadius: radius)
                 
                                .fill(.ultraThinMaterial)
                     .frame(width: gr.size.width, height: gr.size.height)
                 
+                if maxProgress > self.value {
+                    Rectangle()
+                        .fill(Color.red.opacity(0.7))
+                        .frame(width: 2, height: gr.size.height * 0.85)
+                        .position(x: maxPlayProgressVal, y: gr.size.height / 2)
+                }
             
                 HStack {
                     Rectangle()
@@ -68,6 +77,8 @@ struct PlayerProgressSliderView: View {
                                     let nextCoordinateValue = max(minValue, self.lastCoordinateValue + v.translation.width)
                                     self.value = ((nextCoordinateValue - minValue) / scaleFactor) + lower
                                 }
+                            }else{
+                                print("not allowed")
                             }
                         }
                 )
@@ -82,3 +93,4 @@ struct PlayerProgressSliderView: View {
     PlayerProgressSliderView(value: $progress, sliderRange: 0...1)
         .frame(height: 30)
 }
+

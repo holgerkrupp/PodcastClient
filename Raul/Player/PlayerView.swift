@@ -29,10 +29,11 @@ struct PlayerView: View {
                               
                                 .aspectRatio(1, contentMode: .fill)
                                 .scaledToFill()
+                               
                             
                            
                             
-                                .frame(width: geometry.size.width * 0.9, height: (fullSize && player.currentEpisode != nil) ? geometry.size.height : 80)
+                                .frame(width: geometry.size.width, height: (fullSize && player.currentEpisode != nil) ? geometry.size.height : 80)
                                 .ignoresSafeArea(.all, edges: .bottom)
                            
                             
@@ -41,17 +42,45 @@ struct PlayerView: View {
                                     VStack{
                                 
                                     ScrollView([.vertical]){
-                                        Spacer(minLength: 20)
+                                  //      Spacer(minLength: 20)
                                         PlayerControllView()
                                             .padding()
+         
                                         
-                                        if let episodeLink = episode.link {
-                                            Link(destination: episodeLink) {
-                                                Label("Open in Browser", systemImage: "safari")
+                                        HStack{
+                                          
+                                            if let episodeLink = episode.link {
+
+                                                
+                                                Link(destination: episodeLink) {
+                                                    Label("Open in Browser", systemImage: "safari")
+                                                }
+                                                .buttonStyle(.glass)
                                             }
-                                            .buttonStyle(.borderedProminent)
-                                            .padding()
+                                            Spacer()
+                                            if let url = episode.deeplinks?.first ?? episode.link {
+                                            
+                                                let positionedURL: URL = {
+                                                    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+                                                    var queryItems = components.queryItems ?? []
+                                                    // Remove old 't' if exists
+                                                    queryItems.removeAll { $0.name == "t" }
+                                                    let playPosition = Int(player.playPosition)
+                                                    queryItems.append(URLQueryItem(name: "t", value: "\(playPosition)"))
+                                                    components.queryItems = queryItems
+                                                    return components.url ?? url
+                                                }()
+                                                
+                                              //  shareURL = IdentifiableURL(url: url)
+                                                ShareLink(item: positionedURL) { Label("Share", systemImage: "square.and.arrow.up")
+                                                    .labelStyle(.iconOnly) }
+                                                .buttonStyle(.glass)
+
+                                            }
+                                            
+                                         
                                         }
+                                        .padding()
                                         
                                         RichText(html: episode.content ?? episode.desc ?? "")
                                             .linkColor(light: Color.secondary, dark: Color.secondary)
@@ -62,7 +91,7 @@ struct PlayerView: View {
                                         
                                     }
                                 }
-                                    .padding(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
+                                    .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                 }else{
                                     PlayerControllView()
                                         .padding()
@@ -73,6 +102,7 @@ struct PlayerView: View {
                                     
                                     Rectangle()
                                         .fill(.thinMaterial)
+                                      
                                     
                                 )
                                 

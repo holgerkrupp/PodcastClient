@@ -15,19 +15,21 @@ struct PlayerControllView: View {
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
+    @State var showSettings: Bool = false
     
-    @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var podcastSettings: [PodcastSettings]
+    @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
     var body: some View {
         if let episode = player.currentEpisode {
             VStack {
                 
                 HStack {
-                   
                     AirPlayButtonView()
+                        .tint(.primary)
+                        .frame(width: 44, height: 44)
                         
-                   
-                    Spacer()
+                   Spacer()
+               
                     Button {
                         
                         showSpeedSetting = true
@@ -52,6 +54,7 @@ struct PlayerControllView: View {
                     
                     
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .sheet(isPresented: $showSpeedSetting, content: {
                     VStack{
                         /*
@@ -68,13 +71,32 @@ struct PlayerControllView: View {
                         
                         Text("Adjust Playback Speed")
                         Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
-                            Text("\(player.playbackRate.formatted())x")
+                        
+                            Text(String(format: "%.1fx", player.playbackRate))
                         }
+                        
+                        Spacer()
+                        Button("Show all Settings") {
+                            showSettings = true
+                        }
+                        .buttonStyle(.glass)
                         
                     }.padding()
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.ultraThinMaterial)
-                        .presentationDetents([.fraction(0.5)])
+                        .presentationDetents([.fraction(0.3)])
+                        .sheet(isPresented: $showSettings) {
+                           
+                            if let podcast = player.currentEpisode?.podcast {
+                                PodcastSettingsView(podcast: podcast, modelContainer: context.container)
+                                        .presentationBackground(.ultraThinMaterial)
+                            }else{
+                                PodcastSettingsView(podcast: nil, modelContainer: context.container)
+                                        .presentationBackground(.ultraThinMaterial)
+                            }
+                            
+                        
+                    }
                     
                 })
                 
@@ -153,7 +175,7 @@ struct PlayerControllView: View {
                 
                 
                 VStack {
-                    PlayerProgressSliderView(value: $player.progress, allowTouch: podcastSettings.first?.enableInAppSlider ?? true, sliderRange: 0...1)
+                    PlayerProgressSliderView(value: $player.progress, allowTouch: globalSettings.first?.enableInAppSlider ?? true, sliderRange: 0...1)
                         .frame(height: 30)
                     
                     
@@ -165,7 +187,7 @@ struct PlayerControllView: View {
                         if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
                             Button(action: { player.jumpTo(time: maxPlay) }) {
                                 Label {
-                                    Text("continue")
+                                    Text("max play position")
                                         .monospaced()
                                         .font(.caption)
                                 } icon: {
@@ -177,7 +199,7 @@ struct PlayerControllView: View {
                                 .labelStyle(.titleOnly)
                                 
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.plain)
                         }
                         Spacer()
                         Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
