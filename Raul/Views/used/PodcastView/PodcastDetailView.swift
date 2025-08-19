@@ -110,7 +110,7 @@ struct PodcastDetailView: View {
                     .scaledToFill()
                     .ignoresSafeArea()
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    
+                
                 
                 
             } else {
@@ -123,7 +123,7 @@ struct PodcastDetailView: View {
             
             List{
                 
-
+                
                 
                 Section{
                     VStack(alignment: .leading) {
@@ -180,27 +180,27 @@ struct PodcastDetailView: View {
                         
                         
                         
-                  
-                    if let copyright = podcast.copyright {
-                        Text(copyright)
-                            .font(.caption)
-                    }
-                    
-                    if let desc = podcast.desc {
-                        RichText(html: desc)
-                            .linkColor(light: Color.secondary, dark: Color.secondary)
-                            .richTextBackground(.clear)
-                            .padding()
                         
-                        
-                    }
-                    if let podcastLink = podcast.link {
-                        Link(destination: podcastLink) {
-                            Label("Open in Browser", systemImage: "safari")
+                        if let copyright = podcast.copyright {
+                            Text(copyright)
+                                .font(.caption)
                         }
-                        .buttonStyle(.glass)
+                        
+                        if let desc = podcast.desc {
+                            RichText(html: desc)
+                                .linkColor(light: Color.secondary, dark: Color.secondary)
+                                .richTextBackground(.clear)
+                                .padding()
+                            
+                            
+                        }
+                        if let podcastLink = podcast.link {
+                            Link(destination: podcastLink) {
+                                Label("Open in Browser", systemImage: "safari")
+                            }
+                            .buttonStyle(.glass)
+                        }
                     }
-                }
                 }
                 .listRowSeparator(.hidden)
                 .background(.clear)
@@ -241,7 +241,7 @@ struct PodcastDetailView: View {
             .listStyle(PlainListStyle())
             .padding(.top, 0)
             .searchable(text: $searchText)
-               .navigationTitle(podcast.title)
+            .navigationTitle(podcast.title)
             .refreshable {
                 Task{
                     await refreshEpisodes()
@@ -279,8 +279,12 @@ struct PodcastDetailView: View {
                 
             }
             .sheet(isPresented: $showSettings) {
+               
+  
                 PodcastSettingsView(podcast: podcast, modelContainer: modelContext.container)
-            }
+                        .presentationBackground(.ultraThinMaterial)
+            
+        }
         }}
 
     }

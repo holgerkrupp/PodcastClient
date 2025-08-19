@@ -1,15 +1,25 @@
 # PodcastClient
-An Open Source Podcast client. 
 
-I've started the development of an open source Podcast client that doesn't rely on a server back in 2023. I got a first working Alpha in 2024 that already included Transcripts, accidental skip detection and other features that I missed in other PodcastClients. Then life happend and I wouldn't find the time needed to work on the App. Now I have restarted. I'm removing my old code base and starting from scratch (nearly, I'm reusing parts that are reusable). I'm targetting iOS26 - I will follow all restrictions Swift6 brings to avoid any race conditions. I hope this new approach will go better than before. 
+## Open Source Podcast Client
 
-The goal is to give back to the community. I have listened to many free podcasts in the past 20 years. I'm using free tools to publish my podcasts (Podlove Publisher, Ultraschall,…) and want to help protecting this free medium from companies who try to control it. My app is based on a comunity developed podcast catalog (fyyd), is independed from any app specific server (all refreshes are working locally on the device). The app is open source and will be free to use. No restrictions in functionallity.
+I started developing an open source podcast client in 2023 with the goal of building something that doesn’t rely on a central server. By 2024 I had a working alpha that already included features like transcripts, accidental skip detection, and other improvements I felt were missing from existing podcast apps.
+
+This isn’t my first attempt at building a podcast app — I actually released my first client, **One Trick Pony**, about nine years ago. Life took me in other directions for a while, but now I’m back at it—this time starting almost from scratch. I’m targeting iOS 26, adopting Swift 6, and following its strict concurrency rules to avoid race conditions. Some parts of the old codebase will be reused, but the foundation is fresh.
+
+The goal of this project is simple: **give back to the community.** I’ve enjoyed countless free podcasts over the last 20 years, and I also use free tools like Podlove Publisher and Ultraschall to publish my own. This app is my way of helping preserve podcasting as an open, independent medium—resisting efforts by companies to lock it down.
+
+Key principles of the project:
+
+* Built on the community-driven podcast catalog [fyyd](https://fyyd.de/)
+* Independent of proprietary servers (all refreshes run locally on-device)
+* 100% open source and free to use
+* No locked features or restrictions
 
 
 ### Next Steps
 
-- [ ] Integrate Settings (Per Podcasts and global)
-- [ ] Use Notification Center to send notification to the player if settings are changed.
+- [x] Integrate Settings (Per Podcasts and global)
+- [x] Use Notification Center to send notification to the player if settings are changed.
 
 - [?] fix Skip Chapters (validate skip to and skip last)
 
@@ -78,8 +88,8 @@ The goal is to give back to the community. I have listened to many free podcasts
 
 ### Miscellaneous
 - [x] nice UI
-- [ ] nice Logo
-- [ ] nice name - Raúl
+- [x] nice Logo
+- [x] nice name - Up Next
 - [x] CarPlay
 
 ### Subscription Management
@@ -96,10 +106,10 @@ The goal is to give back to the community. I have listened to many free podcasts
 
 ### Player
 - [ ] skip detection
-- [ ] share Episode
-- - [ ] from play now screen
-- - [ ] from episode view screen
-- - [ ] (including Playposition if possible)
+- [x] share Episode
+- - [x] from play now screen
+- - [x] from episode view screen
+- - [x] (including Playposition if possible)
 
 
 

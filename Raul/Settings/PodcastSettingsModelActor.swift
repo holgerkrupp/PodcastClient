@@ -132,7 +132,11 @@ actor PodcastSettingsModelActor {
             podcast.settings = settings
         } else {
             let newSettings = PodcastSettings(podcast: podcast)
+            let standardSettings = await standardSettings()
             newSettings.isEnabled = true
+            newSettings.playbackSpeed = standardSettings.playbackSpeed
+            newSettings.playnextPosition = standardSettings.playnextPosition
+            newSettings.autoSkipKeywords = standardSettings.autoSkipKeywords
             modelContext.insert(newSettings)
             podcast.settings = newSettings
         }
@@ -161,7 +165,7 @@ actor PodcastSettingsModelActor {
             await BasicLogger.shared.log("no PodcastID - not saving")
             return
         }
-        guard var settings = await fetchPodcastSettings(for: podcastID) else {
+        guard let settings = await fetchPodcastSettings(for: podcastID) else {
             await BasicLogger.shared.log("no Podcast Settings - not saving")
             return
         }
@@ -170,16 +174,16 @@ actor PodcastSettingsModelActor {
     }
     
     
-    func getPlaybackSpeed(for podcastID: UUID?) async -> Float?{
+    func getPlaybackSpeed(for podcastID: UUID?) async -> Float{
         
         guard let podcastID  else {
             await BasicLogger.shared.log("no PodcastID - standard PlaybackSpeed")
-            return await standardSettings().playbackSpeed // is no podcastID is given, the global Settings are returned
+            return await standardSettings().playbackSpeed ?? 1.0 // is no podcastID is given, the global Settings are returned
         }
         guard let playbackSpeed = await fetchPodcastSettings(for: podcastID)?.playbackSpeed else {
             await BasicLogger.shared.log("no Podcast Settings - standard PlaybackSpeed")
 
-            return await standardSettings().playbackSpeed // is no podcastID is found, the global Settings are returned
+            return await standardSettings().playbackSpeed ?? 1.0 // is no podcastID is found, the global Settings are returned
         }
         await BasicLogger.shared.log("custom PlaybackSpeed: \(playbackSpeed.formatted())")
 

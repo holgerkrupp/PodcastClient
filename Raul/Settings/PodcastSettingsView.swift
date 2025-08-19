@@ -1,51 +1,63 @@
 import SwiftUI
 import SwiftData
 
+
 struct PodcastSettingsView: View {
+    static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
+    
     @Environment(\.modelContext) private var context
 
-    @Bindable var podcast: Podcast
+    @State var podcast: Podcast?
     @State private var useCustomSettings: Bool
-    var podcastTitle: String { podcast.title }
-    var settings: PodcastSettings? {podcast.settings }
-    @State private var defaultSettings: PodcastSettings? = nil
+    var podcastTitle: String? { podcast?.title }
+    var settings: PodcastSettings? {podcast?.settings }
+    //@State private var defaultSettings: PodcastSettings? = nil
+    @Query(filter: defaultSettingsFilter) var defaultSettings: [PodcastSettings]
     @Query private var allSettings: [PodcastSettings]
     @State private var actor: PodcastSettingsModelActor
   
-    init(podcast: Podcast, modelContainer: ModelContainer) {
+    init(podcast: Podcast?, modelContainer: ModelContainer) {
         self._podcast = .init(wrappedValue: podcast)
         self.actor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        self._useCustomSettings = State(initialValue: podcast.settings != nil && podcast.settings?.isEnabled == true)
+        self._useCustomSettings = State(initialValue: podcast?.settings != nil && podcast?.settings?.isEnabled == true)
     }
 
     var body: some View {
         VStack {
-            Picker("Settings Mode", selection: $useCustomSettings) {
-                Text("Use Global Settings").tag(false)
-                Text("Use Custom Settings").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .onChange(of: useCustomSettings) {
-                Task {
-                    if useCustomSettings == true {
-                        await actor.enableCustomSettings(for: podcast.id)
-                    } else {
-                        await actor.disableCustomSettings(for: podcast.id)
+            if let podcast{
+                Picker("Settings Mode", selection: $useCustomSettings) {
+                    Text("Global Settings").tag(false)
+                    Text("Custom Settings").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .onChange(of: useCustomSettings) {
+                    Task {
+                        if  useCustomSettings == true {
+                            await actor.enableCustomSettings(for: podcast.id)
+                        } else {
+                            await actor.disableCustomSettings(for: podcast.id)
+                        }
                     }
                 }
             }
 
             Form {
-                if let settings = settings, useCustomSettings {
-                    Text("Podcast Settings for \(podcastTitle)")
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                        .padding()
+                if let settings = settings, let podcast, useCustomSettings {
+
+                    HStack{
+                        
+                        CoverImageView(podcast: podcast)
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(8)
+                        
+                        
+                        VStack(alignment: .leading) {
+                            Text(podcast.title)
+                                .font(.headline)
+                        
+                        }
+                    }
                         settingsSections(settings: settings)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -66,7 +78,7 @@ struct PodcastSettingsView: View {
                                                  bottom: 0,
                                                  trailing: 0))
                     
-                        if let settings = defaultSettings {
+                    if let settings = defaultSettings.first {
                             settingsSections(settings: settings)
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
@@ -78,9 +90,18 @@ struct PodcastSettingsView: View {
                         
                     
                 }
-                if let defaultSettings {
+              
+                if let settings = defaultSettings.first {
                     Text("Global Settings regarding App behavior. These are applied to all podcasts.")
-                    golbalSections(settings: defaultSettings)
+                        .padding()
+                        .foregroundStyle(.secondary)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                    golbalSections(settings: settings)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
@@ -90,18 +111,18 @@ struct PodcastSettingsView: View {
                 }
                 
             }
-            .navigationTitle(podcastTitle)
+
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .background(Color.clear)
+        
             .tint(Color.accent)
         }
-        .padding()
+        .padding(EdgeInsets(top: 8, leading: 8, bottom: 0, trailing: 8))
+     //   .background(Color.clear)
         // Load default settings asynchronously here instead of init to avoid async tasks in initializers
-        .task {
-            if defaultSettings == nil {
-             //   defaultSettings = await actor.standardSettings()
-            }
-        }
+
+
 
     }
 
@@ -124,7 +145,7 @@ struct PodcastSettingsView: View {
             }
             
         }
-        
+  
         
         Section(header: Text("Playback"), footer: Text("")) {
 
@@ -135,20 +156,26 @@ struct PodcastSettingsView: View {
             }
             Slider(value: Binding(
                 get: { settings.playbackSpeed ?? 1.0 },
-                set: { settings.playbackSpeed = $0 }
+                set: { settings.playbackSpeed = $0
+                    saveAndNotify()
+                }
             ), in: 0.5...3.0, step: 0.1)
         }
-        
-        Section(header: Text("Chapter Skip Keywords"), footer: Text("Chapters containing any of these keywords will be skipped during playback.")) {
+    
+        Section(header: Text("Chapter Skip Keywords"), footer: Text("Chapters containing any of these keywords will be skipped during playback. The rules are applied when new episodes with chapters are added.")) {
             ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \ .offset) { idx, skipKey in
                 HStack {
                     TextField("Keyword", text: Binding(
                         get: { skipKey.keyWord ?? "" },
-                        set: { settings.autoSkipKeywords[idx].keyWord = $0 }
+                        set: { settings.autoSkipKeywords[idx].keyWord = $0
+                            saveAndNotify()
+                        }
                     ))
                     Picker("Operator", selection: Binding(
                         get: { skipKey.keyOperator },
-                        set: { settings.autoSkipKeywords[idx].keyOperator = $0 }
+                        set: { settings.autoSkipKeywords[idx].keyOperator = $0
+                            saveAndNotify()
+                        }
                     )) {
                         Text("Is").tag(Operator.Is)
                         Text("Contains").tag(Operator.Contains)
@@ -169,6 +196,7 @@ struct PodcastSettingsView: View {
                 Label("Add Keyword", systemImage: "plus")
             }
         }
+
 /*
         Section(header: Text("Trimming")) {
             Stepper(value: Binding(
@@ -193,7 +221,7 @@ struct PodcastSettingsView: View {
         Section(header: Text("Progress Slider"), footer: Text("How should the progress slider behave?")) {
 
             Toggle(isOn: binding(for: \.enableInAppSlider, in: settings)) {
-                Text("Now Playing Screen Slider")
+                Text("Now Playing Slider")
             }
             Toggle(isOn: binding(for: \.enableLockscreenSlider, in: settings)) {
                 Text("Lockscreen Slider")
@@ -207,8 +235,16 @@ struct PodcastSettingsView: View {
     private func binding<Value>(for keyPath: ReferenceWritableKeyPath<PodcastSettings, Value>, in settings: PodcastSettings) -> Binding<Value> {
         Binding(
             get: { settings[keyPath: keyPath] },
-            set: { settings[keyPath: keyPath] = $0 }
+            set: { settings[keyPath: keyPath] = $0
+                saveAndNotify()
+            }
         )
+    }
+    
+    private func saveAndNotify(){
+        context.saveIfNeeded()
+        NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+        print("send notification")
     }
     
 
@@ -233,4 +269,3 @@ struct PodcastSettingsView_Previews: PreviewProvider {
     }
 }
 #endif
-

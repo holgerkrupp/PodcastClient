@@ -13,6 +13,7 @@ class RemoteCommandCenter {
     static let shared = RemoteCommandCenter()
     let player: Player = Player.shared
     var settingLockScreenScrubbing: Bool = false
+    let RCC = MPRemoteCommandCenter.shared()
     
     private init() {
         Task{
@@ -20,7 +21,7 @@ class RemoteCommandCenter {
                 settingLockScreenScrubbing = await PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container).getLockScreenSliderEnable()
             
         }
-        let RCC = MPRemoteCommandCenter.shared()
+        
         
         RCC.bookmarkCommand.isEnabled = true
         RCC.bookmarkCommand.addTarget { _ in
@@ -109,5 +110,9 @@ class RemoteCommandCenter {
         }
         
         
+    }
+    
+    func updateLockScreenScrubbableState(_ isEnabled: Bool) {
+        RCC.changePlaybackPositionCommand.isEnabled = isEnabled
     }
 }

@@ -10,6 +10,13 @@ import Foundation
 import SwiftData
 
 
+import Foundation
+
+extension Notification.Name {
+    static let podcastSettingsDidChange = Notification.Name("podcastSettingsDidChange")
+}
+
+
 @Model
 class PodcastSettings {
     

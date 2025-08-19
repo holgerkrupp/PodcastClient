@@ -9,10 +9,7 @@ import BasicLogger
 @MainActor
 class Player: NSObject {
     
-
-  
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
-    
     
     static let shared = Player()
   //  private let modelContext = ModelContainerManager.shared.container.mainContext
@@ -71,6 +68,8 @@ class Player: NSObject {
     var currentChapter: Marker?
     var nextChapter: Marker?
     var chapters: [Marker]?
+    
+    var allowScrubbing:Bool?
 
     
 
@@ -83,12 +82,27 @@ class Player: NSObject {
         
         super.init()
         loadLastPlayedEpisode()
-      //  loadPlayBackSpeed()
+        loadPlayBackSpeed()
         listenToEvent()
         pause()
-        
-
-
+        addChangeSettingsObserver()
+        Task{
+            allowScrubbing = await settingsActor?.getAppSliderEnable()
+        }
+    }
+    
+    private  func addChangeSettingsObserver() {
+        NotificationCenter.default.addObserver(forName: .podcastSettingsDidChange, object: nil, queue: nil, using: { [weak self] notification in
+            print("received podcast settings change notification")
+            Task { @MainActor in
+                self?.loadPlayBackSpeed()
+                self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
+                if let lockscreenEnable = await self?.settingsActor?.getAppSliderEnable() {
+                    RemoteCommandCenter.shared.updateLockScreenScrubbableState(lockscreenEnable)
+                }
+                
+            }
+        })
     }
     
     private func loadLastPlayedEpisode() {
@@ -108,11 +122,13 @@ class Player: NSObject {
     }
     
     private func setPlayBackSpeed(to playbackRate: Float){
-        Task{
-            await engine.setRate(playbackRate)
-            await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.id , to: playbackRate)
-            if playbackRate >= 1 {
-                isPlaying = true
+        if isPlaying{
+            Task{
+                await engine.setRate(playbackRate)
+                await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.id , to: playbackRate)
+                if playbackRate >= 1 {
+                    isPlaying = true
+                }
             }
         }
     }
@@ -121,11 +137,16 @@ class Player: NSObject {
         // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
         Task{
             let savedPlaybackRate = await settingsActor?.getPlaybackSpeed(for: currentEpisode?.podcast?.id) ?? 1.0
-            if savedPlaybackRate > 0 {
+            print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
+            if savedPlaybackRate > 0, playbackRate != savedPlaybackRate {
                 playbackRate = savedPlaybackRate
-                Task {
-                    await engine.setRate(playbackRate)
+                /*
+                if isPlaying{
+                    Task {
+                        await engine.setRate(playbackRate)
+                    }
                 }
+                */
             }
         }
     }
@@ -362,7 +383,6 @@ class Player: NSObject {
         
         set{
             
-            
             let seconds:Double  = newValue * (currentEpisode?.duration ?? 1.0)
             let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
             jumpTo(time: newTime.seconds)
@@ -377,6 +397,13 @@ class Player: NSObject {
         }
         
     }
+    
+    var maxPlayProgress: Double?{
+        get{
+           return currentEpisode?.maxPlayProgress
+        }
+    }
+    
     var remaining: Double?{
         if let duration = currentEpisode?.duration{ // avplayer.currentItem?.duration.seconds ??
             return duration - playPosition
@@ -603,10 +630,11 @@ class Player: NSObject {
         Task.detached(priority: .background) {
             await self.episodeActor?.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
              episode.modelContext?.saveIfNeeded()
+            /*
             if episode.chapters?.isEmpty == false {
                 await self.chapterActor?.saveAllChanges()
             }
-          
+          */
           
         }
 
