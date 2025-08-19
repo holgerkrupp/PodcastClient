@@ -154,7 +154,7 @@ struct PlayerTabBarView: View {
                 }
                 
             }
-            .tint(Color.accentColor)
+            .tint(dynamicPrimaryColor)
             
             .onTapGesture {
                 presentingModal = true

@@ -163,8 +163,10 @@ struct SubscribeToPodcastView: View {
                                                 subscribing = true
                                                 _ = try await actor.createPodcast(from: url)
                                                 await requestNotification()
-                                                isSubscribed = true
-                                                subscribing = false
+                                                await MainActor.run {
+                                                    isSubscribed = true
+                                                    subscribing = false
+                                                }
                                                 
                                             } catch {
                                                 errorMessage = error.localizedDescription

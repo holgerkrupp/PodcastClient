@@ -50,13 +50,13 @@ struct ContentView: View {
             } label: {
                 Label("Library", systemImage: "books.vertical")
             }
-            
+            /*
             Tab {
                 LogView()
             }label: {
                 Label("Log", systemImage: "book.and.wrench")
             }
-            
+            */
             Tab(role: .search) {
                 AddPodcastView(search: $search)
             } label: {
