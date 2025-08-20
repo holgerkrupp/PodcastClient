@@ -42,7 +42,7 @@ actor SubscriptionManager:NSObject{
     func read(file url: URL) -> [PodcastFeed]?{
         var newPodcasts: [PodcastFeed] = []
         
-        print("subscriptionmanager: read \(url.absoluteString)")
+        // print("subscriptionmanager: read \(url.absoluteString)")
         guard url.startAccessingSecurityScopedResource() else {
             return nil
         }
@@ -71,7 +71,7 @@ actor SubscriptionManager:NSObject{
             
             
         }else{
-            print("could not read data from OPML file")
+            // print("could not read data from OPML file")
         }
         return nil
     }
@@ -101,16 +101,16 @@ actor SubscriptionManager:NSObject{
         
         for url in urls {
             if let url{
-                print("start subscribe for \(url.absoluteString)")
+                // print("start subscribe for \(url.absoluteString)")
                 do {
                     let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url)
                     
                 } catch {
                     let errorString = "Error: \(error)"
-                    print(errorString)
+                    // print(errorString)
                 }
                 
-                print("end subscribe for \(url.absoluteString)")
+                // print("end subscribe for \(url.absoluteString)")
 
             }
             
@@ -128,7 +128,7 @@ actor SubscriptionManager:NSObject{
                     
                 } catch {
                     let errorString = "Error: \(error)"
-                    print(errorString)
+                    // print(errorString)
                 }
 
             }
@@ -143,7 +143,7 @@ actor SubscriptionManager:NSObject{
     func bgcheckIfFeedsShouldRefresh() async -> Bool{
         // this can run regularly and should be low weight
         // check only those that are not marked as updated during the last run
-        await BasicLogger.shared.log("bgcheckIfFeedsShouldRefresh")
+       //  await BasicLogger.shared.log("bgcheckIfFeedsShouldRefresh")
         var shouldRefresh = false
         fetchData()
         for podcast in podcasts.sorted(by: { lhs, rhs in
@@ -162,7 +162,7 @@ actor SubscriptionManager:NSObject{
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
       
-        await BasicLogger.shared.log("bgupdateFeeds")
+       //  await BasicLogger.shared.log("bgupdateFeeds")
         
 
             setLastRefreshDate()
@@ -174,9 +174,10 @@ actor SubscriptionManager:NSObject{
             }).filter({$0.metaData?.feedUpdated != false}){
              
                 let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
+                podcast.message = nil
                 if new == true { updated += 1}
             }
-        await BasicLogger.shared.log("bgupdateFeeds \(updated)/\(all)")
+       //  await BasicLogger.shared.log("bgupdateFeeds \(updated)/\(all)")
             
     }
     
@@ -193,7 +194,7 @@ actor SubscriptionManager:NSObject{
     
     func generateOPML() -> String {
         fetchData()
-        print("generate OPML")
+        // print("generate OPML")
         var opmlString = """
     <?xml version="1.0" encoding="UTF-8"?>\n
     <opml version="1.1">\n

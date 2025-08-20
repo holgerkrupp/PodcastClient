@@ -41,7 +41,7 @@ actor EpisodeActor {
             let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
             return results.first
         } catch {
-            print("❌ Error fetching episode for file URL: \(fileURL.absoluteString), Error: \(error)")
+            // print("❌ Error fetching episode for file URL: \(fileURL.absoluteString), Error: \(error)")
             return nil
         }
     }
@@ -55,7 +55,7 @@ actor EpisodeActor {
     func updateDuration(fileURL: URL) async{
       
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        print("updateDuration of \(episode.title)")
+        // print("updateDuration of \(episode.title)")
        
             if let localFile = episode.localFile, ((episode.metaData?.calculatedIsAvailableLocally) == true){
                 do{
@@ -64,13 +64,13 @@ actor EpisodeActor {
                     if !seconds.isNaN{
                         episode.duration = seconds
                     }
-                    print("new duration: \(seconds)")
+                    // print("new duration: \(seconds)")
                     modelContext.saveIfNeeded()
                 }catch{
-                    print(error)
+                    // print(error)
                 }
             }else{
-                print("no local file")
+                // print("no local file")
             }
         
     }
@@ -80,7 +80,7 @@ actor EpisodeActor {
         guard !(episode.chapters?.isEmpty ?? true) else { return }
         guard let totalDuration = episode.duration else { return }
         
-        print("updateChapterDurations")
+        // print("updateChapterDurations")
         
         if let  chapters = episode.chapters{
             var lastEnd = totalDuration
@@ -156,7 +156,7 @@ actor EpisodeActor {
 
             return results.first?.id
         } catch {
-            print("❌ Error fetching or saving metadata: \(error)")
+            // print("❌ Error fetching or saving metadata: \(error)")
         }
         return nil
 
@@ -165,9 +165,9 @@ actor EpisodeActor {
     func setLastPlayed(_ episodeID: UUID, to date: Date = Date()) async {
         guard let episode = await fetchEpisode(byID: episodeID) else {
             
-            print("could not find episode with ID \(episodeID) to set last played date")
+            // print("could not find episode with ID \(episodeID) to set last played date")
             return }
-        print("setting last played date for \(episode.title) to \(date.formatted())")
+        // print("setting last played date for \(episode.title) to \(date.formatted())")
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
     }
@@ -184,7 +184,7 @@ actor EpisodeActor {
     }
     
     func markasPlayed(_ episodeID: UUID) async {
-        print("marking episode \(episodeID) as played")
+        // print("marking episode \(episodeID) as played")
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
@@ -202,7 +202,7 @@ actor EpisodeActor {
     func archiveEpisode(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         
-        print("archiveEpisode from Actor - episode: \(episode.title)")
+        // print("archiveEpisode from Actor - episode: \(episode.title)")
         await removeFromPlaylist(episodeID)
 
         if episode.metaData == nil {
@@ -236,17 +236,17 @@ actor EpisodeActor {
     
     
     func download(episodeID: UUID) async {
-        print("download episode \(episodeID)")
+        // print("download episode \(episodeID)")
         guard let episode = await fetchEpisode(byID: episodeID) else {
             
-            print("❌ Could not find episode \(episodeID)")
+            // print("❌ Could not find episode \(episodeID)")
             return }
 
         if let localFile = episode.localFile {
             if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile, episodeID: episode.id) != nil {
-                print("✅ Episode download started - from \(episode.url) to \(localFile)")
+                // print("✅ Episode download started - from \(String(describing: episode.url)) to \(localFile)")
             }else{
-                print("❌ Could not download Episode \(episodeID)")
+                // print("❌ Could not download Episode \(episodeID)")
             }
             await downloadTranscript(episode.persistentModelID)
 
@@ -256,16 +256,16 @@ actor EpisodeActor {
     
     func processAfterCreation(episodeID: UUID) async {
         
-        await BasicLogger.shared.log("processAfterCreation  - \(episodeID) - start")
+       //  await BasicLogger.shared.log("processAfterCreation  - \(episodeID) - start")
         
         guard let episode = await fetchEpisode(byID: episodeID) else {
-            await BasicLogger.shared.log("processAfterCreation ❌ Could not find episode \(episodeID)")
+           //  await BasicLogger.shared.log("processAfterCreation ❌ Could not find episode \(episodeID)")
             return }
-        await BasicLogger.shared.log("processAfterCreation  - \(episode.podcast?.title ?? "Unknown Podcast") - \(episode.title)")
+       //  await BasicLogger.shared.log("processAfterCreation  - \(episode.podcast?.title ?? "Unknown Podcast") - \(episode.title)")
         
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
-        await BasicLogger.shared.log("processAfterCreation - \(episode.title) playnext \(playnext)")
+       //  await BasicLogger.shared.log("processAfterCreation - \(episode.title) playnext \(playnext)")
         if playnext != .none {
             try? await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
         }
@@ -278,7 +278,7 @@ actor EpisodeActor {
       
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return }
-        print("check if remote Chapters shall be created for \(episode.title)")
+        // print("check if remote Chapters shall be created for \(episode.title)")
         if let url = episode.url, let pubDate = episode.publishDate,
                let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
                pubDate > oneWeekAgo{
@@ -311,7 +311,7 @@ actor EpisodeActor {
         episode.metaData?.isInbox = true
         episode.metaData?.status = .inbox
 
-        await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
+       //  await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
         modelContext.saveIfNeeded()
     }
     
@@ -335,7 +335,7 @@ actor EpisodeActor {
     func markEpisodeAvailable(fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else {
             
-            await BasicLogger.shared.log("Could not mark Episode As Available")
+           //  await BasicLogger.shared.log("Could not mark Episode As Available")
             return }
 
         guard let url = episode.url else {
@@ -348,30 +348,30 @@ actor EpisodeActor {
   
         await transcribe(url)
         modelContext.saveIfNeeded()
-        print("✅ Metadata updated")
-        await BasicLogger.shared.log("Did mark Episode As Available")
+        // print("✅ Metadata updated")
+       //  await BasicLogger.shared.log("Did mark Episode As Available")
     }
     
 
     
     func transcribe(_ fileURL: URL) async  {
-        print("transcribe")
+        // print("transcribe")
         guard let episode = await fetchEpisode(byURL: fileURL) else {
-            print("could not fetch data")
+            // print("could not fetch data")
      
             return  }
         /*
         guard episode.transcriptLines == nil else {
-            print("transcript exists")
+            // print("transcript exists")
             return }
         */
          guard let localFile = episode.localFile else {
-            print("no local file")
+            // print("no local file")
             return }
        
         let transcriber = await AITranscripts(url: localFile, language: episode.podcast?.language)
         let transcription = try? await transcriber.transcribeTovTT()
-        print("transcript to vtt finished")
+        // print("transcript to vtt finished")
         
         
         if let transcription = transcription {
@@ -390,10 +390,12 @@ actor EpisodeActor {
         let decoder = TranscriptDecoder(transcription)
         let lines = decoder.transcriptLines
         var transcript = [TranscriptLineAndTime]()
+        /*
         let maxLineLength = 84 // Two lines of 42 chars
         let minDuration: Double = 1.0
         let sentenceSeparators: [Character] = [".", "?", "!"]
-        for line in lines {
+        */
+         for line in lines {
             let text = line.text
             let start = line.startTime
             let end = line.endTime
@@ -475,11 +477,11 @@ actor EpisodeActor {
 
     func createChapters(_ fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        await BasicLogger.shared.log("creating Chapters for \(episode.title)")
+       //  await BasicLogger.shared.log("creating Chapters for \(episode.title)")
         
         // Check if there is an external chapter file
         if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
-            await BasicLogger.shared.log("Downloading Chapters for \(episode.title) of type \(chapterFile.fileType ?? "unknown")")
+           //  await BasicLogger.shared.log("Downloading Chapters for \(episode.title) of type \(chapterFile.fileType ?? "unknown")")
             if let url = URL(string: chapterFile.url) {
                 // Check for file extension or fileType indicating JSON
                 let isJSON = (url.pathExtension.lowercased() == "json") || (chapterFile.fileType?.lowercased().contains("json") == true)
@@ -491,7 +493,7 @@ actor EpisodeActor {
                         episode.chapters?.removeAll(where: { $0.type == .extracted })
                         episode.chapters?.append(contentsOf: chapters)
                         modelContext.saveIfNeeded()
-                        print("Imported \(chapters.count) chapters from JSON.")
+                        // print("Imported \(chapters.count) chapters from JSON.")
                     }
                 }
             }
@@ -502,7 +504,7 @@ actor EpisodeActor {
         }
         if let chapters = episode.chapters, chapters.isEmpty || !(chapters.contains(where: { $0.type == .mp3 }) || chapters.contains(where: { $0.type == .mp4 })) {
             guard let url = episode.localFile else {
-                print("no local file")
+                // print("no local file")
                 return
             }
             do {
@@ -514,7 +516,7 @@ actor EpisodeActor {
                     }
                 }
             } catch {
-                print("Error determining audio format: \(error)")
+                // print("Error determining audio format: \(error)")
             }
         }
         if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
@@ -531,7 +533,7 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return
         }
-        await BasicLogger.shared.log("apply Auto Skip Chapters for \(episode.title)")
+       //  await BasicLogger.shared.log("apply Auto Skip Chapters for \(episode.title)")
 
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.id) else {
@@ -553,7 +555,7 @@ actor EpisodeActor {
             if let chapters = episode.chapters{
                 for chapter in chapters {
                     if matches(chapter.title.lowercased()) {
-                        await BasicLogger.shared.log("Chapter \(chapter.title) should be skipped")
+                       //  await BasicLogger.shared.log("Chapter \(chapter.title) should be skipped")
                         
                         chapter.shouldPlay = false
                     }
@@ -567,14 +569,14 @@ actor EpisodeActor {
     
   private  func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
-        print("extractMP3Chapters")
+        // print("extractMP3Chapters")
        
         guard let url = episode.localFile else {
-            print("no local file")
+            // print("no local file")
             return
         }
         guard url.lastPathComponent.hasSuffix(".mp3") else {
-            print("not an mp3")
+            // print("not an mp3")
             return
         }
         
@@ -584,7 +586,7 @@ actor EpisodeActor {
             
             // Check if the file starts with the "ID3" identifier indicating an ID3v2 tag
             guard data.count >= 3, let id3Identifier = String(data: data[0..<3], encoding: .utf8), id3Identifier == "ID3" else {
-                print("could not find ID3v2 tag")
+                // print("could not find ID3v2 tag")
                 return
             }
             
@@ -606,19 +608,19 @@ actor EpisodeActor {
             
             return  //chapters
         } catch {
-            print("Error extracting chapter marks: \(error.localizedDescription)")
+            // print("Error extracting chapter marks: \(error.localizedDescription)")
             return
         }
     }
     
     func extractRemoteMP3Chapters(_ fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        print("extractRemoteMP3Chapters for \(episode.title)")
+        // print("extractRemoteMP3Chapters for \(episode.title)")
         
         if let remoteURL = episode.url, let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
             let dict = mp3Reader.getID3Dict()
             if let chapters = parse(chapters: dict) {
-                print("got \(chapters.count) Remote Chapters")
+                // print("got \(chapters.count) Remote Chapters")
                 episode.chapters?.removeAll(where: { $0.type == .mp3 })
                 episode.chapters?.append(contentsOf: chapters)
                 modelContext.saveIfNeeded()
@@ -628,7 +630,7 @@ actor EpisodeActor {
 
     
     private func parse(chapters: [String: Any]) -> [Marker]?{
-        print("parse chapters")
+        // print("parse chapters")
         if let chaptersDict = chapters["Chapters"] as? [String:[String:Any]]{
             var chapters: [Marker] = []
             for chapter in chaptersDict {
@@ -640,7 +642,7 @@ actor EpisodeActor {
                 newChaper.duration = (chapter.value["endTime"] as? Double ?? 0) - (newChaper.start ?? 0)
                 newChaper.type = .mp3
                 if let imagedata = (chapter.value["APIC"] as? [String:Any])?["Data"] as? Data{
-                    print("ImageChapter with Image data")
+                    // print("ImageChapter with Image data")
                     newChaper.imageData = imagedata
                 }else{
                                             }
@@ -673,7 +675,7 @@ actor EpisodeActor {
             }
             return chapters
         } catch {
-            print("Failed to decode chapter JSON: \(error)")
+            // print("Failed to decode chapter JSON: \(error)")
             return nil
         }
     }
@@ -700,7 +702,7 @@ actor EpisodeActor {
    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         guard let url = episode.localFile else {
-            print("no local file")
+            // print("no local file")
             return
         }
         
@@ -722,15 +724,15 @@ actor EpisodeActor {
             episode.chapters?.append(contentsOf: chapters)
             modelContext.saveIfNeeded()
         } catch {
-            print("Error loading chapters: \(error)")
+            // print("Error loading chapters: \(error)")
         }
     }
     
     func extractTranscriptChapters(fileURL: URL) async  {
-        print("extractTranscriptChapters")
+        // print("extractTranscriptChapters")
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         guard let transcriptLines = episode.transcriptLines, transcriptLines != [] else {
-            print("no transcript")
+            // print("no transcript")
             return  }
         
         let extractedData = await generateAIChapters(from: transcriptLines)
@@ -738,12 +740,12 @@ actor EpisodeActor {
             var newchapters:[Marker] = []
             for extractedChapter in extractedData{
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
-                    print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
+                    // print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
                     let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
                 }
             }
-            print("returning \(newchapters.count.formatted()) Chapters")
+            // print("returning \(newchapters.count.formatted()) Chapters")
             episode.chapters?.removeAll(where: { $0.type == .ai })
             episode.chapters?.append(contentsOf: newchapters)
             modelContext.saveIfNeeded()
@@ -755,7 +757,7 @@ actor EpisodeActor {
     func extractShownotesChapters(fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         guard let text = episode.desc else { return  }
-        print("extracting Chapters from Shownotes")
+        // print("extracting Chapters from Shownotes")
         var extractedData = extractTimeCodesAndTitles(from: text)
         
         if  extractedData == nil || extractedData?.count == 0{
@@ -766,12 +768,12 @@ actor EpisodeActor {
             var newchapters:[Marker] = []
             for extractedChapter in extractedData{
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
-                    print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
+                    // print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
                     let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
                 }
             }
-            print("returning \(newchapters.count.formatted()) Chapters")
+            // print("returning \(newchapters.count.formatted()) Chapters")
             episode.chapters?.removeAll(where: { $0.type == .extracted })
             episode.chapters?.append(contentsOf: newchapters)
             modelContext.saveIfNeeded()
@@ -805,14 +807,14 @@ actor EpisodeActor {
     }
     
     func generateAIChapters(from htmlEncodedText: String) async -> [String: String] {
-        print("AI Chapters")
+        // print("AI Chapters")
         let chapterGenerator = AIChapterGenerator()
         let aiChapters = await chapterGenerator.extractChaptersFromText(htmlEncodedText)
         return aiChapters
     }
     
     func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
-        print("AI Transcript Chapters")
+        // print("AI Transcript Chapters")
         guard let prompt = transcriptLinesToJSONArray(transcript) else { return [:] }
         let chapterGenerator = AIChapterGenerator()
         let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(prompt)
@@ -831,21 +833,21 @@ actor EpisodeActor {
             let jsonData = try JSONSerialization.data(withJSONObject: mapped, options: [.prettyPrinted])
             return String(data: jsonData, encoding: .utf8)
         } catch {
-            print("Error serializing transcript lines to JSON: \(error)")
+            // print("Error serializing transcript lines to JSON: \(error)")
             return nil
         }
     }
     
     func updateChapterDurations(episodeURL: URL) async {
-        print("update Chapter durations")
+        // print("update Chapter durations")
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
-            print("episode not found")
+            // print("episode not found")
             return }
         var chapters = episode.preferredChapters
 
         // Sort chapters in ascending order of start time
         chapters.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
-        print("updating \(chapters.count.formatted()) chapters of type \(chapters.first?.type ?? .unknown)")
+        // print("updating \(chapters.count.formatted()) chapters of type \(chapters.first?.type ?? .unknown)")
    
         for i in 0..<chapters.count {
             guard let start = chapters[i].start else { continue }
@@ -869,18 +871,18 @@ actor EpisodeActor {
     //MARK: Transcript
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async {
-        print("downloadTranscript")
+        // print("downloadTranscript")
         guard let episode = modelContext.model(for: episodeID) as? Episode else {
-            print("episode not found")
+            // print("episode not found")
             return }
         
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
-            print("transcriptLines already exists")
+            // print("transcriptLines already exists")
 
             return }
 
             if let transcriptfile = episode.externalFiles.first(where: { $0.category == .transcript}) {
-                await BasicLogger.shared.log("Downloading transcript for \(episode.title) of type \(transcriptfile.fileType ?? "unknown")")
+               //  await BasicLogger.shared.log("Downloading transcript for \(episode.title) of type \(transcriptfile.fileType ?? "unknown")")
                 
                     if let url = URL(string: transcriptfile.url){
                         let transcription = await downloadAndParseStringFile(url: url)
@@ -908,7 +910,7 @@ actor EpisodeActor {
             case 200:
                 break
             case 404:
-                print("String file URL 404 failed")
+                // print("String file URL 404 failed")
                 return nil
             case 410:
                 if let newURL = status?.newURL{
@@ -922,17 +924,17 @@ actor EpisodeActor {
             
             do{
                  let stringData = try await URLSession(configuration: .default).data(from: stringURL)
-                    print("decoding string from \(stringURL.absoluteString)")
+                    // print("decoding string from \(stringURL.absoluteString)")
                    
                 return String(decoding: stringData.0, as: UTF8.self)
                 
                 
             }catch{
-                print("error dewnloading String file: \(error)")
+                // print("error dewnloading String file: \(error)")
                 return nil
             }
         }catch {
-            print("String File download failed  \(error)")
+            // print("String File download failed  \(error)")
             return nil
         }
     }

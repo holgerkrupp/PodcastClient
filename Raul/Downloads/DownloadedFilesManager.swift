@@ -3,7 +3,7 @@ import Observation
 
 
 @Observable
-class DownloadedFilesManager {
+ class DownloadedFilesManager {
     private let monitoredFolder: URL
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "DownloadedFilesMonitor") // serial
@@ -35,8 +35,9 @@ class DownloadedFilesManager {
         return downloadedFiles.contains(where: { $0.standardizedFileURL == standardizedURL })
     }
 
+     
      func refreshDownloadedFiles() {
-         print("refreshing downloaded files")
+         // print("refreshing downloaded files")
         queue.async { [weak self] in
             guard let self = self else { return }
 
@@ -53,11 +54,11 @@ class DownloadedFilesManager {
                 return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
             })
             /*
-            print("FILES")
+            // print("FILES")
             for fileURL in updated {
-                print("file downloaded: \(fileURL)")
+                // print("file downloaded: \(fileURL)")
             }
-            print("FILES END")
+            // print("FILES END")
             */
             
             Task { @MainActor in
@@ -107,3 +108,4 @@ class DownloadedFilesManager {
         pollTimer = nil
     }
 }
+

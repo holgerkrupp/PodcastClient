@@ -106,7 +106,7 @@ struct AllEpisodesListView: View {
             do {
                 episodes = try modelContext.fetch(descriptor)
             } catch {
-                print("Fetch error: \(error)")
+                // print("Fetch error: \(error)")
             }
             
         case .all:
@@ -120,7 +120,7 @@ struct AllEpisodesListView: View {
             do {
                 episodes = try modelContext.fetch(descriptor)
             } catch {
-                print("Fetch error: \(error)")
+                // print("Fetch error: \(error)")
             }
         }
     }
@@ -140,7 +140,7 @@ struct AllEpisodesListView: View {
             do {
                 try FileManager.default.removeItem(at: url)
             } catch {
-                print("Error deleting file: \(error)")
+                // print("Error deleting file: \(error)")
             }
         }
     }

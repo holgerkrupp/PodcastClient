@@ -10,12 +10,12 @@ import SwiftData
 
 extension ModelContext{
     func saveIfNeeded(){
-        print("save if needed - \(self.hasChanges)")
+        // print("save if needed - \(self.hasChanges)")
         if self.hasChanges{
                 do {
                     try self.save()
                 }catch{
-                  print(error.localizedDescription)
+                  // print(error.localizedDescription)
                 }
             }
     }

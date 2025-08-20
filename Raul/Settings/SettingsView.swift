@@ -34,7 +34,7 @@ struct SettingsView: View {
         let fileManager = FileManager.default
 
         guard let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            print("Could not locate the Documents directory.")
+            // print("Could not locate the Documents directory.")
             return
         }
 
@@ -48,13 +48,13 @@ struct SettingsView: View {
 
                 do {
                     try fileManager.removeItem(at: fileURL)
-                    print("Deleted file: \(fileURL.lastPathComponent)")
+                    // print("Deleted file: \(fileURL.lastPathComponent)")
                 } catch {
-                    print("Failed to delete file \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                    // print("Failed to delete file \(fileURL.lastPathComponent): \(error.localizedDescription)")
                 }
             }
         } catch {
-            print("Error accessing contents of Documents folder: \(error.localizedDescription)")
+            // print("Error accessing contents of Documents folder: \(error.localizedDescription)")
         }
     }
 

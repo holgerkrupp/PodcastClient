@@ -78,7 +78,7 @@ struct PlayerProgressSliderView: View {
                                     self.value = ((nextCoordinateValue - minValue) / scaleFactor) + lower
                                 }
                             }else{
-                                print("not allowed")
+                                // print("not allowed")
                             }
                         }
                 )

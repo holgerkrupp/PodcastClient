@@ -24,7 +24,7 @@ actor ITunesSearchActor {
             
             if let requestURL = URL(string: endpointURL.replacingOccurrences(of: "$SEARCHTERM", with: term)){
                 
-                print(requestURL)
+                // print(requestURL)
                 
                 let request = URLRequest(url: requestURL)
                 let session = URLSession.shared
@@ -54,14 +54,14 @@ actor ITunesSearchActor {
                                 iTunesFeeds.append(newFeed)
                             }
                         }
-                        print("iTunes found : \(iTunesFeeds.count)")
+                        // print("iTunes found : \(iTunesFeeds.count)")
                         return iTunesFeeds
                     }
                     
-                    print("iTunes no podcasts found")
+                    // print("iTunes no podcasts found")
                     return nil
                 }catch{
-                    print(error)
+                    // print(error)
                     return nil
                     
                 }

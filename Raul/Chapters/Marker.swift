@@ -107,7 +107,7 @@ class Marker: Identifiable, Equatable, Hashable{
         link = URL(string: details["href"] as? String ?? "")
         image = URL(string: details["image"] as? String ?? "")
         if let imagedata = (details["APIC"] as? [String:Any])?["Data"] as? Data{
-            print("ImageChapter with Image data")
+            // print("ImageChapter with Image data")
             imageData = imagedata
         }
         type = .podlove
@@ -124,7 +124,7 @@ class Marker: Identifiable, Equatable, Hashable{
             self.endTime = start + duration
         }
         
-        print("init Marker \(title)")
+        // print("init Marker \(title)")
     }
     
     static func ==(lhs: Marker, rhs: Marker) -> Bool {

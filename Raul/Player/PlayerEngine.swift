@@ -27,7 +27,7 @@ actor PlayerEngine {
             try session.setCategory(.playback, mode: .spokenAudio)
            
         }catch{
-            print("Audio session setup failed:", error)
+            // print("Audio session setup failed:", error)
         }
         
          Task {
@@ -70,7 +70,7 @@ actor PlayerEngine {
                 }
 
             @unknown default:
-                print("interrupted: unknown type: \(type)")
+                // print("interrupted: unknown type: \(type)")
                 break
             }
         }
@@ -93,7 +93,7 @@ actor PlayerEngine {
     }
     
     func sendInterrupt(type: PlaybackInterruptionEvent){
-        print("sendInterrupt type: \(type)")
+        // print("sendInterrupt type: \(type)")
         switch type {
         case .began:
             deactiveSession()
@@ -173,7 +173,7 @@ actor PlayerEngine {
         do{
             try session.setActive(false)
         }catch{
-            print(error)
+            // print(error)
         }
     }
     
@@ -183,7 +183,7 @@ actor PlayerEngine {
         do{
             try session.setActive(true)
         }catch{
-            print(error)
+            // print(error)
         }
     }
 

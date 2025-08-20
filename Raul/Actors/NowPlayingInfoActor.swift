@@ -30,7 +30,7 @@ class NowPlayingInfoActor {
     
     func setArtwork(_ image: UIImage) {
        
-        print("setArtwork \(image.size.width)x\(image.size.height)")
+        // print("setArtwork \(image.size.width)x\(image.size.height)")
         let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
             return image
         }
@@ -41,11 +41,11 @@ class NowPlayingInfoActor {
         self.artwork = artwork
         if var info = MPNowPlayingInfoCenter.default().nowPlayingInfo {
             if let artwork = artwork {
-                print("chanening artwork")
+                // print("chanening artwork")
                 info[MPMediaItemPropertyArtwork] = artwork
                 self.info = info
             } else {
-                print("removing artwork")
+                // print("removing artwork")
                 info.removeValue(forKey: MPMediaItemPropertyArtwork)
                 self.info = info
             }

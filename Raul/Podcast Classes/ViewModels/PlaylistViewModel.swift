@@ -41,13 +41,13 @@ class PlaylistViewModel: ObservableObject {
             let result = try context.fetch(descriptor)
             self.entries = result
         } catch {
-            print("Failed to fetch entries: \(error)")
+            // print("Failed to fetch entries: \(error)")
         }
     }
 
     func addEpisode(_ episode: Episode, to position: Playlist.Position = .end) async {
         guard let actor = actor else {
-            print("PlaylistModelActor not available")
+            // print("PlaylistModelActor not available")
             return
         }
         try? await actor.add(episodeID: episode.id, to: position)
@@ -56,7 +56,7 @@ class PlaylistViewModel: ObservableObject {
 
     func removeEpisode(_ episode: Episode) async {
         guard let actor = actor else {
-            print("PlaylistModelActor not available")
+            // print("PlaylistModelActor not available")
             return
         }
         try? await actor.remove(episodeID: episode.id)
@@ -65,7 +65,7 @@ class PlaylistViewModel: ObservableObject {
 
     func moveEntry(from source: Int, to destination: Int) async {
         guard let actor = actor else {
-            print("PlaylistModelActor not available")
+            // print("PlaylistModelActor not available")
             return
         }
         try? await actor.moveEntry(from: source, to: destination)
@@ -74,10 +74,10 @@ class PlaylistViewModel: ObservableObject {
 
     func normalizeOrder() async {
         guard let actor = actor else {
-            print("PlaylistModelActor not available")
+            // print("PlaylistModelActor not available")
             return
         }
-        try? await actor.normalizeOrder()
+        await actor.normalizeOrder()
         await loadEntries()
     }
 }

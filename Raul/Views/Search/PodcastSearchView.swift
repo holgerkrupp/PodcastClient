@@ -86,7 +86,7 @@ struct PodcastSearchView: View {
                     
                 }
                 .padding()
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glass)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             }

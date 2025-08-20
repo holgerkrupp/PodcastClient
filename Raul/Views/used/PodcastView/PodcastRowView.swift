@@ -5,9 +5,12 @@
 //  Created by Holger Krupp on 11.07.25.
 //
 import SwiftUI
+import SwiftData
 
 struct PodcastRowView: View {
     let podcast: Podcast
+    
+
     
     var body: some View {
         
@@ -54,6 +57,9 @@ struct PodcastRowView: View {
                     }
  
                 }
+                
+               
+                
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding()
                 .background(
@@ -69,17 +75,25 @@ struct PodcastRowView: View {
             
         
         .overlay {
-            if podcast.metaData?.isUpdating == true {
+            if  let message = podcast.message {
+                
                 ZStack {
-                    Rectangle()
-                        .fill(Material.ultraThin)
+                    RoundedRectangle(cornerRadius:  8.0)
+                        .fill(Color.clear)
                         .ignoresSafeArea()
-                    ProgressView()
-                        .frame(width: 100, height: 50)
-                     //   .background(Material.ultraThin)
-                       // .cornerRadius(12)
+                    VStack(alignment: .center) {
+                        
+                        ProgressView()
+                            .frame(width: 100, height: 50)
+                        Text(message)
+                            .padding()
+                            
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .glassEffect(in: RoundedRectangle(cornerRadius:  8.0))
+                .frame(maxWidth: 300, maxHeight: 130, alignment: .center)
+                
+             
             }
         
         }
@@ -103,5 +117,5 @@ struct PodcastRowView: View {
 
     return PodcastRowView(podcast: podcast)
         .padding()
-        .previewLayout(.sizeThatFits)
 }
+

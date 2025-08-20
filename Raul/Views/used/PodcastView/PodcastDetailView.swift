@@ -296,7 +296,8 @@ struct PodcastDetailView: View {
         do {
             let actor = PodcastModelActor(modelContainer: modelContext.container)
           
-                try await actor.updatePodcast(podcast.persistentModelID, force: true)
+               _ =  try await actor.updatePodcast(podcast.persistentModelID, force: true)
+            podcast.message = nil
             
         } catch {
             await MainActor.run {

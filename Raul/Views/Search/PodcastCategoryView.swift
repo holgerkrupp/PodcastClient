@@ -99,7 +99,7 @@ private struct PodcastCategoryViewLeaf: View {
                             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .onAppear {
                                 if podcast == viewModel.podcasts.last,
-                                   let nextPage = viewModel.paging?.next_page,
+                                   let _ = viewModel.paging?.next_page,
                                    !viewModel.isLoadingPage {
                                     viewModel.loadPodcastsForSelectedCategory(loadNextPage: true)
                                 }

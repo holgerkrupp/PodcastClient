@@ -74,9 +74,3 @@ struct ChapterRowView: View {
     }
 }
 
-#Preview {
-    let chapter = Marker(start: 5651.469, title: "Epilog", type: .mp3, duration: 226.507)
-        
-
-//    ChapterRowView(chapter: chapter)
-}

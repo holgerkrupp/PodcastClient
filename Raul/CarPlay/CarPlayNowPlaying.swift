@@ -24,7 +24,7 @@ class CarPlayNowPlaying {
     }
     
     func setupTempate(interfaceController: CPInterfaceController) {
-        print("setupTempate")
+        // print("setupTempate")
  
         // Configure the now playing template
         template.isUpNextButtonEnabled = false

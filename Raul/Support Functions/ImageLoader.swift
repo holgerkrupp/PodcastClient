@@ -57,7 +57,7 @@ class ImageLoaderAndCache: ObservableObject {
            
             return data
         } catch {
-            print("Image loading failed: \(error)")
+            // print("Image loading failed: \(error)")
             return nil
         }
     }
@@ -81,7 +81,7 @@ struct ImageWithData: View {
         
         self.data = data
         self.image = createImage()
-      //  print("load image from data")
+      //  // print("load image from data")
     }
     
     var body: some View {

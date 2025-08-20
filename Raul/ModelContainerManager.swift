@@ -30,7 +30,7 @@ class ModelContainerManager: ObservableObject {
                 )
                 
             } else {
-                print("⚠️ Shared container URL not found. Falling back to in-memory store.")
+                // print("⚠️ Shared container URL not found. Falling back to in-memory store.")
                 let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
                 container = try ModelContainer(
                     for: Podcast.self,

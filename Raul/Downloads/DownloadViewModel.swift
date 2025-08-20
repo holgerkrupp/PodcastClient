@@ -27,11 +27,11 @@ final class DownloadViewModel: ObservableObject {
     }
     
     func startCoverDownload(for episode: Episode) {
-        print("starting CoverDownload")
+        // print("starting CoverDownload")
         Task {
             if let imageURL = episode.imageURL {
                 let item = await DownloadManager.shared.download(from: imageURL, saveTo: episode.coverFileLocation, episodeID: episode.id)
-                print("saving cover to \(String(describing: episode.coverFileLocation))")
+                // print("saving cover to \(String(describing: episode.coverFileLocation))")
                 self.item = item
             }
         }
@@ -40,6 +40,7 @@ final class DownloadViewModel: ObservableObject {
     func pauseDownload() {
        Task {
             guard let item = item else { return }
+           item.isPaused = true
            await DownloadManager.shared.pauseDownload(for: item.url)
         }
     }
@@ -47,6 +48,9 @@ final class DownloadViewModel: ObservableObject {
     func cancelDownload() {
         Task {
             guard let item = item else { return }
+            item.isPaused = false
+            item.isDownloading = false
+            item.isFinished = true
             await DownloadManager.shared.cancelDownload(for: item.url)
         }
     }
@@ -54,6 +58,7 @@ final class DownloadViewModel: ObservableObject {
     func resumeDownload() {
         Task {
             guard let item = item else { return }
+            item.isPaused = false
             await DownloadManager.shared.resumeDownload(for: item.url)
         }
     }

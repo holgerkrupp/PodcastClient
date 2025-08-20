@@ -36,10 +36,10 @@ struct ImportExportView: View {
                             newPodcasts = await SubscriptionManager(modelContainer: context.container).read(file: file.absoluteURL) ?? []
                         }
                     case .failure(let error):
-                        print(error.localizedDescription)
+                         print(error.localizedDescription)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glass)
             }header: {
                 Text("Import")
             }footer: {
@@ -54,7 +54,7 @@ struct ImportExportView: View {
                             await sharePodcasts()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glass)
 
             }header: {
                 Text("Export")
@@ -144,7 +144,7 @@ struct ImportExportView: View {
 
     //@MainActor
     func sharePodcasts() async{
-        print("share")
+        // print("share")
         
             fileURL = try? await saveToTemporaryFile(content: SubscriptionManager(modelContainer: context.container).generateOPML(), fileName: "Podcasts.opml")
         
@@ -152,15 +152,15 @@ struct ImportExportView: View {
     }
     
     func saveToTemporaryFile(content: String, fileName: String) throws -> URL {
-        print("save")
+        // print("save")
         let tempDirectoryURL = FileManager.default.temporaryDirectory
         let fileURL = tempDirectoryURL.appendingPathComponent(fileName)
         do{
             try content.write(to: fileURL, atomically: true, encoding: .utf8)
         }catch{
-            print(error)
+            // print(error)
         }
-        print(fileURL)
+        // print(fileURL)
         return fileURL
     }
     

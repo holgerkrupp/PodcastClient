@@ -45,7 +45,7 @@ actor AIChapterGenerator{
                 
             }
             catch{
-                print("Error: \(error)")
+                // print("Error: \(error)")
                 return [:]
             }
         }
@@ -80,7 +80,7 @@ actor AIChapterGenerator{
                 
             }
             catch{
-                print("Error: \(error)")
+                // print("Error: \(error)")
                 return [:]
             }
     }

@@ -10,6 +10,17 @@ import fyyd_swift
 import SwiftData
 
 
+
+struct SubscribeToPodcastView2: View {
+    
+    var body: some View {
+            Text("Hello, World!")
+    }
+    
+}
+
+
+
 struct SubscribeToPodcastView: View {
     var formatStyle = Date.RelativeFormatStyle()
     @Environment(\.modelContext) private var context
@@ -110,45 +121,59 @@ struct SubscribeToPodcastView: View {
         
         
         
-        
-        ZStack{
-            GeometryReader { geometry in
-                CoverImageView(imageURL: URL(string: imgURL ?? "") )
-                    .scaledToFill()
-                    .frame(width: geometry.size.width, height: 200)
-                    .clipped()
-            }
-     
- 
+        if let url = URL(string: xmlURL), let podcast = allPodcasts.first(where: { $0.feed == url }){
             
+            ZStack {
+               
+                PodcastRowView(podcast: podcast)
+                
+               NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                    EmptyView()
+                }.opacity(0)
+            
+            }
+        
 
-            VStack(alignment: .leading){
-                HStack {
+            
+        }else{
+            ZStack{
+                GeometryReader { geometry in
                     CoverImageView(imageURL: URL(string: imgURL ?? "") )
-                        .frame(width: 150, height: 150)
-                        .cornerRadius(8)
-                    Spacer()
-                    
-                    VStack(alignment: .leading) {
-                        Text(title)
-                            .font(.headline)
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: 200)
+                        .clipped()
+                }
+                
+                
+                
+                
+                VStack(alignment: .leading){
+                    HStack {
+                        CoverImageView(imageURL: URL(string: imgURL ?? "") )
+                            .frame(width: 150, height: 150)
+                            .cornerRadius(8)
                         Spacer()
-                        if let author = author {
-                            Text(author)
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                        
+                        VStack(alignment: .leading) {
+                            Text(title)
+                                .font(.headline)
                             Spacer()
-                        }
-                        if let desc = description {
-                            Text(desc)
-                                .font(.caption)
-                                .lineLimit(5)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        HStack{
-                            Spacer()
-                            
+                            if let author = author {
+                                Text(author)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            if let desc = description {
+                                Text(desc)
+                                    .font(.caption)
+                                    .lineLimit(5)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                            HStack{
+                                Spacer()
+                                
                                 if !isSubscribed {
                                     Button("Subscribe") {
                                         
@@ -173,61 +198,64 @@ struct SubscribeToPodcastView: View {
                                             }
                                         }
                                     }
-                                    .buttonStyle(.borderedProminent)
+                                    .buttonStyle(.glass)
                                     
                                 } else {
                                     Text("subscribed")
                                         .foregroundStyle(.secondary)
                                 }
-                            
+                                
+                            }
                         }
                     }
+                    
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding()
+                .background(
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                    // .shadow(radius: 3)
+                )
+            }
+            .frame(height: 200)
+            .overlay {
+                if subscribing {
+                    ZStack {
+                        RoundedRectangle(cornerRadius:  8.0)
+                            .fill(Color.clear)
+                            .ignoresSafeArea()
+                        VStack(alignment: .center) {
+                            
+                            ProgressView()
+                                .frame(width: 100, height: 50)
+                            Text("Subscribing...")
+                                .padding()
+                        }
+                    }
+                    .glassEffect(in: RoundedRectangle(cornerRadius:  8.0))
+                    .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
+                }
+                if let errorMessage{
+                    
+                    ZStack {
+                        RoundedRectangle(cornerRadius:  8.0)
+                            .fill(Color.clear)
+                            .ignoresSafeArea()
+                        Text(errorMessage)
+                            .padding()
+                    }
+                    .glassEffect(in: RoundedRectangle(cornerRadius:  8.0))
+                    .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
 
-                 }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .padding()
-            .background(
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                // .shadow(radius: 3)
-            )
+                }
+            }
         }
-        .frame(height: 200)
         
         
       
-        .overlay {
-            if subscribing {
-                ZStack {
-                    Rectangle()
-                        .fill(Material.ultraThin)
-                        .ignoresSafeArea()
-                    ProgressView()
-                        .frame(width: 100, height: 50)
-                     //   .background(Material.ultraThin)
-                       // .cornerRadius(12)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            if let errorMessage{
-                ZStack {
-                    Rectangle()
-                        .fill(Material.ultraThin)
-                        .ignoresSafeArea()
-                    Text(errorMessage)
-                        .font(.title2)
-                     
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .onAppear {
-            if let url = URL(string: xmlURL) {
-                isSubscribed = allPodcasts.contains { $0.feed == url }
-            }
-            fetchAndPopulateFeedIfNeeded()
-        }
+
+
     }
     
     private func requestNotification() async{

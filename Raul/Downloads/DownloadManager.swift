@@ -23,17 +23,17 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     func download(from url: URL, saveTo destination: URL? = nil, episodeID: UUID? = nil) async -> DownloadItem? {
         if let existing = downloads[url] {
-            print(">>> Reusing existing download for %{public}@\n", url.absoluteString)
+            // print(">>> Reusing existing download for %{public}@\n", url.absoluteString)
             return existing
         }
 
 
         let finalDestination = destination ?? defaultDestination(for: url)
         
-        print(fileExists(at: finalDestination) ? "file exists: \(finalDestination)" : "file does not exists: \(finalDestination)")
+        // print(fileExists(at: finalDestination) ? "file exists: \(finalDestination)" : "file does not exists: \(finalDestination)")
         
         guard !fileExists(at: finalDestination) else {
-            print("file does exists: \(finalDestination)")
+            // print("file does exists: \(finalDestination)")
             await markDownloaded(for: url)
             return nil
         }
@@ -54,7 +54,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     
     func cancelDownload(for url: URL)  {
-        print("cancel Download \(url)")
+        // print("cancel Download \(url)")
         urlToTask[url]?.cancel()
         urlToTask[url] = nil
         downloads[url] = nil
@@ -123,7 +123,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                                  downloadTask: URLSessionDownloadTask,
                                  didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
-        print("finished Download \(url) ")
+        // print("finished Download \(url) ")
 
         // Create a safe temp location to copy the file to before we suspend
         let tempCopy = FileManager.default.temporaryDirectory
@@ -133,17 +133,17 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         do {
             try FileManager.default.copyItem(at: location, to: tempCopy)
         } catch {
-            print("❌ Immediate copy failed: \(error)")
+            // print("❌ Immediate copy failed: \(error)")
             return
         }
 
         Task {
             guard let destination = await DownloadManager.shared.getDestination(for: url) else {
                 
-                print("cant find destination for \(url)")
+                // print("cant find destination for \(url)")
                 
                 return }
-            print("move file to \(destination)")
+            // print("move file to \(destination)")
             do {
                 // Make sure directory exists
                 let dir = destination.deletingLastPathComponent()
@@ -151,10 +151,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
                 // Final copy to destination
                 try FileManager.default.copyItem(at: tempCopy, to: destination)
-                print("✅ File copied to: \(destination)")
+                // print("✅ File copied to: \(destination)")
 
             } catch {
-                print("❌ Save error: \(error)")
+                // print("❌ Save error: \(error)")
             }
 
             try? FileManager.default.removeItem(at: tempCopy)
@@ -163,7 +163,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 await MainActor.run {
                     item.isDownloading = false
                     item.isFinished = true
-                    print("Download finished for: \(url), isFinished set to true")
+                    // print("Download finished for: \(url), isFinished set to true")
                     
                 }
                 
@@ -194,8 +194,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         urlToTask.removeValue(forKey: url)
         destinations.removeValue(forKey: url)
         
-        print("downloads: \(downloads.count) - destinations: \(destinations.count) - urlToTask: \(urlToTask.count)")
-        print("\(url.lastPathComponent) in downloads: \(await downloads[url]?.progress ?? 0)")
+        // print("downloads: \(downloads.count) - destinations: \(destinations.count) - urlToTask: \(urlToTask.count)")
+        // print("\(url.lastPathComponent) in downloads: \(await downloads[url]?.progress ?? 0)")
         
 
         

@@ -18,7 +18,7 @@ class PodcastSearchViewModel: ObservableObject {
     
     @Published var selectedLanguage: String? {
         didSet {
-            print("did set language: \(selectedLanguage)")
+            // print("did set language: \(String(describing: selectedLanguage))")
             Task {
                 await fyydManager.setLanguage(selectedLanguage ?? "")
                 await loadHotPodcasts()
@@ -65,7 +65,7 @@ class PodcastSearchViewModel: ObservableObject {
         
         
         if searchText.isValidURL, let url = URL(string: searchText) {
-            print("valid URL found")
+            // print("valid URL found")
             
             singlePodcast = PodcastFeed(url: url)
      
@@ -74,8 +74,8 @@ class PodcastSearchViewModel: ObservableObject {
         } else {
             singlePodcast = nil
             
-            var fyydFinished = false
-            var iTunesFinished = false
+           // var fyydFinished = false
+          //  var iTunesFinished = false
             
             // Start fyyd search in its own Task
             Task {
@@ -84,7 +84,7 @@ class PodcastSearchViewModel: ObservableObject {
                 await MainActor.run {
                     self.searchResults = (self.searchResults + fyydPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
                     self.results = podcasts
-                    fyydFinished = true
+                //    fyydFinished = true
                      self.isLoading = false
                 }
             }
@@ -94,7 +94,7 @@ class PodcastSearchViewModel: ObservableObject {
                 let iTunesPodcasts = await iTunesActor.search(for: searchText) ?? []
                 await MainActor.run {
                     self.searchResults = (self.searchResults + iTunesPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
-                    iTunesFinished = true
+               //     iTunesFinished = true
                      self.isLoading = false 
                 }
             }
@@ -139,7 +139,7 @@ class PodcastSearchViewModel: ObservableObject {
 
     // Fetch hot podcasts
      func loadHotPodcasts() async {
-         print("loading hot for language \(selectedLanguage)")
+         // print("loading hot for language \(String(describing: selectedLanguage))")
         isLoading = true
         let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage, count: 30)
         await MainActor.run {

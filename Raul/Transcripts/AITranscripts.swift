@@ -22,7 +22,7 @@ class AITranscripts {
     init(url: URL, language: String? = nil) async {
         
         self.url = url
-        print("language set to: \(language ?? "nil") ")
+        // print("language set to: \(language ?? "nil") ")
         if let language{
             self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
         }else{
@@ -40,21 +40,21 @@ class AITranscripts {
            OperationQueue.main.addOperation {
               switch authStatus {
                  case .authorized:
-                    print("authorized")
+                     print("authorized")
 
 
                  case .denied:
-                  print("denied")
+                   print("denied")
 
 
                  case .restricted:
-                  print("restricted")
+                   print("restricted")
 
 
                  case .notDetermined:
-                  print("notDetermined")
+                   print("notDetermined")
               @unknown default:
-                  print("default")
+                   print("default")
               }
            }
         }
@@ -63,7 +63,7 @@ class AITranscripts {
     func logEpisodeTitle(for url: URL) async {
         
             let title = await EpisodeActor(modelContainer: ModelContainerManager.shared.container).getEpisodeTitlefrom(url: url)
-            await BasicLogger.shared.log("Episode title: \(title ?? "unknown")")
+           //  await BasicLogger.shared.log("Episode title: \(title ?? "unknown")")
         
     }
     
@@ -94,10 +94,10 @@ class AITranscripts {
     
     func transcribeTovTT() async throws -> String? {
      //   self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
-        print("language finished")
+        // print("language finished")
         
         guard let segments = try await transcribe() else { return nil }
-        print("transcript finished with \(segments.count) segments")
+        // print("transcript finished with \(segments.count) segments")
         
         
         let formatted = segments.map { segment in
@@ -111,7 +111,7 @@ class AITranscripts {
         let result = "WEBVTT\n\n" + formatted
 
         
-        print("formating finished")
+        // print("formating finished")
         return result
     }
     
@@ -121,10 +121,10 @@ class AITranscripts {
        
            
         
-        await BasicLogger.shared.log("transcribing \(url.absoluteString)")
-        print("transcribing")
+       //  await BasicLogger.shared.log("transcribing \(url.absoluteString)")
+        // print("transcribing")
         guard let audioFile = try? AVAudioFile(forReading: url) else {
-            print("could not load audio file")
+            // print("could not load audio file")
             return nil }
         
        
@@ -134,7 +134,7 @@ class AITranscripts {
         do {
             try await ensureModel(transcriber: transcriber, locale: language)
         } catch {
-            print(error)
+            // print(error)
             return nil
         }
     
@@ -157,15 +157,15 @@ class AITranscripts {
     
     public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
             guard await supported(locale: locale) else {
-                await BasicLogger.shared.log("locate \(locale.identifier) not supported")
+               //  await BasicLogger.shared.log("locate \(locale.identifier) not supported")
                 return
             }
             
             if await installed(locale: locale) {
-                await BasicLogger.shared.log(" \(locale.identifier) available")
+               //  await BasicLogger.shared.log(" \(locale.identifier) available")
                 return
             } else {
-                await BasicLogger.shared.log("need to download \(locale.identifier) support")
+               //  await BasicLogger.shared.log("need to download \(locale.identifier) support")
                 try await downloadIfNeeded(for: transcriber)
             }
         }
@@ -185,7 +185,7 @@ class AITranscripts {
     
     func downloadIfNeeded(for module: SpeechTranscriber) async throws {
             if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-                print(downloader.progress)
+                // print(downloader.progress)
                 try await downloader.downloadAndInstall()
             }
         }
@@ -212,9 +212,9 @@ class AITranscripts {
             "es": "es-ES"
         ]
 #if targetEnvironment(simulator)
-            print("---- TRANSCRIPT NOT SUPPORT IN SIMULATOR ----")
+            // print("---- TRANSCRIPT NOT SUPPORT IN SIMULATOR ----")
 #endif
-    //    print("Supported:", supported.map { $0.identifier(.bcp47) })
+    //    // print("Supported:", supported.map { $0.identifier(.bcp47) })
        
         
 
@@ -232,7 +232,7 @@ class AITranscripts {
         
         // Then, try for a language-only match (e.g., "de" matches "de-DE")
         if let prefixMatch = supported.first(where: { $0.identifier(.bcp47).lowercased().hasPrefix(input.lowercased() + "-") }) {
-            print("Best Match:", prefixMatch.identifier(.bcp47))
+            // print("Best Match:", prefixMatch.identifier(.bcp47))
             return prefixMatch
         }
         return nil // No match

@@ -13,12 +13,12 @@ struct PlayerChapterView: View {
 
     
     init(){
-        print("PlayerChapterView \(player.currentEpisode?.id.uuidString ?? "NO UUID")")
-        print("loading PlayerChapterView with \(player.currentEpisode?.preferredChapters.count.description) Chapters")
-        print("currentChapter: \(player.currentChapter?.title ?? "nil")")
+        // print("PlayerChapterView \(player.currentEpisode?.id.uuidString ?? "NO UUID")")
+        // print("loading PlayerChapterView with \(String(describing: player.currentEpisode?.preferredChapters.count.description)) Chapters")
+        // print("currentChapter: \(player.currentChapter?.title ?? "nil")")
         
         for chapter in player.currentEpisode?.preferredChapters ?? [] {
-            print("\(chapter.title): \(chapter.start?.description) - \(chapter.endTime?.description) - \(chapter.type.rawValue)")
+            // print("\(chapter.title): \(chapter.start?.description ?? <#default value#>) - \(String(describing: chapter.endTime?.description)) - \(chapter.type.rawValue)")
         }
     }
     

@@ -40,7 +40,7 @@ extension URL{
                         status.newURL = URL(string: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location") ?? "")
                         
                     }catch{
-                        print(error)
+                        // print(error)
                         return nil
                     }
        
@@ -55,16 +55,16 @@ extension URL{
             return data
             
         }catch{
-            print(error)
+            // print(error)
         }
     return nil
     }
        
     func feedData() async -> Data?{
-        print("loading feedData for \(self.absoluteString)")
+        // print("loading feedData for \(self.absoluteString)")
         let session = URLSession.shared
         
-        var request = URLRequest(url: self)
+        let request = URLRequest(url: self)
         /*
         if let appName = Bundle.main.applicationName{
             request.setValue(appName, forHTTPHeaderField: "User-Agent")
@@ -72,7 +72,7 @@ extension URL{
          */
         do{
             let (data, response) = try await session.data(for: request)
-            print("got response for \(self.absoluteString) ")
+            // print("got response for \(self.absoluteString) ")
            
             switch (response as? HTTPURLResponse)?.statusCode {
             case 200:
@@ -85,7 +85,7 @@ extension URL{
                 
             }
         }catch{
-            print(error)
+            // print(error)
             return nil
         }
     }
