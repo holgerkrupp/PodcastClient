@@ -129,7 +129,7 @@ actor PlaylistModelActor {
         guard let playlist = try fetchPlaylist(),
               let episode = try fetchEpisode(byID: episodeID) else { return }
 
-        await BasicLogger.shared.log("🎯 Adding episode \(episode.title) to playlist \(playlist.title) at position \(position) - \(episode.id)")
+       //  await BasicLogger.shared.log("🎯 Adding episode \(episode.title) to playlist \(playlist.title) at position \(position) - \(episode.id)")
 
         // Compute new order anchor
         let newPosition: Int
@@ -145,13 +145,13 @@ actor PlaylistModelActor {
         // Update if exists; otherwise create entry and link
         if let existingItem = playlist.items?.first(where: { $0.episode?.id == episode.id }) {
             existingItem.order = newPosition
-            await BasicLogger.shared.log("🔄 Moved existing entry to \(newPosition)")
+           //  await BasicLogger.shared.log("🔄 Moved existing entry to \(newPosition)")
         } else {
             let newEntry = PlaylistEntry(episode: episode, order: newPosition)
             modelContext.insert(newEntry)
             newEntry.playlist = playlist
             episode.playlist?.append(newEntry)
-            await BasicLogger.shared.log("➕ Created PlaylistEntry at \(newPosition) for \(playlist.title)")
+           //  await BasicLogger.shared.log("➕ Created PlaylistEntry at \(newPosition) for \(playlist.title)")
         }
 
         // Update episode metadata
@@ -161,7 +161,7 @@ actor PlaylistModelActor {
         episode.refresh.toggle()
 
          normalizeOrder() // will save
-        await BasicLogger.shared.log("✅ Saved playlist changes")
+       //  await BasicLogger.shared.log("✅ Saved playlist changes")
 
         if episode.metaData?.calculatedIsAvailableLocally != true {
             let episodeActor = EpisodeActor(modelContainer: self.modelContainer)
@@ -178,9 +178,9 @@ actor PlaylistModelActor {
             normalizeOrder()
             entry.episode?.refresh.toggle()
            modelContext.saveIfNeeded()
-            print("✅ PlaylistEntry deleted and context saved")
+            // print("✅ PlaylistEntry deleted and context saved")
         }else{
-            print("No such episode")
+            // print("No such episode")
         }
     }
 

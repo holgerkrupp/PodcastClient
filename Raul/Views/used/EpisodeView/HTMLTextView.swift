@@ -25,7 +25,7 @@ struct HTMLTextView: View {
             ).removingColorAttributes()
             return try AttributedString(nsAttr, including: \.uiKit)
         } catch {
-            print("HTML parse error: \(error)")
+            // print("HTML parse error: \(error)")
             return nil
         }
     }

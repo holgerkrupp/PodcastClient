@@ -58,7 +58,7 @@ class PodcastSettings {
     init(podcast: Podcast){
         title = podcast.title
         self.podcast = podcast
-        print("INIT SETTINGS WITH: \(podcast.title) - \(podcast.id)")
+        // print("INIT SETTINGS WITH: \(podcast.title) - \(podcast.id)")
     }
     
     init(defaultSettings: Bool){

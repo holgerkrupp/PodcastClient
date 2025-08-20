@@ -20,12 +20,13 @@ final class DownloadItem: ObservableObject, Identifiable {
     @Published var isFinished: Bool = false
 
     @Published var isDownloading = false
+    @Published var isPaused = false
     @Published var progress: Double = 0.0
     @Published var totalBytes: Int64?
     @Published var downloadedBytes: Int64 = 0
 
     init(url: URL, episodeID: UUID? = nil) {
-        print("create DownloadItem \(url)")
+        // print("create DownloadItem \(url)")
         self.url = url
         self.episodeID = episodeID
         

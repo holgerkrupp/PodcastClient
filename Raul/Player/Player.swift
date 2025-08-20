@@ -93,7 +93,7 @@ class Player: NSObject {
     
     private  func addChangeSettingsObserver() {
         NotificationCenter.default.addObserver(forName: .podcastSettingsDidChange, object: nil, queue: nil, using: { [weak self] notification in
-            print("received podcast settings change notification")
+            // print("received podcast settings change notification")
             Task { @MainActor in
                 self?.loadPlayBackSpeed()
                 self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
@@ -111,7 +111,7 @@ class Player: NSObject {
             
             Task { 
                 if let episode = await fetchEpisode(with: episodeUUID) {
-                    print("loading last episode: \(episode.title)")
+                    // print("loading last episode: \(episode.title)")
                     currentEpisode = episode
                     currentEpisodeID = episode.id
                     await playEpisode(episode.id, playDirectly: false)
@@ -137,7 +137,7 @@ class Player: NSObject {
         // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
         Task{
             let savedPlaybackRate = await settingsActor?.getPlaybackSpeed(for: currentEpisode?.podcast?.id) ?? 1.0
-            print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
+            // print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
             if savedPlaybackRate > 0, playbackRate != savedPlaybackRate {
                 playbackRate = savedPlaybackRate
                 /*
@@ -165,7 +165,7 @@ class Player: NSObject {
     private func fetchChapters(for episodeID: UUID)  async -> [Marker]? {
         
         guard let episode = await fetchEpisode(with: episodeID) else { return [] }
-        print(" fetchChapters")
+    
 
            
              let chapters = episode.chapters
@@ -181,14 +181,14 @@ class Player: NSObject {
                 return categoryGroups.values.flatMap { group in
                 let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
                  
-                    print("highest category: \(highestCategory?.rawValue ?? "nil")")
+           
                     
                 return group.filter { $0.type == highestCategory }
                 }
             
             
         } else {
-            print("empty")
+      
             return []
         }
     }
@@ -246,7 +246,7 @@ class Player: NSObject {
     }
         
     private func unloadEpisode(episodeUUID: UUID) async{
-        print("unloadEpisode \(episodeUUID)")
+        // print("unloadEpisode \(episodeUUID)")
 
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         currentEpisode = nil
@@ -277,7 +277,7 @@ class Player: NSObject {
     
     func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true, startingAt time: Double? = nil) async {
         
-        print("playEpisode \(episodeUUID)")
+        // print("playEpisode \(episodeUUID)")
         guard let episode = await fetchEpisode(with: episodeUUID) else { return }
         if let currentEpisodeID, episodeUUID != currentEpisodeID{
             await unloadEpisode(episodeUUID: currentEpisodeID)
@@ -289,7 +289,7 @@ class Player: NSObject {
 
         currentEpisode = episode
         currentEpisodeID = episode.id
-        print("unloading finished - new episode: \(currentEpisodeID) - \(episode.title)")
+        // print("unloading finished - new episode: \(String(describing: currentEpisodeID)) - \(episode.title)")
 
         updateChapters()
         
@@ -297,7 +297,7 @@ class Player: NSObject {
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
 
         Task { @MainActor in
-            print("loading new AVPlayerItem - \(isCurrentEpisodeDownloaded) - \(episode.localFile?.path ?? "nil")")
+            // print("loading new AVPlayerItem - \(isCurrentEpisodeDownloaded) - \(episode.localFile?.path ?? "nil")")
             // Load the AVPlayerItem asynchronously
             let item: AVPlayerItem = {
                 if isCurrentEpisodeDownloaded, let localFile = episode.localFile {
@@ -306,15 +306,15 @@ class Player: NSObject {
                     if localFile.isFileURL && FileManager.default.fileExists(atPath: localFile.path) {
                        
                         localURL = localFile
-                        print("file Exists - \(localURL.path)")
+                        // print("file Exists - \(localURL.path)")
                     } else {
                         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
                         localURL = caches.appendingPathComponent(localFile.path)
-                        print("file does not exist - \(localURL.path)")
+                        // print("file does not exist - \(localURL.path)")
 
                     }
                     guard FileManager.default.fileExists(atPath: localURL.path) else {
-                        print("Local file does not exist at \(localURL.path), falling back to remote.")
+                        // print("Local file does not exist at \(localURL.path), falling back to remote.")
                         if let remoteURL = episode.url {
                             return AVPlayerItem(url: remoteURL)
                         } else {
@@ -323,7 +323,7 @@ class Player: NSObject {
                     }
                     return AVPlayerItem(url: localURL)
                 } else if let remoteURL = episode.url {
-                    print("loading remote file from \(remoteURL.absoluteString)")
+                    // print("loading remote file from \(remoteURL.absoluteString)")
                     return AVPlayerItem(url: remoteURL)
                 } else {
                     fatalError("No valid URL for playback.")
@@ -332,7 +332,7 @@ class Player: NSObject {
            
             let duration = item.duration.seconds
             
-            print("comparing episode Duration \(currentEpisode?.duration ?? 0.0) with item duration \(duration) ")
+            // print("comparing episode Duration \(currentEpisode?.duration ?? 0.0) with item duration \(duration) ")
             
             if duration.isNormal && currentEpisode?.duration != duration {
                 currentEpisode?.duration = duration
@@ -415,37 +415,37 @@ class Player: NSObject {
     func listenToEvent() {
         Task{
             await engine.setInterruptionHandler { [weak self] event in
-                print("received interruption event: \(event)")
+                // print("received interruption event: \(event)")
 
         
                 guard let self else { return }
                 switch event {
                 case .began:
                     Task{
-                        await BasicLogger.shared.log("received interruption event: began")
+                       //  await BasicLogger.shared.log("received interruption event: began")
                         await self.handleInterruptionBegan()
                     }
                 case .ended:
                     Task{
-                        await BasicLogger.shared.log("received interruption event: ended")
+                       //  await BasicLogger.shared.log("received interruption event: ended")
 
                         await self.resumeAfterInterruption()
                     }
                 case .pause:
                     Task{
-                        await BasicLogger.shared.log("received interruption event: pause")
+                       //  await BasicLogger.shared.log("received interruption event: pause")
 
                         await self.handleInterruptionBegan()
                     }
                 case .resume:
                     Task{
-                        await BasicLogger.shared.log("received interruption event: reume")
+                       //  await BasicLogger.shared.log("received interruption event: reume")
 
                         await self.resumeAfterInterruption()
                     }
                 case .finished:
                     Task{
-                        await BasicLogger.shared.log("received interruption event: finished")
+                       //  await BasicLogger.shared.log("received interruption event: finished")
 
                         await self.handlePlaybackFinished()
                     }
@@ -560,7 +560,7 @@ class Player: NSObject {
                     handlePlaybackFinished()
                 }
             }
-            print("Loop ended") // This should run if the loop ends gracefully
+            // print("Loop ended") // This should run if the loop ends gracefully
 
         }
     }
@@ -596,7 +596,10 @@ class Player: NSObject {
         
             progressUpdateCounter += 1
             if progressUpdateCounter >= progressSaveInterval {
-                updateChapters()
+                if let chapters = currentEpisode?.chapters, chapters.count > 0 {
+                    updateChapters()
+                }
+              
                 savePlayPosition()
                 progressUpdateCounter = 0
             }
@@ -643,7 +646,7 @@ class Player: NSObject {
     
     
     func skipTo(chapter: Marker) async{
-        print("skip to chapter \(chapter.title)")
+        // print("skip to chapter \(chapter.title)")
             if let newEpisode = chapter.episode, let start = chapter.start{
                 await playEpisode(newEpisode.id, playDirectly: true, startingAt: start)
             }
@@ -668,7 +671,7 @@ class Player: NSObject {
     func skipToChapterStart() async{
         
         let referenceTime = self.playPosition - 3 // if the chapter just started, jump to the previous chapter
-        let lastChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= referenceTime})
+   //     let lastChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= referenceTime})
         
         guard let currentChapter else {
             return
@@ -680,13 +683,13 @@ class Player: NSObject {
 
 
     private func handlePlaybackFinished() {
-        print("Playback finished. - handlePlaybackFinished")
+        // print("Playback finished. - handlePlaybackFinished")
        
         
         updateLastPlayed()
         stopPlaybackUpdates()
         savePlayPosition()
-        print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
+        // print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
      //   if currentEpisode?.playProgress ?? 0 >= progressThreshold {
             Task{
                 if let nextEpisodeID = try? await playlistActor?.nextEpisode(){
@@ -754,7 +757,7 @@ class Player: NSObject {
   
     private func updateNowPlayingCover() async{
         guard let episode =  currentEpisode else {
-            print("currentEpisode is nil")
+            // print("currentEpisode is nil")
             return
         }
         
@@ -763,19 +766,19 @@ class Player: NSObject {
         
         
        
-            print("updating now playing cover")
+            // print("updating now playing cover")
 
             guard let imageURL = chapterImage ?? episode.imageURL ?? episode.podcast?.imageURL else {
-                print("imageURL is nil")
+                // print("imageURL is nil")
                 return }
             
             if let chapterImageData = chapterImageData, let image = UIImage(data: chapterImageData) {
-                print("using chapter image data")
+                // print("using chapter image data")
 
                 nowPlayingInfoActor.setArtwork(image)
                 
             }else if let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
-                print("using URL image Data \(imageURL.absoluteString)")
+                // print("using URL image Data \(imageURL.absoluteString)")
                 let targetSize = CGSize(width: 600, height: 600)
                 if let resizedImage = downscale(image: originalImage, to: targetSize) {
                 
@@ -784,7 +787,7 @@ class Player: NSObject {
                     
                 }
             }else{
-                print("image is nil")
+                // print("image is nil")
                 
             }
         }

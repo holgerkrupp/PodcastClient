@@ -64,7 +64,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     func parserDidStartDocument(_ parser: XMLParser)  {
-        print("parserDidStartDocument")
+        // print("parserDidStartDocument")
         episodeDict.removeAll()
         episodeDeepLinks.removeAll()
         enclosureArray.removeAll()
@@ -87,7 +87,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:])  {
-       // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
+       // // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
         currentValue = ""
         currentElement = qName ?? elementName
         

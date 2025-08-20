@@ -98,7 +98,7 @@ extension String{
             let attributedString = try NSAttributedString(data: data, options: options, documentAttributes: nil)
             return attributedString.string
         } catch {
-            print("Error decoding HTML entities: \(error)")
+            // print("Error decoding HTML entities: \(error)")
             return nil
         }
     }

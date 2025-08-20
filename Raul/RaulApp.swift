@@ -44,7 +44,7 @@ struct RaulApp: App {
         })
 
         .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
-            await BasicLogger.shared.log("started checkFeedUpdates in Background")
+           //  await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
        
                 await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
@@ -102,7 +102,7 @@ struct RaulApp: App {
             try BGTaskScheduler.shared.submit(request)
 
         }catch{
-            print(error)
+            // print(error)
             BasicLogger.shared.log(error.localizedDescription)
         }
        

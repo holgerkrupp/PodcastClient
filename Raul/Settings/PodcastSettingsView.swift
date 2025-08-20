@@ -136,7 +136,7 @@ struct PodcastSettingsView: View {
 
     func printAllSettings() {
         for setting in allSettings {
-            print("podcast: \(setting.podcast?.title ?? "nil") - \(setting.podcast?.id.uuidString ?? "nil") - SettingID: \(setting.id.uuidString)")
+            // print("podcast: \(setting.podcast?.title ?? "nil") - \(setting.podcast?.id.uuidString ?? "nil") - SettingID: \(setting.id.uuidString)")
         }
     }
     
@@ -252,7 +252,7 @@ struct PodcastSettingsView: View {
     private func saveAndNotify(){
         context.saveIfNeeded()
         NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-        print("send notification")
+        // print("send notification")
     }
     
 

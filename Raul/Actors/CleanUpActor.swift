@@ -21,7 +21,6 @@ actor CleanUpActor {
         do {
             episodes = try context.fetch(fetchDescriptor)
         } catch {
-            print("❌ Error fetching episodes for cleanup: \(error)")
             return
         }
         
@@ -33,7 +32,6 @@ actor CleanUpActor {
                 episode.metaData?.isAvailableLocally == true else { continue }
             
             if episode.playlist?.count == 0 {
-                print("🗑️ Deleting old download for episode: \(episode.title)")
                 await episodeActor.deleteFile(episodeID: episode.id)
             }
         }

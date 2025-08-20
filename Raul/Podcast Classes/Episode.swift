@@ -93,7 +93,7 @@ class EpisodeDownloadStatus{
     @Transient @Published var refresh: Bool = false
     @Transient var downloadItem: DownloadItem? = nil {
         didSet {
-            print("downloadItem changed")
+            // print("downloadItem changed")
         }
     }
 

@@ -54,7 +54,7 @@ actor NotificationManager {
             return try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
         } catch {
-            print("Notification permission error: \(error)")
+            // print("Notification permission error: \(error)")
             return false
         }
     }
@@ -101,11 +101,11 @@ actor NotificationManager {
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 Task{
-                    await BasicLogger.shared.log("🔕 Failed to schedule notification: \(error)")
+                   //  await BasicLogger.shared.log("🔕 Failed to schedule notification: \(error)")
                 }
             }else{
                 Task{
-                    await BasicLogger.shared.log("🔔 Notification sent successfully")
+                   //  await BasicLogger.shared.log("🔔 Notification sent successfully")
                 }
             }
         }

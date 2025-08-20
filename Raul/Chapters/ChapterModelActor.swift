@@ -22,7 +22,7 @@ actor ChapterModelActor {
             let results = try modelContext.fetch(FetchDescriptor<Marker>(predicate: predicate))
             return results.first
         } catch {
-            print("❌ Error fetching episode for Chapter ID: \(chapterID), Error: \(error)")
+            // print("❌ Error fetching episode for Chapter ID: \(chapterID), Error: \(error)")
             return nil
         }
     }
@@ -47,7 +47,7 @@ actor ChapterModelActor {
     }
     
     func saveAllChanges() async {
-        print("saving Chapter Progress")
+        // print("saving Chapter Progress")
         modelContext.saveIfNeeded()
     }
     

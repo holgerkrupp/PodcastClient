@@ -19,7 +19,7 @@ class CarPlayPlayNext {
     private func loadImage(episode: EpisodeSummary) async -> UIImage?{
         
         guard let imageURL =  episode.cover ?? episode.podcastCover else {
-            print("imageURL is nil")
+            // print("imageURL is nil")
             return nil }
         
         return await ImageLoaderAndCache.loadUIImage(from: imageURL)
@@ -54,10 +54,10 @@ class CarPlayPlayNext {
                 guard let self else { return }
                 let episode = self.episodes[index]
                 Task {
-                    print("CP play next: \(episode.title ?? episode.id.uuidString)")
+                    // print("CP play next: \(episode.title ?? episode.id.uuidString)")
                     await Player.shared.playEpisode(episode.id)
                     self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { success, error in
-                        print(error ?? "Error loading CarPlay Items")
+                        // print(error ?? "Error loading CarPlay Items")
                     })
                 }
             }
@@ -70,7 +70,7 @@ class CarPlayPlayNext {
         let backButton = CPBarButton(title: "Now Playing") { [weak self] _ in
             self?.returnToNowPlaying()
         }
-        template.trailingNavigationBarButtons = []
+        template.trailingNavigationBarButtons = [backButton]
     }
     
     private func returnToNowPlaying() {

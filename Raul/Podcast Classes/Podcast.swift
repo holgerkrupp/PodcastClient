@@ -36,7 +36,7 @@ final class Podcast: Identifiable {
     var funding: [FundingInfo] = [] // See also: Episode.funding
     
     
-    
+     var message: String?
     
     
     // calculated properties that will be generated out of existing properties.
@@ -79,11 +79,12 @@ final class Podcast: Identifiable {
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
     
     @Transient var isUpdating: Bool = false
+    @Transient var message: String?
+
     
     var isSubscribed: Bool = true
     
-    @Relationship(inverse: \Podcast.metaData) var episode: Podcast?
-    
+    @Relationship(inverse: \Podcast.metaData) var podcast: Podcast?
     init() {
     }
 }
