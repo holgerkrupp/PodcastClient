@@ -10,6 +10,7 @@ import mp3ChapterReader
 import AVFoundation
 import BasicLogger
 import SwiftUI
+import UIKit
 
 
 @ModelActor
@@ -355,33 +356,31 @@ actor EpisodeActor {
 
     
     func transcribe(_ fileURL: URL) async  {
-        // print("transcribe")
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        bgTask = await UIApplication.shared.beginBackgroundTask(withName: "Transcription") { [task = bgTask] in
+            UIApplication.shared.endBackgroundTask(task)
+        }
+        defer {
+            if bgTask != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
+        // --- Begin original logic ---
         guard let episode = await fetchEpisode(byURL: fileURL) else {
-            // print("could not fetch data")
-     
             return  }
-        /*
-        guard episode.transcriptLines == nil else {
-            // print("transcript exists")
-            return }
-        */
          guard let localFile = episode.localFile else {
-            // print("no local file")
             return }
        
         let transcriber = await AITranscripts(url: localFile, language: episode.podcast?.language)
         let transcription = try? await transcriber.transcribeTovTT()
-        // print("transcript to vtt finished")
-        
         
         if let transcription = transcription {
             episode.transcriptLines = decodeTranscription(transcription)
             episode.refresh.toggle()
-
         }
-        
         modelContext.saveIfNeeded()
-        
+        // --- End original logic ---
     }
     
 
@@ -1026,3 +1025,4 @@ private struct JSONChapter: Decodable {
     let img: String?
     let url: String?
 }
+
