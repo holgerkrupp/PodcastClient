@@ -47,6 +47,7 @@ struct PlaylistView: View {
                                     .font(.title.bold())
                             }
                         }
+                        
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EmptyView()
                         }.opacity(0)
@@ -58,7 +59,35 @@ struct PlaylistView: View {
                                          bottom: 0,
                                          trailing: 0))
                     .animation(.easeInOut, value: Player.shared.currentEpisode)
-
+                    /*
+                     /// Glass style overlay - looks cool but the non glass overlay is better
+                    .overlay{
+  
+                                Group {
+                                    if Player.shared.isPlaying {
+                                        Label("Now Playing", systemImage: "waveform")
+                                            .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
+                                            .foregroundStyle(Color.primary)
+                                            .font(.title.bold())
+                                    } else {
+                                        Label("Now Playing", systemImage: "waveform.low")
+                                            .foregroundStyle(Color.primary)
+                                            .font(.title.bold())
+                                    }
+                                }
+                                .frame(width: 300, height: 120)
+                      
+                                
+                            
+                                .background{
+                                    Capsule()
+                                        .fill(.background.opacity(0.3))
+                                }
+                                .glassEffect(.clear, in: Capsule())
+                              
+                                .frame(maxWidth: 300, maxHeight: 130, alignment: .center)
+                    }
+                    */
                     
                 }
              
@@ -123,7 +152,9 @@ struct PlaylistView: View {
     private func archiveEpisode(_ episode: Episode) async {
         // print("archiveEpisode from PlaylistView - \(episode.title)")
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.archiveEpisode(episodeID: episode.id)
+        
+            await episodeActor.archiveEpisode(episodeID: episode.id)
+        
     }
     
     private func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {

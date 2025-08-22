@@ -101,7 +101,8 @@ struct PodcastDetailView: View {
     }
     
   
-    var body: some View {        GeometryReader { geometry in
+    var body: some View {
+        GeometryReader { geometry in
         
         ZStack {
             if let image = UIImage(data: backgroundImageLoader.imageData) {
@@ -135,7 +136,7 @@ struct PodcastDetailView: View {
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
-                            if let lastRefreshDate = podcast.metaData?.feedUpdateCheckDate {
+                            if let metaData = podcast.metaData, let lastRefreshDate = metaData.feedUpdateCheckDate {
                                 Text("Last refresh: \(lastRefreshDate.formatted(date: .numeric, time: .shortened))")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
@@ -238,6 +239,7 @@ struct PodcastDetailView: View {
                 }
                 .listRowSeparator(.hidden)
             }
+  
             .listStyle(PlainListStyle())
             .padding(.top, 0)
             .searchable(text: $searchText)

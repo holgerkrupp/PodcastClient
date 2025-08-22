@@ -102,6 +102,7 @@ struct PodcastSettingsView: View {
                                              bottom: 0,
                                              trailing: 0))
                     golbalSections(settings: settings)
+                        .padding()
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
@@ -117,6 +118,18 @@ struct PodcastSettingsView: View {
                                          leading: 0,
                                          bottom: 0,
                                          trailing: 0))
+                Spacer()
+                    .listRowBackground(Color.clear)
+                CreatedByView()
+                    .padding()
+                    .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+                    .frame(maxWidth: .infinity)
                 
             }
 
@@ -157,17 +170,16 @@ struct PodcastSettingsView: View {
         
         Section(header: Text("Playback"), footer: Text("")) {
 
-            HStack {
-                Text("Playback Speed")
-                Spacer()
-                Text(String(format: "%.1fx", settings.playbackSpeed ?? 1.0))
-            }
-            Slider(value: Binding(
+   
+           
+            Stepper(value: Binding(
                 get: { settings.playbackSpeed ?? 1.0 },
                 set: { settings.playbackSpeed = $0
                     saveAndNotify()
                 }
-            ), in: 0.5...3.0, step: 0.1)
+            ), in: 0.5...3.0, step: 0.1){
+                Text(String(format: "Playback Speed %.1fx", settings.playbackSpeed ?? 1.0))
+            }
         }
     
         Section(header: Text("Chapter Skip Keywords"), footer: Text("Chapters containing any of these keywords will be skipped during playback. The rules are applied when new episodes with chapters are added.")) {

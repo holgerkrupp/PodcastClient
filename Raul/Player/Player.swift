@@ -133,6 +133,19 @@ class Player: NSObject {
         }
     }
     
+    func switchPlayBackSpeed() {
+        let playbackSpeeds: [Float] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+        var currentSpeedIndex: Int = 0
+        if let closestIndex = playbackSpeeds.enumerated().min(by: { abs($0.element - playbackRate) < abs($1.element - playbackRate) })?.offset {
+            currentSpeedIndex = closestIndex
+        }
+        
+            currentSpeedIndex = (currentSpeedIndex + 1) % playbackSpeeds.count
+            let newRate = playbackSpeeds[currentSpeedIndex]
+            playbackRate = newRate
+            
+    }
+    
     private func loadPlayBackSpeed() {
         // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
         Task{
@@ -344,17 +357,17 @@ class Player: NSObject {
             if let time  {
                 BasicLogger.shared.log("Time provided when calling the playEpisode function: \(time)")
 
-                jumpTo(time: time)
+                await jumpTo(time: time)
             }else if let lastPlayPosition = currentEpisode?.metaData?.playPosition, lastPlayPosition < ((currentEpisode?.duration ?? 1.0) * progressThreshold) {
              
 
                 BasicLogger.shared.log("jump to last position: \(lastPlayPosition)")
                 
-                jumpTo(time: lastPlayPosition)
+                await jumpTo(time: lastPlayPosition)
             } else {
                 BasicLogger.shared.log("no time - jump to beginning")
 
-                jumpTo(time: 0)
+                await jumpTo(time: 0)
             }
             _ = updateCurrentChapter()
             initRemoteCommandCenter()
@@ -382,10 +395,11 @@ class Player: NSObject {
     var progress:Double {
         
         set{
-            
-            let seconds:Double  = newValue * (currentEpisode?.duration ?? 1.0)
-            let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
-            jumpTo(time: newTime.seconds)
+            Task{
+                let seconds:Double  = newValue * (currentEpisode?.duration ?? 1.0)
+                let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
+                await jumpTo(time: newTime.seconds)
+            }
         }
         get{
             
@@ -507,20 +521,23 @@ class Player: NSObject {
     }
     
      func jumpPlaypostion(by seconds:Double){
-        let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
-        
-        let now = CMTimeMakeWithSeconds(playPosition,preferredTimescale: 1)
-        let jumpToTime = CMTimeAdd(now, secondsToAdd).seconds
-        jumpTo(time: jumpToTime)
+         Task{
+             let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
+             
+             let now = CMTimeMakeWithSeconds(playPosition,preferredTimescale: 1)
+             let jumpToTime = CMTimeAdd(now, secondsToAdd).seconds
+             await jumpTo(time: jumpToTime)
+         }
     }
 
-    func jumpTo(time: Double) {
-        BasicLogger.shared.log("jumpTo \(time)")
+    func jumpTo(time: Double) async {
         let safeTime = max(0, time)
-        Task {
-            let cmTime = CMTime(seconds: safeTime, preferredTimescale: 600)
-            await engine.seek(to: cmTime)
-        }
+        let cmTime = CMTime(seconds: safeTime, preferredTimescale: 600)
+
+        // Wait for seek to finish
+        await engine.seek(to: cmTime)
+
+        // Only after seek completes, update state
         playPosition = time
         _ = updateCurrentChapter()
         updateChapterProgress()
@@ -586,9 +603,11 @@ class Player: NSObject {
         
             
         if let chapters = currentEpisode?.chapters, chapters.count > 0 {
-            let chapterChange = updateCurrentChapter()
-            updateChapterProgress()
-            skipIfNeeded(chapterChange: chapterChange)
+            Task{
+                let chapterChange = updateCurrentChapter()
+                updateChapterProgress()
+                await skipIfNeeded(chapterChange: chapterChange)
+            }
         }
 
             updateNowPlayingInfo()
@@ -606,25 +625,41 @@ class Player: NSObject {
         }
     
     // Helper to cascade skip consecutive skipped chapters and handle last skipped chapter
-    private func skipIfNeeded(chapterChange: Bool) {
+    private func skipIfNeeded(chapterChange: Bool) async {
         guard chapterChange else { return }
         updateChapters()
-        while let currentChapter, currentChapter.shouldPlay == false {
-            let id = currentChapter.id
-            Task.detached(priority: .background) {
-                await self.chapterActor?.markChapterAsSkipped(id)
-            }
-            let nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
+        await skipOverChapters()
+    }
 
-            if let start = nextChapter?.start, start < (currentEpisode?.duration ?? .greatestFiniteMagnitude) {
-                jumpTo(time: start)
-                _ = updateCurrentChapter()
-            } else {
-                // If this is the last chapter, finish playback
-                handlePlaybackFinished()
-                break
-            }
+    private func skipOverChapters() async {
+        guard let currentChapter else { return }
+
+        if currentChapter.shouldPlay { return }
+
+        let id = currentChapter.id
+        Task.detached(priority: .background) {
+            await self.chapterActor?.markChapterAsSkipped(id)
         }
+
+        guard let nextChapter = chapters?
+            .sorted(by: { ($0.start ?? 0) < ($1.start ?? 0) })
+            .first(where: { ($0.start ?? 0) > self.playPosition })
+        else {
+            handlePlaybackFinished()
+            return
+        }
+
+        let start = nextChapter.start ?? 0
+        guard start < (currentEpisode?.duration ?? .greatestFiniteMagnitude) else {
+            handlePlaybackFinished()
+            return
+        }
+
+        // Await the seek
+        await jumpTo(time: start)
+
+        // After the seek, update and re-check
+        await skipOverChapters()
     }
     
     
@@ -662,9 +697,9 @@ class Player: NSObject {
         
         
         if let start = nextChapter?.start{
-             jumpTo(time: start)
+             await jumpTo(time: start)
         }else if let end = currentChapter?.end{
-                jumpTo(time: end)
+            await jumpTo(time: end)
         }
     }
     
@@ -677,7 +712,7 @@ class Player: NSObject {
             return
         }
         if let start = currentChapter.start{
-             jumpTo(time: start)
+             await jumpTo(time: start)
         }
     }
 

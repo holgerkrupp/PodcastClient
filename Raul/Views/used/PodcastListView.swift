@@ -17,16 +17,17 @@ struct PodcastListView: View {
     }
 
     var filteredPodcasts: [Podcast] {
-        if searchText.isEmpty { return podcasts }
+        let currentPodcasts = podcasts // capture snapshot
+        if searchText.isEmpty { return currentPodcasts }
 
-        return podcasts.filter { podcast in
+        return currentPodcasts.filter { podcast in
             let lowercased = searchText.lowercased()
 
             var matches = false
             if searchInTitle {
                 matches = matches || podcast.title.localizedStandardContains(lowercased)
             }
-            if let episodes = podcast.episodes, searchInTitle, searchInEpisodes {
+            if searchInEpisodes, let episodes = podcast.episodes {
                 matches = matches || episodes.contains(where: { $0.title.localizedStandardContains(lowercased) })
             }
             if searchInAuthor, let author = podcast.author {
@@ -35,7 +36,7 @@ struct PodcastListView: View {
             if searchInDescription, let desc = podcast.desc {
                 matches = matches || desc.localizedStandardContains(lowercased)
             }
-            if let episodes = podcast.episodes, searchInDescription, searchInEpisodes {
+            if searchInEpisodes, searchInDescription, let episodes = podcast.episodes {
                 matches = matches || episodes.contains(where: { $0.desc?.localizedStandardContains(lowercased) ?? false })
             }
             return matches
@@ -121,10 +122,20 @@ struct PodcastListView: View {
  
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        Task { await viewModel.refreshPodcasts() }
+                        Task { await viewModel.refreshAllPodcasts() }
                     } label: {
                         if viewModel.isLoading {
-                            ProgressView()
+                            if viewModel.total != 0 {
+                                CircularProgressView(
+                                    value: Double(viewModel.completed),
+                                    total: Double(viewModel.total)
+                                )
+                           
+                                
+                                
+                            }else{
+                                ProgressView()
+                            }
                         } else {
                             Image(systemName: "arrow.clockwise")
                         }

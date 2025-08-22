@@ -28,7 +28,7 @@ class CarPlayPlayNext {
     
     private func setupTemplate() async {
         // Fetch ordered episodes from the playlist
-        self.episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
+        await self.refreshEpisodeList()
         // Load images asynchronously for all episodes
         let images: [UIImage?]? = try? await withThrowingTaskGroup(of: (Int, UIImage?).self) { group in
             for (index, episode) in episodes.enumerated() {
@@ -59,6 +59,7 @@ class CarPlayPlayNext {
                     self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { success, error in
                         // print(error ?? "Error loading CarPlay Items")
                     })
+                    await self.refreshEpisodeList()
                 }
             }
             return item
@@ -70,7 +71,11 @@ class CarPlayPlayNext {
         let backButton = CPBarButton(title: "Now Playing") { [weak self] _ in
             self?.returnToNowPlaying()
         }
-        template.trailingNavigationBarButtons = [backButton]
+        template.trailingNavigationBarButtons = []
+    }
+    
+    private func refreshEpisodeList() async{
+        self.episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
     }
     
     private func returnToNowPlaying() {
