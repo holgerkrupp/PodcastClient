@@ -88,7 +88,9 @@ struct TranscriptListView: View {
                                 .foregroundColor(.primary)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    Player.shared.jumpTo(time: line.startTime)
+                                    Task{
+                                        await Player.shared.jumpTo(time: line.startTime)
+                                    }
                                 }
                         }
                         .padding(.horizontal)

@@ -51,6 +51,7 @@ struct ChapterListView: View {
                                 Rectangle()
                                     .fill(Color.accentColor.opacity(0.1))
                                     .frame(width: geometry.size.width * (player.chapterProgress ?? 0.0), height: geometry.size.height)
+                                    .animation(.easeInOut, value: player.chapterProgress)
                             } else {
                                 Rectangle()
                                     .fill(Color.accentColor.opacity(0.1))

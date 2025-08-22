@@ -19,12 +19,12 @@ struct PodcastRowView: View {
                 
 
                 
-                GeometryReader { geometry in
+               
                     CoverImageView(podcast: podcast)
                         .scaledToFill()
-                        .frame(width: geometry.size.width, height: 180)
+                        .frame(height: 180)
                         .clipped()
-                }
+                
 
                 VStack(alignment: .leading){
                     HStack {
@@ -81,16 +81,22 @@ struct PodcastRowView: View {
                     RoundedRectangle(cornerRadius:  8.0)
                         .fill(Color.clear)
                         .ignoresSafeArea()
-                    VStack(alignment: .center) {
+                    HStack(alignment: .center) {
                         
                         ProgressView()
                             .frame(width: 100, height: 50)
                         Text(message)
-                            .padding()
+                            .foregroundStyle(Color.primary)
+                            .font(.title.bold())
                             
                     }
                 }
-                .glassEffect(in: RoundedRectangle(cornerRadius:  8.0))
+                .background{
+                    Capsule()
+                        .fill(.background.opacity(0.3))
+                }
+                .glassEffect(.clear, in: Capsule())
+            
                 .frame(maxWidth: 300, maxHeight: 130, alignment: .center)
                 
              

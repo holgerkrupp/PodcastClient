@@ -27,12 +27,12 @@ struct EpisodeRowView: View {
             VStack(alignment: .center) {
                 ZStack{
                     
-                    GeometryReader { geometry in
+                  
                         CoverImageView(podcast: episode.podcast)
                             .scaledToFill()
-                            .frame(width: geometry.size.width, height: height)
+                            .frame(height: height)
                             .clipped()
-                    }
+                    
                     
 
                         
@@ -57,10 +57,10 @@ struct EpisodeRowView: View {
                                     }
                                     Text(episode.title)
                                         .font(.headline)
-                                        .lineLimit(2)
+                                        .lineLimit(3)
                                         .minimumScaleFactor(0.5)
                                         .foregroundColor(.primary)
-                                    
+                                    Spacer()
                                     HStack {
                                         if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
                                             Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
@@ -76,7 +76,7 @@ struct EpisodeRowView: View {
                                         
                                         
                                     }
-                                    Spacer()
+                                    
                                     HStack {
                                         
                                         if episode.metaData?.completionDate != nil {

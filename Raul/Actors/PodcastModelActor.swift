@@ -332,16 +332,70 @@ actor PodcastModelActor {
     func refreshAllPodcasts() async throws {
         let descriptor = FetchDescriptor<Podcast>()
         let podcasts = try modelContext.fetch(descriptor)
-        
-        for podcast in podcasts {
-            do {
-                _ = try await updatePodcast(podcast.persistentModelID)
-                podcast.message = nil
-            } catch {
-                // print("Failed to update podcast \(podcast.title): \(error)")
+        let ids = podcasts.map(\.persistentModelID)
+
+        let semaphore = AsyncSemaphore(value: 10) // 👈 max 5 at a time
+
+        await withThrowingTaskGroup(of: Void.self) { group in
+            for id in ids {
+                group.addTask {
+                    await semaphore.wait()
+                    do {
+                        let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                        _ = try await worker.updatePodcast(id)
+                    } catch {
+                        throw error
+                    }
+                    await semaphore.signal()
+                }
             }
         }
-        
     }
+    
+    /*
+    func refreshAllPodcasts() async throws {
+        let descriptor = FetchDescriptor<Podcast>()
+        let podcasts = try modelContext.fetch(descriptor)
+        let ids = podcasts.map(\.persistentModelID)
+        // Now leave actor isolation and kick off parallel updates:
+         await withThrowingTaskGroup(of: Void.self) { group in
+            for id in ids {
+                group.addTask {
+                    // Create a new instance of the actor
+                    let actor = PodcastModelActor(modelContainer: self.modelContainer)
+                    _ = try await actor.updatePodcast(id)
+                }
+            }
+        //    await group.waitForAll()
+        }
+    }
+    */
 }
 
+actor AsyncSemaphore {
+    private var permits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(value: Int) {
+        permits = value
+    }
+
+    func wait() async {
+        if permits > 0 {
+            permits -= 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func signal() {
+        if waiters.isEmpty {
+            permits += 1
+        } else {
+            let waiter = waiters.removeFirst()
+            waiter.resume()
+        }
+    }
+}

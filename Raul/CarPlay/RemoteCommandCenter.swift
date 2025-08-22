@@ -84,8 +84,11 @@ class RemoteCommandCenter {
         RCC.changePlaybackPositionCommand.addTarget { event in
             
                 if let event = event as? MPChangePlaybackPositionCommandEvent {
-                    let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000).seconds
-                    self.player.jumpTo(time: time)
+                    Task{
+                        let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000).seconds
+                        await self.player.jumpTo(time: time)
+                        
+                    }
                     return .success
                 }
             

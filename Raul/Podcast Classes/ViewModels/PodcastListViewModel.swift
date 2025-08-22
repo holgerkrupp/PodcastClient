@@ -55,4 +55,50 @@ class PodcastListViewModel: ObservableObject {
        lastFetchDate =  await SubscriptionManager(modelContainer: modelContainer).getLastRefreshDate()
         return lastFetchDate
     }
-}
+    
+    
+
+        @Published var completed: Int = 0
+        @Published var total: Int = 0
+
+
+    func refreshAllPodcasts() async {
+        isLoading = true
+        // fetch podcasts
+        let descriptor = FetchDescriptor<Podcast>()
+        let podcasts = try? modelContainer.mainContext.fetch(descriptor)
+        
+        
+        await MainActor.run { total = podcasts?.count ?? 0; completed = 0 }
+        
+        let semaphore = AsyncSemaphore(value: 5)
+        if let ids = podcasts?.map(\.persistentModelID){
+            await withTaskGroup(of: Void.self) { group in
+                for id in ids {
+                    group.addTask {
+                        await semaphore.wait()
+                        defer { Task { await semaphore.signal() } }
+                        
+                        do {
+                            let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                            _ = try await worker.updatePodcast(id)
+                            
+                            // increment progress on the main actor
+                            await MainActor.run {
+                                self.completed += 1
+                            }
+                        } catch {
+                            // optionally handle errors per feed
+                            await MainActor.run {
+                                self.completed += 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        isLoading = false
+    }
+    }
+    
+

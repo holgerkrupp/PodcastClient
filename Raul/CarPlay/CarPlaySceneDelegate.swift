@@ -9,7 +9,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
 
-        if let playlistActor = try? PlaylistModelActor(){
+        if let playlistActor = try? PlaylistModelActor(modelContainer: ModelContainerManager.shared.container){
             
             let playNext = CarPlayPlayNext(playlistActor: playlistActor, interfaceController: interfaceController)
             self.playNext = playNext
