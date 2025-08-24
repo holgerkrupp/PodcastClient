@@ -190,7 +190,7 @@ struct PodcastDetailView: View {
                         if let desc = podcast.desc {
                             RichText(html: desc)
                                 .linkColor(light: Color.secondary, dark: Color.secondary)
-                                .richTextBackground(.clear)
+                                .backgroundColor(.transparent)
                                 .padding()
                             
                             

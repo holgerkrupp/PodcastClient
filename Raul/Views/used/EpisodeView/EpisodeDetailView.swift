@@ -152,7 +152,7 @@ struct EpisodeDetailView: View {
 
                 RichText(html: episode.content ?? episode.desc ?? "")
                     .linkColor(light: Color.secondary, dark: Color.secondary)
-                    .richTextBackground(.clear)
+                    .backgroundColor(.transparent)
                     .padding()
                     
                   
