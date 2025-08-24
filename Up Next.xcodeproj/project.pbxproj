@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		482249822E4524220001F8E6 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 482249812E4524220001F8E6 /* RichText */; };
+		4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 4803081E2E5B7D6C0059DFA2 /* RichText */; };
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
@@ -74,7 +74,7 @@
 				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
-				482249822E4524220001F8E6 /* RichText in Frameworks */,
+				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
 				48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */,
 				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
 				488591272DE4D66F008604DA /* GlowEffects in Frameworks */,
@@ -140,8 +140,8 @@
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				488591262DE4D66F008604DA /* GlowEffects */,
 				48C7E5E62E10816D007D1CD3 /* SwipeActions */,
-				482249812E4524220001F8E6 /* RichText */,
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
+				4803081E2E5B7D6C0059DFA2 /* RichText */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
@@ -177,8 +177,8 @@
 				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
 				488591252DE4D66F008604DA /* XCLocalSwiftPackageReference "../GlowEffects" */,
 				48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */,
-				482249802E4524220001F8E6 /* XCLocalSwiftPackageReference "../RichText" */,
 				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
+				4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -344,7 +344,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5.1;
+				CURRENT_PROJECT_VERSION = 6;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -370,7 +370,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -382,7 +382,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5.1;
+				CURRENT_PROJECT_VERSION = 6;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -408,7 +408,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -436,10 +436,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		482249802E4524220001F8E6 /* XCLocalSwiftPackageReference "../RichText" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../RichText;
-		};
 		488591252DE4D66F008604DA /* XCLocalSwiftPackageReference "../GlowEffects" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../GlowEffects;
@@ -463,6 +459,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/nuPlay/RichText/";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
 		48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/c-villain/SwipeActions";
@@ -474,8 +478,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		482249812E4524220001F8E6 /* RichText */ = {
+		4803081E2E5B7D6C0059DFA2 /* RichText */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */;
 			productName = RichText;
 		};
 		488591262DE4D66F008604DA /* GlowEffects */ = {

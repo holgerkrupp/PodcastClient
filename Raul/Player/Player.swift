@@ -506,7 +506,7 @@ class Player: NSObject {
             isPlaying = false
         }
         updateLastPlayed()
-        savePlayPosition()
+       // savePlayPosition()
         stopPlaybackUpdates()
         stopNowPlayingInfoUpdater()
     }
@@ -667,12 +667,7 @@ class Player: NSObject {
         guard let episode = currentEpisode else { return }
         Task.detached(priority: .background) {
             await self.episodeActor?.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
-             episode.modelContext?.saveIfNeeded()
-            /*
-            if episode.chapters?.isEmpty == false {
-                await self.chapterActor?.saveAllChanges()
-            }
-          */
+
           
         }
 

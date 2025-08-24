@@ -175,12 +175,18 @@ actor EpisodeActor {
     
     func setPlayPosition(episodeID: UUID, position: TimeInterval) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        let previousPosition = episode.metaData?.playPosition ?? 0.0
+        if abs(previousPosition - position) > 10 {
         if position > episode.metaData?.maxPlayposition ?? 0.0 {
             episode.metaData?.maxPlayposition = position
             
         }
-        episode.metaData?.playPosition = position
-         modelContext.saveIfNeeded()
+       
+        
+        
+            episode.metaData?.playPosition = position
+            modelContext.saveIfNeeded()
+        }
 
     }
     
