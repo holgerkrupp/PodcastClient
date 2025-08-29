@@ -59,7 +59,8 @@ class CarPlayPlayNext {
                     self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { success, error in
                         // print(error ?? "Error loading CarPlay Items")
                     })
-                    await self.refreshEpisodeList()
+                    await self.setupTemplate()
+
                 }
             }
             return item

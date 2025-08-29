@@ -74,6 +74,7 @@ class EpisodeDownloadStatus{
     var type: EpisodeType?
     
     @Relationship(deleteRule: .cascade) var transcriptLines: [TranscriptLineAndTime]?
+    @Relationship(deleteRule: .noAction) var playSessions: [PlaySession]?
     
     var externalFiles:[ExternalFile] = []
     
@@ -84,7 +85,7 @@ class EpisodeDownloadStatus{
     
     
     @Relationship(deleteRule: .cascade) var chapters: [Marker]? = []
-    @Relationship(deleteRule: .cascade) var bookmarks: [Marker]? = []
+    @Relationship(deleteRule: .cascade) var bookmarks: [Bookmark]? = []
     
     @Relationship(deleteRule: .cascade) var metaData: EpisodeMetaData?
     @Relationship var playlist: [PlaylistEntry]? = []
@@ -132,21 +133,7 @@ class EpisodeDownloadStatus{
         return uniqueURL
     }
     
-    var coverFileLocation: URL? {
-        let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
-        let baseURL = podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
-        
-        // Create a sanitized filename
-        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
-        
-        let uniqueURL = baseURL.appendingPathComponent("\(guid ?? id.uuidString)_\(sanitizedFileName)")
-        
-        try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
-                                               withIntermediateDirectories: true,
-                                               attributes: nil)
-        return uniqueURL
-    }
-    
+
     
 
 

@@ -45,6 +45,33 @@ enum MarkerType: String, Codable, Comparable{
     
     
 }
+
+@available(iOS 26.0, macOS 26.0, *)
+@Model
+class Bookmark: Marker {
+    
+    @Relationship(inverse: \Episode.bookmarks) var bookmarkEpisode: Episode?
+    
+    override init() {
+        super.init()
+    }
+    override init(start: Double, title: String, type: MarkerType? = .unknown, imageData: Data? = nil, duration: TimeInterval? = nil){
+        super.init()
+        self.start = start
+        self.title = title
+        self.type = type ?? .unknown
+        self.imageData = imageData
+        self.duration = duration
+        if let duration{
+            self.endTime = start + duration
+        }
+        
+        // print("init Marker \(title)")
+    }
+    
+}
+
+@available(iOS 17.0, macOS 14.0, *)
 @Model
 class Marker: Identifiable, Equatable, Hashable{
     
@@ -59,7 +86,7 @@ class Marker: Identifiable, Equatable, Hashable{
     var duration: TimeInterval?
     var creationtime:Date? = Date()
     @Relationship(inverse: \Episode.chapters) var episode: Episode?
-    @Relationship(inverse: \Episode.bookmarks) var bookmarkEpisode: Episode?
+  
 
     
     var progress:Double? // 0 -1 
@@ -84,6 +111,7 @@ class Marker: Identifiable, Equatable, Hashable{
     
     
     var type : MarkerType = MarkerType.unknown
+   
     
     var shouldPlay:Bool = true
     
@@ -146,3 +174,4 @@ class Marker: Identifiable, Equatable, Hashable{
         hasher.combine(id)
     }
 }
+

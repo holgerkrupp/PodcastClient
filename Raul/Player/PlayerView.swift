@@ -56,6 +56,7 @@ struct PlayerView: View {
                                                     Label("Open in Browser", systemImage: "safari")
                                                 }
                                                 .buttonStyle(.glass)
+                                             //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 8.0))
                                             }
                                             Spacer()
                                             if let url = episode.deeplinks?.first ?? episode.link {

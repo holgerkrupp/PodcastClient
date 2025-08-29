@@ -37,15 +37,14 @@ import Observation
 
      
      func refreshDownloadedFiles() {
-         // print("refreshing downloaded files")
+         
         queue.async { [weak self] in
             guard let self = self else { return }
 
             let fileManager = FileManager.default
 
-            // Recursively collect all file URLs
             let allFiles = (fileManager.enumerator(
-                at: self.monitoredFolder,
+                at: monitoredFolder,
                 includingPropertiesForKeys: nil
             )?.compactMap { $0 as? URL }) ?? []
 
@@ -53,13 +52,7 @@ import Observation
                 var isDir: ObjCBool = false
                 return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
             })
-            /*
-            // print("FILES")
-            for fileURL in updated {
-                // print("file downloaded: \(fileURL)")
-            }
-            // print("FILES END")
-            */
+
             
             Task { @MainActor in
                 

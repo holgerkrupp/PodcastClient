@@ -22,8 +22,11 @@ extension URL{
         var status = URLstatus(lastRequest: Date())
         
 
+
                     let session = URLSession.shared
                     var request = URLRequest(url: self)
+                    request.cachePolicy = .reloadIgnoringLocalCacheData  // Always fetch from server
+
                     request.httpMethod = "HEAD"
         /*
         if let appName = Bundle.main.applicationName{

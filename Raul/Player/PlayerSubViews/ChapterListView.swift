@@ -25,11 +25,7 @@ struct ChapterListView: View {
         }
     }
     
-    private var sortedChapters: [Marker] {
-        preferredChapters.sorted(by: { first, second in
-            first.start ?? 0.0 < second.start ?? 0
-        })
-    }
+    @State private var sortedChapters: [Marker] = []
     
     var body: some View {
         ScrollView {
@@ -77,6 +73,17 @@ struct ChapterListView: View {
                 }
             }
         }
+        .onAppear() {
+            loadChapters()
+        }
+    }
+    
+    private func loadChapters() {
+
+        sortedChapters =
+        preferredChapters.sorted(by: { first, second in
+                first.start ?? 0.0 < second.start ?? 0
+            })
     }
 }
 

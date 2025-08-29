@@ -26,6 +26,7 @@ struct PlayerControllView: View {
                 HStack {
                     AirPlayButtonView()
                         .tint(.primary)
+                        .foregroundColor(.primary)
                         .frame(width: 44, height: 44)
                         
                    Spacer()
@@ -217,6 +218,7 @@ struct PlayerControllView: View {
                 HStack{
                     
                     Spacer()
+                    
                     Button(action:player.skipback){
                         Label {
                             Text("Skip Back")
@@ -264,6 +266,20 @@ struct PlayerControllView: View {
                     .buttonStyle(.borderless)
                     .frame(width: 30)
                     Spacer()
+                    Button(action:player.createBookmark){
+                        Label {
+                            Text("Bookmark")
+                        } icon: {
+                            Image(systemName: "bookmark.fill")
+                                .resizable()
+                                .scaledToFit()
+                            
+                        }
+                        .labelStyle(.iconOnly)
+                        
+                    }
+                    .buttonStyle(.borderless)
+                    .frame(height: 30)
                     
                 }
                 .frame(height: 40)

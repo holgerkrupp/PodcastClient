@@ -70,13 +70,14 @@ class CarPlayNowPlaying {
             guard let self = self else { return }
             self.player.switchPlayBackSpeed()
             }
+        
         buttons.append(rateButton)
         
         let bookmarkButton = CPNowPlayingImageButton(
             image: UIImage(systemName: "bookmark") ?? UIImage()
         ) { [weak self] _ in
             Task{
-                await self?.player.createBookmark()
+                 self?.player.createBookmark()
             }
         }
         buttons.append(bookmarkButton)

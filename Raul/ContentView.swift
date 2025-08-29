@@ -18,14 +18,7 @@ struct ContentView: View {
     
     @State private var search:String = ""
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
-    /*
-    enum Tab: Int {
-        case player, podcasts, inbox, downloads, logger, settings, library, timeline
-    }
-    
-    @State private var selectedTab: Tab = .timeline
-     */
-   // @ObservedObject private var manager = DownloadManager.shared
+
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
     
