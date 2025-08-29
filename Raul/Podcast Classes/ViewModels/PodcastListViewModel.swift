@@ -72,7 +72,7 @@ class PodcastListViewModel: ObservableObject {
         await MainActor.run { total = podcasts?.count ?? 0; completed = 0 }
         
         let semaphore = AsyncSemaphore(value: 5)
-        if let ids = podcasts?.map(\.persistentModelID){
+        if let ids = podcasts?.map(\.id){
             await withTaskGroup(of: Void.self) { group in
                 for id in ids {
                     group.addTask {

@@ -30,6 +30,19 @@ actor EpisodeActor {
         }
     }
     
+    func fetchMarker(byID markerID: UUID) async -> Bookmark? {
+        let predicate = #Predicate<Bookmark> { marker in
+            marker.id == markerID
+        }
+
+        do {
+            let results = try modelContext.fetch(FetchDescriptor<Bookmark>(predicate: predicate))
+            return results.first
+        } catch {
+            print("❌ Error fetching episode for Marker ID: \(markerID), Error: \(error)")
+            return nil
+        }
+    }
 
     
     
@@ -302,8 +315,8 @@ actor EpisodeActor {
     func createBookMarkfor(episodeID: UUID, at playPosition: Double) async{
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
 
-        let bookmarkTitle = episode.transcriptLines?.sorted(by: { $0.startTime < $1.startTime }).last(where: { $0.startTime < playPosition })?.text ?? ""
-        let bookmark = Marker(start: playPosition, title: bookmarkTitle, type: .bookmark)
+        let bookmarkTitle = episode.transcriptLines?.sorted(by: { $0.startTime < $1.startTime }).last(where: { $0.startTime < playPosition })?.text ?? episode.title
+        let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
 
@@ -329,9 +342,7 @@ actor EpisodeActor {
             try? FileManager.default.removeItem(at: file)
         }
         
-        if let file = episode.coverFileLocation{
-            try? FileManager.default.removeItem(at: file)
-        }
+
         
         episode.metaData?.isAvailableLocally = false
         modelContext.saveIfNeeded()
@@ -477,6 +488,15 @@ actor EpisodeActor {
             transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
         }
         return transcript
+    }
+    
+    func deleteMarker(markerID: UUID) async{
+        
+        guard let marker = await fetchMarker(byID: markerID) else { return}
+        marker.episode = nil
+        marker.bookmarkEpisode = nil
+        modelContext.delete(marker)
+        modelContext.saveIfNeeded()
     }
 
 

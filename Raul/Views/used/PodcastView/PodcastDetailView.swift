@@ -206,6 +206,38 @@ struct PodcastDetailView: View {
                 .listRowSeparator(.hidden)
                 .background(.clear)
                 .listRowBackground(Color.clear)
+                .overlay {
+                    if  let message = podcast.message {
+                        
+                        ZStack {
+                            RoundedRectangle(cornerRadius:  8.0)
+                                .fill(Color.clear)
+                                .ignoresSafeArea()
+                            HStack(alignment: .center) {
+                                
+                                ProgressView()
+                                    .frame(width: 100, height: 50)
+                                Text(message)
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                                    
+                            }
+                        }
+                        .background{
+                            RoundedRectangle(cornerRadius:  8.0)
+                                .fill(.background.opacity(0.3))
+                        }
+                     
+                        
+                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                        .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
+                    
+                  
+                        
+                     
+                    }
+                
+                }
                 
                 Section{
                     ForEach(filteredPodcasts.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()}), id: \.id) { episode in
@@ -298,7 +330,7 @@ struct PodcastDetailView: View {
         do {
             let actor = PodcastModelActor(modelContainer: modelContext.container)
           
-               _ =  try await actor.updatePodcast(podcast.persistentModelID, force: true)
+               _ =  try await actor.updatePodcast(podcast.id, force: true)
             podcast.message = nil
             
         } catch {

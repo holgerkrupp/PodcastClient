@@ -65,6 +65,8 @@ struct EpisodeDetailView: View {
                                 .foregroundColor(.primary)
                         }
                     }
+                    .padding()
+                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 8.0))
                 }
                     
                     CoverImageView(episode: episode)

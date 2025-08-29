@@ -25,17 +25,7 @@ final class DownloadViewModel: ObservableObject {
            
         }
     }
-    
-    func startCoverDownload(for episode: Episode) {
-        // print("starting CoverDownload")
-        Task {
-            if let imageURL = episode.imageURL {
-                let item = await DownloadManager.shared.download(from: imageURL, saveTo: episode.coverFileLocation, episodeID: episode.id)
-                // print("saving cover to \(String(describing: episode.coverFileLocation))")
-                self.item = item
-            }
-        }
-    }
+
     
     func pauseDownload() {
        Task {

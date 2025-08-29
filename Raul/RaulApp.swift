@@ -36,6 +36,9 @@ struct RaulApp: App {
             switch phase {
             case .background:
                 bgNewAppRefresh()
+             
+                
+            case .active:
                 cleanUp()
           
                 
@@ -47,7 +50,7 @@ struct RaulApp: App {
            //  await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await bgNewAppRefresh()
        
-                await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
+            await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
 
             
         }

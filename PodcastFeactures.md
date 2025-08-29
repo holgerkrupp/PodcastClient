@@ -52,13 +52,13 @@ Apple popularized podcasting by extending RSS with custom tags. These are widely
 
 Key Tags:
 - [x] <itunes:author> — Show/episode author.
-- [ ] <itunes:subtitle> — Short description.
-- [ ] <itunes:summary> — Full episode/show description.
+- [x] <itunes:subtitle> — Short description.
+- [x] <itunes:summary> — Full episode/show description.
 - [ ] <itunes:explicit> — yes/no/clean for explicit content.
 - [x] <itunes:image href="..." /> — Show or episode artwork.
 - [ ] <itunes:category> — Nested categories (e.g. Arts > Design).
-- [ ] <itunes:episode> — Episode number.
+- [x] <itunes:episode> — Episode number.
 - [ ] <itunes:season> — Season number.
-- [ ] <itunes:title> — Custom title separate from - [ ] <title>.
+- [x] <itunes:title> — Custom title separate from - [ ] <title>.
 - [ ] <itunes:episodeType> — full, trailer, or bonus.
 - [ ] <itunes:block> — Prevent listing (yes).

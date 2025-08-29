@@ -72,6 +72,23 @@ struct PodcastListView: View {
                         }
                     }
                 
+                NavigationLink(destination: BookmarkListView()) {
+                    HStack {
+                        Text("All Bookmarks")
+                            .font(.headline)
+
+                    }
+                }
+                #if DEBUG
+                NavigationLink(destination: PlaySessionDebugView()) {
+                    HStack {
+                        Text("Play Sessions")
+                            .font(.headline)
+
+                    }
+                }
+                #endif
+                
                 
      
                   

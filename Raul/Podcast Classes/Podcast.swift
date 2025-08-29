@@ -46,21 +46,7 @@ final class Podcast: Identifiable {
             .appending(path: "\(title.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "default")", directoryHint: .isDirectory)
     }
     
-    var coverFileLocation: URL? {
-        let fileName = imageURL?.lastPathComponent ?? "cover.jpg"
-        let documentsDirectoryUrl = directoryURL ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-        guard let baseURL = documentsDirectoryUrl else { return nil }
-        
-        // Create a sanitized filename
-        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
-        
-        let uniqueURL = baseURL.appendingPathComponent("\(sanitizedFileName)")
-        
-        try? FileManager.default.createDirectory(at: uniqueURL.deletingLastPathComponent(),
-                                               withIntermediateDirectories: true,
-                                               attributes: nil)
-        return uniqueURL
-    }
+
     
     init(feed: URL) {
         self.feed = feed
@@ -71,6 +57,7 @@ final class Podcast: Identifiable {
 
 
 @Model final class PodcastMetaData{
+    var id: UUID? = UUID()
 
     var lastRefresh:Date?
     

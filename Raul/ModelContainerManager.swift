@@ -26,6 +26,9 @@ class ModelContainerManager: ObservableObject {
                         Playlist.self,
                         PlaylistEntry.self,
                         Marker.self,
+                        Bookmark.self,
+                        RateSegment.self,
+                        PlaySession.self,
                     configurations: configuration
                 )
                 
@@ -40,6 +43,9 @@ class ModelContainerManager: ObservableObject {
                         Playlist.self,
                         PlaylistEntry.self,
                         Marker.self,
+                    Bookmark.self,
+                    RateSegment.self,
+                    PlaySession.self,
                     configurations: configuration
                 )
             }

@@ -111,7 +111,6 @@ class AITranscripts {
         let result = "WEBVTT\n\n" + formatted
 
         
-        // print("formating finished")
         return result
     }
     

@@ -92,12 +92,15 @@ struct PodcastRowView: View {
                     }
                 }
                 .background{
-                    Capsule()
+                    RoundedRectangle(cornerRadius:  8.0)
                         .fill(.background.opacity(0.3))
                 }
-                .glassEffect(.clear, in: Capsule())
+             
+                
+                .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
             
-                .frame(maxWidth: 300, maxHeight: 130, alignment: .center)
+          
                 
              
             }

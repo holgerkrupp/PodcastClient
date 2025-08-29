@@ -30,6 +30,9 @@ class Player: NSObject {
 
         return PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
     }()
+    
+    // Added PlaySessionTrackerActor for session tracking integration
+    let playSessionTracker = PlaySessionTrackerActor(modelContainer: ModelContainerManager.shared.container)
 
     
 
@@ -84,6 +87,9 @@ class Player: NSObject {
         loadLastPlayedEpisode()
         loadPlayBackSpeed()
         listenToEvent()
+        Task{
+            await playSessionTracker.startRecovery()
+        }
         pause()
         addChangeSettingsObserver()
         Task{
@@ -131,6 +137,14 @@ class Player: NSObject {
                 }
             }
         }
+        Task {
+            if currentEpisode != nil {
+                await playSessionTracker.handlePlaybackRateChange(
+                    to: playbackRate,
+                    at: playPosition
+                )
+            }
+        }
     }
     
     func switchPlayBackSpeed() {
@@ -143,6 +157,7 @@ class Player: NSObject {
             currentSpeedIndex = (currentSpeedIndex + 1) % playbackSpeeds.count
             let newRate = playbackSpeeds[currentSpeedIndex]
             playbackRate = newRate
+            updateNowPlayingInfo()
             
     }
     
@@ -487,6 +502,12 @@ class Player: NSObject {
             
             await engine.setRate(playbackRate)
             isPlaying = true
+            
+            // New session tracking integration: start or update the play session
+            if let currentEpisode = currentEpisode {
+                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+                await playSessionTracker.startOrUpdateSession(episode: currentEpisode, position: playPosition, rate: playbackRate, appVersion: appVersion)
+            }
         }
 
        
@@ -504,6 +525,11 @@ class Player: NSObject {
         Task { 
             await engine.pause()
             isPlaying = false
+            
+            // New session tracking integration: pause the play session
+            if let currentEpisode = currentEpisode {
+                await playSessionTracker.pauseSession(at: playPosition)
+            }
         }
         updateLastPlayed()
        // savePlayPosition()
@@ -778,9 +804,11 @@ class Player: NSObject {
         }
     }
     
-    func createBookmark() async{
-        if  let currentEpisodeID{
-            await EpisodeActor(modelContainer: ModelContainerManager.shared.container).createBookMarkfor(episodeID: currentEpisodeID, at: playPosition)
+    func createBookmark() {
+        Task{
+            if  let currentEpisodeID{
+                await EpisodeActor(modelContainer: ModelContainerManager.shared.container).createBookMarkfor(episodeID: currentEpisodeID, at: playPosition)
+            }
         }
     }
     

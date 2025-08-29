@@ -106,8 +106,7 @@ actor SubscriptionManager:NSObject{
                     let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url)
                     
                 } catch {
-                    let errorString = "Error: \(error)"
-                    // print(errorString)
+                    print(error)
                 }
                 
                 // print("end subscribe for \(url.absoluteString)")
@@ -127,8 +126,7 @@ actor SubscriptionManager:NSObject{
                     let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url)
                     
                 } catch {
-                    let errorString = "Error: \(error)"
-                    // print(errorString)
+                     print(error)
                 }
 
             }
@@ -149,7 +147,7 @@ actor SubscriptionManager:NSObject{
         for podcast in podcasts.sorted(by: { lhs, rhs in
             lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
         }).filter({$0.metaData?.feedUpdated != true}){
-            let new = await PodcastModelActor(modelContainer: modelContainer).checkIfFeedHasBeenUpdated(podcast.persistentModelID)
+            let new = await PodcastModelActor(modelContainer: modelContainer).checkIfFeedHasBeenUpdated(podcast.id)
             if new == true{
                 shouldRefresh = true
             }
@@ -167,13 +165,13 @@ actor SubscriptionManager:NSObject{
 
             setLastRefreshDate()
             fetchData()
-        let all = podcasts.count
+        //let all = podcasts.count
         var updated = 0
             for podcast in podcasts.sorted(by: { lhs, rhs in
                 lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
             }).filter({$0.metaData?.feedUpdated != false}){
              
-                let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.persistentModelID)
+                let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.id)
                 podcast.message = nil
                 if new == true { updated += 1}
             }
