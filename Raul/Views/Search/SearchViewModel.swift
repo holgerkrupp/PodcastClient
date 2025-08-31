@@ -5,9 +5,9 @@ import fyyd_swift
 @MainActor
 class PodcastSearchViewModel: ObservableObject {
     @Published var searchText = ""
-    @Published var results: [FyydPodcast] = []
+    @Published var results: [PodcastFeed] = []
     @Published var isLoading = false
-    @Published var hotPodcasts: [FyydPodcast] = []
+    @Published var hotPodcasts: [PodcastFeed] = []
     @Published var languages: [String] = [] {
         didSet {
             setLanguage()
@@ -63,14 +63,33 @@ class PodcastSearchViewModel: ObservableObject {
         }
         isLoading = true
         
-        
-        if searchText.isValidURL, let url = URL(string: searchText) {
-            // print("valid URL found")
+        var urlString = searchText
+        if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
+            print("No scheme found in URL. Prepending https://")
+            urlString = "https://" + urlString
+        }
+        if urlString.isValidURL, let url = URL(string: urlString) {
+            print("Attempting to resolve podcast/feed URL: \(url)")
+            Task {
+                if await urlString.isReachableURL() {
+                    
+                    
+                    if let feedURL = await resolvePodcastFeedURL(from: url) {
+                        print("Feed detected: \(feedURL)")
+                        await MainActor.run {
+                            self.singlePodcast = PodcastFeed(url: feedURL)
+                        }
+                    } else {
+                        print("No explicit podcast feed found in response. Using entered URL: \(url)")
+                        await MainActor.run {
+                            self.singlePodcast = PodcastFeed(url: url) // fallback (might be website)
+                        }
+                    }
+                    await MainActor.run { self.isLoading = false }
+                }
+                return
+            }
             
-            singlePodcast = PodcastFeed(url: url)
-     
-            isLoading = false
-            return
         } else {
             singlePodcast = nil
             
@@ -83,7 +102,7 @@ class PodcastSearchViewModel: ObservableObject {
                 let fyydPodcasts = podcasts.map(PodcastFeed.init)
                 await MainActor.run {
                     self.searchResults = (self.searchResults + fyydPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
-                    self.results = podcasts
+                    self.results = podcasts.map(PodcastFeed.init)
                 //    fyydFinished = true
                      self.isLoading = false
                 }
@@ -101,10 +120,53 @@ class PodcastSearchViewModel: ObservableObject {
         }
         
         
-
+        
     }
     
-  
+    /// Try to determine if a URL is an XML podcast feed. If not, try extracting a feed URL from HTML.
+    private func resolvePodcastFeedURL(from url: URL) async -> URL? {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            if let httpResp = response as? HTTPURLResponse {
+                print("Fetched URL: \(url) [status: \(httpResp.statusCode)]")
+            }
+            let text = String(data: data, encoding: .utf8) ?? ""
+            // Quick heuristic: check if it's XML with <rss> or <feed>
+            if text.contains("<rss") || text.contains("<feed") {
+                print("XML feed signature detected in body (<rss> or <feed>)")
+                return url
+            }
+            print("No XML root found, attempting to extract feed link from HTML...")
+            if let feedURL = extractFeedURL(fromHTML: text, baseURL: url) {
+                print("Extracted feed URL from HTML: \(feedURL)")
+                return feedURL
+            }
+            print("No feed link found in HTML.")
+        } catch {
+            print("Error fetching or analyzing URL: \(url) - \(error)")
+        }
+        return nil
+    }
+    
+    /// Extract feed URL from HTML meta/link tags.
+    private func extractFeedURL(fromHTML html: String, baseURL: URL) -> URL? {
+        // Simple regex for <link rel="alternate" type="application/rss+xml" href="...">
+        let pattern = #"<link[^>]+rel=["']alternate["'][^>]+type=["']application/(rss|atom)\+xml["'][^>]+href=["']([^"'>]+)["']"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+            let nsrange = NSRange(html.startIndex..<html.endIndex, in: html)
+            if let match = regex.firstMatch(in: html, options: [], range: nsrange),
+                let hrefRange = Range(match.range(at: 2), in: html) {
+                let href = String(html[hrefRange])
+                if let absURL = URL(string: href, relativeTo: baseURL)?.absoluteURL {
+                    print("Found alternate feed in HTML: \(absURL)")
+                    return absURL
+                }
+            }
+        }
+        print("No alternate feed link found in HTML body.")
+        return nil
+    }
+
     
     func parseURL(feedURL: URL) async throws -> [String:String]{
         let (data, _) = try await URLSession.shared.data(from: feedURL)
@@ -143,9 +205,14 @@ class PodcastSearchViewModel: ObservableObject {
         isLoading = true
         let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage, count: 30)
         await MainActor.run {
-            hotPodcasts = hotPodcastsList ?? []
+            if let hotPodcastsList{
+                let fyydpodcasts: [PodcastFeed] = hotPodcastsList.map(PodcastFeed.init)
+                hotPodcasts = fyydpodcasts
+                
+            }else{
+                hotPodcasts = []
+            }
             isLoading = false
         }
     }
 }
-

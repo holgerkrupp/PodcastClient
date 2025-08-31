@@ -44,13 +44,35 @@ extension String {
 
 extension String {
     var isValidURL: Bool {
-        let detector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        if let match = detector.firstMatch(in: self, options: [], range: NSRange(location: 0, length: self.utf16.count)) {
-            // it is a link, if the match covers the whole string
-            return match.range.length == self.utf16.count
-        } else {
+        // Use NSDataDetector to check for a valid link
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        guard let detector else { return false }
+        guard let match = detector.firstMatch(in: self, options: [], range: NSRange(location: 0, length: self.utf16.count)),
+              match.range.length == self.utf16.count,
+              let url = URL(string: self),
+              let scheme = url.scheme, ["http", "https"].contains(scheme.lowercased()),
+              let host = url.host, host.contains(".")
+        else {
             return false
         }
+        return true
+    }
+    
+    /// Checks if the string is a valid, reachable URL by performing a HEAD request.
+    func isReachableURL(timeout: TimeInterval = 5.0) async -> Bool {
+        guard self.isValidURL, let url = URL(string: self) else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = timeout
+        do {
+            let (response, _) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse {
+                return (200..<400).contains(httpResponse.statusCode)
+            }
+        } catch {
+            // ignore error, return false
+        }
+        return false
     }
 }
 
@@ -103,3 +125,4 @@ extension String{
         }
     }
 }
+

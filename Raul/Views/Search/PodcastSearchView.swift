@@ -54,8 +54,8 @@ struct PodcastSearchView: View {
                 
             } else if !viewModel.results.isEmpty{
                 
-                ForEach(viewModel.results, id: \.id) { podcast in
-                    SubscribeToPodcastView(fyydPodcastFeed: podcast)
+                ForEach(viewModel.results, id: \.self) { podcast in
+                    SubscribeToPodcastView(newPodcastFeed: podcast)
                         .modelContext(context)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)

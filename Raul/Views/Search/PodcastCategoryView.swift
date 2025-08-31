@@ -29,8 +29,8 @@ struct PodcastCategoryView: View {
                             .foregroundColor(.secondary)
                             .padding()
                     } else {
-                        ForEach(viewModel.podcasts, id: \.id) { podcast in
-                            SubscribeToPodcastView(fyydPodcastFeed: podcast)
+                        ForEach(viewModel.podcasts, id: \.self) { podcast in
+                            SubscribeToPodcastView(newPodcastFeed: podcast)
                                 .modelContext(context)
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
@@ -82,7 +82,7 @@ private struct PodcastCategoryViewLeaf: View {
     }
 
     var body: some View {
-        Group {
+        Group{
             if viewModel.isLoading && viewModel.podcasts.isEmpty {
                 ProgressView("Loading podcasts...")
             } else if viewModel.podcasts.isEmpty {
@@ -91,8 +91,8 @@ private struct PodcastCategoryViewLeaf: View {
                     .padding()
             } else {
                 List {
-                    ForEach(viewModel.podcasts, id: \.id) { podcast in
-                        SubscribeToPodcastView(fyydPodcastFeed: podcast)
+                    ForEach(viewModel.podcasts, id: \.self) { podcast in
+                        SubscribeToPodcastView(newPodcastFeed: podcast)
                             .modelContext(context)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -122,7 +122,7 @@ private struct PodcastCategoryViewLeaf: View {
 @MainActor
 final class CategoryPodcastViewModel: ObservableObject {
     @Published var categories: [FyydCategory]
-    @Published var podcasts: [FyydPodcast] = []
+    @Published var podcasts: [PodcastFeed] = []
     @Published var isLoading = false
     
     @Published var paging: PagingInfo? = nil
@@ -177,12 +177,14 @@ final class CategoryPodcastViewModel: ObservableObject {
         let nextPage = loadNextPage ? ((paging?.next_page) ?? (currentPage + 1)) : 0
         Task {
             let result = await fyydManager.getPodcastsByCategory(id: category.id, count: 30, page: nextPage)
+            
             await MainActor.run {
                 if let result = result {
+                    let fyydpodcasts = result.podcasts.map(PodcastFeed.init)
                     if loadNextPage {
-                        self.podcasts.append(contentsOf: result.podcasts)
+                        self.podcasts.append(contentsOf: fyydpodcasts)
                     } else {
-                        self.podcasts = result.podcasts
+                        self.podcasts = fyydpodcasts
                     }
                     self.paging = result.paging
                     self.currentPage = nextPage

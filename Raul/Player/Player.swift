@@ -137,6 +137,13 @@ class Player: NSObject {
                 }
             }
         }
+        
+        var info: [String: Any] = [
+            MPNowPlayingInfoPropertyPlaybackRate: playbackRate
+        ]
+        
+        nowPlayingInfoActor.updateInfo(info)
+        
         Task {
             if currentEpisode != nil {
                 await playSessionTracker.handlePlaybackRateChange(
@@ -536,6 +543,7 @@ class Player: NSObject {
        // savePlayPosition()
         stopPlaybackUpdates()
         stopNowPlayingInfoUpdater()
+        updateNowPlayingInfo()
     }
     
     func skipback(){
