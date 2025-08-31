@@ -160,6 +160,7 @@ struct PodcastListView: View {
                     .disabled(viewModel.isLoading)
                 }
             }
+            /*
             .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
                 Button("OK") { viewModel.errorMessage = nil }
             } message: {
@@ -167,6 +168,7 @@ struct PodcastListView: View {
                     Text(message)
                 }
             }
+            */
             }
 
        

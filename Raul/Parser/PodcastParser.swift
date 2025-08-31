@@ -290,6 +290,7 @@ extension PodcastParser {
     /// - Parameter url: The URL of the first (or any) feed page.
     /// - Returns: The merged podcast dictionary with all episodes.
     static func fetchAllPages(from url: URL) async throws -> [String: Any] {
+        print("fetching all pages from: \(url)")
         var nextURL: URL? = url
         var allEpisodes: [Any] = []
         var podcastHeader: [String: Any] = [:]

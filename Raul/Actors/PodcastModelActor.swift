@@ -46,131 +46,188 @@ actor PodcastModelActor {
         modelContext.saveIfNeeded()
     }
     
+
+    
+    func safeFetchMeta(_ id: PersistentIdentifier) -> PodcastMetaData? {
+        let descriptor = FetchDescriptor<PodcastMetaData>(
+            predicate: #Predicate { $0.persistentModelID == id }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
+    
     func checkIfFeedHasBeenUpdated(_ podcastUUID: UUID) async -> Bool? {
-        // 1) Fetch the podcast
+        // 1. Fetch podcast
         guard let podcast = await fetchPodcast(byID: podcastUUID) else { return nil }
+        let podcastID = podcast.persistentModelID
 
         // Ensure metaData exists
-        if podcast.metaData == nil {
-            let metaData = PodcastMetaData()
-            modelContext.insert(metaData)
-            podcast.metaData = metaData
-            modelContext.saveIfNeeded()
+        var metaID = podcast.metaData?.persistentModelID
+        if metaID == nil {
+            let meta = PodcastMetaData()
+            modelContext.insert(meta)
+            podcast.metaData = meta
+            try? modelContext.save()
+            metaID = meta.persistentModelID
         }
 
-        guard let meta = podcast.metaData else { return nil }
+        // --- SAFELY snapshot lastRefresh ---
+        var lastRefreshSnapshot: Date? = nil
+        if let metaID,
+           let freshMeta = safeFetchMeta(metaID) {
+            lastRefreshSnapshot = freshMeta.lastRefresh
+        }
 
-        // 2) Snapshot only plain values / IDs
-        let podcastIDRef = podcast.persistentModelID
-        let metaIDRef = meta.persistentModelID
-        let lastRefreshSnapshot = meta.lastRefresh
-        let feedRef = podcast.feed   // must be a value type / URL / service object, not a model
+        // Snapshot value properties (safe)
+        let feedURL = podcast.feed
 
-        // 3) Async work using snapshots
-        let serverLastModified = try? await feedRef?.status()?.lastModified
+        // --- Async work with only value types ---
+        let serverLastModified = try? await feedURL?.status()?.lastModified
 
-        // 4) Re-fetch fresh instances
+        // --- Re-fetch fresh models after await ---
         guard
-            let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast,
-            let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData
+            let freshPodcast = modelContext.model(for: podcastID) as? Podcast,
+            let metaID,
+            let freshMeta = modelContext.model(for: metaID) as? PodcastMetaData
         else {
-            return nil // deleted while we awaited
-        }
-
-        // 5) Safe updates
-        if let server = serverLastModified {
-            if let last = lastRefreshSnapshot {
-                if server > last {
-                    freshPodcast.message = nil
-                    await setFeedUpdated(metaIDRef, to: true)
-                    freshMeta.lastRefresh = server
-                    freshMeta.feedUpdateCheckDate = Date()
-                    modelContext.saveIfNeeded()
-                    return true
-                } else {
-                    freshPodcast.message = nil
-                    await setFeedUpdated(metaIDRef, to: false)
-                    freshMeta.feedUpdateCheckDate = Date()
-                    modelContext.saveIfNeeded()
-                    return false
-                }
-            } else {
-                // never refreshed before
-                freshPodcast.message = nil
-                await setFeedUpdated(metaIDRef, to: true)
-                freshMeta.lastRefresh = server
-                freshMeta.feedUpdateCheckDate = Date()
-                modelContext.saveIfNeeded()
-                return true
-            }
-        } else {
-            // server gave no Last-Modified
-            freshPodcast.message = nil
-            await setFeedUpdated(metaIDRef, to: nil)
-            freshMeta.feedUpdateCheckDate = Date()
-            modelContext.saveIfNeeded()
             return nil
         }
+
+        // --- Compare & update ---
+        if let serverLastModified,
+           serverLastModified > (lastRefreshSnapshot ?? .distantPast) {
+            
+                await updateLastRefresh(for: metaID)
+
+            /*
+            
+                let descriptor = FetchDescriptor<PodcastMetaData>(
+                    predicate: #Predicate { $0.persistentModelID == metaID }
+                )
+                if let metaForUpdate = try? modelContext.fetch(descriptor).first {
+                    metaForUpdate.lastRefresh = Date()
+                    try? modelContext.save()
+                }
+            */
+            
+            return true
+        }
+
+        return false
+    }
+    
+    
+    func updateLastRefresh(for metadataID: PersistentIdentifier) async {
+        let descriptor = FetchDescriptor<PodcastMetaData>(
+            predicate: #Predicate { $0.persistentModelID == metadataID }
+        )
+        var metaData = try? modelContext.fetch(descriptor).first
+        metaData?.lastRefresh = Date()
+        modelContext.saveIfNeeded()
     }
 
-    func updatePodcast(_ podcastID: UUID, force: Bool? = false, silent: Bool? = false) async throws -> Bool{
-        guard let podcast = await fetchPodcast(byID: podcastID) else { return false}
+    func updatePodcast(_ podcastID: UUID, force: Bool? = false, silent: Bool? = false) async throws -> Bool {
+        // Fetch podcast just long enough to snapshot IDs & primitives
+        guard let podcast = await fetchPodcast(byID: podcastID) else { return false }
         guard let feedURL = podcast.feed else { return false }
- 
 
+    //    print("updating podcast: \(podcast.title ?? "unknown")")
+        let podcastIDRef = podcast.persistentModelID
+        var metaIDRef = podcast.metaData?.persistentModelID
+
+        // Ensure metaData exists before any await
         if podcast.metaData == nil {
-            print("updatePodcast - no metadata - \(podcast.title)")
-            let metaData = PodcastMetaData()
-            
-            modelContext.insert(metaData)
-            podcast.metaData = metaData
+            let meta = PodcastMetaData()
+            modelContext.insert(meta)
+            podcast.metaData = meta
+            modelContext.saveIfNeeded()
+            metaIDRef = meta.persistentModelID
         }
 
-        podcast.metaData?.message = "Refreshing Podcast ..."
-        podcast.message = "Refreshing Podcast ..."
-        
-        podcast.metaData?.isUpdating = true
+        // Snapshot some plain values if needed
+        let titleSnapshot = podcast.title
+
+        // ⚠️ After this point: do not use `podcast` directly across awaits
+        // ----------------------------------------------------------------
+
+        // Update messages (still safe, no await yet)
+        if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+            freshMeta.message = "Refreshing Podcast ..."
+            freshMeta.isUpdating = true
+        }
+        /*
+        if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+            freshPodcast.message = "Refreshing Podcast ..."
+        }
+         */
         modelContext.saveIfNeeded()
-        
-        podcast.metaData?.message = "Checking if podcast has been updated."
-        
 
+        // --- FIRST await boundary ---
         if force == false {
-            
             guard await checkIfFeedHasBeenUpdated(podcastID) != false else {
-                podcast.metaData?.isUpdating = false
-                podcast.message = nil
+             //   print("\(podcast.title ?? "unknown") not updated")
 
-                return false }
+                if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                    freshMeta.isUpdating = false
+                    freshMeta.message = nil
+                }
+                if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                    freshPodcast.message = nil
+                }
+                modelContext.saveIfNeeded()
+                return false
+            }
         }
 
-        podcast.metaData?.message = "Downloading Podcast Feed."
-        podcast.message = "Downloading Podcast Feed."
-
-        
+        // --- SECOND await boundary ---
         var request = URLRequest(url: feedURL)
-        request.cachePolicy = .reloadIgnoringLocalCacheData  // Always fetch from server
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, _) = try await URLSession.shared.data(for: request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-       
+        // Re-fetch podcast after await
         
-        let parser = XMLParser(data: data)
-        let podcastParser = PodcastParser()
-        parser.delegate = podcastParser
-        
-        podcast.metaData?.message = "Reading Podcast Feed."
+        guard
+              let metaIDRef,
+              let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData else {
+            return false
+        }
+         
+      //  print("\(podcast.title ?? "unknown") reading feed")
+
+        // Safe updates again
+        freshMeta.message = "Reading Podcast Feed."
         podcast.message = "Reading Podcast Feed."
+        modelContext.saveIfNeeded()
 
-
+        // Parse XML
         let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
+
+        // Re-fetch again after await
+   
+
+        // Update podcast details safely
+        freshMeta.message = "Updating Podcast details"
+        podcast.message = "Updating Podcast details"
+        modelContext.saveIfNeeded()
+        podcast.title = fullPodcast["title"] as? String ?? ""
+        podcast.author = fullPodcast["itunes:author"] as? String
+        podcast.desc = fullPodcast["description"] as? String
+        podcast.copyright = fullPodcast["copyright"] as? String
+        podcast.language = fullPodcast["language"] as? String
+        podcast.link = URL(string: fullPodcast["link"] as? String ?? "")
+        if let imageURL = fullPodcast["coverImage"] as? String {
+            podcast.imageURL = URL(string: imageURL)
+        }
+        podcast.lastBuildDate = Date.dateFromRFC1123(
+            dateString: fullPodcast["lastBuildDate"] as? String ?? ""
+        )
 
         podcast.metaData?.message = "Updating Podcast details"
         podcast.message = "Updating Podcast details"
-
+        modelContext.saveIfNeeded()
             podcast.title = fullPodcast["title"] as? String ?? ""
             podcast.author = fullPodcast["itunes:author"] as? String
             podcast.desc = fullPodcast["description"] as? String
-            podcast.copyright = fullPodcast["copyright"] as? String 
+            podcast.copyright = fullPodcast["copyright"] as? String
             
             podcast.language = fullPodcast["language"] as? String
             
@@ -200,12 +257,12 @@ actor PodcastModelActor {
                 
                 podcast.metaData?.message = "Updating Podcast Episodes"
                 podcast.message = "Updating Podcast Episodes"
-
+                modelContext.saveIfNeeded()
                 
                 var newEpisodes: [Episode] = []
                
                 for episodeData in episodesData {
-                    print("Episode \(episodeData["title"] ?? "unknown") found")
+                 //   print("Episode \(episodeData["title"] ?? "unknown") found")
                     let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "")
                     if let episodeID {
                       //  // print("Episode exists")
@@ -231,7 +288,7 @@ actor PodcastModelActor {
                         }
                     
                     }else{
-                        print("Episode \(episodeData["title"] ?? "unknown") already exists")
+                       // print("Episode \(episodeData["title"] ?? "unknown") already exists")
 
                     }
                 }
@@ -240,12 +297,15 @@ actor PodcastModelActor {
             }
 
         podcast.message = nil
-                podcast.metaData?.lastRefresh = Date()
-                podcast.metaData?.isUpdating = false
-                modelContext.saveIfNeeded()
-            
+
+        // Final updates
+        podcast.message = nil
+        await updateLastRefresh(for: freshMeta.persistentModelID)
+        freshMeta.isUpdating = false
+        modelContext.saveIfNeeded()
+
         return true
- }
+    }
     
 
 

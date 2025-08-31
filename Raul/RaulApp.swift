@@ -24,12 +24,14 @@ struct RaulApp: App {
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
+            
                     .onAppear {
                         let manager = downloadedFilesManager  // Capture outside the @Sendable closure
                         Task { @Sendable in
                             await DownloadManager.shared.injectDownloadedFilesManager(manager)
                         }
                     }
+             
             
         }
         .onChange(of: phase, {

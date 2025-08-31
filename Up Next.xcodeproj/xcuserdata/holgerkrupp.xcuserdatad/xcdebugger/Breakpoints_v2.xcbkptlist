@@ -5,32 +5,19 @@
    version = "2.0">
    <Breakpoints>
       <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.SymbolicBreakpoint">
-         <BreakpointContent
-            uuid = "971FFDD0-B722-407D-BF7A-5DE5E6EEE650"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            symbolName = "print_cycle"
-            moduleName = "">
-            <Locations>
-            </Locations>
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "C67E9A5E-47F6-4391-9492-21BE01F7E890"
-            shouldBeEnabled = "Yes"
+            uuid = "B52FD267-11E3-4402-B454-4B0176CB5EE9"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "../../../../var/folders/7x/fjrdgpw14pg9gbcmffz4ltg80000gn/T/swift-generated-sources/@__swiftmacro_4Raul0027BookmarkListViewswift_ovFAhfMX18_39_9PredicatefMf_.swift"
+            filePath = "Raul/RaulApp.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1"
-            endingLineNumber = "1"
-            landmarkName = "init(podcast:episode:)"
-            landmarkType = "37">
+            startingLineNumber = "22"
+            endingLineNumber = "22"
+            landmarkName = "body"
+            landmarkType = "24">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

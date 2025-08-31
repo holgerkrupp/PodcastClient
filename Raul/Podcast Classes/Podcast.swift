@@ -36,7 +36,7 @@ final class Podcast: Identifiable {
     var funding: [FundingInfo] = [] // See also: Episode.funding
     
     
-     var message: String?
+    @Transient var message: String?
     
     
     // calculated properties that will be generated out of existing properties.

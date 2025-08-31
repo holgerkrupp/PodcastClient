@@ -7,50 +7,6 @@
 
 import SwiftUI
 import RichText
-/*
-enum MaterialOption: String, CaseIterable, Identifiable, Hashable {
-    case ultraThin, thin, regular, thick, ultraThick, bar
-    var id: Self { self }
-    var material: Material {
-        switch self {
-        case .ultraThin: return .ultraThin
-        case .thin: return .thin
-        case .regular: return .regular
-        case .thick: return .thick
-        case .ultraThick: return .ultraThick
-        case .bar: return .bar
-        }
-    }
-    var displayName: String {
-        switch self {
-        case .ultraThin: return "Ultra Thin"
-        case .thin: return "Thin"
-        case .regular: return "Regular"
-        case .thick: return "Thick"
-        case .ultraThick: return "Ultra Thick"
-        case .bar: return "Bar"
-        }
-    }
-}
-
-Section {
-    Picker("Material", selection: $selectedMaterialOption) {
-        ForEach(materialOptions) { option in
-            Text(option.displayName).tag(option)
-        }
-    }
-    .pickerStyle(.segmented)
-}
-.listRowSeparator(.hidden)
-.background(.clear)
-.listRowBackground(Color.clear)
- let materialOptions: [MaterialOption] = MaterialOption.allCases
-
-@State private var selectedMaterialOption: MaterialOption = .regular
- 
- _selectedMaterialOption = State(initialValue: materialOptions.first!)
-
-*/
 
 struct PodcastDetailView: View {
 
@@ -173,14 +129,15 @@ struct PodcastDetailView: View {
                                 }
                             }
                         }
-                        
-                        
-                        
-                        
-                        
-                        
-                        
-                        
+                        /*
+                    
+                            NavigationLink(destination: BookmarkListView(podcast: podcast)) {
+                                Label("Show Bookmarks", systemImage: "bookmark.fill")
+                                   
+                            }
+                            .buttonStyle(.glass)
+                            .padding()
+                        */
                         
                         if let copyright = podcast.copyright {
                             Text(copyright)
