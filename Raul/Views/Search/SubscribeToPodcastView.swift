@@ -28,100 +28,35 @@ struct SubscribeToPodcastView: View {
     @State private var errorMessage: String?
     @State private var isSubscribed: Bool = false
     @State private var subscribing: Bool = false
+    @State private var loading: Bool = false
     @Query private var allPodcasts: [Podcast]
     
-    @State var newPodcastFeed: PodcastFeed?
-    @State var fyydPodcastFeed: FyydPodcast?
+    @Bindable var newPodcastFeed: PodcastFeed
     
-    @State private var title: String = ""
-    @State private var imgURL: String? = nil
-    @State private var author: String? = nil
-    @State private var lastpub: Date? = nil
-    @State private var description: String? = nil
-    
-    private var xmlURL: String
+
     
     @State private var canBeSubscribed: Bool = false
     
     private var id: Int
     
-    init(fyydPodcastFeed: FyydPodcast) {
-        id = fyydPodcastFeed.id
-        self.fyydPodcastFeed = fyydPodcastFeed
-        xmlURL =  fyydPodcastFeed.xmlURL ?? ""
-        
-        self._title = State(initialValue: fyydPodcastFeed.title ?? "")
-        self._imgURL = State(initialValue: fyydPodcastFeed.imgURL)
-        self._author = State(initialValue: fyydPodcastFeed.author)
-        self._lastpub = State(initialValue: ISO8601DateFormatter().date(from: (fyydPodcastFeed.lastpub)))
-        self._description = State(initialValue: fyydPodcastFeed.description)
-        self.canBeSubscribed = true
 
-        _allPodcasts = Query()
-    }
     
     init(newPodcastFeed: PodcastFeed) {
+        print("view is loaded with newPodcastFeed")
         id = newPodcastFeed.hashValue
         self.newPodcastFeed = newPodcastFeed
-        xmlURL =  newPodcastFeed.url?.absoluteString ?? ""
         
-        self._title = State(initialValue: newPodcastFeed.title ?? "")
-        self._imgURL = State(initialValue: newPodcastFeed.artworkURL?.absoluteString ?? "")
-        self._author = State(initialValue: newPodcastFeed.artist)
-        self._lastpub = State(initialValue: newPodcastFeed.lastRelease)
-        self._description = State(initialValue: newPodcastFeed.description)
+
         self.canBeSubscribed = true
         _allPodcasts = Query()
     }
-    
-    private func fetchAndPopulateFeedIfNeeded() {
-        guard let newPodcastFeed = newPodcastFeed, let url = newPodcastFeed.url else { return }
-        // If we already have most information, skip
-        let needsFetch = (newPodcastFeed.title?.isEmpty ?? true) || newPodcastFeed.artist == nil || newPodcastFeed.description == nil || newPodcastFeed.artworkURL == nil || newPodcastFeed.lastRelease == nil
-        guard needsFetch else { return }
-        Task {
-            do {
-                let parsed = try await PodcastParser.fetchAllPages(from: url)
-                await MainActor.run {
-                    // Assign parsed values to local state and newPodcastFeed
-                    let newTitle = parsed["title"] as? String
-                    let newDescription = parsed["description"] as? String
-                    let newAuthor = (parsed["itunes:author"] as? String) ?? (parsed["author"] as? String)
-                    let newArtwork = parsed["coverImage"] as? String
-                    let newLastRelease = parsed["lastBuildDate"] as? String
-                    self.title = newTitle ?? self.title
-                    self.description = newDescription ?? self.description
-                    self.author = newAuthor ?? self.author
-                    self.imgURL = newArtwork ?? self.imgURL
-                    if let lastBuildDateString = newLastRelease, let date = Date.dateFromRFC1123(dateString: lastBuildDateString) {
-                        self.lastpub = date
-                    }
-                    // Update newPodcastFeed as well
-                    self.newPodcastFeed?.title = newTitle ?? self.newPodcastFeed?.title
-                    self.newPodcastFeed?.description = newDescription ?? self.newPodcastFeed?.description
-                    self.newPodcastFeed?.artist = newAuthor ?? self.newPodcastFeed?.artist
-                    if let newArtwork, let url = URL(string: newArtwork) {
-                        self.newPodcastFeed?.artworkURL = url
-                    }
-                    if let lastBuildDateString = newLastRelease, let date = Date.dateFromRFC1123(dateString: lastBuildDateString) {
-                        self.newPodcastFeed?.lastRelease = date
-                    }
-                    self.canBeSubscribed = true
-                }
-            } catch {
-                await MainActor.run {
-                    self.canBeSubscribed = false
-                    self.errorMessage = "Failed to fetch podcast info: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
+  
     
     var body: some View {
         
         
         
-        if let url = URL(string: xmlURL), let podcast = allPodcasts.first(where: { $0.feed == url }){
+        if let url = newPodcastFeed.url, let podcast = allPodcasts.first(where: { $0.feed == url }){
             
             ZStack {
                
@@ -138,7 +73,7 @@ struct SubscribeToPodcastView: View {
         }else{
             ZStack{
                 GeometryReader { geometry in
-                    CoverImageView(imageURL: URL(string: imgURL ?? "") )
+                    CoverImageView(imageURL: newPodcastFeed.artworkURL )
                         .scaledToFill()
                         .frame(width: geometry.size.width, height: 200)
                         .clipped()
@@ -149,22 +84,22 @@ struct SubscribeToPodcastView: View {
                 
                 VStack(alignment: .leading){
                     HStack {
-                        CoverImageView(imageURL: URL(string: imgURL ?? "") )
+                        CoverImageView(imageURL: newPodcastFeed.artworkURL )
                             .frame(width: 150, height: 150)
                             .cornerRadius(8)
                         Spacer()
                         
                         VStack(alignment: .leading) {
-                            Text(title)
+                            Text(newPodcastFeed.title ?? "Untitled Podcast")
                                 .font(.headline)
                             Spacer()
-                            if let author = author {
+                            if let author = newPodcastFeed.artist {
                                 Text(author)
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                                 Spacer()
                             }
-                            if let desc = description {
+                            if let desc = newPodcastFeed.description {
                                 Text(desc)
                                     .font(.caption)
                                     .lineLimit(5)
@@ -178,7 +113,7 @@ struct SubscribeToPodcastView: View {
                                     Button("Subscribe") {
                                         
                                         Task {
-                                            guard let url = URL(string: xmlURL) else {
+                                            guard let url = newPodcastFeed.url else {
                                                 errorMessage = "Invalid URL"
                                                 return
                                             }
@@ -219,8 +154,31 @@ struct SubscribeToPodcastView: View {
                 )
             }
             .frame(height: 200)
+           
+
             .overlay {
-                if subscribing {
+                if loading {
+                    ZStack {
+                        RoundedRectangle(cornerRadius:  8.0)
+                            .fill(Color.clear)
+                            .ignoresSafeArea()
+                        VStack(alignment: .center) {
+                            
+                            ProgressView()
+                                .frame(width: 100, height: 50)
+                            Text("Loading...")
+                                .padding()
+                        }
+                    }
+                    .background{
+                        RoundedRectangle(cornerRadius:  8.0)
+                            .fill(.background.opacity(0.3))
+                    }
+                 
+                    
+                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                    .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
+                }else if subscribing {
                     ZStack {
                         RoundedRectangle(cornerRadius:  8.0)
                             .fill(Color.clear)
@@ -241,8 +199,7 @@ struct SubscribeToPodcastView: View {
                     
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
                     .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-                }
-                if let errorMessage{
+                } else if let errorMessage{
                     
                     ZStack {
                         RoundedRectangle(cornerRadius:  8.0)
@@ -269,6 +226,9 @@ struct SubscribeToPodcastView: View {
 
 
     }
+    
+
+    
     
     private func requestNotification() async{
         let notificationManager = NotificationManager()

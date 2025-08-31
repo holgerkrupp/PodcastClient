@@ -82,6 +82,7 @@ struct CoverImageView: View {
         
         // 2) Load image from provided direct imageURL
         if let imageURL = imageURL {
+            print("loading image from: \(imageURL)")
             if let uiImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
                 loadedImage = Image(uiImage: uiImage)
                 return

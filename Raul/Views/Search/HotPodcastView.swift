@@ -26,8 +26,8 @@ struct HotPodcastView: View {
         } else {
             
             
-            ForEach(viewModel.hotPodcasts , id: \.id) { podcast in
-                SubscribeToPodcastView(fyydPodcastFeed: podcast)
+            ForEach(viewModel.hotPodcasts , id: \.self) { podcast in
+                SubscribeToPodcastView(newPodcastFeed: podcast)
                     .modelContext(context)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)

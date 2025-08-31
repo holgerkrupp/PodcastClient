@@ -35,6 +35,52 @@ class PodcastFeed: Hashable, @unchecked Sendable {
      
     init (url: URL) {
         self.url = url
+        fetchAndPopulateFeedIfNeeded()
+    }
+    
+    private func fetchAndPopulateFeedIfNeeded() {
+        print("fetchAndPopulateFeedIfNeeded \(String(describing: url))")
+        
+        guard let url else { return }
+        // If we already have most information, skip
+        let needsFetch = (title?.isEmpty ?? true) || artist == nil || description == nil || artworkURL == nil || lastRelease == nil
+        guard needsFetch else { print("no fetch needed")
+            return }
+     
+        Task {
+            do {
+                let parsed = try await PodcastParser.fetchAllPages(from: url)
+                await MainActor.run {
+                    // Assign parsed values to local state and newPodcastFeed
+                    
+                  
+                    let newTitle = parsed["title"] as? String
+                    let newDescription = parsed["description"] as? String
+                    let newAuthor = (parsed["itunes:author"] as? String) ?? (parsed["author"] as? String)
+                    let newArtwork = parsed["coverImage"] as? String
+                    
+                    
+                    if let imageDict = parsed["image"] as? [String: Any],
+                       let urlString = imageDict["url"] as? String,
+                       let url = URL(string: urlString) {
+                        artworkURL = url
+                    }
+                    
+                    let newLastRelease = parsed["lastBuildDate"] as? String
+                    self.title = newTitle ?? self.title
+                    self.description = newDescription ?? self.description
+                    self.artist = newAuthor ?? self.artist
+                    self.artworkURL = artworkURL 
+                    
+                    if let lastBuildDateString = newLastRelease, let date = Date.dateFromRFC1123(dateString: lastBuildDateString) {
+                        self.lastRelease = date
+                    }
+               
+                }
+            } catch {
+                print(error)
+            }
+        }
     }
     
     convenience init(fyydPodcast: FyydPodcast) {
