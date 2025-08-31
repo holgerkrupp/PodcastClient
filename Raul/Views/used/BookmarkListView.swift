@@ -7,14 +7,31 @@ struct BookmarkListView: View {
     var podcast: Podcast?
     var episode: Episode?
     
-
-    
-    @Query var bookmarks: [Bookmark]
+    @Query private var bookmarks: [Bookmark]
 
     init(podcast: Podcast? = nil, episode: Episode? = nil) {
         self.podcast = podcast
         self.episode = episode
-
+        if let episode {
+            let episodeID = episode.persistentModelID
+           
+            _bookmarks = Query(
+                filter: #Predicate<Bookmark> { bookmark in
+                    bookmark.bookmarkEpisode?.persistentModelID == episodeID
+                })
+             
+            
+        } else if let podcast {
+            let podcastID = podcast.persistentModelID
+            _bookmarks = Query(
+                filter: #Predicate<Bookmark> { bookmark in
+                    bookmark.bookmarkEpisode?.podcast?.persistentModelID == podcastID
+                }
+            )
+        } else {
+            _bookmarks = Query()
+        }
+    
     }
        
     
@@ -94,8 +111,9 @@ struct BookmarkListView: View {
     
     private func deleteMarker(_ marker: Marker) async {
         // print("archiveEpisode from PlaylistView - \(episode.title)")
+        guard let id = marker.id else { return }
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.deleteMarker(markerID: marker.id)
+        await episodeActor.deleteMarker(markerID: id)
         
     }
 }

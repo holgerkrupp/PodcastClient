@@ -109,6 +109,13 @@ struct EpisodeDetailView: View {
                         }
                     }
                 }
+               
+                    NavigationLink(destination: BookmarkListView(episode: episode)) {
+                        Label("Show Bookmarks", systemImage: "bookmark.fill")
+                    }
+                    .buttonStyle(.glass)
+                    .padding()
+                
                 
             Spacer(minLength: 10)
                 

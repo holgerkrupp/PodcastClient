@@ -76,7 +76,7 @@ struct WeekListeningHeatMapView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 25) {
             // Podcast Picker
             Picker("Podcast", selection: $selectedPodcastID) {
                 Text("All Podcasts").tag(UUID?.none)
@@ -110,13 +110,17 @@ struct WeekListeningHeatMapView: View {
                 }) {
                     Image(systemName: "chevron.right")
                 }
-                if let weekStart = weekStartDate {
-                    let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
-                    Text("\(weekStart.formatted(date: .abbreviated, time: .omitted)) – \(weekEnd.formatted(date: .abbreviated, time: .omitted))")
-                        .font(.caption)
-                        .padding(.leading)
-                }
+                
             }
+            if let weekStart = weekStartDate {
+                let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
+                Text("\(weekStart.formatted(date: .abbreviated, time: .omitted)) – \(weekEnd.formatted(date: .abbreviated, time: .omitted))")
+                    .font(.caption)
+                    .padding(.leading)
+            }
+            
+            
+            
 
             GeometryReader { geo in
                 let labelColumnWidth: CGFloat = 30

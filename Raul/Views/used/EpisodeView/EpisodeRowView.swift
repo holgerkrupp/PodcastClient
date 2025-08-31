@@ -18,7 +18,7 @@ struct EpisodeRowView: View {
 
 
     @State private var presentingModal : Bool = false
-    @State var episode: Episode
+    var episode: Episode
     private let height:CGFloat = 210
   
     
@@ -27,23 +27,31 @@ struct EpisodeRowView: View {
             VStack(alignment: .center) {
                 ZStack{
                     
-                  
+                    
                         CoverImageView(podcast: episode.podcast)
                             .scaledToFill()
                             .frame(height: height)
                             .clipped()
-                    
-                    
-
+                        
+                       
                         
                     VStack(alignment: .leading){
   
 
                             HStack{
-                                CoverImageView(episode: episode)
-                                    .frame(width: 120, height: 120)
-                                    .cornerRadius(8)
-                                
+                                ZStack(alignment: .topTrailing) {
+                                    CoverImageView(episode: episode)
+                                        .frame(width: 120, height: 120)
+                                        .cornerRadius(8)
+                                    if episode.bookmarks?.isEmpty == false {
+                                        Image(systemName: "bookmark.fill")
+                                            .resizable()
+                                            .frame(height: 50)
+                                            .foregroundColor(.accentColor)
+                                            .scaledToFit()
+                                            
+                                    }
+                                }
                                 VStack(alignment: .leading){
                                     HStack{
                                         Text(episode.podcast?.title ?? "")
@@ -195,4 +203,5 @@ struct EpisodeRowView: View {
     return EpisodeRowView(episode: episode)
         .environment(previewFilesManager)
 }
+
 

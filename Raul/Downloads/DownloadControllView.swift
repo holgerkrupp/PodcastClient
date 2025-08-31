@@ -11,7 +11,7 @@ import Combine
 struct DownloadControllView: View {
     @Environment(DownloadedFilesManager.self) var fileManager
 
-    @ObservedObject var viewModel = DownloadViewModel()
+    @StateObject var viewModel = DownloadViewModel()
     @State var episode: Episode
     @State private var updateUI: Bool = false
     var showDelete: Bool = true

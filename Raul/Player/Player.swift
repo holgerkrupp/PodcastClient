@@ -75,9 +75,8 @@ class Player: NSObject {
     var allowScrubbing:Bool?
 
     
-
-    
     private var nowPlayingArtwork: MPMediaItemArtwork?
+    private var lastArtworkURL: URL?
 
     
     override init()  {
@@ -95,6 +94,7 @@ class Player: NSObject {
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
         }
+        
     }
     
     private  func addChangeSettingsObserver() {
@@ -147,6 +147,7 @@ class Player: NSObject {
         }
     }
     
+    
     func switchPlayBackSpeed() {
         let playbackSpeeds: [Float] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
         var currentSpeedIndex: Int = 0
@@ -157,7 +158,6 @@ class Player: NSObject {
             currentSpeedIndex = (currentSpeedIndex + 1) % playbackSpeeds.count
             let newRate = playbackSpeeds[currentSpeedIndex]
             playbackRate = newRate
-            updateNowPlayingInfo()
             
     }
     
@@ -265,12 +265,12 @@ class Player: NSObject {
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
-        let chapterID = chapter.id
-       
+        if let chapterID = chapter.id{
+            
             Task.detached(priority: .background) {
                 await self.chapterActor?.setChapterProgress(progress, for: chapterID)
             }
-       
+        }
     }
         
     private func unloadEpisode(episodeUUID: UUID) async{
@@ -385,7 +385,7 @@ class Player: NSObject {
                 await jumpTo(time: 0)
             }
             _ = updateCurrentChapter()
-            initRemoteCommandCenter()
+            // initRemoteCommandCenter() // moved to init
             setupStaticNowPlayingInfo()
         await   updateNowPlayingCover()
             if playDirectly {
@@ -497,7 +497,8 @@ class Player: NSObject {
         loadPlayBackSpeed()
         updateLastPlayed()
         startPlaybackUpdates()
-        startNowPlayingInfoUpdater()
+     //   startNowPlayingInfoUpdater()
+        initRemoteCommandCenter()
         Task {
             
             await engine.setRate(playbackRate)
@@ -573,9 +574,11 @@ class Player: NSObject {
     func setRate(_ rate: Float){
         Task { await engine.setRate(rate) }
         playbackRate = rate
+        
         if rate > 0 {
             startPlaybackUpdates()
-            startNowPlayingInfoUpdater()
+            
+            
         }
 
     }
@@ -636,15 +639,13 @@ class Player: NSObject {
             }
         }
 
-            updateNowPlayingInfo()
-        
         
             progressUpdateCounter += 1
             if progressUpdateCounter >= progressSaveInterval {
                 if let chapters = currentEpisode?.chapters, chapters.count > 0 {
                     updateChapters()
                 }
-              
+                updateNowPlayingInfo()
                 savePlayPosition()
                 progressUpdateCounter = 0
             }
@@ -662,11 +663,11 @@ class Player: NSObject {
 
         if currentChapter.shouldPlay { return }
 
-        let id = currentChapter.id
-        Task.detached(priority: .background) {
-            await self.chapterActor?.markChapterAsSkipped(id)
+        if let id = currentChapter.id {
+            Task.detached(priority: .background) {
+                await self.chapterActor?.markChapterAsSkipped(id)
+            }
         }
-
         guard let nextChapter = chapters?
             .sorted(by: { ($0.start ?? 0) < ($1.start ?? 0) })
             .first(where: { ($0.start ?? 0) > self.playPosition })
@@ -829,6 +830,11 @@ class Player: NSObject {
             guard let imageURL = chapterImage ?? episode.imageURL ?? episode.podcast?.imageURL else {
                 // print("imageURL is nil")
                 return }
+            
+            if lastArtworkURL == imageURL {
+                return
+            }
+            lastArtworkURL = imageURL
             
             if let chapterImageData = chapterImageData, let image = UIImage(data: chapterImageData) {
                 // print("using chapter image data")

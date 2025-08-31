@@ -4,6 +4,10 @@ import SwiftData
 @MainActor
 class PodcastListViewModel: ObservableObject {
     @Published var isLoading = false
+    @Published var completed: Int = 0
+    @Published var total: Int = 0
+    
+    
     @Published var errorMessage: String?
     @Published var lastFetchDate: Date?
     
@@ -58,11 +62,10 @@ class PodcastListViewModel: ObservableObject {
     
     
 
-        @Published var completed: Int = 0
-        @Published var total: Int = 0
 
 
-    func refreshAllPodcasts() async {
+
+    func refreshAllPodcasts_old() async {
         isLoading = true
         // fetch podcasts
         let descriptor = FetchDescriptor<Podcast>()
@@ -99,6 +102,68 @@ class PodcastListViewModel: ObservableObject {
         }
         isLoading = false
     }
+    
+    func refreshAllPodcasts() async {
+        let descriptor = FetchDescriptor<Podcast>()
+        guard let podcasts = try? modelContainer.mainContext.fetch(descriptor) else { return }
+        let ids = podcasts.map(\.id)
+        isLoading = true
+        let modelContainer = self.modelContainer
+        let total = ids.count
+        self.completed = 0
+        self.total = total
+
+        let maxConcurrent = 10  // limit parallel requests
+
+        // Run the actual refresh off the MainActor
+        Task.detached {
+            var index = 0
+
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    // Kick off the first N tasks
+                    for _ in 0..<min(maxConcurrent, total) {
+                        
+                        let id = ids[index]
+                        group.addTask {
+                            let worker = PodcastModelActor(modelContainer: modelContainer)
+                            try? await worker.updatePodcast(id)
+                        }
+                        index += 1
+                    }
+
+                    // As each finishes, update progress + enqueue another
+                    for try await _ in group {
+                        await MainActor.run {
+                            self.completed += 1
+                        }
+
+                        if index < total {
+                            let id = ids[index]
+
+                            group.addTask {
+                                let worker = PodcastModelActor(modelContainer: modelContainer)
+                                try? await worker.updatePodcast(id)
+                            }
+                            index += 1
+                        }else{
+                            await MainActor.run {
+                                self.isLoading = false
+                                
+                            }
+                        }
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        
+    }
+    
+    
     }
     
 
