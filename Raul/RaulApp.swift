@@ -42,6 +42,7 @@ struct RaulApp: App {
                 
             case .active:
                 cleanUp()
+                refreshOnActive()
           
                 
             default: break
@@ -58,6 +59,15 @@ struct RaulApp: App {
         }
     }
 
+    func refreshOnActive(){
+        if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
+            Task .detached {
+                await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
+            }
+        }
+    }
+    
+    
     func cleanUp()  {
     
             Task{

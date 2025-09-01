@@ -48,11 +48,21 @@
 			);
 			target = 487F5C6E2D9D4F0C00056D08 /* Raul */;
 		};
+		48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "Raul" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 487F5C6E2D9D4F0C00056D08 /* Raul */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		480234AC2E0560EE0013C50D /* PlayerIntentsExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "Raul" target */,
+			);
 			path = PlayerIntentsExtension;
 			sourceTree = "<group>";
 		};
@@ -130,6 +140,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 			);
 			name = Raul;
@@ -346,7 +357,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_APP_SANDBOX = YES;
@@ -359,6 +370,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -386,7 +398,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_APP_SANDBOX = YES;
@@ -399,6 +411,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;

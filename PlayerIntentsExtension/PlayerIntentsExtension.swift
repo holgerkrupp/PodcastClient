@@ -17,7 +17,7 @@ struct PlayerIntentsExtension: AppIntent {
 
 
 struct ResumePlaybackIntent: AppIntent {
-    static var title: LocalizedStringResource = "Resume Playback"
+    static let title: LocalizedStringResource = "Resume Playback"
    
     func perform() async throws -> some IntentResult {
         await Player.shared.play()
@@ -25,15 +25,35 @@ struct ResumePlaybackIntent: AppIntent {
     }
 }
 
-struct PlayerShortcuts: AppShortcutsProvider {
+struct BookmarkCurrentPlaybackIntent: AppIntent {
+    static let title: LocalizedStringResource = "Bookmark This"
+    static let description = IntentDescription("Create a bookmark at the current playback position.")
+    
+    func perform() async throws -> some IntentResult {
+        await Player.shared.createBookmark()
+        return .result()
+    }
+}
+
+
+
+struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         
             AppShortcut(
-                intent: ResumePlaybackIntent(),
-                phrases: ["Resume playback", "Play last episode"],
-                shortTitle: "Resume",
-                systemImageName: "play.circle"
+                intent: BookmarkCurrentPlaybackIntent(),
+                phrases: ["Bookmark this in ${applicationName}", "Save a bookmark in ${applicationName}", "Bookmark the current position in ${applicationName}"],
+                shortTitle: "Bookmark",
+                systemImageName: "bookmark"
             )
+        
+        AppShortcut(
+            intent: ResumePlaybackIntent(),
+            phrases: ["Resume playback in ${applicationName}", "Play last episode in ${applicationName}"],
+            shortTitle: "Resume",
+            systemImageName: "play.circle"
+        )
         
     }
 }
+
