@@ -574,6 +574,7 @@ class Player: NSObject {
 
         // Only after seek completes, update state
         playPosition = time
+        updateNowPlayingInfo()
         _ = updateCurrentChapter()
         updateChapterProgress()
         savePlayPosition()
@@ -582,11 +583,9 @@ class Player: NSObject {
     func setRate(_ rate: Float){
         Task { await engine.setRate(rate) }
         playbackRate = rate
-        
+        updateNowPlayingInfo()
         if rate > 0 {
             startPlaybackUpdates()
-            
-            
         }
 
     }

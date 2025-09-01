@@ -14,7 +14,7 @@ struct PlaylistView: View {
     @Query(filter: #Predicate<PlaylistEntry> { $0.playlist?.title == "de.holgerkrupp.podbay.queue" },
            sort: [SortDescriptor(\PlaylistEntry.order)] ) var playListEntries: [PlaylistEntry]
     @Environment(\.modelContext) private var modelContext
-
+//    @State private var editMode: EditMode = .active
     var body: some View {
         if playListEntries.isEmpty {
             PlaylistEmptyView()
@@ -30,11 +30,13 @@ struct PlaylistView: View {
                         EpisodeRowView(episode: episode)
                             .id(episode.id)
                             .allowsHitTesting(false)
+                       
                         Rectangle()
                             .fill(Color.background)
-                            .opacity(0.9)
+                            .opacity(0.6)
                             .allowsHitTesting(false)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        /*
                         Group {
                             if Player.shared.isPlaying {
                                 Label("Now Playing", systemImage: "waveform")
@@ -47,7 +49,7 @@ struct PlaylistView: View {
                                     .font(.title.bold())
                             }
                         }
-                        
+                        */
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EmptyView()
                         }.opacity(0)
@@ -59,10 +61,12 @@ struct PlaylistView: View {
                                          bottom: 0,
                                          trailing: 0))
                     .animation(.easeInOut, value: Player.shared.currentEpisode)
-                    /*
+                    
                      /// Glass style overlay - looks cool but the non glass overlay is better
                     .overlay{
   
+
+                     
                                 Group {
                                     if Player.shared.isPlaying {
                                         Label("Now Playing", systemImage: "waveform")
@@ -79,15 +83,16 @@ struct PlaylistView: View {
                       
                                 
                             
-                                .background{
-                                    Capsule()
-                                        .fill(.background.opacity(0.3))
-                                }
-                                .glassEffect(.clear, in: Capsule())
-                              
-                                .frame(maxWidth: 300, maxHeight: 130, alignment: .center)
+                     .background{
+                         RoundedRectangle(cornerRadius:  8.0)
+                             .fill(.background.opacity(0.3))
+                     }
+                  
+                     
+                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                     .frame(maxWidth: 300, maxHeight: 120, alignment: .center)
                     }
-                    */
+                    
                     
                 }
              
@@ -125,10 +130,12 @@ struct PlaylistView: View {
                                                      trailing: 0))
                                 .ignoresSafeArea()
                         }
+                           
                         
                     }
                     
                     
+
                     .onMove { indices, newOffset in
                         Task {
                             if let from = indices.first {
@@ -138,7 +145,7 @@ struct PlaylistView: View {
                     }
                 }
             .animation(.easeInOut, value: playListEntries)
-
+           // .environment(\.editMode, $editMode)
             .listStyle(.plain)
             .navigationTitle("Up Next")
             }

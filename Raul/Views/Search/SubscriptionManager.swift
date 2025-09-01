@@ -138,23 +138,7 @@ actor SubscriptionManager:NSObject{
     //MARK: Background
     //the next functions are for background refresh activites. but could be also used in other occations
     
-    func bgcheckIfFeedsShouldRefresh() async -> Bool{
-        // this can run regularly and should be low weight
-        // check only those that are not marked as updated during the last run
-       //  await BasicLogger.shared.log("bgcheckIfFeedsShouldRefresh")
-        var shouldRefresh = false
-        fetchData()
-        for podcast in podcasts.sorted(by: { lhs, rhs in
-            lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
-        }).filter({$0.metaData?.feedUpdated != true}){
-            let new = await PodcastModelActor(modelContainer: modelContainer).checkIfFeedHasBeenUpdated(podcast.id)
-            if new == true{
-                shouldRefresh = true
-            }
-        }
 
-        return shouldRefresh
-    }
     
     func bgupdateFeeds() async{
         // this updates the feeds. It takes more time
@@ -169,13 +153,12 @@ actor SubscriptionManager:NSObject{
         var updated = 0
             for podcast in podcasts.sorted(by: { lhs, rhs in
                 lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
-            }).filter({$0.metaData?.feedUpdated != false}){
+            }){
              
                 let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.id)
                 podcast.message = nil
                 if new == true { updated += 1}
             }
-       //  await BasicLogger.shared.log("bgupdateFeeds \(updated)/\(all)")
             
     }
     
