@@ -99,6 +99,7 @@ actor PlayerEngine {
             deactiveSession()
             self.interruptionHandler?(.began)
         case .ended:
+            activateSession()
             break
         case .pause:
                 deactiveSession()

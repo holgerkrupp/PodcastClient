@@ -45,7 +45,7 @@ struct EpisodeDetailView: View {
                     
                     
             } else {
-                Color.accentColor.ignoresSafeArea()
+                Color.accent.ignoresSafeArea()
             }
             
             Rectangle()
@@ -156,7 +156,7 @@ struct EpisodeDetailView: View {
                    .symbolRenderingMode(.hierarchical)
                   // .scaledToFit()
                    .padding(8)
-                   .foregroundColor(.accentColor)
+                   .foregroundColor(.accent)
                 //   .minimumScaleFactor(0.5)
                    .labelStyle(.iconOnly)
      

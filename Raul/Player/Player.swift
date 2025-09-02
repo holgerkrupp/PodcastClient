@@ -175,13 +175,7 @@ class Player: NSObject {
             // print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
             if savedPlaybackRate > 0, playbackRate != savedPlaybackRate {
                 playbackRate = savedPlaybackRate
-                /*
-                if isPlaying{
-                    Task {
-                        await engine.setRate(playbackRate)
-                    }
-                }
-                */
+
             }
         }
     }

@@ -71,7 +71,7 @@ struct PodcastDetailView: View {
                 
                 
             } else {
-                Color.accentColor.ignoresSafeArea()
+                Color.accent.ignoresSafeArea()
             }
             Rectangle()
                 .fill(.ultraThinMaterial)

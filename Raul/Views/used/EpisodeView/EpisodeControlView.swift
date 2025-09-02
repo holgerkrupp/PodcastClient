@@ -30,7 +30,7 @@ struct EpisodeControlView: View {
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
                     .padding(5)
-                    // .foregroundColor(.accentColor)
+                    // .foregroundColor(.accent)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
                     .clipShape(Circle())
@@ -95,7 +95,7 @@ struct EpisodeControlView: View {
                     .scaledToFit()
                     .padding(5)
 
-                   // .foregroundColor(.accentColor)
+                   // .foregroundColor(.accent)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
                     .clipShape(Circle())

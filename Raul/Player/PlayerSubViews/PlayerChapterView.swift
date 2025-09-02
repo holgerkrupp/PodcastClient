@@ -49,7 +49,7 @@ struct PlayerChapterView: View {
                         
                        
                             RoundedRectangle(cornerRadius: geometry.size.height * 0.3)
-                                .fill(Color.accentColor.opacity(0.05))
+                                .fill(Color.accent.opacity(0.05))
                                 .frame(width: geometry.size.width * (player.currentChapter?.progress ?? 0.0), height: geometry.size.height)
                         
                         

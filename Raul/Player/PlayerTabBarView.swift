@@ -40,7 +40,7 @@ struct PlayerTabBarView: View {
                 // Background layer
                 HStack{
                     Rectangle()
-                        .fill(Color.accentColor.opacity(0.2))
+                        .fill(Color.accent.opacity(0.2))
                         .frame(width: geo.size.width * (fakeProgress ?? player.progress))
                     Spacer()
                 }

@@ -47,7 +47,7 @@ struct EpisodeRowView: View {
                                         Image(systemName: "bookmark.fill")
                                             .resizable()
                                             .frame(height: 50)
-                                            .foregroundColor(.accentColor)
+                                            .foregroundColor(.accent)
                                             .scaledToFit()
                                             
                                     }
@@ -145,7 +145,7 @@ struct EpisodeRowView: View {
                      
                         GeometryReader { geometry in
                         Rectangle()
-                            .fill(Color.accentColor)
+                            .fill(Color.accent)
                             .frame(width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)), height: 4)
                             .position(x: geometry.size.width * CGFloat(max(0.0, min(1.0, episode.maxPlayProgress))) / 2, y: height - 2)
                     }

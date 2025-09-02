@@ -45,12 +45,12 @@ struct ChapterListView: View {
                             
                             if chapter.id == player.currentChapter?.id {
                                 Rectangle()
-                                    .fill(Color.accentColor.opacity(0.1))
+                                    .fill(Color.accent.opacity(0.1))
                                     .frame(width: geometry.size.width * (player.chapterProgress ?? 0.0), height: geometry.size.height)
                                     .animation(.easeInOut, value: player.chapterProgress)
                             } else {
                                 Rectangle()
-                                    .fill(Color.accentColor.opacity(0.1))
+                                    .fill(Color.accent.opacity(0.1))
                                     .frame(width: geometry.size.width * (chapter.progress ?? 0.0), height: geometry.size.height)
                             }
                         }

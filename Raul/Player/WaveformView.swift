@@ -10,7 +10,7 @@ struct WaveformView: View {
     let trimEnd: Double
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
-    let progress: Double? = nil
+    @Binding var progress: Double
     
 
     var body: some View {
@@ -27,20 +27,22 @@ struct WaveformView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                if let progress = progress, trimEnd > trimStart, progress >= 0, progress <= (trimEnd - trimStart) {
+                if trimEnd > trimStart, progress >= 0, progress <= (trimEnd - trimStart) {
                     let progressX = position(for: trimStart + progress, in: geo.size.width)
                     Rectangle()
                         .fill(Color.secondary.opacity(0.5))
                         .frame(width: 3, height: geo.size.height)
                         .position(x: progressX, y: geo.size.height / 2)
-                        .allowsHitTesting(false)
+                        .allowsHitTesting(true)
+                        
                 }
                 
                 // Trim overlays
-                trimOverlay(color: Color.black.opacity(0.2),
+                trimOverlay(color: Color.accent.opacity(0.2),
                             from: 0,
                             to: position(for: trimStart, in: geo.size.width))
-                trimOverlay(color: Color.black.opacity(0.2),
+              
+                trimOverlay(color: Color.accent.opacity(0.2),
                             from: position(for: trimEnd, in: geo.size.width),
                             to: geo.size.width)
                 // Trim handles
@@ -76,6 +78,7 @@ struct WaveformView: View {
             .fill(color)
             .frame(width: max(to - from, 0), height: 60)
             .position(x: from + (to-from)/2, y: 30)
+            
     }
 
     // Trim handle

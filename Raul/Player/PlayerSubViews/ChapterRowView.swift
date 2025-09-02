@@ -68,7 +68,7 @@ struct ChapterRowView: View {
                 }
             }
             .foregroundStyle(
-                chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accentColor : Color.primary
+                chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accent : Color.primary
             )
         
     }
