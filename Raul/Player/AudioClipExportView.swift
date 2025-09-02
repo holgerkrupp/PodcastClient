@@ -115,10 +115,15 @@ struct AudioClipExportView: View {
                                 )
                                 .frame(height: 70)
                                 .animation(.easeInOut, value: waveformSamples)
+                                .background{
+                                    RoundedRectangle(cornerRadius:  8.0)
+                                        .fill(.black.opacity(0.5))
+                                }
+                                /*
                                 ProgressView(value: playbackProgress, total: trimEnd - trimStart)
                                     .progressViewStyle(LinearProgressViewStyle(tint: .accent))
                                     .padding(.horizontal)
-
+*/
                                     
                                     
                                     Button {
@@ -200,7 +205,7 @@ struct AudioClipExportView: View {
                         }
                         waveformSamples = await WaveformView.extractSamples(from: audioURL, in: trimRange)
                         if waveformSamples.allSatisfy({ $0 < 0.07 }) {
-                            waveformSamples = Array(repeating: 0.5, count: 120)
+                            waveformSamples = Array(repeating: 0.5, count: 480)
                         }
                     }
                 }

@@ -15,14 +15,16 @@ struct WaveformView: View {
 
     var body: some View {
         GeometryReader { geo in
+            let spacing: CGFloat = 0.1
+            let capsuleWidth = (geo.size.width - spacing * CGFloat(max(samples.count - 1, 0))) / CGFloat(samples.count)
             ZStack(alignment: .bottom) {
                 // Waveform
-                HStack(spacing: 1) {
+                HStack(spacing: spacing) {
                     ForEach(samples.indices, id: \.self) { sampleIndex in
                         let sample = samples[sampleIndex]
                         Capsule()
                             .fill(Color.accent.opacity(0.7))
-                            .frame(width: 2, height: max(2, CGFloat(sample) * geo.size.height))
+                            .frame(width: max(1, capsuleWidth), height: max(2, CGFloat(sample) * geo.size.height))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -102,7 +104,7 @@ struct WaveformView: View {
 extension WaveformView {
     /// Extract normalized samples for the specified time range of the audio file.
     static func extractSamples(from url: URL, in range: ClosedRange<Double>, sampleCount: Int = 120) async -> [Float] {
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         guard let track = asset.tracks(withMediaType: .audio).first else { return Array(repeating: 0.05, count: sampleCount) }
         let assetReader = try? AVAssetReader(asset: asset)
         let timeRange = CMTimeRange(start: .init(seconds: range.lowerBound, preferredTimescale: 600), duration: .init(seconds: range.upperBound-range.lowerBound, preferredTimescale: 600))
@@ -133,13 +135,22 @@ extension WaveformView {
             }
         }
         assetReader?.cancelReading()
-        // Downsample to sampleCount
-        let stride = max(samples.count / sampleCount, 1)
+        // Downsample to sampleCount using RMS per window
+        let windowSize = max(samples.count / sampleCount, 1)
         var downsampled: [Float] = []
-        var i = 0
-        while i < samples.count { downsampled.append(samples[i]); i += stride }
-        while downsampled.count < sampleCount { downsampled.append(0.05) }
-        if downsampled.count > sampleCount { downsampled = Array(downsampled.prefix(sampleCount)) }
+        for i in 0..<sampleCount {
+            let start = i * windowSize
+            let end = min(start + windowSize, samples.count)
+            if start < end {
+                let window = samples[start..<end]
+                let rms = sqrt(window.map { $0 * $0 }.reduce(0, +) / Float(window.count))
+                let scaled = min(rms * 3, 1.0)
+                downsampled.append(scaled)
+            } else {
+                downsampled.append(0.05)
+            }
+        }
         return downsampled
     }
 }
+
