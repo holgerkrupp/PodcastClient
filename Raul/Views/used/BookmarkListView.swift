@@ -65,7 +65,8 @@ struct BookmarkListView: View {
                         VStack{
                             HStack{
                                 CoverImageView(episode: marker.bookmarkEpisode)
-                                    .frame(width: 100, height: 100)
+                                    .frame(width: 120, height: 120)
+                                    .cornerRadius(8)
                                 VStack(alignment: .leading) {
                                     Text(marker.bookmarkEpisode?.podcast?.title ?? marker.bookmarkEpisode?.title ?? "")
                                         .font(.headline)
