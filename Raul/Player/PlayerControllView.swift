@@ -16,7 +16,6 @@ struct PlayerControllView: View {
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
     @State var showSettings: Bool = false
-    @State private var showClipExport = false
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
@@ -266,15 +265,7 @@ struct PlayerControllView: View {
                     }
                     .buttonStyle(.borderless)
                     .frame(width: 30)
-                    Spacer()
-                    Button(action: {
-                        showClipExport = true
-                    }) {
-                        Image(systemName: "scissors")
-                    }
-                    .buttonStyle(.borderless)
-                    .frame(height: 30)
-                    .help("Share audio clip")
+
                     Spacer()
                     Button(action:player.createBookmark){
                         Label {
@@ -294,21 +285,7 @@ struct PlayerControllView: View {
                 }
                 .frame(height: 40)
                 .tint(.primary)
-                .sheet(isPresented: $showClipExport) {
-                    // TODO: coverImage loading should ideally not be async in the sheet
-                    
-                    if let episode = player.currentEpisode, let audioURL = episode.localFile ?? episode.url {
-                        AudioClipExportView(
-                            audioURL: audioURL,
-                            coverImageURL: episode.imageURL,
-                            fallbackCoverImageURL: episode.podcast?.imageURL,
-                            playPosition: player.playPosition,
-                            duration: episode.duration ?? 60
-                        )
-                    } else {
-                        EmptyView()
-                    }
-                }
+
                 
             }
             .padding()

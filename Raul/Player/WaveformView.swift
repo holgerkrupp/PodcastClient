@@ -10,6 +10,8 @@ struct WaveformView: View {
     let trimEnd: Double
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
+    let progress: Double? = nil
+    
 
     var body: some View {
         GeometryReader { geo in
@@ -19,11 +21,21 @@ struct WaveformView: View {
                     ForEach(samples.indices, id: \.self) { sampleIndex in
                         let sample = samples[sampleIndex]
                         Capsule()
-                            .fill(Color.accentColor.opacity(0.7))
+                            .fill(Color.accent.opacity(0.7))
                             .frame(width: 2, height: max(2, CGFloat(sample) * geo.size.height))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                if let progress = progress, trimEnd > trimStart, progress >= 0, progress <= (trimEnd - trimStart) {
+                    let progressX = position(for: trimStart + progress, in: geo.size.width)
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.5))
+                        .frame(width: 3, height: geo.size.height)
+                        .position(x: progressX, y: geo.size.height / 2)
+                        .allowsHitTesting(false)
+                }
+                
                 // Trim overlays
                 trimOverlay(color: Color.black.opacity(0.2),
                             from: 0,
@@ -33,7 +45,7 @@ struct WaveformView: View {
                             to: geo.size.width)
                 // Trim handles
                 trimHandle(x: position(for: trimStart, in: geo.size.width),
-                           color: .yellow,
+                           color: .accent,
                            systemName: "arrow.left",
                            onDrag: { x in
                                let percent = x / geo.size.width
@@ -41,7 +53,7 @@ struct WaveformView: View {
                                onTrimStartChanged(newTime.clamped(to: trimRange.lowerBound...trimEnd))
                            })
                 trimHandle(x: position(for: trimEnd, in: geo.size.width),
-                           color: .yellow,
+                           color: .accent,
                            systemName: "arrow.right",
                            onDrag: { x in
                                let percent = x / geo.size.width
@@ -68,10 +80,10 @@ struct WaveformView: View {
 
     // Trim handle
     func trimHandle(x: CGFloat, color: Color, systemName: String, onDrag: @escaping (CGFloat) -> Void) -> some View {
-        Circle()
+        RoundedRectangle(cornerRadius: 2)
             .fill(color)
-            .frame(width: 28, height: 28)
-            .overlay(Image(systemName: systemName).foregroundColor(.black))
+            .frame(width: 5, height: 60)
+           // .overlay(Image(systemName: systemName).foregroundColor(.black))
             .position(x: x, y: 30)
             .gesture(
                 DragGesture(minimumDistance: 0)
