@@ -9,18 +9,19 @@ enum AudioClipExporter {
         case taskCancelled
     }
 
-
-     static func exportClipAsync(
+    // MARK: - Export Clip
+    static func exportClipAsync(
         audioURL: URL,
         coverImage: UIImage,
         startTime: Double,
         endTime: Double,
         fps: Int,
-        videoSize:CGSize? = CGSize(width: 720, height: 720),
-      progress: @escaping @Sendable  (Double) -> Void) async throws -> URL {
+        videoSize: CGSize?,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
 
         let frameCount = Int(Double(fps) * (endTime - startTime))
-        let videoSize = CGSize(width: 720, height: 720) // square video
+        let videoSize = videoSize ?? CGSize(width: 720, height: 720)
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mp4")
@@ -43,28 +44,42 @@ enum AudioClipExporter {
             kCVPixelBufferWidthKey as String: videoSize.width,
             kCVPixelBufferHeightKey as String: videoSize.height
         ]
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput,
-                                                           sourcePixelBufferAttributes: pixelBufferAttributes)
+
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: videoInput,
+            sourcePixelBufferAttributes: pixelBufferAttributes
+        )
 
         guard videoWriter.canAdd(videoInput) else {
             throw ExportError.failedToCreateWriter
         }
+
         videoWriter.add(videoInput)
         videoWriter.startWriting()
         videoWriter.startSession(atSourceTime: .zero)
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-           
+        // MARK: Precompute pixel buffer once
+        let buffer: CVPixelBuffer
+        // Precompute static image template
+        let template: UIImage
+        if let cached = await PixelBufferCache.shared.template(for: coverImage, size: videoSize) {
+            template = cached
+        } else {
+            template = coverImage
+            await PixelBufferCache.shared.storeTemplate(template, for: videoSize)
+        }
 
+
+
+
+        // MARK: Write video frames
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
             videoInput.requestMediaDataWhenReady(on: DispatchQueue.global(qos: .userInitiated)) {
                 var currentFrame = 0
                 while videoInput.isReadyForMoreMediaData && currentFrame < frameCount {
                     autoreleasepool {
+                        guard let buffer = createPixelBuffer(from: template, size: videoSize) else { return }
                         let time = CMTime(seconds: Double(currentFrame) / Double(fps), preferredTimescale: 600)
-                        guard let buffer = pixelBuffer(from: coverImage, size: videoSize) else {
-                            continuation.resume(throwing: ExportError.failedToAppendFrame)
-                            return
-                        }
                         if !adaptor.append(buffer, withPresentationTime: time) {
                             continuation.resume(throwing: ExportError.failedToAppendFrame)
                             return
@@ -73,21 +88,20 @@ enum AudioClipExporter {
                         progress(Double(currentFrame) / Double(frameCount))
                     }
                 }
+            
 
-                if currentFrame >= frameCount {
-                    videoInput.markAsFinished()
-                    videoWriter.finishWriting {
-                        if videoWriter.status == .completed {
-                            continuation.resume(returning: outputURL)
-                        } else {
-                            continuation.resume(throwing: videoWriter.error ?? ExportError.failedToAppendFrame)
-                        }
+                videoInput.markAsFinished()
+                videoWriter.finishWriting {
+                    if videoWriter.status == .completed {
+                        continuation.resume(returning: outputURL)
+                    } else {
+                        continuation.resume(throwing: videoWriter.error ?? ExportError.failedToAppendFrame)
                     }
                 }
             }
         }
 
-        // Merge audio track
+        // MARK: Merge audio track
         let finalURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mp4")
@@ -97,11 +111,34 @@ enum AudioClipExporter {
         return finalURL
     }
 
-    private static func pixelBuffer(from image: UIImage, size: CGSize) -> CVPixelBuffer? {
+    // MARK: - Shared CIContext for Blur
+    private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
+
+    // MARK: - Actor Cache
+    actor PixelBufferCache {
+        static let shared = PixelBufferCache()
+        
+        private var cache: [String: UIImage] = [:] // Store the UIImage, not CVPixelBuffer
+        
+        func storeTemplate(_ image: UIImage, for size: CGSize) {
+            let key = "\(Unmanaged.passUnretained(image).toOpaque())-\(Int(size.width))x\(Int(size.height))"
+            cache[key] = image
+        }
+        
+        func template(for image: UIImage, size: CGSize) -> UIImage? {
+            let key = "\(Unmanaged.passUnretained(image).toOpaque())-\(Int(size.width))x\(Int(size.height))"
+            return cache[key]
+        }
+    }
+
+
+    // MARK: - Create CVPixelBuffer with blurred background + aspect-fit foreground
+    private static func createPixelBuffer(from image: UIImage, size: CGSize) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true
         ]
+
         var pxbuffer: CVPixelBuffer?
         let status = CVPixelBufferCreate(kCFAllocatorDefault,
                                          Int(size.width),
@@ -112,35 +149,58 @@ enum AudioClipExporter {
         guard status == kCVReturnSuccess, let buffer = pxbuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(buffer, [])
-        let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer),
-                                width: Int(size.width),
-                                height: Int(size.height),
-                                bitsPerComponent: 8,
-                                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                                space: CGColorSpaceCreateDeviceRGB(),
-                                bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue)
-        guard let ctx = context else { CVPixelBufferUnlockBaseAddress(buffer, []); return nil }
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
 
-        ctx.clear(CGRect(origin: .zero, size: size))
-        ctx.draw(image.cgImage!, in: CGRect(origin: .zero, size: size))
-        CVPixelBufferUnlockBaseAddress(buffer, [])
+        guard let context = CGContext(data: CVPixelBufferGetBaseAddress(buffer),
+                                      width: Int(size.width),
+                                      height: Int(size.height),
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue) else { return nil }
+
+        context.clear(CGRect(origin: .zero, size: size))
+        
+        // Draw blurred background
+        if let ciImage = CIImage(image: image),
+           let filter = CIFilter(name: "CIGaussianBlur") {
+            filter.setValue(ciImage, forKey: kCIInputImageKey)
+            filter.setValue(20, forKey: kCIInputRadiusKey)
+            if let output = filter.outputImage,
+               let cgBlurred = sharedCIContext.createCGImage(output, from: ciImage.extent) {
+                context.draw(cgBlurred, in: CGRect(origin: .zero, size: size))
+            }
+        }
+
+        // Draw foreground image (aspect fit)
+        let aspectWidth = size.width / image.size.width
+        let aspectHeight = size.height / image.size.height
+        let scale = min(aspectWidth, aspectHeight)
+        let newWidth = image.size.width * scale
+        let newHeight = image.size.height * scale
+        let x = (size.width - newWidth) / 2
+        let y = (size.height - newHeight) / 2
+        context.draw(image.cgImage!, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
+
         return buffer
     }
 
+
+    // MARK: - Merge audio into video
     private static func mergeAudio(from audioURL: URL, intoVideo videoURL: URL, startTime: Double, endTime: Double, outputURL: URL) async throws {
         let composition = AVMutableComposition()
-        let videoAsset = AVAsset(url: videoURL)
-        let audioAsset = AVAsset(url: audioURL)
+        let videoAsset = AVURLAsset(url: videoURL)
+        let audioAsset = AVURLAsset(url: audioURL)
 
-        guard let videoTrack = videoAsset.tracks(withMediaType: .video).first,
+        guard let videoTrack = try? await videoAsset.loadTracks(withMediaType: .video).first,
               let videoCompTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw ExportError.failedToCreateWriter
         }
-        try videoCompTrack.insertTimeRange(CMTimeRange(start: .zero, duration: videoAsset.duration),
-                                           of: videoTrack,
-                                           at: .zero)
+        try await videoCompTrack.insertTimeRange(CMTimeRange(start: .zero, duration: videoAsset.load(.duration)),
+                                                 of: videoTrack,
+                                                 at: .zero)
 
-        if let audioTrack = audioAsset.tracks(withMediaType: .audio).first,
+        if let audioTrack = try? await audioAsset.loadTracks(withMediaType: .audio).first,
            let audioCompTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
             let range = CMTimeRange(start: CMTime(seconds: startTime, preferredTimescale: 600),
                                     end: CMTime(seconds: endTime, preferredTimescale: 600))

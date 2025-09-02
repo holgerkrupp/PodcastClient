@@ -26,9 +26,9 @@ struct VideoSizePicker: View {
         }
         var symbolName: String {
             switch self {
-            case .square: return "square.fill"
-            case .portrait: return "rectangle.portrait.fill"
-            case .widescreen: return "rectangle.landscape.fill"
+            case .square: return "square"
+            case .portrait: return "rectangle.portrait"
+            case .widescreen: return "rectangle"
             }
         }
     }
@@ -38,13 +38,24 @@ struct VideoSizePicker: View {
     var body: some View {
         Picker("Video Size", selection: $selectedOption) {
             ForEach(VideoSizeOption.allCases) { option in
-                Label(option.rawValue, systemImage: option.symbolName)
-                    .tag(option)
+               
+                    Label(option.rawValue, systemImage: option.symbolName)
+                        .labelStyle(.iconOnly)
+                    
+                .tag(option)
+               
+                
             }
         }
         .pickerStyle(SegmentedPickerStyle())
-        .onChange(of: selectedOption) { newValue in
-            videoSize = newValue.size
+        .onChange(of: selectedOption) {
+            videoSize = selectedOption.size
         }
     }
 }
+
+#Preview {
+    @Previewable @State var videoSize = CGSize(width: 720, height: 720)
+        VideoSizePicker(videoSize: $videoSize)
+    }
+

@@ -8,7 +8,8 @@ struct PlayerView: View {
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
-   
+    @State private var showClipExport = false
+
 
 
     let fullSize: Bool
@@ -30,9 +31,6 @@ struct PlayerView: View {
                                 .aspectRatio(1, contentMode: .fill)
                                 .scaledToFill()
                                
-                            
-                           
-                            
                                 .frame(width: geometry.size.width, height: (fullSize && player.currentEpisode != nil) ? geometry.size.height : 80)
                                 .ignoresSafeArea(.all, edges: .bottom)
                            
@@ -57,6 +55,31 @@ struct PlayerView: View {
                                                 }
                                                 .buttonStyle(.glass)
                                              //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 8.0))
+                                            }
+                                            Spacer()
+                                           
+                                            Button(action: {
+                                                showClipExport = true
+                                            }) {
+                                                Image(systemName: "scissors")
+                                            }
+                                            .buttonStyle(.glass)
+                                            .frame(height: 30)
+                                            .help("Share audio clip")
+                                            .sheet(isPresented: $showClipExport) {
+                                                // TODO: coverImage loading should ideally not be async in the sheet
+                                                
+                                                if let episode = player.currentEpisode, let audioURL = episode.localFile ?? episode.url {
+                                                    AudioClipExportView(
+                                                        audioURL: audioURL,
+                                                        coverImageURL: episode.imageURL,
+                                                        fallbackCoverImageURL: episode.podcast?.imageURL,
+                                                        playPosition: player.playPosition,
+                                                        duration: episode.duration ?? 60
+                                                    )
+                                                } else {
+                                                    EmptyView()
+                                                }
                                             }
                                             Spacer()
                                             if let url = episode.deeplinks?.first ?? episode.link {

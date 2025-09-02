@@ -28,183 +28,210 @@ struct AudioClipExportView: View {
         let maxTime = min(duration, playPosition + 30)
         return minTime...maxTime
     }
+    
+
 
     var body: some View {
-        VStack(spacing: 16) {
-            
-            VideoSizePicker(videoSize: $videoSize)
-            
-            if let coverImage = coverImage {
-                Image(uiImage: coverImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 220)
-                    .overlay(
-                        Rectangle().fill(Color.black.opacity(0.35))
-                    )
-                    .cornerRadius(16)
-                    .padding(.top)
-            } else {
-                // Placeholder or progress view while loading image
-                ZStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(height: 220)
-                        .cornerRadius(16)
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
-                }
-                .padding(.top)
-            }
-
-            Text("Select the portion to share as a video clip")
-                .font(.headline)
-                .padding(.horizontal)
-            
-            if waveformSamples.isEmpty {
-                ZStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(height: 70)
-                        .cornerRadius(8)
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
-                }
-                .padding(.vertical)
-            } else {
-                VStack(spacing: 6) {
-                    WaveformView(
-                        samples: waveformSamples.map { max($0, 0.05) },
-                        trimRange: trimRange,
-                        duration: duration,
-                        trimStart: trimStart,
-                        trimEnd: trimEnd,
-                        onTrimStartChanged: { newStart in
-                            trimStart = newStart
-                            if trimStart > trimEnd { trimStart = trimEnd }
-                            stopAudioPlayer()
-                        },
-                        onTrimEndChanged: { newEnd in
-                            trimEnd = newEnd
-                            if trimEnd < trimStart { trimEnd = trimStart }
-                            stopAudioPlayer()
+        ZStack{
+           /*
+            CoverImageView(episode: Player.shared.currentEpisode)
+                .aspectRatio(1, contentMode: .fill)
+                .scaledToFill()
+                .ignoresSafeArea(.all, edges: .bottom)
+            */
+            VStack(spacing: 16) {
+                
+             //   VideoSizePicker(videoSize: $videoSize)
+                
+                Group {
+                    if let coverImage {
+                        ZStack {
+                            // Background (blurred)
+                            Image(uiImage: coverImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .blur(radius: 30)
+                                .clipped()
+                            
+                            // Foreground (sharp)
+                            Image(uiImage: coverImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .cornerRadius(16)
+                                .padding()
                         }
-                    )
-                    .frame(height: 70)
-                    .animation(.easeInOut, value: waveformSamples)
-                    
-                    if audioPlayer != nil {
+                    } else {
+                        // Placeholder
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.3))
+                                .cornerRadius(16)
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                        }
+                    }
+                }
+                .frame(width: 300, height: 300)
+                
+                
+                
+                Text("Select the segment to share")
+                    .font(.headline)
+                    .padding(.horizontal)
+                
+                if waveformSamples.isEmpty {
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(height: 70)
+                            .cornerRadius(8)
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                    }
+                    .padding(.vertical)
+                } else {
+                    VStack(spacing: 6) {
+                        WaveformView(
+                            samples: waveformSamples.map { max($0, 0.05) },
+                            trimRange: trimRange,
+                            duration: duration,
+                            trimStart: trimStart,
+                            trimEnd: trimEnd,
+                            onTrimStartChanged: { newStart in
+                                trimStart = newStart
+                                if trimStart > trimEnd { trimStart = trimEnd }
+                                stopAudioPlayer()
+                            },
+                            onTrimEndChanged: { newEnd in
+                                trimEnd = newEnd
+                                if trimEnd < trimStart { trimEnd = trimStart }
+                                stopAudioPlayer()
+                            }
+                        )
+                        .frame(height: 70)
+                        .animation(.easeInOut, value: waveformSamples)
                         ProgressView(value: playbackProgress, total: trimEnd - trimStart)
                             .progressViewStyle(LinearProgressViewStyle(tint: .accentColor))
                             .padding(.horizontal)
+                           
+                        Button {
+                            togglePreview()
+                        } label: {
+                            Label(
+                                audioPlayer?.isPlaying == true ? "Pause" : "Preview",
+                                systemImage: audioPlayer?.isPlaying == true ? "pause.fill" : "play.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
                     }
-                    
-                    Button {
-                        togglePreview()
-                    } label: {
-                        Label(
-                            audioPlayer?.isPlaying == true ? "Pause" : "Preview",
-                            systemImage: audioPlayer?.isPlaying == true ? "pause.fill" : "play.fill"
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
+                    .padding(.vertical)
                 }
-                .padding(.vertical)
+                
+                HStack {
+                    Text("Start: \(formatTime(trimStart))")
+                    Spacer()
+                    Text("End: \(formatTime(trimEnd))")
+                }
+                .font(.caption)
+                .padding(.horizontal)
+                
+                HStack {
+                    Button("Cancel") { 
+                        stopAudioPlayer()
+                        dismiss() 
+                    }
+                    .buttonStyle(.glass)
+                    Spacer()
+                    Button(isExporting ? "Exporting…" : "Export Video") {
+                        exportClip()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(isExporting)
+                }
+                .padding(.horizontal)
             }
+            .padding()
 
-            HStack {
-                Text("Start: \(formatTime(trimStart))")
-                Spacer()
-                Text("End: \(formatTime(trimEnd))")
-            }
-            .font(.caption)
-            .padding(.horizontal)
             
-            HStack {
-                Button("Cancel") { 
-                    stopAudioPlayer()
-                    dismiss() 
+            .sheet(isPresented: $showShareSheet, onDismiss: {
+                stopAudioPlayer()
+                dismiss() 
+            }) {
+                if let exportURL {
+                    ShareSheet(activityItems: [exportURL])
                 }
-                .buttonStyle(.bordered)
-                Spacer()
-                Button(isExporting ? "Exporting…" : "Export Video") {
-                    exportClip()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isExporting)
             }
-            .padding(.horizontal)
-        }
-        .sheet(isPresented: $showShareSheet, onDismiss: { 
-            stopAudioPlayer()
-            dismiss() 
-        }) {
-            if let exportURL {
-                ShareSheet(activityItems: [exportURL])
+            .alert("Preview unavailable", isPresented: $showPreviewUnavailableAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Preview is only available for downloaded audio files.")
             }
-        }
-        .alert("Preview unavailable", isPresented: $showPreviewUnavailableAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Preview is only available for downloaded audio files.")
-        }
-        .onAppear {
-            Player.shared.pause()
-            trimStart = trimRange.lowerBound
-            trimEnd = trimRange.upperBound
-            Task {
-                if let url = coverImageURL {
-                    if let loaded = await ImageLoaderAndCache.loadUIImage(from: url) {
-                        self.coverImage = loaded
+            .onAppear {
+                Player.shared.pause()
+                trimStart = trimRange.lowerBound
+                trimEnd = trimRange.upperBound
+                Task {
+                    if let url = coverImageURL {
+                        if let loaded = await ImageLoaderAndCache.loadUIImage(from: url) {
+                            self.coverImage = loaded
+                        } else if let fallbackURL = fallbackCoverImageURL, let fallbackLoaded = await ImageLoaderAndCache.loadUIImage(from: fallbackURL) {
+                            self.coverImage = fallbackLoaded
+                        } else {
+                            self.coverImage = UIImage()
+                        }
                     } else if let fallbackURL = fallbackCoverImageURL, let fallbackLoaded = await ImageLoaderAndCache.loadUIImage(from: fallbackURL) {
                         self.coverImage = fallbackLoaded
                     } else {
                         self.coverImage = UIImage()
                     }
-                } else if let fallbackURL = fallbackCoverImageURL, let fallbackLoaded = await ImageLoaderAndCache.loadUIImage(from: fallbackURL) {
-                    self.coverImage = fallbackLoaded
-                } else {
-                    self.coverImage = UIImage()
-                }
-                waveformSamples = await WaveformView.extractSamples(from: audioURL, in: trimRange)
-                if waveformSamples.allSatisfy({ $0 < 0.07 }) {
-                    waveformSamples = Array(repeating: 0.5, count: 120)
+                    waveformSamples = await WaveformView.extractSamples(from: audioURL, in: trimRange)
+                    if waveformSamples.allSatisfy({ $0 < 0.07 }) {
+                        waveformSamples = Array(repeating: 0.5, count: 120)
+                    }
                 }
             }
-        }
-        .onDisappear {
-            stopAudioPlayer()
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .overlay(
-            Group {
-                if isExporting {
-                    Color.black.opacity(0.3).ignoresSafeArea()
-                    VStack(spacing: 12) {
-                        if exportProgress > 0 {
-                            ProgressView(value: exportProgress, total: 1.0)
-                                .progressViewStyle(LinearProgressViewStyle())
-                                .padding()
-                            Text("Exporting... \(Int(exportProgress * 100))%")
-                                .foregroundColor(.white)
-                                .bold()
-                        } else {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .padding()
-                            Text("Exporting…")
-                                .foregroundColor(.white)
-                                .bold()
+            .onDisappear {
+                stopAudioPlayer()
+            }
+           
+            
+            .overlay {
+                if isExporting == true{
+                    
+                    Group{
+                        // Color.black.opacity(0.3).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            if exportProgress > 0 {
+                                ProgressView(value: exportProgress, total: 1.0)
+                                    .progressViewStyle(LinearProgressViewStyle())
+                                    .padding()
+                                Text("Exporting... \(Int(exportProgress * 100))%")
+                                    .foregroundColor(.primary)
+                                    .bold()
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .padding()
+                                Text("Exporting…")
+                                    .foregroundColor(.primary)
+                                    .bold()
+                            }
                         }
                     }
-                    .frame(maxWidth: 200)
-                    .background(.thinMaterial)
-                    .cornerRadius(16)
+                    .padding()
+                    .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
+                    .background{
+                        RoundedRectangle(cornerRadius:  8.0)
+                            .fill(.background.opacity(0.3))
+                    }
+                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                    
+                    
                 }
+                
             }
-        )
+        }
     }
     
     func formatTime(_ time: Double) -> String {
@@ -223,7 +250,9 @@ struct AudioClipExportView: View {
                     audioURL: audioURL,
                     coverImage: coverImage ?? UIImage(),
                     startTime: trimStart,
-                    endTime: trimEnd, fps: 30
+                    endTime: trimEnd,
+                    fps: 30,
+                    videoSize: videoSize
                 ) { progress in
                     Task{
                         await MainActor.run {
@@ -336,3 +365,16 @@ private class AudioPlayerDelegateWrapper: NSObject, AVAudioPlayerDelegate {
         onFinish()
     }
 }
+
+
+#Preview {
+    AudioClipExportView(
+        audioURL: Bundle.main.url(forResource: "sample", withExtension: "mp3")!,
+        coverImageURL: URL(string: "https://example.com/cover_image.png"),
+        fallbackCoverImageURL: nil,
+        playPosition: 30,
+        duration: 60
+    )
+
+}
+
