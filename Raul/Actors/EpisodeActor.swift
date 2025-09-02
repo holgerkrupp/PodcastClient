@@ -32,7 +32,7 @@ actor EpisodeActor {
     
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
         let predicate = #Predicate<Bookmark> { marker in
-            marker.id == markerID
+            marker.uuid == markerID
         }
 
         do {
@@ -364,7 +364,7 @@ actor EpisodeActor {
 
         await createChapters(url)
   
-        await transcribe(url)
+        try? await transcribe(url)
         modelContext.saveIfNeeded()
         // print("✅ Metadata updated")
        //  await BasicLogger.shared.log("Did mark Episode As Available")
@@ -372,7 +372,7 @@ actor EpisodeActor {
     
 
     
-    func transcribe(_ fileURL: URL) async  {
+    func transcribe(_ fileURL: URL) async throws {
         var bgTask: UIBackgroundTaskIdentifier = .invalid
         bgTask = await UIApplication.shared.beginBackgroundTask(withName: "Transcription") { [task = bgTask] in
             UIApplication.shared.endBackgroundTask(task)
@@ -390,7 +390,7 @@ actor EpisodeActor {
             return }
        
         let transcriber = await AITranscripts(url: localFile, language: episode.podcast?.language)
-        let transcription = try? await transcriber.transcribeTovTT()
+        let transcription = try await transcriber.transcribeTovTT()
         
         if let transcription = transcription {
             episode.transcriptLines = decodeTranscription(transcription)

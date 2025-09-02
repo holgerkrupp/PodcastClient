@@ -22,6 +22,7 @@ struct EpisodeDetailView: View {
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
     @State private var shareURL: IdentifiableURL?
 
+    @State private var errorMessage: String? = nil
     
     init(episode: Episode) {
         self._episode = Bindable(wrappedValue: episode)
@@ -109,13 +110,44 @@ struct EpisodeDetailView: View {
                         }
                     }
                 }
-               
+                HStack{
                     NavigationLink(destination: BookmarkListView(episode: episode)) {
                         Label("Show Bookmarks", systemImage: "bookmark.fill")
                     }
                     .buttonStyle(.glass)
                     .padding()
-                
+                    if let transcriptLines = episode.transcriptLines, transcriptLines.count > 0 {
+                        NavigationLink(destination:  TranscriptListView(transcriptLines: transcriptLines)) {
+                            Label("Open Transcript", systemImage: "custom.quote.bubble.rectangle.portrait")
+                        }
+                        .buttonStyle(.glass)
+                        .padding()
+                    }else{
+                        if let errorMessage {
+                            Text(errorMessage)
+                                .font(.caption)
+                        }else{
+                            if let url = episode.url{
+                                Button(action: {
+                                    Task{
+                                        let actor = EpisodeActor(modelContainer: context.container)
+                                        do{
+                                            try await actor.transcribe(url)
+                                        }catch{
+                                            errorMessage = error.localizedDescription
+                                        }
+                                        
+                                    }
+                                }) {
+                                    Label("Transcribe Episode", systemImage: "quote.bubble.fill")
+                                }
+                                .buttonStyle(.glass)
+                                .padding()
+                            }
+                            
+                        }
+                    }
+                }
                 
             Spacer(minLength: 10)
                 

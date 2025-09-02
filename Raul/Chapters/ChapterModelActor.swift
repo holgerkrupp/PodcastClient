@@ -15,7 +15,7 @@ import Foundation
 actor ChapterModelActor {
     func fetchChapter(byID chapterID: UUID) async -> Marker? {
         let predicate = #Predicate<Marker> { chapter in
-            chapter.id == chapterID
+            chapter.uuid == chapterID
         }
 
         do {
