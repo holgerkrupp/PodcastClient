@@ -76,7 +76,7 @@ class Bookmark: Marker {
 class Marker: Identifiable, Equatable, Hashable{
     
     
-    var id:UUID? = UUID()
+    var uuid:UUID? = UUID()
     var title: String = ""
     var link: URL?
     var image: URL?

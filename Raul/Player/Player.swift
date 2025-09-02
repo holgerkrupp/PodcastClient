@@ -245,7 +245,7 @@ class Player: NSObject {
                     saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
                 }
                 currentChapter = playingChapter
-                if let currentChapterID = currentChapter?.id{
+                if let currentChapterID = currentChapter?.uuid{
                     Task{
                         currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true // check that the user has not recently changed the toggle to play this chapter
                     }
@@ -272,7 +272,7 @@ class Player: NSObject {
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
-        if let chapterID = chapter.id{
+        if let chapterID = chapter.uuid{
             
             Task.detached(priority: .background) {
                 await self.chapterActor?.setChapterProgress(progress, for: chapterID)
@@ -670,7 +670,7 @@ class Player: NSObject {
 
         if currentChapter.shouldPlay { return }
 
-        if let id = currentChapter.id {
+        if let id = currentChapter.uuid {
             Task.detached(priority: .background) {
                 await self.chapterActor?.markChapterAsSkipped(id)
             }

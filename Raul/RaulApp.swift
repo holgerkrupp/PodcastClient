@@ -9,7 +9,7 @@ struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
     @Environment(\.scenePhase) private var phase
-    
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
         _ = Player.shared

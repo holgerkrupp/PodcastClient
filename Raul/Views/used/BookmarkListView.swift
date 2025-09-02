@@ -47,42 +47,60 @@ struct BookmarkListView: View {
     }
     
     var body: some View {
+        /*
         if bookmarks.isEmpty {
             BookmarkEmptyView()
         }else{
+         */
             List(bookmarks, id: \.id) { marker in
-                
-                VStack{
-                    HStack{
-                        CoverImageView(episode: marker.bookmarkEpisode)
-                            .frame(width: 100, height: 100)
-                        VStack(alignment: .leading) {
-                            Text(marker.bookmarkEpisode?.podcast?.title ?? marker.bookmarkEpisode?.title ?? "")
-                                .font(.headline)
-                            Text(marker.title)
-                                .font(.body)
-                            if let start = marker.start {
-                                Text("at \(Duration.seconds(start).formatted(.units(width: .abbreviated)))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    if let episode = marker.bookmarkEpisode{
-                        Button {
-                            Task{
-                                await Player.shared.playEpisode(episode.id, playDirectly: true, startingAt: marker.start)
-                            }
-                        } label: {
-                            
-                            Label("Play", systemImage: "play.fill")
-                            
-                        }
-                        .buttonStyle(.glass)
+                VStack(alignment: .center) {
+                    ZStack{
                         
-                    }
-                }
-                .padding()
+                        
+                        CoverImageView(episode: marker.bookmarkEpisode)
+                            .scaledToFill()
+                            .frame(height: 150)
+                            .clipped()
+                        
+                        VStack{
+                            HStack{
+                                CoverImageView(episode: marker.bookmarkEpisode)
+                                    .frame(width: 100, height: 100)
+                                VStack(alignment: .leading) {
+                                    Text(marker.bookmarkEpisode?.podcast?.title ?? marker.bookmarkEpisode?.title ?? "")
+                                        .font(.headline)
+                                    Text(marker.title)
+                                        .font(.body)
+                                    if let start = marker.start {
+                                        Text("at \(Duration.seconds(start).formatted(.units(width: .abbreviated)))")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            if let episode = marker.bookmarkEpisode{
+                                Button {
+                                    Task{
+                                        await Player.shared.playEpisode(episode.id, playDirectly: true, startingAt: marker.start)
+                                    }
+                                } label: {
+                                    
+                                    Label("Play", systemImage: "play.fill")
+                                    
+                                }
+                                .buttonStyle(.glass)
+                                
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding()
+                        .background(
+                            Rectangle()
+                                .fill(.ultraThinMaterial)
+                            
+                        )
+                    }}
+               
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(.init(top: 0,
@@ -110,14 +128,14 @@ struct BookmarkListView: View {
             }
             .listStyle(.plain)
             .navigationTitle(navigationTitleText)
-        }
+        
         
         
     }
     
     private func deleteMarker(_ marker: Marker) async {
         // print("archiveEpisode from PlaylistView - \(episode.title)")
-        guard let id = marker.id else { return }
+        guard let id = marker.uuid else { return }
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         await episodeActor.deleteMarker(markerID: id)
         
