@@ -24,7 +24,7 @@ struct CoverImageView: View {
                     .scaledToFit()
             } else {
                 Rectangle()
-                    .fill(Color.accentColor)
+                    .fill(Color.accent)
             }
         }
         .task(id: taskId) {
