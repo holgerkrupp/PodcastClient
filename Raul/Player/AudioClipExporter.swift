@@ -78,7 +78,8 @@ enum AudioClipExporter {
                 var currentFrame = 0
                 while videoInput.isReadyForMoreMediaData && currentFrame < frameCount {
                     autoreleasepool {
-                        guard let buffer = createPixelBuffer(from: template, size: videoSize) else { return }
+                        let frameProgress = Double(currentFrame) / Double(frameCount)
+                        guard let buffer = createPixelBuffer(from: template, size: videoSize, progress: frameProgress, startTime: startTime, endTime: endTime) else { return }
                         let time = CMTime(seconds: Double(currentFrame) / Double(fps), preferredTimescale: 600)
                         if !adaptor.append(buffer, withPresentationTime: time) {
                             continuation.resume(throwing: ExportError.failedToAppendFrame)
@@ -132,8 +133,8 @@ enum AudioClipExporter {
     }
 
 
-    // MARK: - Create CVPixelBuffer with blurred background + aspect-fit foreground
-    private static func createPixelBuffer(from image: UIImage, size: CGSize) -> CVPixelBuffer? {
+    // MARK: - Create CVPixelBuffer with blurred background + aspect-fit foreground + progress bar
+     static func createPixelBuffer(from image: UIImage, size: CGSize, progress: Double, startTime: Double, endTime: Double) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true
@@ -165,7 +166,7 @@ enum AudioClipExporter {
         if let ciImage = CIImage(image: image),
            let filter = CIFilter(name: "CIGaussianBlur") {
             filter.setValue(ciImage, forKey: kCIInputImageKey)
-            filter.setValue(20, forKey: kCIInputRadiusKey)
+            filter.setValue(80, forKey: kCIInputRadiusKey)
             if let output = filter.outputImage,
                let cgBlurred = sharedCIContext.createCGImage(output, from: ciImage.extent) {
                 context.draw(cgBlurred, in: CGRect(origin: .zero, size: size))
@@ -175,12 +176,62 @@ enum AudioClipExporter {
         // Draw foreground image (aspect fit)
         let aspectWidth = size.width / image.size.width
         let aspectHeight = size.height / image.size.height
-        let scale = min(aspectWidth, aspectHeight)
+        let scale = min(aspectWidth, aspectHeight) * 0.8
         let newWidth = image.size.width * scale
         let newHeight = image.size.height * scale
         let x = (size.width - newWidth) / 2
         let y = (size.height - newHeight) / 2
         context.draw(image.cgImage!, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
+        
+        // Adjusted positioning for progress bar and time labels near bottom
+        let bottomMargin: CGFloat = 12.0
+        let barMargin: CGFloat = 24.0
+        let barHeight: CGFloat = 16.0
+        let timeFontSize: CGFloat = 20.0
+        let timeLabelHeight = timeFontSize + 2 // Estimate, since font is 20pt, add a bit more for line height
+        let gap: CGFloat = 0.0
+
+        let textY = 0  + bottomMargin
+        let barWidth = size.width - 2 * barMargin
+        let barY = textY + timeLabelHeight + gap + barHeight
+        let capsuleRect = CGRect(x: barMargin, y: barY, width: barWidth, height: barHeight)
+
+        // Draw progress bar as a capsule
+        let capsulePath = UIBezierPath(roundedRect: capsuleRect, cornerRadius: barHeight/2).cgPath
+        context.setFillColor(UIColor(white: 1.0, alpha: 0.22).cgColor)
+        context.addPath(capsulePath)
+        context.fillPath()
+        // Fill progress
+        let progressWidth = barWidth * CGFloat(max(0, min(1, progress)))
+        let progressRect = CGRect(x: barMargin, y: barY, width: progressWidth, height: barHeight)
+        let progressCapsule = UIBezierPath(roundedRect: progressRect, cornerRadius: barHeight/2).cgPath
+        context.setFillColor(UIColor.accent.cgColor)
+        context.addPath(progressCapsule)
+        context.fillPath()
+
+        // Draw start and end time below bar using UIGraphicsImageRenderer for text + shadow
+        let startString = Duration.seconds(startTime).formatted(.units(width: .narrow))
+        let endString = Duration.seconds((endTime-startTime)*(1-progress)).formatted(.units(width: .narrow))
+        let monoFont = UIFont.monospacedSystemFont(ofSize: timeFontSize, weight: .semibold)
+        let fontattrs: [NSAttributedString.Key: Any] = [
+            .font: monoFont,
+            .foregroundColor: UIColor.white
+        ]
+
+        func renderTextImage(_ text: String, attributes: [NSAttributedString.Key: Any]) -> UIImage {
+            let textSize = (text as NSString).size(withAttributes: attributes)
+            let renderer = UIGraphicsImageRenderer(size: textSize)
+            return renderer.image { ctx in
+                // Draw shadow
+                let context = ctx.cgContext
+                context.setShadow(offset: CGSize(width: 1, height: 1), blur: 4, color: UIColor.black.withAlphaComponent(0.85).cgColor)
+                (text as NSString).draw(at: .zero, withAttributes: attributes)
+            }
+        }
+        let startImage = renderTextImage(startString, attributes: fontattrs)
+        let endImage = renderTextImage(endString, attributes: fontattrs)
+        context.draw(startImage.cgImage!, in: CGRect(x: barMargin, y: textY, width: startImage.size.width, height: startImage.size.height))
+        context.draw(endImage.cgImage!, in: CGRect(x: size.width - barMargin - endImage.size.width, y: textY, width: endImage.size.width, height: endImage.size.height))
 
         return buffer
     }
@@ -223,3 +274,4 @@ enum AudioClipExporter {
         }
     }
 }
+
