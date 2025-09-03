@@ -17,6 +17,7 @@ struct AudioClipExportView: View {
     @State private var exportProgress: Double = 0.0
     @State private var videoSize = CGSize(width: 720, height: 720)
     @State private var previewImage: UIImage?
+    var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
     let coverImageURL: URL? // The primary image URL to use as video background
@@ -53,17 +54,9 @@ struct AudioClipExportView: View {
                                 Image(uiImage: previewImage)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
-                                    .cornerRadius(16)
+                                 //   .cornerRadius(16)
                                     .padding()
-                            } else if let coverImage {
-                                ZStack {
-                                    Rectangle()
-                                        .fill(Color.gray.opacity(0.3))
-                                        .cornerRadius(16)
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .accent))
-                                }
-                            } else {
+                            }  else {
                                 ZStack {
                                     Rectangle()
                                         .fill(Color.gray.opacity(0.3))
@@ -156,7 +149,7 @@ struct AudioClipExportView: View {
                             }
                             .buttonStyle(.glass)
                             Spacer()
-                            Button(isExporting ? "Exporting…" : "Export Video") {
+                            Button("Export") {
                                 exportClip()
                             }
                             .buttonStyle(.glassProminent)
@@ -277,7 +270,7 @@ struct AudioClipExportView: View {
             previewImage = nil
             return
         }
-        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: 0, startTime: trimStart, endTime: trimEnd) {
+        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: 0, startTime: trimStart, endTime: trimEnd, title: title) {
             previewImage = pixelBufferToUIImage(buffer)
         } else {
             previewImage = nil
@@ -292,6 +285,7 @@ struct AudioClipExportView: View {
             do {
                 let url = try await AudioClipExporter.exportClipAsync(
                     audioURL: audioURL,
+                    title: title,
                     coverImage: coverImage ?? UIImage(),
                     startTime: trimStart,
                     endTime: trimEnd,

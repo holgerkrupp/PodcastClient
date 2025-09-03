@@ -71,6 +71,7 @@ struct PlayerView: View {
                                                 
                                                 if let episode = player.currentEpisode, let audioURL = episode.localFile ?? episode.url {
                                                     AudioClipExportView(
+                                                        title: episode.title,
                                                         audioURL: audioURL,
                                                         coverImageURL: episode.imageURL,
                                                         fallbackCoverImageURL: episode.podcast?.imageURL,
