@@ -16,36 +16,38 @@ struct HotPodcastView: View {
     var body: some View {
         
         
-      
         
         
         
         
-        if viewModel.isLoading {
-            ProgressView()
-        } else {
-            
-            
-            ForEach(viewModel.hotPodcasts , id: \.self) { podcast in
-                SubscribeToPodcastView(newPodcastFeed: podcast)
-                    .modelContext(context)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
+     
+            if viewModel.isLoading {
+                ProgressView()
+            } else {
+                
+                
+                ForEach(viewModel.hotPodcasts , id: \.self) { podcast in
+                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                        .modelContext(context)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                    
+                }
+                
+                .listStyle(.plain)
+                .navigationTitle("Hot")
+                
                 
             }
             
-            .listStyle(.plain)
-            .navigationTitle("Hot")
+            
         
+
     }
-    
-    
-    
-}
 }
 
 
