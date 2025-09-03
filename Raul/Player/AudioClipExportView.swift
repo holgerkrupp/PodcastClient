@@ -16,6 +16,7 @@ struct AudioClipExportView: View {
     @State private var showPreviewUnavailableAlert = false
     @State private var exportProgress: Double = 0.0
     @State private var videoSize = CGSize(width: 720, height: 720)
+    @State private var previewImage: UIImage?
 
     let audioURL: URL // The audio file URL to trim
     let coverImageURL: URL? // The primary image URL to use as video background
@@ -29,7 +30,6 @@ struct AudioClipExportView: View {
         return minTime...maxTime
     }
     
-
 
     var body: some View {
         GeometryReader { geometry in
@@ -46,27 +46,24 @@ struct AudioClipExportView: View {
                     Spacer()
                     VStack(spacing: 16) {
                         
-                        //   VideoSizePicker(videoSize: $videoSize)
+                           VideoSizePicker(videoSize: $videoSize)
                         
                         Group {
-                            if let coverImage {
+                            if let previewImage {
+                                Image(uiImage: previewImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .cornerRadius(16)
+                                    .padding()
+                            } else if let coverImage {
                                 ZStack {
-                                    // Background (blurred)
-                                    Image(uiImage: coverImage)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .blur(radius: 30)
-                                        .clipped()
-                                    
-                                    // Foreground (sharp)
-                                    Image(uiImage: coverImage)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
+                                    Rectangle()
+                                        .fill(Color.gray.opacity(0.3))
                                         .cornerRadius(16)
-                                        .padding()
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .accent))
                                 }
                             } else {
-                                // Placeholder
                                 ZStack {
                                     Rectangle()
                                         .fill(Color.gray.opacity(0.3))
@@ -77,7 +74,10 @@ struct AudioClipExportView: View {
                             }
                         }
                         .frame(width: 300, height: 300)
-                        
+                        .onChange(of: coverImage) { updatePreviewImage() }
+                        .onChange(of: trimStart) { updatePreviewImage() }
+                        .onChange(of: trimEnd) { updatePreviewImage() }
+                        .onChange(of: videoSize) {  updatePreviewImage() }
                         
                         
                         Text("Select the segment to share")
@@ -207,6 +207,7 @@ struct AudioClipExportView: View {
                         if waveformSamples.allSatisfy({ $0 < 0.07 }) {
                             waveformSamples = Array(repeating: 0.5, count: 480)
                         }
+                        updatePreviewImage()
                     }
                 }
                 .onDisappear {
@@ -260,6 +261,27 @@ struct AudioClipExportView: View {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    private func pixelBufferToUIImage(_ buffer: CVPixelBuffer) -> UIImage? {
+        let ciImage = CIImage(cvPixelBuffer: buffer)
+        let context = CIContext()
+        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+        return nil
+    }
+    
+    private func updatePreviewImage() {
+        guard let coverImage else {
+            previewImage = nil
+            return
+        }
+        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: 0, startTime: trimStart, endTime: trimEnd) {
+            previewImage = pixelBufferToUIImage(buffer)
+        } else {
+            previewImage = nil
+        }
     }
 
     func exportClip() {
@@ -399,4 +421,3 @@ private class AudioPlayerDelegateWrapper: NSObject, AVAudioPlayerDelegate {
     )
 
 }
-
