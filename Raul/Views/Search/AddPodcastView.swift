@@ -9,6 +9,7 @@ import SwiftUI
 
 struct AddPodcastView: View {
     @Environment(\.modelContext) private var context
+    
     @Binding var search: String
     enum Selection {
         case search, hot, importexport
@@ -47,6 +48,7 @@ struct AddPodcastView: View {
 
             }
             .listStyle(.plain)
+
 
             
             

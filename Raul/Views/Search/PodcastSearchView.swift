@@ -71,6 +71,28 @@ struct PodcastSearchView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }else{
+                
+                Group{
+                    if !viewModel.languages.isEmpty {
+                    Picker("Language", selection: $viewModel.selectedLanguage) {
+                        ForEach(viewModel.languages, id: \.self) { name in
+                            Text(name.languageName()).tag(name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    } else {
+                        ProgressView("Loading languages...")
+                    }
+                }
+                .padding()
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0,
+                                     leading: 0,
+                                     bottom: 0,
+                                     trailing: 0))
+                
+                
                 HotPodcastView(viewModel: viewModel)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -78,6 +100,7 @@ struct PodcastSearchView: View {
                                          leading: 0,
                                          bottom: 0,
                                          trailing: 0))
+ 
             }
             if let url = URL(string: "https://fyyd.de"){
                 Link(destination: url) {
@@ -91,26 +114,28 @@ struct PodcastSearchView: View {
             }
         
         EmptyView()
+            .toolbar {
+                
+                
+                ToolbarItem(placement: .automatic) {
+                    if !viewModel.languages.isEmpty {
+                    Picker("Language", selection: $viewModel.selectedLanguage) {
+                        ForEach(viewModel.languages, id: \.self) { name in
+                            Text(name.languageName()).tag(name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    } else {
+                        ProgressView("Loading languages...")
+                    }
+                }
+            }
         .onChange(of: search) {
             viewModel.searchText = search
             
         }
-        .toolbar {
-            
-            
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if !viewModel.languages.isEmpty {
-                Picker("Language", selection: $viewModel.selectedLanguage) {
-                    ForEach(viewModel.languages, id: \.self) { name in
-                        Text(name.languageName()).tag(name)
-                    }
-                }
-                .pickerStyle(.menu)
-                } else {
-                    ProgressView("Loading languages...")
-                }
-            }
-        }
+
+
      
 
     }
