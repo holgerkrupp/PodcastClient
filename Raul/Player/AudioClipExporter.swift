@@ -12,6 +12,7 @@ enum AudioClipExporter {
     // MARK: - Export Clip
     static func exportClipAsync(
         audioURL: URL,
+        title: String? = nil,
         coverImage: UIImage,
         startTime: Double,
         endTime: Double,
@@ -79,7 +80,7 @@ enum AudioClipExporter {
                 while videoInput.isReadyForMoreMediaData && currentFrame < frameCount {
                     autoreleasepool {
                         let frameProgress = Double(currentFrame) / Double(frameCount)
-                        guard let buffer = createPixelBuffer(from: template, size: videoSize, progress: frameProgress, startTime: startTime, endTime: endTime) else { return }
+                        guard let buffer = createPixelBuffer(from: template, size: videoSize, progress: frameProgress, startTime: startTime, endTime: endTime, title: title) else { return }
                         let time = CMTime(seconds: Double(currentFrame) / Double(fps), preferredTimescale: 600)
                         if !adaptor.append(buffer, withPresentationTime: time) {
                             continuation.resume(throwing: ExportError.failedToAppendFrame)
@@ -134,7 +135,7 @@ enum AudioClipExporter {
 
 
     // MARK: - Create CVPixelBuffer with blurred background + aspect-fit foreground + progress bar
-     static func createPixelBuffer(from image: UIImage, size: CGSize, progress: Double, startTime: Double, endTime: Double) -> CVPixelBuffer? {
+    static func createPixelBuffer(from image: UIImage, size: CGSize, progress: Double, startTime: Double, endTime: Double, title:String? = nil) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true
@@ -169,25 +170,44 @@ enum AudioClipExporter {
             filter.setValue(80, forKey: kCIInputRadiusKey)
             if let output = filter.outputImage,
                let cgBlurred = sharedCIContext.createCGImage(output, from: ciImage.extent) {
-                context.draw(cgBlurred, in: CGRect(origin: .zero, size: size))
+                let overscan: CGFloat = 1.2
+                // Aspect-fill calculation
+                let imageAspect = ciImage.extent.width / ciImage.extent.height
+                let canvasAspect = size.width / size.height
+                var drawRect = CGRect.zero
+                if imageAspect > canvasAspect {
+                    // Image is wider: fill height, crop sides
+                    let scale = size.height / ciImage.extent.height * overscan
+                    let scaledWidth = ciImage.extent.width * scale * overscan
+                    drawRect = CGRect(
+                        x: (size.width - scaledWidth) / 2,
+                        y: 0,
+                        width: scaledWidth,
+                        height: size.height
+                    )
+                } else {
+                    // Image is taller: fill width, crop top/bottom
+                    let scale = size.width / ciImage.extent.width * overscan
+                    let scaledHeight = ciImage.extent.height * scale * overscan
+                    drawRect = CGRect(
+                        x: 0,
+                        y: (size.height - scaledHeight) / 2,
+                        width: size.width,
+                        height: scaledHeight
+                    )
+                }
+                context.draw(cgBlurred, in: drawRect)
             }
         }
 
-        // Draw foreground image (aspect fit)
-        let aspectWidth = size.width / image.size.width
-        let aspectHeight = size.height / image.size.height
-        let scale = min(aspectWidth, aspectHeight) * 0.8
-        let newWidth = image.size.width * scale
-        let newHeight = image.size.height * scale
-        let x = (size.width - newWidth) / 2
-        let y = (size.height - newHeight) / 2
-        context.draw(image.cgImage!, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
+
         
         // Adjusted positioning for progress bar and time labels near bottom
         let bottomMargin: CGFloat = 12.0
         let barMargin: CGFloat = 24.0
         let barHeight: CGFloat = 16.0
         let timeFontSize: CGFloat = 20.0
+        let titleFontSize: CGFloat = 30.0
         let timeLabelHeight = timeFontSize + 2 // Estimate, since font is 20pt, add a bit more for line height
         let gap: CGFloat = 0.0
 
@@ -217,6 +237,25 @@ enum AudioClipExporter {
             .font: monoFont,
             .foregroundColor: UIColor.white
         ]
+        
+        var lowerImageBorder = barY + barHeight
+        
+        // Draw title text if available
+        if let title {
+            let titleLowerGap: CGFloat = 8.0
+            let titleTextY = barY + barHeight + titleLowerGap
+            
+            let Font = UIFont.systemFont(ofSize: titleFontSize, weight: .semibold)
+            let tittleFontattrs: [NSAttributedString.Key: Any] = [
+                .font: Font,
+                .foregroundColor: UIColor.white
+            ]
+            let titleImage = renderTextImage(title, attributes: tittleFontattrs)
+            context.draw(titleImage.cgImage!, in: CGRect(x: barMargin, y: titleTextY, width: titleImage.size.width, height: titleImage.size.height))
+
+            
+            lowerImageBorder += titleLowerGap + titleImage.size.height
+        }
 
         func renderTextImage(_ text: String, attributes: [NSAttributedString.Key: Any]) -> UIImage {
             let textSize = (text as NSString).size(withAttributes: attributes)
@@ -232,6 +271,21 @@ enum AudioClipExporter {
         let endImage = renderTextImage(endString, attributes: fontattrs)
         context.draw(startImage.cgImage!, in: CGRect(x: barMargin, y: textY, width: startImage.size.width, height: startImage.size.height))
         context.draw(endImage.cgImage!, in: CGRect(x: size.width - barMargin - endImage.size.width, y: textY, width: endImage.size.width, height: endImage.size.height))
+         
+         
+         
+         // Draw foreground image (aspect fit)
+         let aspectWidth = size.width / image.size.width
+         let aspectHeight = size.height / image.size.height
+         let scale = min(aspectWidth, aspectHeight) * 0.8
+         let newWidth = image.size.width * scale
+         let newHeight = image.size.height * scale
+            let upperGap = 8.0
+         let x = (size.width - newWidth) / 2
+         let y = max(lowerImageBorder, (size.height - newHeight) / 2) + upperGap
+         
+       //  let y = ((size.height - newHeight) / 2) + (barY + barHeight + gapToBar)
+         context.draw(image.cgImage!, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
 
         return buffer
     }
