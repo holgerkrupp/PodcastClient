@@ -234,6 +234,7 @@ actor EpisodeActor {
 
         await deleteFile(episodeID: episodeID)
          modelContext.saveIfNeeded()
+        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
     }
     
     func moveToHistory(episodeID: UUID) async {
@@ -252,6 +253,7 @@ actor EpisodeActor {
         episode.metaData?.status = .history
         
         modelContext.saveIfNeeded()
+        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
     }
     
     

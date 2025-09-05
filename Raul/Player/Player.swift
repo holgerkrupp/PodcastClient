@@ -318,7 +318,7 @@ class Player: NSObject {
 
         currentEpisode = episode
         currentEpisodeID = episode.id
-        // print("unloading finished - new episode: \(String(describing: currentEpisodeID)) - \(episode.title)")
+        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
         updateChapters()
         

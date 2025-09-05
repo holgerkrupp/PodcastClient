@@ -71,6 +71,7 @@ struct AudioClipExportView: View {
                         .onChange(of: trimStart) { updatePreviewImage() }
                         .onChange(of: trimEnd) { updatePreviewImage() }
                         .onChange(of: videoSize) {  updatePreviewImage() }
+                        .onChange(of: playbackProgress) {  updatePreviewImage() }
                         
                         
                         Text("Select the segment to share")
@@ -112,11 +113,7 @@ struct AudioClipExportView: View {
                                     RoundedRectangle(cornerRadius:  8.0)
                                         .fill(.black.opacity(0.5))
                                 }
-                                /*
-                                ProgressView(value: playbackProgress, total: trimEnd - trimStart)
-                                    .progressViewStyle(LinearProgressViewStyle(tint: .accent))
-                                    .padding(.horizontal)
-*/
+
                                     
                                     
                                     Button {
@@ -270,7 +267,7 @@ struct AudioClipExportView: View {
             previewImage = nil
             return
         }
-        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: 0, startTime: trimStart, endTime: trimEnd, title: title) {
+        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: playbackProgress / (trimEnd - trimStart), startTime: trimStart, endTime: trimEnd, title: title) {
             previewImage = pixelBufferToUIImage(buffer)
         } else {
             previewImage = nil

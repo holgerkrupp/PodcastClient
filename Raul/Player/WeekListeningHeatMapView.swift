@@ -148,12 +148,14 @@ struct WeekListeningHeatMapView: View {
                                 Rectangle()
                                     .fill(Color.red.opacity(percent * 0.8 + 0.1))
                                     .frame(width: blockWidth, height: blockHeight)
+                                /*
                                     .overlay(
                                         percent > 0.55 ? Text("\(Int((block?.totalSeconds ?? 0) / 60))m")
                                             .font(.caption2)
                                             .foregroundColor(.white)
                                         : nil
                                     )
+                                */
                             }
                         }
                         .overlay(
