@@ -16,7 +16,7 @@ struct PlayerTabBarView: View {
 
     @Bindable private var player = Player.shared
     
-    @State private var fakeProgress : Double?
+    private var fakeProgress : Double?
     
     // The following is, because iOS26 Beta 5 (maybe following as well) don't propperly change the text color and often it's not readable.
     @Environment(\.colorScheme) var colorScheme
@@ -38,6 +38,7 @@ struct PlayerTabBarView: View {
             ZStack{
                 
                 // Background layer
+                
                 HStack{
                     Rectangle()
                         .fill(Color.accent.opacity(0.2))
@@ -48,8 +49,7 @@ struct PlayerTabBarView: View {
                 if placement == .inline {
                     HStack{
                         
-                        
-                        CoverImageView(episode: episode, timecode: player.playPosition)
+                        CoverImageView(episode: episode, timecode: player.currentChapter?.start)
                             .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
                             .scaledToFit()
                             .clipShape(Circle())
@@ -87,7 +87,7 @@ struct PlayerTabBarView: View {
                                     .scaledToFit()
                             }
                             .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 15))
+                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 20))
                             
                             
 
@@ -102,7 +102,7 @@ struct PlayerTabBarView: View {
                     HStack{
                         
                         
-                        CoverImageView(episode: episode, timecode: player.playPosition)
+                        CoverImageView(episode: episode, timecode: player.currentChapter?.start)
                             .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
                             .scaledToFit()
                             .clipShape(Circle())
@@ -140,7 +140,7 @@ struct PlayerTabBarView: View {
                                     .scaledToFit()
                             }
                             .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 12))
+                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 20))
                             
                             
 
@@ -154,6 +154,7 @@ struct PlayerTabBarView: View {
                 }
                 
             }
+            
             .tint(dynamicPrimaryColor)
             
             .onTapGesture {

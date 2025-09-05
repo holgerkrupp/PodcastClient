@@ -234,7 +234,7 @@ struct AudioClipExportView: View {
                             RoundedRectangle(cornerRadius:  8.0)
                                 .fill(.background.opacity(0.3))
                         }
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                         
                         
                     }

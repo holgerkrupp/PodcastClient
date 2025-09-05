@@ -186,7 +186,7 @@ struct PodcastDetailView: View {
                         }
                      
                         
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                         .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
                     
                   

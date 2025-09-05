@@ -28,7 +28,7 @@ struct PlaylistView: View {
 
                 if let episode = Player.shared.currentEpisode {
                     ZStack {
-                        EpisodeRowView(episode: episode)
+                         EpisodeRowView(episode: episode)
                             .id(episode.id)
                             .allowsHitTesting(false)
                        
@@ -85,12 +85,12 @@ struct PlaylistView: View {
                                 
                             
                      .background{
-                         RoundedRectangle(cornerRadius:  8.0)
+                         RoundedRectangle(cornerRadius:  20.0)
                              .fill(.background.opacity(0.3))
                      }
                   
                      
-                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  8.0))
+                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  20.0))
                      .frame(maxWidth: 300, maxHeight: 120, alignment: .center)
                     }
                     
@@ -101,7 +101,7 @@ struct PlaylistView: View {
                         if let episode = entry.episode {
                             
                             ZStack {
-                                EpisodeRowView(episode: episode)
+                               EpisodeRowView(episode: episode)
                                     .id(episode.id)
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()
