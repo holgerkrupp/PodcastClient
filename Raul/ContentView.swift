@@ -28,12 +28,13 @@ struct ContentView: View {
     var body: some View {
         
         TabView() {
+            
             Tab {
                 PlaylistView()
             } label: {
                 Label("Up next", systemImage: "calendar.day.timeline.leading")
             }
-            
+          
             Tab {
                 InboxView()
             } label: {
@@ -46,13 +47,8 @@ struct ContentView: View {
             } label: {
                 Label("Library", systemImage: "books.vertical")
             }
-            /*
-            Tab {
-                LogView()
-            }label: {
-                Label("Log", systemImage: "book.and.wrench")
-            }
-            */
+
+            
             Tab(role: .search) {
                 AddPodcastView(search: $search)
             } label: {
@@ -63,14 +59,15 @@ struct ContentView: View {
         }
         .searchable(text: $search, prompt: "URL or Search")
         .tabBarMinimizeBehavior(.onScrollDown)
+        
         .tabViewBottomAccessory {
-           
-                PlayerTabBarView()
+              PlayerTabBarView()
                 .opacity(Player.shared.currentEpisode == nil ? 0 : 1)
                 .allowsHitTesting(Player.shared.currentEpisode != nil)
             
  
         }
+        
         .task {
             await loadInboxCount()
         }

@@ -54,7 +54,7 @@ struct PlayerView: View {
                                                     Label("Open in Browser", systemImage: "safari")
                                                 }
                                                 .buttonStyle(.glass)
-                                             //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 8.0))
+                                             //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                                             }
                                             Spacer()
                                            

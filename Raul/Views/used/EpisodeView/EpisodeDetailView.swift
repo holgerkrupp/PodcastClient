@@ -67,7 +67,7 @@ struct EpisodeDetailView: View {
                         }
                     }
                     .padding()
-                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 8.0))
+                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                     .frame(width: 300)
                 }
                     
