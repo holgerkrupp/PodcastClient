@@ -14,7 +14,8 @@ struct PlaylistView: View {
     @Query(filter: #Predicate<PlaylistEntry> { $0.playlist?.title == "de.holgerkrupp.podbay.queue" },
            sort: [SortDescriptor(\PlaylistEntry.order)] ) var playListEntries: [PlaylistEntry]
     @Environment(\.modelContext) private var modelContext
-//    @State private var editMode: EditMode = .active
+    @State private var showSettings: Bool = false
+
     var body: some View {
         if playListEntries.isEmpty {
             PlaylistEmptyView()
@@ -144,11 +145,29 @@ struct PlaylistView: View {
                         }
                     }
                 }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: {
+                        showSettings.toggle()
+                    }) {
+                        Image(systemName: "gear")
+                    }
+                    
+                }
+               }
+            .sheet(isPresented: $showSettings) {
+                
+                
+                PodcastSettingsView(podcast: nil, modelContainer: modelContext.container)
+                    .presentationBackground(.ultraThinMaterial)
+                
+            }
             .animation(.easeInOut, value: playListEntries)
            // .environment(\.editMode, $editMode)
             .listStyle(.plain)
             .navigationTitle("Up Next")
             }
+
             
 
         }

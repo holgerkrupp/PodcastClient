@@ -7,7 +7,7 @@ struct PodcastSettingsView: View {
     
     @Environment(\.modelContext) private var context
 
-    @State var podcast: Podcast?
+    @State var podcast: Podcast? = nil
     @State private var useCustomSettings: Bool
     var podcastTitle: String? { podcast?.title }
     var settings: PodcastSettings? {podcast?.settings }
@@ -67,9 +67,9 @@ struct PodcastSettingsView: View {
                                              trailing: 0))
                     
                 } else {
-               
+                    if let podcast{
                         Text("This podcast uses the global settings. To customize, switch to 'Custom Settings'.")
-                        .padding()
+                            .padding()
                             .foregroundStyle(.secondary)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -77,7 +77,7 @@ struct PodcastSettingsView: View {
                                                  leading: 0,
                                                  bottom: 0,
                                                  trailing: 0))
-                    
+                    }
                     if let settings = defaultSettings.first {
                             settingsSections(settings: settings)
                                 .listRowSeparator(.hidden)

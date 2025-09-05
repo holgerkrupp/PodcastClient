@@ -40,6 +40,7 @@ class PlaylistViewModel: ObservableObject {
         do {
             let result = try context.fetch(descriptor)
             self.entries = result
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         } catch {
             // print("Failed to fetch entries: \(error)")
         }
@@ -52,6 +53,7 @@ class PlaylistViewModel: ObservableObject {
         }
         try? await actor.add(episodeID: episode.id, to: position)
         await loadEntries()
+
     }
 
     func removeEpisode(_ episode: Episode) async {
