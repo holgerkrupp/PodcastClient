@@ -109,7 +109,7 @@ struct SubscribeToPodcastView: View {
                             HStack{
                                 Spacer()
                                 
-                                if !isSubscribed {
+                              
                                     Button("Subscribe") {
                                         
                                         Task {
@@ -135,10 +135,7 @@ struct SubscribeToPodcastView: View {
                                     }
                                     .buttonStyle(.glass)
                                     
-                                } else {
-                                    Text("subscribed")
-                                        .foregroundStyle(.secondary)
-                                }
+                               
                                 
                             }
                         }

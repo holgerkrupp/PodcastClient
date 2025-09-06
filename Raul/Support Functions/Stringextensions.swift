@@ -75,6 +75,18 @@ extension String {
         }
         return false
     }
+    
+    /// Returns HTTP status and final URL (after considering potential Location header via your URL.status()).
+    /// This does not follow redirects itself; it mirrors your URL.status() behavior.
+    func reachabilityStatus(timeout: TimeInterval = 5.0) async -> (statusCode: Int?, finalURL: URL?)? {
+        guard self.isValidURL, let url = URL(string: self) else { return nil }
+        do {
+            let status = try await url.status()
+            return (status?.statusCode, status?.newURL ?? url)
+        } catch {
+            return nil
+        }
+    }
 }
 
 extension String{
