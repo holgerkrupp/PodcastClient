@@ -23,62 +23,65 @@ struct PodcastSettingsView: View {
     }
 
     var body: some View {
-        VStack {
-            if let podcast{
-                Picker("Settings Mode", selection: $useCustomSettings) {
-                    Text("Global Settings").tag(false)
-                    Text("Custom Settings").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .onChange(of: useCustomSettings) {
-                    Task {
-                        if  useCustomSettings == true {
-                            await actor.enableCustomSettings(for: podcast.id)
-                        } else {
-                            await actor.disableCustomSettings(for: podcast.id)
+        NavigationStack{
+            VStack {
+                Text("Settings")
+                    .font(.title)
+                if let podcast{
+                    Picker("Settings Mode", selection: $useCustomSettings) {
+                        Text("Global Settings").tag(false)
+                        Text("Custom Settings").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .onChange(of: useCustomSettings) {
+                        Task {
+                            if  useCustomSettings == true {
+                                await actor.enableCustomSettings(for: podcast.id)
+                            } else {
+                                await actor.disableCustomSettings(for: podcast.id)
+                            }
                         }
                     }
                 }
-            }
-
-            Form {
-                if let settings = settings, let podcast, useCustomSettings {
-
-                    HStack{
+                
+                Form {
+                    if let settings = settings, let podcast, useCustomSettings {
                         
-                        CoverImageView(podcast: podcast)
-                            .frame(width: 50, height: 50)
-                            .cornerRadius(8)
-                        
-                        
-                        VStack(alignment: .leading) {
-                            Text(podcast.title)
-                                .font(.headline)
-                        
+                        HStack{
+                            
+                            CoverImageView(podcast: podcast)
+                                .frame(width: 50, height: 50)
+                                .cornerRadius(8)
+                            
+                            
+                            VStack(alignment: .leading) {
+                                Text(podcast.title)
+                                    .font(.headline)
+                                
+                            }
                         }
-                    }
                         settingsSections(settings: settings)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                    
-                } else {
-                    if let podcast{
-                        Text("This podcast uses the global settings. To customize, switch to 'Custom Settings'.")
-                            .padding()
-                            .foregroundStyle(.secondary)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0,
                                                  leading: 0,
                                                  bottom: 0,
                                                  trailing: 0))
-                    }
-                    if let settings = defaultSettings.first {
+                        
+                    } else {
+                        if let podcast{
+                            Text("This podcast uses the global settings. To customize, switch to 'Custom Settings'.")
+                                .padding()
+                                .foregroundStyle(.secondary)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(.init(top: 0,
+                                                     leading: 0,
+                                                     bottom: 0,
+                                                     trailing: 0))
+                        }
+                        if let settings = defaultSettings.first {
                             settingsSections(settings: settings)
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
@@ -88,71 +91,62 @@ struct PodcastSettingsView: View {
                                                      trailing: 0))
                         }
                         
+                        
+                    }
+
+                    
+                        if let settings = defaultSettings.first {
+                            
+                            
+                            golbalSections(settings: settings)
+                            
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(.init(top: 0,
+                                                     leading: 0,
+                                                     bottom: 0,
+                                                     trailing: 0))
+                        }
+                        NotificationSettingsView()
+                            .buttonStyle(.plain)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 0,
+                                                 trailing: 0))
+                    
+                 //   NavigationLink("Downloads") { DownloadedFilesListView() }
+                    Spacer()
+                        .listRowBackground(Color.clear)
+                    CreatedByView()
+                       
+                        .buttonStyle(.plain)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .frame(maxWidth: .infinity)
                     
                 }
-              
-                if let settings = defaultSettings.first {
-                    Text("Global Settings regarding App behavior. These are applied to all podcasts.")
-                        .padding()
-                        .foregroundStyle(.secondary)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                    golbalSections(settings: settings)
-                        .padding()
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                }
-             NotificationSettingsView()
-                    .buttonStyle(.plain)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-                Spacer()
-                    .listRowBackground(Color.clear)
-                CreatedByView()
-                    .padding()
-                    .buttonStyle(.plain)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-                    .frame(maxWidth: .infinity)
                 
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                
+                .tint(Color.accent)
             }
-
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
-        
-            .tint(Color.accent)
+            .padding(EdgeInsets(top: 8, leading: 8, bottom: 0, trailing: 8))
+            //   .background(Color.clear)
+            // Load default settings asynchronously here instead of init to avoid async tasks in initializers
         }
-        .padding(EdgeInsets(top: 8, leading: 8, bottom: 0, trailing: 8))
-     //   .background(Color.clear)
-        // Load default settings asynchronously here instead of init to avoid async tasks in initializers
-
 
 
     }
 
-    func printAllSettings() {
-        for setting in allSettings {
-            // print("podcast: \(setting.podcast?.title ?? "nil") - \(setting.podcast?.id.uuidString ?? "nil") - SettingID: \(setting.id.uuidString)")
-        }
-    }
-    
+  
     
     // All editable sections for PodcastSettings
     @ViewBuilder
@@ -238,7 +232,7 @@ struct PodcastSettingsView: View {
     
     @ViewBuilder
     func golbalSections(settings: PodcastSettings) -> some View {
-        Section(header: Text("Progress Slider"), footer: Text("How should the progress slider behave?")) {
+        Section(header: Text("Progress Slider"), footer: Text("To avoid accidential skipping, you can disable scrubbing inside the app and on the lockscreen.")) {
 
             Toggle(isOn: binding(for: \.enableInAppSlider, in: settings)) {
                 Text("Now Playing Slider")

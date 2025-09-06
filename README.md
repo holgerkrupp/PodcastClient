@@ -136,5 +136,5 @@ Key principles of the project:
 -   -  [ ] optimized Transcipts view (long text)
 - [ ] Apple Watch App
 - [ ] remove tracking information from URLs
-- [ ] share little videos from episodes for social media
+- [x] share little videos from episodes for social media
 - [ ] provide suggestions for apple Journal App (https://developer.apple.com/documentation/journalingsuggestions)
