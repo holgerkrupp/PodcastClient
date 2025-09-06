@@ -86,6 +86,8 @@ class PodcastSearchViewModel: ObservableObject {
                         }
                     }
                     await MainActor.run { self.isLoading = false }
+                }else{
+                    print("URL not reachable: \(url)")
                 }
                 return
             }

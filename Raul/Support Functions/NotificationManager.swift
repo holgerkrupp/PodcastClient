@@ -137,7 +137,7 @@ struct NotificationSettingsView: View {
                 }
             }
         }
-        .padding()
+       
         .onAppear {
             viewModel.refreshPermissionStatus()
         }

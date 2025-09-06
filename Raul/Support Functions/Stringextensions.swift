@@ -6,7 +6,8 @@
 //
 
 import Foundation
- import SwiftUI
+import SwiftUI
+
 extension String {
     func toDetectedAttributedString() -> AttributedString {
         
@@ -65,7 +66,7 @@ extension String {
         request.httpMethod = "HEAD"
         request.timeoutInterval = timeout
         do {
-            let (response, _) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse {
                 return (200..<400).contains(httpResponse.statusCode)
             }
@@ -88,25 +89,16 @@ extension String{
             }
             seconds = seconds / 60
         
-        
-        
-        
         if seconds.isNaN{
             return nil
         }else{
             return seconds
-
         }
-        
-
-        
     }
-    
 }
+
 extension String{
-   
     func decodeHTML() -> String? {
-        
         guard let data = self.data(using: .utf8) else {
             return nil
         }
@@ -125,4 +117,3 @@ extension String{
         }
     }
 }
-
