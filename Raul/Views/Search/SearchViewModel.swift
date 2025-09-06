@@ -18,13 +18,17 @@ class PodcastSearchViewModel: ObservableObject {
     
     @Published var selectedLanguage: String? {
         didSet {
-            // print("did set language: \(String(describing: selectedLanguage))")
             Task {
                 await fyydManager.setLanguage(selectedLanguage ?? "")
                 await loadHotPodcasts()
             }
         }
     }
+    
+    // Basic auth prompt state
+    @Published var shouldPromptForBasicAuth: Bool = false
+    @Published var pendingURLForAuth: URL? = nil
+    @Published var authErrorMessage: String? = nil
     
     private var cancellables = Set<AnyCancellable>()
     private let fyydManager = FyydSearchManager()
@@ -34,7 +38,7 @@ class PodcastSearchViewModel: ObservableObject {
         $searchText
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .removeDuplicates()
-            .sink { [weak self] text in
+            .sink { [weak self] _ in
                 self?.performSearch()
             }
             .store(in: &cancellables)
@@ -42,7 +46,6 @@ class PodcastSearchViewModel: ObservableObject {
         Task {
            // await loadHotPodcasts()
             await loadLanguages()
-            
         }
     }
     
@@ -65,64 +68,122 @@ class PodcastSearchViewModel: ObservableObject {
         
         var urlString = searchText
         if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
-            print("No scheme found in URL. Prepending https://")
             urlString = "https://" + urlString
         }
         if urlString.isValidURL, let url = URL(string: urlString) {
-            print("Attempting to resolve podcast/feed URL: \(url)")
-            Task {
-                if await urlString.isReachableURL() {
-                    
-                    
-                    if let feedURL = await resolvePodcastFeedURL(from: url) {
-                        print("Feed detected: \(feedURL)")
-                        await MainActor.run {
-                            self.singlePodcast = PodcastFeed(url: feedURL)
-                        }
-                    } else {
-                        print("No explicit podcast feed found in response. Using entered URL: \(url)")
-                        await MainActor.run {
-                            self.singlePodcast = PodcastFeed(url: url) // fallback (might be website)
-                        }
-                    }
-                    await MainActor.run { self.isLoading = false }
-                }else{
-                    print("URL not reachable: \(url)")
-                }
-                return
-            }
             
+            Task {
+                // Prefer a status-aware check so we can detect 401
+                if let status = await urlString.reachabilityStatus(),
+                   let code = status.statusCode {
+                    print("Status: \(code)")
+                    if code == 401 {
+                        // Prompt for basic auth
+                        self.pendingURLForAuth = url
+                        self.shouldPromptForBasicAuth = true
+                        self.isLoading = false
+                        return
+                    } else if (200..<400).contains(code) {
+                        self.singlePodcast = PodcastFeed(url: url)
+                        self.isLoading = false
+                        return
+                    } else {
+                        // Not reachable or other status code
+                        self.isLoading = false
+                        return
+                    }
+                } else if await urlString.isReachableURL() == false {
+                    // Fallback check returned false
+                    self.isLoading = false
+                    return
+                }
+                
+                if let feedURL = await resolvePodcastFeedURL(from: url) {
+                    self.singlePodcast = PodcastFeed(url: feedURL)
+                } else {
+                    self.singlePodcast = PodcastFeed(url: url) // fallback (might be website)
+                }
+                self.isLoading = false
+            }
         } else {
             singlePodcast = nil
-            
-           // var fyydFinished = false
-          //  var iTunesFinished = false
             
             // Start fyyd search in its own Task
             Task {
                 let podcasts = await fyydManager.searchPodcasts(query: searchText) ?? []
                 let fyydPodcasts = podcasts.map(PodcastFeed.init)
-                await MainActor.run {
-                    self.searchResults = (self.searchResults + fyydPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
-                    self.results = podcasts.map(PodcastFeed.init)
-                //    fyydFinished = true
-                     self.isLoading = false
-                }
+                self.searchResults = (self.searchResults + fyydPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
+                self.results = podcasts.map(PodcastFeed.init)
+                self.isLoading = false
             }
 
             // Start iTunes search in its own Task
             Task {
                 let iTunesPodcasts = await iTunesActor.search(for: searchText) ?? []
-                await MainActor.run {
-                    self.searchResults = (self.searchResults + iTunesPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
-               //     iTunesFinished = true
-                     self.isLoading = false 
-                }
+                self.searchResults = (self.searchResults + iTunesPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
+                self.isLoading = false
             }
         }
+    }
+    
+    /// Accepts credentials, rebuilds URL with user:pass@host, retries, and continues to resolve feed.
+    func submitBasicAuth(username: String, password: String) {
+        guard let baseURL = pendingURLForAuth else { return }
+        isLoading = true
+        authErrorMessage = nil
+        shouldPromptForBasicAuth = false
         
-        
-        
+        Task {
+            guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+                self.authErrorMessage = "Invalid URL"
+                self.isLoading = false
+                return
+            }
+            // Build credentialed URL manually (URLComponents lacks user/password properties in Swift)
+            let user = username.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? username
+            let pass = password.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? password
+            
+            var hostPart = ""
+            if let host = comps.host {
+                if let port = comps.port {
+                    hostPart = "\(host):\(port)"
+                } else {
+                    hostPart = host
+                }
+            }
+            let credentialAuthority = "\(user):\(pass)@\(hostPart)"
+            let path = comps.percentEncodedPath
+            let query = comps.percentEncodedQuery.map { "?\($0)" } ?? ""
+            let fragment = comps.percentEncodedFragment.map { "#\($0)" } ?? ""
+            let scheme = comps.scheme ?? "https"
+            let credentialedString = "\(scheme)://\(credentialAuthority)\(path)\(query)\(fragment)"
+            
+            guard let credentialedURL = URL(string: credentialedString) else {
+                self.authErrorMessage = "Could not build credentialed URL"
+                self.isLoading = false
+                return
+            }
+            
+            // Retry reachability using HEAD
+            let status = try? await credentialedURL.status()
+            if let code = status?.statusCode, (200..<400).contains(code) {
+                if let feedURL = await self.resolvePodcastFeedURL(from: credentialedURL) {
+                    self.singlePodcast = PodcastFeed(url: feedURL)
+                } else {
+                    self.singlePodcast = PodcastFeed(url: credentialedURL)
+                }
+                self.isLoading = false
+                self.pendingURLForAuth = nil
+            } else if let code = status?.statusCode, code == 401 {
+                self.authErrorMessage = "Authentication failed. Please check your credentials."
+                self.isLoading = false
+                // Re-open the sheet to allow retry
+                self.shouldPromptForBasicAuth = true
+            } else {
+                self.authErrorMessage = "Failed to reach URL."
+                self.isLoading = false
+            }
+        }
     }
     
     /// Try to determine if a URL is an XML podcast feed. If not, try extracting a feed URL from HTML.
@@ -135,15 +196,11 @@ class PodcastSearchViewModel: ObservableObject {
             let text = String(data: data, encoding: .utf8) ?? ""
             // Quick heuristic: check if it's XML with <rss> or <feed>
             if text.contains("<rss") || text.contains("<feed") {
-                print("XML feed signature detected in body (<rss> or <feed>)")
                 return url
             }
-            print("No XML root found, attempting to extract feed link from HTML...")
             if let feedURL = extractFeedURL(fromHTML: text, baseURL: url) {
-                print("Extracted feed URL from HTML: \(feedURL)")
                 return feedURL
             }
-            print("No feed link found in HTML.")
         } catch {
             print("Error fetching or analyzing URL: \(url) - \(error)")
         }
@@ -152,7 +209,6 @@ class PodcastSearchViewModel: ObservableObject {
     
     /// Extract feed URL from HTML meta/link tags.
     private func extractFeedURL(fromHTML html: String, baseURL: URL) -> URL? {
-        // Simple regex for <link rel="alternate" type="application/rss+xml" href="...">
         let pattern = #"<link[^>]+rel=["']alternate["'][^>]+type=["']application/(rss|atom)\+xml["'][^>]+href=["']([^"'>]+)["']"#
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
             let nsrange = NSRange(html.startIndex..<html.endIndex, in: html)
@@ -160,12 +216,10 @@ class PodcastSearchViewModel: ObservableObject {
                 let hrefRange = Range(match.range(at: 2), in: html) {
                 let href = String(html[hrefRange])
                 if let absURL = URL(string: href, relativeTo: baseURL)?.absoluteURL {
-                    print("Found alternate feed in HTML: \(absURL)")
                     return absURL
                 }
             }
         }
-        print("No alternate feed link found in HTML body.")
         return nil
     }
 
@@ -195,26 +249,20 @@ class PodcastSearchViewModel: ObservableObject {
     
     func loadLanguages() async {
         if let fetchedLanguages = await fyydManager.getLanguages() {
-            await MainActor.run {
-                self.languages = fetchedLanguages
-            }
+            self.languages = fetchedLanguages
         }
     }
 
     // Fetch hot podcasts
      func loadHotPodcasts() async {
-         // print("loading hot for language \(String(describing: selectedLanguage))")
         isLoading = true
         let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage, count: 30)
-        await MainActor.run {
-            if let hotPodcastsList{
-                let fyydpodcasts: [PodcastFeed] = hotPodcastsList.map(PodcastFeed.init)
-                hotPodcasts = fyydpodcasts
-                
-            }else{
-                hotPodcasts = []
-            }
-            isLoading = false
+        if let hotPodcastsList{
+            let fyydpodcasts: [PodcastFeed] = hotPodcastsList.map(PodcastFeed.init)
+            hotPodcasts = fyydpodcasts
+        }else{
+            hotPodcasts = []
         }
+        isLoading = false
     }
 }
