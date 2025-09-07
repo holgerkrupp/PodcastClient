@@ -293,6 +293,7 @@ actor EpisodeActor {
         }
         
         await getRemoteChapters(episodeID: episodeID)
+        
 
     }
     
@@ -307,7 +308,7 @@ actor EpisodeActor {
                 // pubDate is less than 7 days old
              
                 await extractRemoteMP3Chapters(url)
-                    
+                await applyAutoSkipWords(episodeID: episodeID)
                 
             
         }
