@@ -185,7 +185,7 @@ struct PlayerControllView: View {
                             .monospacedDigit()
                             .font(.caption)
                         Spacer()
-                        if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
+                        if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay-5.0 > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
                             Button(action: {
                                 Task{
                                     await player.jumpTo(time: maxPlay)

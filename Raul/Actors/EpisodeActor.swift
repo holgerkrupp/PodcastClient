@@ -151,13 +151,6 @@ actor EpisodeActor {
         episode.metaData?.wasSkipped = true
     }
     
-    
-
-        
-    
-    
-
-    
     func getLastPlayedEpisodeID() async -> UUID? {
         let predicate = #Predicate<Episode> { episode in
             episode.metaData?.isHistory == false
@@ -194,9 +187,6 @@ actor EpisodeActor {
             episode.metaData?.maxPlayposition = position
             
         }
-       
-        
-        
             episode.metaData?.playPosition = position
             modelContext.saveIfNeeded()
         }
@@ -222,7 +212,6 @@ actor EpisodeActor {
     func archiveEpisode(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         
-        // print("archiveEpisode from Actor - episode: \(episode.title)")
         await removeFromPlaylist(episodeID)
 
         if episode.metaData == nil {
@@ -258,17 +247,11 @@ actor EpisodeActor {
     
     
     func download(episodeID: UUID) async {
-        // print("download episode \(episodeID)")
         guard let episode = await fetchEpisode(byID: episodeID) else {
-            
-            // print("❌ Could not find episode \(episodeID)")
             return }
 
         if let localFile = episode.localFile {
             if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile, episodeID: episode.id) != nil {
-                // print("✅ Episode download started - from \(String(describing: episode.url)) to \(localFile)")
-            }else{
-                // print("❌ Could not download Episode \(episodeID)")
             }
             await downloadTranscript(episode.persistentModelID)
 
@@ -277,43 +260,28 @@ actor EpisodeActor {
     }
     
     func processAfterCreation(episodeID: UUID) async {
-        
-       //  await BasicLogger.shared.log("processAfterCreation  - \(episodeID) - start")
-        
         guard let episode = await fetchEpisode(byID: episodeID) else {
-           //  await BasicLogger.shared.log("processAfterCreation ❌ Could not find episode \(episodeID)")
             return }
-       //  await BasicLogger.shared.log("processAfterCreation  - \(episode.podcast?.title ?? "Unknown Podcast") - \(episode.title)")
         
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
-       //  await BasicLogger.shared.log("processAfterCreation - \(episode.title) playnext \(playnext)")
         if playnext != .none {
             try? await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
         }
         
         await getRemoteChapters(episodeID: episodeID)
-        
-
     }
     
     func getRemoteChapters(episodeID: UUID) async {
-      
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return }
-        // print("check if remote Chapters shall be created for \(episode.title)")
         if let url = episode.url, let pubDate = episode.publishDate,
                let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
                pubDate > oneWeekAgo{
-                // pubDate is less than 7 days old
-             
                 await extractRemoteMP3Chapters(url)
                 await applyAutoSkipWords(episodeID: episodeID)
-                
-            
         }
     }
-    
     
     func createBookMarkfor(episodeID: UUID, at playPosition: Double) async{
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
@@ -322,19 +290,13 @@ actor EpisodeActor {
         let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
-
     }
     
-
-    
     func unarchiveEpisode(episodeID: UUID) async  {
-        
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
         episode.metaData?.isArchived = false
         episode.metaData?.isInbox = true
         episode.metaData?.status = .inbox
-
-       //  await BasicLogger.shared.log("Unarchiving episode \(episode.title)")
         modelContext.saveIfNeeded()
     }
     
@@ -344,19 +306,12 @@ actor EpisodeActor {
         if let file = episode.localFile{
             try? FileManager.default.removeItem(at: file)
         }
-        
-
-        
         episode.metaData?.isAvailableLocally = false
         modelContext.saveIfNeeded()
     }
 
-
-
     func markEpisodeAvailable(fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else {
-            
-           //  await BasicLogger.shared.log("Could not mark Episode As Available")
             return }
 
         guard let url = episode.url else {
@@ -366,135 +321,39 @@ actor EpisodeActor {
         await updateDuration(fileURL: fileURL)
 
         await createChapters(url)
-  
-        try? await transcribe(url)
+        try? await transcribe(url) // delegates now
         modelContext.saveIfNeeded()
-        // print("✅ Metadata updated")
-       //  await BasicLogger.shared.log("Did mark Episode As Available")
     }
     
-
-    
+    // NEW: Delegate to TranscriptionManager
     func transcribe(_ fileURL: URL) async throws {
-        var bgTask: UIBackgroundTaskIdentifier = .invalid
-        bgTask = await UIApplication.shared.beginBackgroundTask(withName: "Transcription") { [task = bgTask] in
-            UIApplication.shared.endBackgroundTask(task)
-        }
-        defer {
-            if bgTask != .invalid {
-                UIApplication.shared.endBackgroundTask(bgTask)
-                bgTask = .invalid
-            }
-        }
-        // --- Begin original logic ---
-        guard let episode = await fetchEpisode(byURL: fileURL) else {
-            return  }
-         guard let localFile = episode.localFile else {
-            return }
-       
-        let transcriber = await AITranscripts(url: localFile, language: episode.podcast?.language)
-        let transcription = try await transcriber.transcribeTovTT()
+        print("transcribe")
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
         
-        if let transcription = transcription {
-            episode.transcriptLines = decodeTranscription(transcription)
-            episode.refresh.toggle()
+        if episode.externalFiles.contains(where: { $0.category == .transcript}) {
+            await downloadTranscript(episode.id)
+        }else{
+            await TranscriptionManager.shared.enqueueTranscription(episodeID: episode.id)
         }
-        modelContext.saveIfNeeded()
-        // --- End original logic ---
     }
-    
-
     
     func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
+        print("decodeTranscription")
         let decoder = TranscriptDecoder(transcription)
         let lines = decoder.transcriptLines
         var transcript = [TranscriptLineAndTime]()
-        /*
-        let maxLineLength = 84 // Two lines of 42 chars
-        let minDuration: Double = 1.0
-        let sentenceSeparators: [Character] = [".", "?", "!"]
-        */
-         for line in lines {
+        for line in lines {
             let text = line.text
             let start = line.startTime
             let end = line.endTime
             let speaker = line.speaker
-        /*
-         
-         The following code should split long lines into shorter lines. but somehow it has a bug. needs more work.
-         
-         
-            if text.count <= maxLineLength {
-                transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
-            } else {
-                // Split into sentences using period, exclamation, or question mark
-                let sentences = text.split(whereSeparator: { sentenceSeparators.contains($0) }).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                var chunks: [String] = []
-                var currentChunk = ""
-                for sentence in sentences where !sentence.isEmpty {
-                    let extendedSentence = (sentence.last == "." || sentence.last == "!" || sentence.last == "?") ? sentence : sentence + "."
-                    if currentChunk.count + extendedSentence.count + 1 > maxLineLength {
-                        if !currentChunk.isEmpty {
-                            chunks.append(currentChunk.trimmingCharacters(in: .whitespacesAndNewlines))
-                            currentChunk = ""
-                        }
-                    }
-                    if !currentChunk.isEmpty {
-                        currentChunk += " "
-                    }
-                    currentChunk += extendedSentence
-                }
-                if !currentChunk.isEmpty {
-                    chunks.append(currentChunk.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-                // If a single sentence is too long, fall back to word-splitting
-                for (i, chunk) in chunks.enumerated() where chunk.count > maxLineLength {
-                    // Replace the chunk with smaller word-based chunks
-                    let words = chunk.split(separator: " ")
-                    var wordChunk = ""
-                    var replacementChunks: [String] = []
-                    for word in words {
-                        if (wordChunk.count + word.count + 1) > maxLineLength {
-                            if !wordChunk.isEmpty {
-                                replacementChunks.append(wordChunk)
-                                wordChunk = ""
-                            }
-                        }
-                        if !wordChunk.isEmpty {
-                            wordChunk += " "
-                        }
-                        wordChunk += word
-                    }
-                    if !wordChunk.isEmpty {
-                        replacementChunks.append(wordChunk)
-                    }
-                    chunks.remove(at: i)
-                    chunks.insert(contentsOf: replacementChunks.reversed(), at: i)
-                }
-                // Assign times proportionally
-                let totalChunks = chunks.count
-                let totalDuration = end - start
-                let baseDuration = max(totalDuration / Double(totalChunks), minDuration)
-                var chunkStart = start
-                for (i, chunk) in chunks.enumerated() {
-                    let chunkEnd: Double
-                    if i == totalChunks - 1 {
-                        chunkEnd = end
-                    } else {
-                        chunkEnd = min(chunkStart + baseDuration, end)
-                    }
-                    transcript.append(TranscriptLineAndTime(speaker: speaker, text: String(chunk), startTime: chunkStart, endTime: chunkEnd))
-                    chunkStart = chunkEnd
-                }
-            }
-         */
             transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
         }
+        print("created \(lines.count) lines")
         return transcript
     }
     
     func deleteMarker(markerID: UUID) async{
-        
         guard let marker = await fetchMarker(byID: markerID) else { return}
         marker.episode = nil
         marker.bookmarkEpisode = nil
@@ -502,26 +361,20 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
     }
 
-
     func createChapters(_ fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-       //  await BasicLogger.shared.log("creating Chapters for \(episode.title)")
-        
-        // Check if there is an external chapter file
-        if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
-           //  await BasicLogger.shared.log("Downloading Chapters for \(episode.title) of type \(chapterFile.fileType ?? "unknown")")
-            if let url = URL(string: chapterFile.url) {
-                // Check for file extension or fileType indicating JSON
-                let isJSON = (url.pathExtension.lowercased() == "json") || (chapterFile.fileType?.lowercased().contains("json") == true)
-                if isJSON {
-                    // If JSON, download and parse chapters from JSON format
-                    if let jsonString = await downloadAndParseStringFile(url: url),
-                       let jsonData = jsonString.data(using: .utf8),
-                       let chapters = await parseJSONChapters(jsonData: jsonData) {
-                        episode.chapters?.removeAll(where: { $0.type == .extracted })
-                        episode.chapters?.append(contentsOf: chapters)
-                        modelContext.saveIfNeeded()
-                        // print("Imported \(chapters.count) chapters from JSON.")
+        if let chapters = episode.chapters, chapters.isEmpty {
+            if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
+                if let url = URL(string: chapterFile.url) {
+                    let isJSON = (url.pathExtension.lowercased() == "json") || (chapterFile.fileType?.lowercased().contains("json") == true)
+                    if isJSON {
+                        if let jsonString = await downloadAndParseStringFile(url: url),
+                           let jsonData = jsonString.data(using: .utf8),
+                           let chapters = await parseJSONChapters(jsonData: jsonData) {
+                            episode.chapters?.removeAll(where: { $0.type == .extracted })
+                            episode.chapters?.append(contentsOf: chapters)
+                            modelContext.saveIfNeeded()
+                        }
                     }
                 }
             }
@@ -532,7 +385,6 @@ actor EpisodeActor {
         }
         if let chapters = episode.chapters, chapters.isEmpty || !(chapters.contains(where: { $0.type == .mp3 }) || chapters.contains(where: { $0.type == .mp4 })) {
             guard let url = episode.localFile else {
-                // print("no local file")
                 return
             }
             do {
@@ -543,9 +395,7 @@ actor EpisodeActor {
                         await extractM4AChapters(episode.persistentModelID)
                     }
                 }
-            } catch {
-                // print("Error determining audio format: \(error)")
-            }
+            } catch { }
         }
         if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
             await extractShownotesChapters(fileURL: url)
@@ -557,12 +407,9 @@ actor EpisodeActor {
     }
     
     private func applyAutoSkipWords(episodeID: UUID) async{
-
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return
         }
-       //  await BasicLogger.shared.log("apply Auto Skip Chapters for \(episode.title)")
-
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.id) else {
             return
@@ -583,8 +430,6 @@ actor EpisodeActor {
             if let chapters = episode.chapters{
                 for chapter in chapters {
                     if matches(chapter.title.lowercased()) {
-                       //  await BasicLogger.shared.log("Chapter \(chapter.title) should be skipped")
-                        
                         chapter.shouldPlay = false
                     }
                 }
@@ -593,62 +438,39 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
     }
     
-
-    
-  private  func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
+    private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
-        // print("extractMP3Chapters")
-       
         guard let url = episode.localFile else {
-            // print("no local file")
             return
         }
         guard url.lastPathComponent.hasSuffix(".mp3") else {
-            // print("not an mp3")
             return
         }
         
         do {
-         
             let data = try Data(contentsOf: url)
-            
-            // Check if the file starts with the "ID3" identifier indicating an ID3v2 tag
             guard data.count >= 3, let id3Identifier = String(data: data[0..<3], encoding: .utf8), id3Identifier == "ID3" else {
-                // print("could not find ID3v2 tag")
                 return
             }
-            
-          //  let id3 = try? await mp3ChapterParser.fromRemoteURL(url)
-            
-            
             if let mp3Reader = mp3ChapterReader(with: url){
-         
                 let dict = mp3Reader.getID3Dict()
-                
                 if let chapters = parse(chapters: dict){
-                   
                     episode.chapters?.removeAll(where: { $0.type == .mp3 })
                     episode.chapters?.append(contentsOf: chapters)
                      modelContext.saveIfNeeded()
                 }
-
             }
-            
-            return  //chapters
+            return
         } catch {
-            // print("Error extracting chapter marks: \(error.localizedDescription)")
             return
         }
     }
     
     func extractRemoteMP3Chapters(_ fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        // print("extractRemoteMP3Chapters for \(episode.title)")
-        
         if let remoteURL = episode.url, let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
             let dict = mp3Reader.getID3Dict()
             if let chapters = parse(chapters: dict) {
-                // print("got \(chapters.count) Remote Chapters")
                 episode.chapters?.removeAll(where: { $0.type == .mp3 })
                 episode.chapters?.append(contentsOf: chapters)
                 modelContext.saveIfNeeded()
@@ -657,22 +479,17 @@ actor EpisodeActor {
     }
     
     private func parse(chapters: [String: Any]) -> [Marker]?{
-        // print("parse chapters")
         if let chaptersDict = chapters["Chapters"] as? [String:[String:Any]]{
             var chapters: [Marker] = []
             for chapter in chaptersDict {
-                
                 let newChaper = Marker()
                 newChaper.title = chapter.value["TIT2"] as? String ?? ""
                 newChaper.start = chapter.value["startTime"] as? Double ?? 0
-               
                 newChaper.duration = (chapter.value["endTime"] as? Double ?? 0) - (newChaper.start ?? 0)
                 newChaper.type = .mp3
                 if let imagedata = (chapter.value["APIC"] as? [String:Any])?["Data"] as? Data{
-                    // print("ImageChapter with Image data")
                     newChaper.imageData = imagedata
-                }else{
-                                            }
+                } else { }
                 chapters.append(newChaper)
             }
             return chapters
@@ -680,9 +497,6 @@ actor EpisodeActor {
         return nil
     }
     
-    /// Parses JSON formatted chapters data into an array of Chapter models asynchronously.
-    /// - Parameter jsonData: The JSON data representing chapters.
-    /// - Returns: An optional array of Chapter objects or nil if decoding fails.
     func parseJSONChapters(jsonData: Data) async -> [Marker]? {
         do {
             let decoder = JSONDecoder()
@@ -694,20 +508,16 @@ actor EpisodeActor {
                 chapter.start = ch.startTime
                 chapter.type = .extracted
                 if let imgUrlStr = ch.img, let imgUrl = URL(string: imgUrlStr) {
-                    // Load image data synchronously here (could be improved to async if needed)
                     chapter.imageData = try? Data(contentsOf: imgUrl)
                 }
-                // Optionally handle ch.url if needed
                 chapters.append(chapter)
             }
             return chapters
         } catch {
-            // print("Failed to decode chapter JSON: \(error)")
             return nil
         }
     }
     
-    // Non-isolated helper function to load metadata
     nonisolated func loadMetadata(from asset: AVURLAsset) async throws -> [AVMetadataItem] {
         return try await asset.load(.metadata)
     }
@@ -725,18 +535,14 @@ actor EpisodeActor {
         return episode.title
     }
     
-    //MARK: CHAPTERS
-   private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
+    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
         guard let url = episode.localFile else {
-            // print("no local file")
             return
         }
         
         do {
             let chapterData = try await MetadataLoader.loadChapters(from: url)
-            
-            // Create Chapter objects within the actor context
             let chapters = chapterData.map { data in
                 let chapter = Marker()
                 chapter.title = data.title
@@ -746,20 +552,16 @@ actor EpisodeActor {
                 chapter.imageData = data.imageData
                 return chapter
             }
-            
             episode.chapters?.removeAll(where: { $0.type == .mp4 })
             episode.chapters?.append(contentsOf: chapters)
             modelContext.saveIfNeeded()
         } catch {
-            // print("Error loading chapters: \(error)")
         }
     }
     
     func extractTranscriptChapters(fileURL: URL) async  {
-        // print("extractTranscriptChapters")
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         guard let transcriptLines = episode.transcriptLines, transcriptLines != [] else {
-            // print("no transcript")
             return  }
         
         let extractedData = await generateAIChapters(from: transcriptLines)
@@ -767,12 +569,10 @@ actor EpisodeActor {
             var newchapters:[Marker] = []
             for extractedChapter in extractedData{
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
-                    // print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
                     let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
                 }
             }
-            // print("returning \(newchapters.count.formatted()) Chapters")
             episode.chapters?.removeAll(where: { $0.type == .ai })
             episode.chapters?.append(contentsOf: newchapters)
             modelContext.saveIfNeeded()
@@ -780,11 +580,9 @@ actor EpisodeActor {
         
     }
     
-    //MARK: Create Chapters from Episode Description
     func extractShownotesChapters(fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
         guard let text = episode.desc else { return  }
-        // print("extracting Chapters from Shownotes")
         var extractedData = extractTimeCodesAndTitles(from: text)
         
         if  extractedData == nil || extractedData?.count == 0{
@@ -795,22 +593,17 @@ actor EpisodeActor {
             var newchapters:[Marker] = []
             for extractedChapter in extractedData{
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
-                    // print("chapter at \(extractedChapter.key) : \(extractedChapter.value) -- \(startingTime.formatted())")
                     let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
                 }
             }
-            // print("returning \(newchapters.count.formatted()) Chapters")
             episode.chapters?.removeAll(where: { $0.type == .extracted })
             episode.chapters?.append(contentsOf: newchapters)
             modelContext.saveIfNeeded()
         }
     }
     
-    
     func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
-
-        
         let pattern = #"(?m)^(\d{2}:\d{2}(?::\d{2})?)\s+(.+)$"#
         let nsText = htmlEncodedText as NSString
 
@@ -834,14 +627,12 @@ actor EpisodeActor {
     }
     
     func generateAIChapters(from htmlEncodedText: String) async -> [String: String] {
-        // print("AI Chapters")
         let chapterGenerator = AIChapterGenerator()
         let aiChapters = await chapterGenerator.extractChaptersFromText(htmlEncodedText)
         return aiChapters
     }
     
     func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
-        // print("AI Transcript Chapters")
         guard let prompt = transcriptLinesToJSONArray(transcript) else { return [:] }
         let chapterGenerator = AIChapterGenerator()
         let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(prompt)
@@ -860,84 +651,131 @@ actor EpisodeActor {
             let jsonData = try JSONSerialization.data(withJSONObject: mapped, options: [.prettyPrinted])
             return String(data: jsonData, encoding: .utf8)
         } catch {
-            // print("Error serializing transcript lines to JSON: \(error)")
             return nil
         }
     }
     
     func updateChapterDurations(episodeURL: URL) async {
-        // print("update Chapter durations")
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
-            // print("episode not found")
             return }
         var chapters = episode.preferredChapters
-
-        // Sort chapters in ascending order of start time
         chapters.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
-        // print("updating \(chapters.count.formatted()) chapters of type \(chapters.first?.type ?? .unknown)")
-   
         for i in 0..<chapters.count {
             guard let start = chapters[i].start else { continue }
-
-           
-                let end: Double
-                if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
-                    end = nextStart
-                } else {
-                    end = episode.duration ?? start
-                }
-                chapters[i].duration = end - start
-            
+            let end: Double
+            if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
+                end = nextStart
+            } else {
+                end = episode.duration ?? start
+            }
+            chapters[i].duration = end - start
         }
         modelContext.saveIfNeeded()
     }
     
-   
     
     
-    //MARK: Transcript
+    private func bestExternalFile(
+        in files: [ExternalFile],
+        preferredTypes: [String] = ["text/vtt", "application/x-subrip", "text/plain"]
+    ) -> ExternalFile? {
+        // 1) Exact fileType match (e.g. "text/vtt")
+        if let vttByType = files.first(where: { file in
+            guard let type = file.fileType?.lowercased() else { return false }
+            return preferredTypes.contains(where: { type.contains($0) })
+        }) {
+            return vttByType
+        }
+
+        // 2) URL extension contains "vtt" (or "srt" as a fallback)
+        if let vttByExt = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "vtt" }) {
+            return vttByExt
+        }
+        if let srtByExt = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "srt" }) {
+            return srtByExt
+        }
+
+        // 3) Otherwise fall back to the first file
+        return files.first
+    }
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async {
-        // print("downloadTranscript")
+        print("downloading transcript")
         guard let episode = modelContext.model(for: episodeID) as? Episode else {
-            // print("episode not found")
             return }
         
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
-            // print("transcriptLines already exists")
-
             return }
 
-            if let transcriptfile = episode.externalFiles.first(where: { $0.category == .transcript}) {
-               //  await BasicLogger.shared.log("Downloading transcript for \(episode.title) of type \(transcriptfile.fileType ?? "unknown")")
-                
-                    if let url = URL(string: transcriptfile.url){
-                        let transcription = await downloadAndParseStringFile(url: url)
-                        
-                        if let transcription = transcription {
-                            episode.transcriptLines = decodeTranscription(transcription)
-                        }
-                        
-                        modelContext.saveIfNeeded()
-                    }
-                
+        if let transcriptfile = bestExternalFile(
+            in: episode.externalFiles.filter { $0.category == .transcript },
+            preferredTypes: ["text/vtt"]
+        ) {
+            if let url = URL(string: transcriptfile.url) {
+                let transcription = await downloadAndParseStringFile(url: url)
+                if let transcription {
+                    episode.transcriptLines = decodeTranscription(transcription)
+                }
+                modelContext.saveIfNeeded()
             }
-
-       
+        }
         return
     }
     
+    // Inside EpisodeActor
+    func setTranscript(for episodeID: UUID, lines: [TranscriptLineAndTime]) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        episode.transcriptLines = lines
+        episode.refresh.toggle()
+        modelContext.saveIfNeeded()
+    }
+    
+    
+    // EpisodeActor.swift additions
+
+    // 1) Snapshot-only getter for local file URL and (optional) language string
+    func episodeLocalFileAndLanguage(for episodeID: UUID) async -> (URL, String?)? {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let local = episode.localFile else { return nil }
+        return (local, episode.podcast?.language)
+    }
+
+    // 2) Attach a TranscriptionItem to the Episode safely
+    @MainActor
+    func attachTranscriptionItem(_ item: TranscriptionItem, to episodeID: UUID) async {
+        // Hop back into EpisodeActor isolation to fetch and mutate the model
+        await self._attachTranscriptionItem(item, to: episodeID)
+    }
+
+    // Private actor-isolated worker
+    private func _attachTranscriptionItem(_ item: TranscriptionItem, to episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        episode.transcriptionItem = item
+        modelContext.saveIfNeeded()
+    }
+
+    // 3) Decode VTT and persist transcript lines inside EpisodeActor
+    func decodeAndSetTranscript(for episodeID: UUID, vtt: String) async {
+        print("decoding vtt")
+        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        let lines = decodeTranscription(vtt) // existing helper returns [TranscriptLineAndTime]
+        episode.transcriptLines = lines
+        episode.refresh.toggle()
+        modelContext.saveIfNeeded()
+    }
+
+    
+    
     
     private func downloadAndParseStringFile(url: URL) async -> String?{
+        print("downloadAndParseStringFile called with: \(url)")
         var stringURL = url
         do{
             let status = try await stringURL.status()
-            
             switch status?.statusCode {
             case 200:
                 break
             case 404:
-                // print("String file URL 404 failed")
                 return nil
             case 410:
                 if let newURL = status?.newURL{
@@ -948,28 +786,17 @@ actor EpisodeActor {
             default:
                break
             }
-            
             do{
                  let stringData = try await URLSession(configuration: .default).data(from: stringURL)
-                    // print("decoding string from \(stringURL.absoluteString)")
-                   
                 return String(decoding: stringData.0, as: UTF8.self)
-                
-                
             }catch{
-                // print("error dewnloading String file: \(error)")
                 return nil
             }
         }catch {
-            // print("String File download failed  \(error)")
             return nil
         }
     }
-    
-    
-    
 }
-
 
 private struct SendableChapterData: Sendable {
     let title: String
@@ -1005,7 +832,6 @@ private struct MetadataLoader {
             let start = timeRange.start.seconds
             let duration = timeRange.duration.seconds
             
-            // Validate the time fields for NaN and negative values
             let correctedStart = (start.isNaN || start < 0) ? 0 : start
             let correctedDuration = (duration.isNaN || duration < 0) ? nil : duration
             
@@ -1041,7 +867,6 @@ private struct MetadataLoader {
     }
 }
 
-// Structures to decode JSON chapter format from external sources
 private struct JSONChapterList: Decodable {
     let version: String?
     let chapters: [JSONChapter]
@@ -1053,4 +878,3 @@ private struct JSONChapter: Decodable {
     let img: String?
     let url: String?
 }
-

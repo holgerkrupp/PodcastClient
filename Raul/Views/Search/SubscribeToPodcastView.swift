@@ -87,7 +87,7 @@ struct SubscribeToPodcastView: View {
                         CoverImageView(imageURL: newPodcastFeed.artworkURL )
                             .frame(width: 150, height: 150)
                             .cornerRadius(8)
-                        Spacer()
+                        
                         
                         VStack(alignment: .leading) {
                             Text(newPodcastFeed.title ?? "Untitled Podcast")
@@ -139,6 +139,7 @@ struct SubscribeToPodcastView: View {
                                 
                             }
                         }
+                        .padding()
                     }
                     
                 }

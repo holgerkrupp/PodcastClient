@@ -24,7 +24,7 @@ struct RaulApp: App {
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
-            
+
                     .onAppear {
                         let manager = downloadedFilesManager  // Capture outside the @Sendable closure
                         Task { @Sendable in
