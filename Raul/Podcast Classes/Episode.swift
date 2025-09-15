@@ -9,8 +9,6 @@ import Foundation
 import SwiftUI
 import mp3ChapterReader
 
-
-
 struct ExternalFile:Codable{
     
     enum FileType: String, Codable{
@@ -48,9 +46,6 @@ class EpisodeDownloadStatus{
 
 }
 
-
-
-
 @Model final class Episode {
     var id: UUID = UUID()
     var guid: String?
@@ -81,9 +76,6 @@ class EpisodeDownloadStatus{
     // See also: Podcast.funding
     var funding: [FundingInfo] = []
  
-    
-    
-    
     @Relationship(deleteRule: .cascade) var chapters: [Marker]? = []
     @Relationship(deleteRule: .cascade) var bookmarks: [Bookmark]? = []
     
@@ -97,6 +89,8 @@ class EpisodeDownloadStatus{
             // print("downloadItem changed")
         }
     }
+    // NEW: UI state for transcription
+    @Transient var transcriptionItem: TranscriptionItem? = nil
 
     var remainingTime: Double? {
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
@@ -133,12 +127,6 @@ class EpisodeDownloadStatus{
         return uniqueURL
     }
     
-
-    
-
-
-
-    
     @Transient var preferredChapters: [Marker] {
 
         let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
@@ -150,7 +138,6 @@ class EpisodeDownloadStatus{
             return group.filter { $0.type == highestCategory }
         }
     }
-
 
     init(id: UUID, guid:String? = nil, title: String, publishDate: Date? = nil, url: URL, podcast: Podcast, duration:Double? = nil, author: String? = nil) {
         self.id = id
@@ -270,10 +257,6 @@ class EpisodeDownloadStatus{
         updateEpisodeData(from: episodeData)
 
     }
-    
-    
-    
-    
 }
 
 enum EpisodeStatus: String, Codable{
@@ -281,9 +264,6 @@ enum EpisodeStatus: String, Codable{
 }
 
 @Model final class EpisodeMetaData{
-    
-
-    
     var calculatedIsAvailableLocally: Bool {
         guard let url = episode?.localFile else {
             return false
@@ -334,4 +314,3 @@ enum EpisodeStatus: String, Codable{
                
     }
 }
-

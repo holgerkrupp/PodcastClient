@@ -130,7 +130,7 @@ extension WaveformView {
     /// Extract normalized samples for the specified time range of the audio file.
     static func extractSamples(from url: URL, in range: ClosedRange<Double>, sampleCount: Int = 120) async -> [Float] {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .audio).first else { return Array(repeating: 0.05, count: sampleCount) }
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return Array(repeating: 0.05, count: sampleCount) }
         let assetReader = try? AVAssetReader(asset: asset)
         let timeRange = CMTimeRange(start: .init(seconds: range.lowerBound, preferredTimescale: 600), duration: .init(seconds: range.upperBound-range.lowerBound, preferredTimescale: 600))
         assetReader?.timeRange = timeRange

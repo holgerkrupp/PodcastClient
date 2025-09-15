@@ -172,6 +172,7 @@ struct PodcastSearchView: View {
                 .listRowBackground(Color.clear)
             }
         }
+        /*
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 if !viewModel.languages.isEmpty {
@@ -186,6 +187,7 @@ struct PodcastSearchView: View {
                 }
             }
         }
+        */
         .onChange(of: search) {
             viewModel.searchText = search
         }

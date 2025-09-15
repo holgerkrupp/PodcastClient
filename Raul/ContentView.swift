@@ -67,6 +67,7 @@ struct ContentView: View {
             
  
         }
+
         
         .task {
             await loadInboxCount()

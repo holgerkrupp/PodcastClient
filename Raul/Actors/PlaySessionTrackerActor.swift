@@ -122,7 +122,7 @@ actor PlaySessionTrackerActor {
         }
 
         // End previous session if different episode
-        if let session = currentSession {
+        if (currentSession != nil) {
             endSession(at: position, appTerminated: false)
         }
 
@@ -150,7 +150,7 @@ actor PlaySessionTrackerActor {
 
     func handlePlaybackRateChange(to rate: Float, at position: Double) async {
         let now = Date()
-        guard var session = currentSession else { return }
+        guard let session = currentSession else { return }
         if let lastSegment = session.segments?.last, lastSegment.rate != rate {
             endCurrentRateSegment(at: now, position: position)
             addRateSegment(rate: rate, startTime: now, startPosition: position)
@@ -164,7 +164,7 @@ actor PlaySessionTrackerActor {
     }
 
     private func endSession(at position: Double, appTerminated: Bool) {
-        guard var session = currentSession else { return }
+        guard let session = currentSession else { return }
         let now = Date()
         session.endTime = now
         session.endPosition = position
@@ -177,7 +177,7 @@ actor PlaySessionTrackerActor {
     }
 
     private func endCurrentRateSegment(at date: Date, position: Double) {
-        guard var session = currentSession, var last = session.segments?.last else { return }
+        guard let session = currentSession, let last = session.segments?.last else { return }
         last.endTime = date
         last.endPosition = position
         if var segments = session.segments {
@@ -188,7 +188,7 @@ actor PlaySessionTrackerActor {
     }
 
     private func addRateSegment(rate: Float, startTime: Date, startPosition: Double) {
-        guard var session = currentSession else { return }
+        guard let session = currentSession else { return }
         let segment = RateSegment(rate: rate, startTime: startTime, startPosition: startPosition)
         if session.segments == nil {
             session.segments = []
@@ -226,7 +226,7 @@ actor PlaySessionTrackerActor {
                 session.endedCleanly = false
                 // Update last segment too
                 if var segments = session.segments, !segments.isEmpty {
-                    var last = segments[segments.count - 1]
+                    let last = segments[segments.count - 1]
                     last.endPosition = endPosition
                     // Estimate endTime using playback rate
                     let rate = last.rate ?? 1.0

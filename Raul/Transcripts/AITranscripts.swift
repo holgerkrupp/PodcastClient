@@ -22,7 +22,7 @@ class AITranscripts {
     init(url: URL, language: String? = nil) async {
         
         self.url = url
-        // print("language set to: \(language ?? "nil") ")
+         print("language set to: \(language ?? "nil") ")
         if let language{
             self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
         }else{
@@ -93,7 +93,7 @@ class AITranscripts {
     
     
     func transcribeTovTT() async throws -> String? {
-     //   self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
+        self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
         // print("language finished")
         
         guard let segments = try await transcribe() else { return nil }
@@ -118,12 +118,12 @@ class AITranscripts {
     
     func transcribe() async throws -> [(range: CMTimeRange, text: String)]?{
        
-           
+        print("transcribe to lang: \(language.identifier ?? "unknown")")
         
        //  await BasicLogger.shared.log("transcribing \(url.absoluteString)")
-        // print("transcribing")
+         print("transcribing")
         guard let audioFile = try? AVAudioFile(forReading: url) else {
-            // print("could not load audio file")
+             print("could not load audio file")
             return nil }
         
        
@@ -133,7 +133,7 @@ class AITranscripts {
         do {
             try await ensureModel(transcriber: transcriber, locale: language)
         } catch {
-            // print(error)
+             print(error)
             return nil
         }
     
@@ -144,8 +144,14 @@ class AITranscripts {
         
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
-            try await analyzer.finalizeAndFinish(through: lastSample)
-        } else {
+            do{
+                try await analyzer.finalizeAndFinish(through: lastSample)
+            }catch{
+                print("analyzer failed")
+                print(error)
+            }
+            } else {
+                print("analyzer failed 2")
             await analyzer.cancelAndFinishNow()
         }
         let transcription = try await transcriptionFuture
@@ -231,7 +237,7 @@ class AITranscripts {
         
         // Then, try for a language-only match (e.g., "de" matches "de-DE")
         if let prefixMatch = supported.first(where: { $0.identifier(.bcp47).lowercased().hasPrefix(input.lowercased() + "-") }) {
-            // print("Best Match:", prefixMatch.identifier(.bcp47))
+             print("Best Match:", prefixMatch.identifier(.bcp47))
             return prefixMatch
         }
         return nil // No match
