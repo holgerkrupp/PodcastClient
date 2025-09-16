@@ -217,6 +217,10 @@ actor PodcastSettingsModelActor {
         }
     }
     
+    func getContiniousPlay() async -> Bool{
+        return await standardSettings().getContinuousPlay
+    }
+    
     func getAppSliderEnable() async -> Bool{
         return await standardSettings().enableInAppSlider
     }

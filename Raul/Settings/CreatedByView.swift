@@ -25,6 +25,8 @@ struct CreatedByView: View {
                     }
                 }
             }
+            VersionNumberView()
+                .font(.caption)
         }
     }
 }

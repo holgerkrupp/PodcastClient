@@ -46,11 +46,15 @@ class Player: NSObject {
             setPlayBackSpeed(to: playbackRate)
             }
     }
+    ///MARK: Sleep timer
     private var timer: Timer?
-
     var endDate: Date? // when playback should pause
     var remainingTime: TimeInterval?
-
+    var stopAfterEpisode: Bool = false
+    
+    
+    
+    
     var playPosition: Double = 0.0
     
     
@@ -143,6 +147,7 @@ class Player: NSObject {
         timer = nil
         endDate = nil
         remainingTime = nil
+        stopAfterEpisode = false
     }
     
     private  func addChangeSettingsObserver() {
@@ -334,7 +339,7 @@ class Player: NSObject {
         chapters = nil
         
         
-        UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeUUID")
+        UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeID")
         
         
         if episode.playProgress >= progressThreshold {
@@ -795,10 +800,11 @@ class Player: NSObject {
         updateLastPlayed()
         stopPlaybackUpdates()
         savePlayPosition()
-        // print("currenty PlayProgress: \(currentEpisode?.playProgress ?? 0)")
-     //   if currentEpisode?.playProgress ?? 0 >= progressThreshold {
+
             Task{
-                if let nextEpisodeID = try? await playlistActor?.nextEpisode(){
+                let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
+                let sleepTimerContinuePlaying = !stopAfterEpisode
+                if sleepTimerContinuePlaying == true, continuePlaying == true, let nextEpisodeID = try? await playlistActor?.nextEpisode(){
                     BasicLogger.shared.log("Playing next episode")
                     await playEpisode(nextEpisodeID, playDirectly: true)
                 }else{
@@ -808,7 +814,7 @@ class Player: NSObject {
                     
                 }
             }
-     //   }
+
 
         
 

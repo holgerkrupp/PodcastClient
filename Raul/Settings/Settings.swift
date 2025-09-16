@@ -40,6 +40,7 @@ class PodcastSettings {
     var playSumAdjustedbyPlayspeed: Bool = false
     var enableLockscreenSlider:Bool = true
     var enableInAppSlider:Bool = true
+    var getContinuousPlay:Bool = true
 
     var sleepTimerAddMinutes: Double = 10 // 10 minutes
     var sleepTimerDurationToReactivate: Double = 300 // 5 minutes * 60 seconds

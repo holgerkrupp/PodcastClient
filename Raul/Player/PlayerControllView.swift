@@ -57,37 +57,69 @@ struct PlayerControllView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .sheet(isPresented: $showSpeedSetting, content: {
-                    VStack{
-                        /*
-                         Text("Adjust Sleeptimer")
-                         Toggle(isOn: $player.sleeptimer.activated) {
-                         Text("Activate Sleeptimer")
-                         }
-                         Stepper(value: $player.sleeptimer.minutes, in: 1...60, step: 1) {
-                         Text(player.sleeptimer.secondsLeft?.secondsToHoursMinutesSeconds ?? "00:00")
-                         }
-                         .disabled(!player.sleeptimer.activated)
-                         */
-                        
-                        
-                        Text("Adjust Playback Speed")
-                        Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
-                        
-                            Text(String(format: "%.1fx", player.playbackRate))
+                    List{
+                        Section(header: Label("Playback Speed", systemImage: "gauge.with.dots.needle.50percent")) {
+
+                            Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
+                            
+                                Text(String(format: "%.1fx", player.playbackRate))
+                            }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 0,
+                                                 trailing: 0))
                         }
-                        Text("Adjust Sleep Timer")
-                        SleepTimerView()
                         
-                        Spacer()
-                        Button("Show all Settings") {
-                            showSettings = true
+                        Section(header: Label("Sleep Timer", systemImage: "zzz")) {
+
+                            SleepTimerView()
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 0,
+                                                 bottom: 0,
+                                                 trailing: 0))
+                            
+                            Toggle(isOn: $player.stopAfterEpisode) {
+                                Text("Stop after this episode")
+                            }
+                            .tint(.accent)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0,
+                                                 leading: 8,
+                                                 bottom: 0,
+                                                 trailing: 8))
                         }
-                        .buttonStyle(.glass)
+
                         
-                    }.padding()
+                       HStack{
+                           Spacer()
+                           Button("Show all Settings") {
+                               showSettings = true
+                           }
+                           .buttonStyle(.glass)
+                           Spacer()
+
+                        }
+                       .listRowSeparator(.hidden)
+                       .listRowBackground(Color.clear)
+                       .listRowInsets(.init(top: 0,
+                                            leading: 0,
+                                            bottom: 0,
+                                            trailing: 0))
+                       
+                        
+                    }
+
+                    .listStyle(.plain)
+                    
+                    .padding()
                         .presentationDragIndicator(.visible)
                         .presentationBackground(.ultraThinMaterial)
-                        .presentationDetents([.fraction(0.3)])
+                        .presentationDetents([.fraction(0.5)])
                         .sheet(isPresented: $showSettings) {
                            
                             if let podcast = player.currentEpisode?.podcast {

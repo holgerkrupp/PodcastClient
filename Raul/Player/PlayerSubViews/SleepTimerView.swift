@@ -36,6 +36,6 @@ struct SleepTimerView: View {
                 Text("Off")
             }
         }
-        .padding()
+       
     }
 }
