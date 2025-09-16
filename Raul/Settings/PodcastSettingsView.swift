@@ -243,6 +243,16 @@ struct PodcastSettingsView: View {
             
         }
         
+        Section(header: Text("Other"), footer: Text("Additional Settings")) {
+
+            Toggle(isOn: binding(for: \.getContinuousPlay, in: settings)) {
+                Text("Continues Playback")
+            }
+            
+
+            
+        }
+        
         
     }
 
