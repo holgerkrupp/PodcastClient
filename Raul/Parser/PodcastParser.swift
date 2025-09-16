@@ -36,6 +36,13 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var podcastSocialArray = [[String: Any]]()
     var episodeSocialArray = [[String: Any]]()
     private var currentFundingURL: String = ""
+
+    
+    var podcastPeopleArray = [[String: Any]]()
+    var episodePeopleArray = [[String: Any]]()
+    private var currentPerson = [String: Any]()
+    private var currentPersonName = ""
+    
     private var currentSocial: [String: Any] = [:]
     
     var currentElement:String {
@@ -89,6 +96,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
         podcastSocialArray.removeAll()
         episodeSocialArray.removeAll()
         currentSocial.removeAll()
+        
+        podcastPeopleArray.removeAll()
+        episodePeopleArray.removeAll()
+        currentPerson.removeAll()
+        currentPersonName = ""
     }
     
     
@@ -136,6 +148,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
             if let priorityStr = attributeDict["priority"], let priorityInt = Int(priorityStr) {
                 currentSocial["priority"] = priorityInt
             }
+        } else if currentElement == "podcast:person" {
+            currentPerson = [:]
+            currentPersonName = ""
+            if let role = attributeDict["role"] { currentPerson["role"] = role }
+            if let href = attributeDict["href"] { currentPerson["href"] = href }
+            if let img = attributeDict["img"] { currentPerson["img"] = img }
         } else if currentElement.hasPrefix("podcast:") == false {
             // do nothing
         }
@@ -151,6 +169,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             episodeDeepLinks.removeAll()
             episodeFundingArray.removeAll()
             episodeSocialArray.removeAll()
+            episodePeopleArray.removeAll()
         }
         
         if currentElement == "psc:chapters"{
@@ -213,6 +232,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         if !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             currentValue += string
+            if currentElement == "podcast:person" {
+                currentPersonName += string
+            }
         }
     }
     
@@ -258,6 +280,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
                         episodeDict.updateValue(episodeSocialArray, forKey: "socialInteract")
                         episodeSocialArray.removeAll()
                     }
+                    if !episodePeopleArray.isEmpty {
+                        episodeDict.updateValue(episodePeopleArray, forKey: "people")
+                        episodePeopleArray.removeAll()
+                    }
                     episodeDeepLinks.removeAll()
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
@@ -300,6 +326,20 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
             currentSocial.removeAll()
         }
+        if elementName == "podcast:person" {
+            let name = currentPersonName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty {
+                var dict = currentPerson
+                dict["name"] = name
+                if isHeader {
+                    podcastPeopleArray.append(dict)
+                } else {
+                    episodePeopleArray.append(dict)
+                }
+            }
+            currentPerson.removeAll()
+            currentPersonName = ""
+        }
 
         if currentElements.count > 0{
             currentElements.removeLast()
@@ -315,6 +355,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
         }
         if !podcastSocialArray.isEmpty {
             podcastDictArr.updateValue(podcastSocialArray, forKey: "socialInteract")
+        }
+        if !podcastPeopleArray.isEmpty {
+            podcastDictArr.updateValue(podcastPeopleArray, forKey: "people")
         }
     }
 
@@ -362,5 +405,4 @@ extension PodcastParser {
         return podcastHeader
     }
 }
-
 

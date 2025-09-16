@@ -24,7 +24,7 @@ Namespace URL: https://podcastindex.org/namespace/1.0
 An open standard to expand podcasting with decentralized, modern features.
 
 Notable Tags:
-- [ ] <podcast:person> — Credit people (roles: host, guest, voice, etc.).
+- [x] <podcast:person> — Credit people (roles: host, guest, voice, etc.).
 - [ ] <podcast:location> — Geolocation of episode/show.
 - [x] <podcast:transcript> — Link to a transcript file (WebVTT, SRT, etc.).
 - - [x] WebVTT

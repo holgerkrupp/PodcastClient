@@ -76,6 +76,7 @@ class EpisodeDownloadStatus{
     // See also: Podcast.funding
     var funding: [FundingInfo] = []
     var social: [SocialInfo] = []
+    var people: [PersonInfo] = []
  
     @Relationship(deleteRule: .cascade) var chapters: [Marker]? = []
     @Relationship(deleteRule: .cascade) var bookmarks: [Bookmark]? = []
@@ -243,6 +244,19 @@ class EpisodeDownloadStatus{
             }
         } else if let socialArr = episodeData["socialInteract"] as? [SocialInfo] {
             self.social = socialArr
+        }
+        
+        // Map episode-level people
+        if let peopleArr = episodeData["people"] as? [[String: Any]] {
+            self.people = peopleArr.compactMap { dict in
+                guard let name = dict["name"] as? String, !name.isEmpty else { return nil }
+                let role = dict["role"] as? String
+                let href = (dict["href"] as? String).flatMap(URL.init(string:))
+                let img = (dict["img"] as? String).flatMap(URL.init(string:))
+                return PersonInfo(name: name, role: role, href: href, img: img)
+            }
+        } else if let peopleArr = episodeData["people"] as? [PersonInfo] {
+            self.people = peopleArr
         }
         
         if self.metaData == nil {

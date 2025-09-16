@@ -269,6 +269,18 @@ actor PodcastModelActor {
             podcast.social = socialArr
         }
        
+        // Map podcast-level people
+        if let peopleArr = fullPodcast["people"] as? [[String: Any]] {
+            podcast.people = peopleArr.compactMap { dict in
+                guard let name = dict["name"] as? String, !name.isEmpty else { return nil }
+                let role = dict["role"] as? String
+                let href = (dict["href"] as? String).flatMap(URL.init(string:))
+                let img = (dict["img"] as? String).flatMap(URL.init(string:))
+                return PersonInfo(name: name, role: role, href: href, img: img)
+            }
+        } else if let peopleArr = fullPodcast["people"] as? [PersonInfo] {
+            podcast.people = peopleArr
+        }
             
             // Update episodes
             if let episodesData = fullPodcast["episodes"] as? [[String: Any]] {

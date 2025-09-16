@@ -67,6 +67,14 @@ struct SocialInfo: Codable, Hashable, Identifiable {
     }
 }
 
+struct PersonInfo: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var name: String
+    var role: String?
+    var href: URL?
+    var img: URL?
+}
+
 @Model
 final class Podcast: Identifiable {
     var id = UUID()
@@ -87,6 +95,7 @@ final class Podcast: Identifiable {
    
     var funding: [FundingInfo] = [] // See also: Episode.funding
     var social: [SocialInfo] = []
+    var people: [PersonInfo] = []
     
     @Transient var message: String?
     
