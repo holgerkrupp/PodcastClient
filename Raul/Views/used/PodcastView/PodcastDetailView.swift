@@ -144,7 +144,9 @@ struct PodcastDetailView: View {
                                 .font(.caption)
                         }
                         SocialView(socials: podcast.social)
-                        
+                            .padding()
+                        PeopleView(people: podcast.people)
+                            .padding()
                         if let desc = podcast.desc {
                             RichText(html: desc)
                                 .linkColor(light: Color.secondary, dark: Color.secondary)

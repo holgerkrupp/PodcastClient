@@ -102,58 +102,59 @@ struct EpisodeDetailView: View {
                             }
                         }
                     }
-                    
-                    HStack{
-                        NavigationLink(destination: BookmarkListView(episode: episode)) {
-                            Label("Show Bookmarks", systemImage: "bookmark.fill")
-                        }
-                        .buttonStyle(.glass)
-                        .padding()
-                        
-                        if let transcriptLines = episode.transcriptLines, transcriptLines.count > 0 {
-                            NavigationLink(destination:  TranscriptListView(transcriptLines: transcriptLines)) {
-                                Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
+                    GlassEffectContainer(spacing: 20.0) {
+                        HStack{
+                            NavigationLink(destination: BookmarkListView(episode: episode)) {
+                                Label("Bookmarks", systemImage: "bookmark.fill")
                             }
                             .buttonStyle(.glass)
                             .padding()
-                        } else {
-                            // Replace the slot where you show "Transcribe" with:
-                            if let item = liveTranscriptionItem ?? episode.transcriptionItem, item.isTranscribing {
-                                TranscriptionProgressView(item: item)
-                                    .padding()
-                                    .onAppear {
-                                        // Keep local state synced if episode.transcriptionItem arrives later
-                                        if liveTranscriptionItem == nil {
-                                            liveTranscriptionItem = episode.transcriptionItem
-                                        }
-                                    }
-                            } else if let url = episode.url {
-                                Button(action: {
-                                    Task { @MainActor in
-                                        do {
-                                            let actor = EpisodeActor(modelContainer: context.container)
-                                            try await actor.transcribe(url)
-                                            // Grab the item from the manager and set local state so UI flips immediately
-                                            if let id = episode.id as UUID?,
-                                               let item = await TranscriptionManager.shared.item(for: id) {
-                                                liveTranscriptionItem = item
-                                            } else {
-                                                // Fallback: if item not yet registered, poll once after a short delay
-                                                try? await Task.sleep(nanoseconds: 200_000_000)
-                                                if let id = episode.id as UUID?,
-                                                   let item = await TranscriptionManager.shared.item(for: id) {
-                                                    liveTranscriptionItem = item
-                                                }
-                                            }
-                                        } catch {
-                                            errorMessage = error.localizedDescription
-                                        }
-                                    }
-                                }) {
-                                    Label("Transcribe", systemImage: "quote.bubble.fill")
+                            
+                            if let transcriptLines = episode.transcriptLines, transcriptLines.count > 0 {
+                                NavigationLink(destination:  TranscriptListView(transcriptLines: transcriptLines)) {
+                                    Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
                                 }
                                 .buttonStyle(.glass)
                                 .padding()
+                            } else {
+                                // Replace the slot where you show "Transcribe" with:
+                                if let item = liveTranscriptionItem ?? episode.transcriptionItem, item.isTranscribing {
+                                    TranscriptionProgressView(item: item)
+                                        .padding()
+                                        .onAppear {
+                                            // Keep local state synced if episode.transcriptionItem arrives later
+                                            if liveTranscriptionItem == nil {
+                                                liveTranscriptionItem = episode.transcriptionItem
+                                            }
+                                        }
+                                } else if let url = episode.url {
+                                    Button(action: {
+                                        Task { @MainActor in
+                                            do {
+                                                let actor = EpisodeActor(modelContainer: context.container)
+                                                try await actor.transcribe(url)
+                                                // Grab the item from the manager and set local state so UI flips immediately
+                                                if let id = episode.id as UUID?,
+                                                   let item = await TranscriptionManager.shared.item(for: id) {
+                                                    liveTranscriptionItem = item
+                                                } else {
+                                                    // Fallback: if item not yet registered, poll once after a short delay
+                                                    try? await Task.sleep(nanoseconds: 200_000_000)
+                                                    if let id = episode.id as UUID?,
+                                                       let item = await TranscriptionManager.shared.item(for: id) {
+                                                        liveTranscriptionItem = item
+                                                    }
+                                                }
+                                            } catch {
+                                                errorMessage = error.localizedDescription
+                                            }
+                                        }
+                                    }) {
+                                        Label("Transcribe", systemImage: "quote.bubble.fill")
+                                    }
+                                    .buttonStyle(.glass)
+                                    .padding()
+                                }
                             }
                         }
                     }
@@ -192,6 +193,9 @@ struct EpisodeDetailView: View {
                     .padding()
                     
                     SocialView(socials: episode.social)
+                        .padding()
+                    PeopleView(people: episode.people)
+                        .padding()
                     
                     RichText(html: episode.content ?? episode.desc ?? "")
                         .linkColor(light: Color.secondary, dark: Color.secondary)
