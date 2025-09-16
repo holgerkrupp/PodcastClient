@@ -250,6 +250,24 @@ actor PodcastModelActor {
         } else if let fundingArr = fullPodcast["funding"] as? [FundingInfo] {
             podcast.funding = fundingArr
         }
+        
+        // Map podcast-level social interactions
+        if let socialArr = fullPodcast["socialInteract"] as? [[String: Any]] {
+            podcast.social = socialArr.compactMap { dict in
+                guard
+                    let proto = dict["protocol"] as? String,
+                    let uriStr = dict["uri"] as? String,
+                    let uri = URL(string: uriStr)
+                else { return nil }
+                let accountId = dict["accountId"] as? String
+                let accountUrlString = dict["accountUrl"] as? String
+                let accountURL = accountUrlString.flatMap(URL.init(string:))
+                let priority = dict["priority"] as? Int
+                return SocialInfo(url: uri, socialprotocol: proto, accountId: accountId, accountURL: accountURL, priority: priority)
+            }
+        } else if let socialArr = fullPodcast["socialInteract"] as? [SocialInfo] {
+            podcast.social = socialArr
+        }
        
             
             // Update episodes
@@ -508,3 +526,4 @@ actor AsyncSemaphore {
         }
     }
 }
+

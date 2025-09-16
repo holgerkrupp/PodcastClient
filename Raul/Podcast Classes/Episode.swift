@@ -75,6 +75,7 @@ class EpisodeDownloadStatus{
     
     // See also: Podcast.funding
     var funding: [FundingInfo] = []
+    var social: [SocialInfo] = []
  
     @Relationship(deleteRule: .cascade) var chapters: [Marker]? = []
     @Relationship(deleteRule: .cascade) var bookmarks: [Bookmark]? = []
@@ -226,6 +227,23 @@ class EpisodeDownloadStatus{
             self.funding = fundingArr
         }
         
+        // Map episode-level social interactions
+        if let socialArr = episodeData["socialInteract"] as? [[String: Any]] {
+            self.social = socialArr.compactMap { dict in
+                guard
+                    let proto = dict["protocol"] as? String,
+                    let uriStr = dict["uri"] as? String,
+                    let uri = URL(string: uriStr)
+                else { return nil }
+                let accountId = dict["accountId"] as? String
+                let accountUrlString = dict["accountUrl"] as? String
+                let accountURL = accountUrlString.flatMap(URL.init(string:))
+                let priority = dict["priority"] as? Int
+                return SocialInfo(url: uri, socialprotocol: proto, accountId: accountId, accountURL: accountURL, priority: priority)
+            }
+        } else if let socialArr = episodeData["socialInteract"] as? [SocialInfo] {
+            self.social = socialArr
+        }
         
         if self.metaData == nil {
             let metadata = EpisodeMetaData()
@@ -314,3 +332,4 @@ enum EpisodeStatus: String, Codable{
                
     }
 }
+

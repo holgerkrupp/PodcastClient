@@ -191,6 +191,8 @@ struct EpisodeDetailView: View {
                     }
                     .padding()
                     
+                    SocialView(socials: episode.social)
+                    
                     RichText(html: episode.content ?? episode.desc ?? "")
                         .linkColor(light: Color.secondary, dark: Color.secondary)
                         .backgroundColor(.transparent)
