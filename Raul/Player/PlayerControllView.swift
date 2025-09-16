@@ -75,6 +75,8 @@ struct PlayerControllView: View {
                         
                             Text(String(format: "%.1fx", player.playbackRate))
                         }
+                        Text("Adjust Sleep Timer")
+                        SleepTimerView()
                         
                         Spacer()
                         Button("Show all Settings") {
