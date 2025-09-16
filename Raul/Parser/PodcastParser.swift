@@ -33,7 +33,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     var podcastFundingArray = [[String: String]]()
     var episodeFundingArray = [[String: String]]()
+    var podcastSocialArray = [[String: Any]]()
+    var episodeSocialArray = [[String: Any]]()
     private var currentFundingURL: String = ""
+    private var currentSocial: [String: Any] = [:]
     
     var currentElement:String {
         set {
@@ -83,6 +86,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         podcastFundingArray.removeAll()
         episodeFundingArray.removeAll()
+        podcastSocialArray.removeAll()
+        episodeSocialArray.removeAll()
+        currentSocial.removeAll()
     }
     
     
@@ -120,6 +126,20 @@ class PodcastParser:NSObject, XMLParserDelegate{
             currentFundingURL = ""
         }
         
+        if currentElement == "podcast:socialInteract" {
+            // initialize with required attributes if present; we'll validate on end
+            currentSocial = [:]
+            if let proto = attributeDict["protocol"] { currentSocial["protocol"] = proto }
+            if let uri = attributeDict["uri"] { currentSocial["uri"] = uri }
+            if let accountId = attributeDict["accountId"] { currentSocial["accountId"] = accountId }
+            if let accountUrl = attributeDict["accountUrl"] { currentSocial["accountUrl"] = accountUrl }
+            if let priorityStr = attributeDict["priority"], let priorityInt = Int(priorityStr) {
+                currentSocial["priority"] = priorityInt
+            }
+        } else if currentElement.hasPrefix("podcast:") == false {
+            // do nothing
+        }
+        
         attributes.removeAll()
         
 
@@ -130,6 +150,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             episodeDict = [:]
             episodeDeepLinks.removeAll()
             episodeFundingArray.removeAll()
+            episodeSocialArray.removeAll()
         }
         
         if currentElement == "psc:chapters"{
@@ -233,6 +254,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
                         episodeDict.updateValue(episodeFundingArray, forKey: "funding")
                         episodeFundingArray.removeAll()
                     }
+                    if !episodeSocialArray.isEmpty {
+                        episodeDict.updateValue(episodeSocialArray, forKey: "socialInteract")
+                        episodeSocialArray.removeAll()
+                    }
                     episodeDeepLinks.removeAll()
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
@@ -264,6 +289,17 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
             currentFundingURL = ""
         }
+        if elementName == "podcast:socialInteract" {
+            // Only append if required fields exist
+            if let _ = currentSocial["protocol"], let _ = currentSocial["uri"] {
+                if isHeader {
+                    podcastSocialArray.append(currentSocial)
+                } else {
+                    episodeSocialArray.append(currentSocial)
+                }
+            }
+            currentSocial.removeAll()
+        }
 
         if currentElements.count > 0{
             currentElements.removeLast()
@@ -276,6 +312,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
         podcastDictArr.updateValue(episodesArray, forKey: "episodes")
         if !podcastFundingArray.isEmpty {
             podcastDictArr.updateValue(podcastFundingArray, forKey: "funding")
+        }
+        if !podcastSocialArray.isEmpty {
+            podcastDictArr.updateValue(podcastSocialArray, forKey: "socialInteract")
         }
     }
 
@@ -323,4 +362,5 @@ extension PodcastParser {
         return podcastHeader
     }
 }
+
 

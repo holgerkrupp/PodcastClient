@@ -143,6 +143,7 @@ struct PodcastDetailView: View {
                             Text(copyright)
                                 .font(.caption)
                         }
+                        SocialView(socials: podcast.social)
                         
                         if let desc = podcast.desc {
                             RichText(html: desc)

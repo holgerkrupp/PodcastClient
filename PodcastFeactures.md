@@ -38,7 +38,7 @@ Notable Tags:
 - [ ] <podcast:trailer> — Points to trailer episodes.
 - [ ] <podcast:liveItem> — Defines live stream events.
 - [ ] <podcast:remoteItem> — Reference another feed/episode.
-- [ ] <podcast:social> — Links to social media profiles.
+- [x] <podcast:social> — Links to social media profiles.
 - [ ] <podcast:value> — Streaming payments support (e.g. Lightning Network).
 - [ ] <podcast:txt> — Verifies feed ownership via DNS.
 More evolving tags available at: https://podcastnamespace.org
