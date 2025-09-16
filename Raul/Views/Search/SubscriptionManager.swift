@@ -117,20 +117,25 @@ actor SubscriptionManager:NSObject{
     }
     
     
-    func subscribe(all newPodcasts:[PodcastFeed]) async{
-        
-        
-        for podcast in newPodcasts {
-            if let url = podcast.url{
-                do {
-                    let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url)
-                    
-                } catch {
-                     print(error)
-                }
+    
 
+    func subscribe(all newPodcasts: [PodcastFeed]) async {
+        let podcastSemaphore = AsyncSemaphore(value: 10)
+        await withTaskGroup(of: Void.self) { group in
+            for podcast in newPodcasts {
+                if let url = podcast.url {
+                    group.addTask {
+                        await podcastSemaphore.wait()
+                        do {
+                            let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                            _ = try await worker.createPodcast(from: url)
+                        } catch {
+                            print(error)
+                        }
+                        await podcastSemaphore.signal()
+                    }
+                }
             }
-            
         }
     }
     
@@ -180,14 +185,14 @@ actor SubscriptionManager:NSObject{
     <?xml version="1.0" encoding="UTF-8"?>\n
     <opml version="1.1">\n
         <head>\n
-            <title>Raúl Podcasts</title>\n
+            <title>Up Next Podcasts</title>\n
         </head>\n
         <body>\n
     """
         
         for podcast in podcasts {
             opmlString += """
-            <outline text="\(podcast.title)" type="rss" xmlUrl="\(podcast.feed?.absoluteString ?? "")" />\n
+            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\(podcast.feed?.absoluteString ?? "")" />\n
         """
         }
         
@@ -202,4 +207,16 @@ actor SubscriptionManager:NSObject{
 
 
 
+}
+
+extension String {
+    var xmlEscaped: String {
+        var escaped = self
+        escaped = escaped.replacingOccurrences(of: "&", with: "&amp;")
+        escaped = escaped.replacingOccurrences(of: "<", with: "&lt;")
+        escaped = escaped.replacingOccurrences(of: ">", with: "&gt;")
+        escaped = escaped.replacingOccurrences(of: "\"", with: "&quot;")
+        escaped = escaped.replacingOccurrences(of: "'", with: "&apos;")
+        return escaped
+    }
 }

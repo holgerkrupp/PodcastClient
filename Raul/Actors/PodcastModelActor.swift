@@ -490,25 +490,7 @@ actor PodcastModelActor {
             }
         }
     }
-    
-    /*
-    func refreshAllPodcasts() async throws {
-        let descriptor = FetchDescriptor<Podcast>()
-        let podcasts = try modelContext.fetch(descriptor)
-        let ids = podcasts.map(\.persistentModelID)
-        // Now leave actor isolation and kick off parallel updates:
-         await withThrowingTaskGroup(of: Void.self) { group in
-            for id in ids {
-                group.addTask {
-                    // Create a new instance of the actor
-                    let actor = PodcastModelActor(modelContainer: self.modelContainer)
-                    _ = try await actor.updatePodcast(id)
-                }
-            }
-        //    await group.waitForAll()
-        }
-    }
-    */
+
 }
 
 actor AsyncSemaphore {
