@@ -71,8 +71,8 @@ struct ImportExportView: View {
             }).count > 0{
                 
                 Button("Subscribe to new podcasts"){
-                    Task{
-                        await SubscriptionManager(modelContainer: context.container).subscribe(all: newPodcasts.filter({ newPod in
+                    Task.detached {
+                        await SubscriptionManager(modelContainer: ModelContainerManager.shared.container).subscribe(all: newPodcasts.filter({ newPod in
                             if newPod.existing == false && newPod.added == false {
                                 return true
                             }else{
@@ -95,6 +95,8 @@ struct ImportExportView: View {
                     }).sorted(by: {$0.title ?? "" < $1.title ?? ""}), id: \.url) { newPodcastFeed in
                         SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
                             .modelContext(context)
+                        
+                        
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0,

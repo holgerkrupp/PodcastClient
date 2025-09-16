@@ -35,6 +35,7 @@ class PodcastFeed: Hashable, @unchecked Sendable {
      
     init (url: URL) {
         self.url = url
+        self.title = url.absoluteString
         fetchAndPopulateFeedIfNeeded()
     }
     
