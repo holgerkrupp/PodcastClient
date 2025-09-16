@@ -46,6 +46,10 @@ class Player: NSObject {
             setPlayBackSpeed(to: playbackRate)
             }
     }
+    private var timer: Timer?
+
+    var endDate: Date? // when playback should pause
+    var remainingTime: TimeInterval?
 
     var playPosition: Double = 0.0
     
@@ -95,6 +99,50 @@ class Player: NSObject {
             allowScrubbing = await settingsActor?.getAppSliderEnable()
         }
         
+    }
+    
+    func setSleepTimer(minutes: Int) {
+        if minutes > 0 {
+            endDate = Date().addingTimeInterval(Double(minutes * 60))
+            startSleepTimer()
+        } else {
+            cancelSleepTimer()
+        }
+    }
+
+    private func startSleepTimer() {
+        timer?.invalidate()
+        timer = nil
+        updateRemainingTime()
+
+        guard endDate != nil else { return }
+
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.updateRemainingTime()
+            }
+        }
+    }
+
+    private func updateRemainingTime() {
+        if let endDate {
+            let remaining = endDate.timeIntervalSinceNow
+            remainingTime = remaining > 0 ? remaining : nil
+            if remainingTime == nil {
+                cancelSleepTimer()
+                pause()
+            }
+        } else {
+            remainingTime = nil
+        }
+    }
+
+    func cancelSleepTimer() {
+        timer?.invalidate()
+        timer = nil
+        endDate = nil
+        remainingTime = nil
     }
     
     private  func addChangeSettingsObserver() {
