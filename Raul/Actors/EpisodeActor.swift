@@ -253,7 +253,7 @@ actor EpisodeActor {
         if let localFile = episode.localFile {
             if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile, episodeID: episode.id) != nil {
             }
-            await downloadTranscript(episode.persistentModelID)
+            try? await downloadTranscript(episode.persistentModelID)
 
         }
         
@@ -331,7 +331,12 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
         
         if episode.externalFiles.contains(where: { $0.category == .transcript}) {
-            await downloadTranscript(episode.id)
+            do {
+                try await downloadTranscript(episode.persistentModelID)
+            }catch{
+                print(error)
+                await TranscriptionManager.shared.enqueueTranscription(episodeID: episode.id)
+            }
         }else{
             await TranscriptionManager.shared.enqueueTranscription(episodeID: episode.id)
         }
@@ -699,13 +704,22 @@ actor EpisodeActor {
         return files.first
     }
     
-    func downloadTranscript(_ episodeID: PersistentIdentifier) async {
+    
+    enum TranscriptError: Error {
+        case transcriptionExists
+        case noTranscriptFileFound
+        case episodeNotFound
+        case decodingFailed
+    }
+    
+    func downloadTranscript(_ episodeID: PersistentIdentifier) async throws {
         print("downloading transcript")
         guard let episode = modelContext.model(for: episodeID) as? Episode else {
-            return }
+            throw TranscriptError.episodeNotFound }
         
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
-            return }
+            throw TranscriptError.transcriptionExists }
+        
 
         if let transcriptfile = bestExternalFile(
             in: episode.externalFiles.filter { $0.category == .transcript },
@@ -715,9 +729,17 @@ actor EpisodeActor {
                 let transcription = await downloadAndParseStringFile(url: url)
                 if let transcription {
                     episode.transcriptLines = decodeTranscription(transcription)
+                    modelContext.saveIfNeeded()
+                    return
+                }else{
+                    throw TranscriptError.decodingFailed
                 }
-                modelContext.saveIfNeeded()
+                
+            }else{
+                throw TranscriptError.noTranscriptFileFound
             }
+        }else{
+            throw TranscriptError.noTranscriptFileFound
         }
         return
     }

@@ -21,7 +21,7 @@ Key principles of the project:
 - [x] Integrate Settings (Per Podcasts and global)
 - [x] Use Notification Center to send notification to the player if settings are changed.
 
-- [?] fix Skip Chapters (validate skip to and skip last)
+- [x] fix Skip Chapters (validate skip to and skip last)
 
 - [ ] Refactor mp3ChapterReader to send a custom object (concurrency)
 - [x] mp3ChapterReader work with remote files
@@ -77,10 +77,10 @@ Key principles of the project:
 
 ### Player
 - [x] skip manually selected chapters
-- [ ] sleep timer
+- [x] sleep timer
 - [x] play next queue
 - [x] set playbackspeed
-- - [?] (per podcast)
+- - [x] (per podcast)
 
 
 
@@ -100,7 +100,6 @@ Key principles of the project:
 
 ### Refresh and Downloads
 - [x] Automatic deletion of files
-- - [ ] Based on last x files
 - - [x] Based on time passed since release 
 - [x] Notification after refresh
 

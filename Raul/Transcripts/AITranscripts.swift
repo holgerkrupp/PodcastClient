@@ -97,7 +97,7 @@ class AITranscripts {
         // print("language finished")
         
         guard let segments = try await transcribe() else { return nil }
-        // print("transcript finished with \(segments.count) segments")
+         print("transcript finished with \(segments.count) segments")
         
         
         let formatted = segments.map { segment in
@@ -118,34 +118,60 @@ class AITranscripts {
     
     func transcribe() async throws -> [(range: CMTimeRange, text: String)]?{
        
-        print("transcribe to lang: \(language.identifier ?? "unknown")")
-        
-       //  await BasicLogger.shared.log("transcribing \(url.absoluteString)")
-         print("transcribing")
         guard let audioFile = try? AVAudioFile(forReading: url) else {
              print("could not load audio file")
             return nil }
         
-       
+        print("transcribe to lang: \(language.identifier(.bcp47))")
+        self.language = await bestMatchingSupportedLocale(for: language.identifier(.bcp47)) ?? Locale.current
         
-        let transcriber = SpeechTranscriber(locale: language, preset: .transcription)
+        let locale = self.language
+        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        
+        print("normalized:", locale.identifier(.bcp47))
         
         do {
-            try await ensureModel(transcriber: transcriber, locale: language)
+            try await ensureModel(transcriber: transcriber, locale: locale)
         } catch {
              print(error)
             return nil
         }
-    
+        print("model ensured")
+#if DEBUG
+
+        let isInstalled = await installed(locale: locale)
+        assert(isInstalled, "Locale should be installed after ensureModel")
+        #endif
+        
+        
+    print("1")
         
         async let transcriptionFuture = try await transcriber.results.reduce(into: [(range: CMTimeRange, text: String)]()) { arr, result in
+            print(result.range.start.value.formatted(), result.range.end.value.formatted(), result.text)
             arr.append((range: result.range, text: result.text.description))
         }
+        print("2")
         
+        do {
+            try await AssetInventory.reserve(locale: locale)
+        } catch {
+            print("Warning: could not reserve locale \(locale). \(error)")
+            // Optionally proceed if errors are non-fatal
+        }
+
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        
+        
+
+        
+        print(transcriber.selectedLocales)
+    
+     
+        print("3")
         if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
             do{
                 try await analyzer.finalizeAndFinish(through: lastSample)
+                print("ok")
             }catch{
                 print("analyzer failed")
                 print(error)
@@ -154,6 +180,7 @@ class AITranscripts {
                 print("analyzer failed 2")
             await analyzer.cancelAndFinishNow()
         }
+        print("4")
         let transcription = try await transcriptionFuture
         
         return transcription
@@ -162,25 +189,23 @@ class AITranscripts {
     
     public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
             guard await supported(locale: locale) else {
-               //  await BasicLogger.shared.log("locate \(locale.identifier) not supported")
+                 print("locate \(locale.identifier) not supported")
                 return
             }
             
             if await installed(locale: locale) {
-               //  await BasicLogger.shared.log(" \(locale.identifier) available")
+                print(" \(locale.identifier) available")
                 return
             } else {
-               //  await BasicLogger.shared.log("need to download \(locale.identifier) support")
+                print("need to download \(locale.identifier) support")
                 try await downloadIfNeeded(for: transcriber)
             }
         }
         
         func supported(locale: Locale) async -> Bool {
             let supported = await SpeechTranscriber.supportedLocales
-         
-
-            
-            return supported.map { $0.identifier(.bcp47) }.contains(language.identifier(.bcp47))
+            let target = locale.identifier(.bcp47).lowercased()
+            return supported.map { $0.identifier(.bcp47).lowercased() }.contains(target)
         }
 
         func installed(locale: Locale) async -> Bool {
@@ -190,7 +215,7 @@ class AITranscripts {
     
     func downloadIfNeeded(for module: SpeechTranscriber) async throws {
             if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-                // print(downloader.progress)
+                 print(downloader.progress)
                 try await downloader.downloadAndInstall()
             }
         }
