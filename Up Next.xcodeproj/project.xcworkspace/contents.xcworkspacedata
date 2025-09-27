@@ -4,4 +4,13 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:SharedModelContainer.swift">
+   </FileRef>
+   <FileRef
+      location = "group:PlaylistWidgetProvider.swift">
+   </FileRef>
+   <FileRef
+      location = "group:PlaylistWidget.swift">
+   </FileRef>
 </Workspace>

@@ -79,7 +79,5 @@
 			</dict>
 		</dict>
 	</array>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>To save exported clips to the library</string>
 </dict>
 </plist>

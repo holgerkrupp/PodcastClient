@@ -36,7 +36,7 @@ struct EpisodeControlView: View {
                     .clipShape(Circle())
                     .frame(width: 50)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glass(.clear))
             
             Spacer()
             
@@ -59,7 +59,7 @@ struct EpisodeControlView: View {
                             .frame(width: 50)
                            
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glass(.clear))
                     .clipShape(Circle())
                     
                  
@@ -76,7 +76,7 @@ struct EpisodeControlView: View {
                             .labelStyle(.iconOnly)
                             .frame(width: 50)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glass(.clear))
                     .clipShape(Circle())
                     
                 }
@@ -101,7 +101,7 @@ struct EpisodeControlView: View {
                     .clipShape(Circle())
                     .frame(width: 50)
             }
-            .buttonStyle(.glass)
+            .buttonStyle(.glass(.clear))
 
             
             

@@ -37,20 +37,7 @@ struct PlaylistView: View {
                             .opacity(0.6)
                             .allowsHitTesting(false)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        /*
-                        Group {
-                            if Player.shared.isPlaying {
-                                Label("Now Playing", systemImage: "waveform")
-                                    .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
-                                    .foregroundStyle(Color.primary)
-                                    .font(.title.bold())
-                            } else {
-                                Label("Now Playing", systemImage: "waveform.low")
-                                    .foregroundStyle(Color.primary)
-                                    .font(.title.bold())
-                            }
-                        }
-                        */
+
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EmptyView()
                         }.opacity(0)
@@ -185,7 +172,7 @@ struct PlaylistView: View {
     
     private func moveEntry(from sourceIndex: Int, to destinationIndex: Int) {
 
-
+        print("moving entry from \(sourceIndex) to \(destinationIndex)")
             let sorted = playListEntries.sorted { $0.order < $1.order }
 
             guard sourceIndex < sorted.count, destinationIndex < sorted.count else { return }

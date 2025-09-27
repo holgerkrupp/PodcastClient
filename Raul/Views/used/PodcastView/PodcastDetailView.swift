@@ -121,7 +121,7 @@ struct PodcastDetailView: View {
                                     Link(destination: fund.url) {
                                         Label(fund.label, systemImage: style.currencySFSymbolName)
                                     }
-                                    .buttonStyle(.glass)
+                                    .buttonStyle(.glass(.clear))
                                     
                                     if fund != podcast.funding.last {
                                         Spacer()
@@ -135,7 +135,7 @@ struct PodcastDetailView: View {
                                 Label("Show Bookmarks", systemImage: "bookmark.fill")
                                    
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass(.clear))
                             .padding()
                         */
                         
@@ -159,7 +159,7 @@ struct PodcastDetailView: View {
                             Link(destination: podcastLink) {
                                 Label("Open in Browser", systemImage: "safari")
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass(.clear))
                         }
                     }
                 }

@@ -39,7 +39,7 @@ struct ImportExportView: View {
                          print(error.localizedDescription)
                     }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.glass(.clear))
             }header: {
                 Text("Import")
             }footer: {
@@ -54,7 +54,7 @@ struct ImportExportView: View {
                             await sharePodcasts()
                         }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glass(.clear))
 
             }header: {
                 Text("Export")

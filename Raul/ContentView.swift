@@ -14,6 +14,8 @@ import BasicLogger
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     // Removed live @Query to avoid frequent updates from playback writes
@@ -27,6 +29,53 @@ struct ContentView: View {
     
     var body: some View {
         
+        
+        
+        
+        Group{
+            if horizontalSizeClass == .compact {
+                compactView
+            } else {
+                regularView
+            }
+        }
+        
+        .task {
+            await loadInboxCount()
+        }
+        .onChange(of: phase, {
+            if SETTINGgoingBackToPlayerafterBackground{
+                switch phase {
+                case .background:
+                    setGoingToBackgroundDate()
+                   
+                case .active:
+                    // Refresh the badge when app becomes active
+                    Task { await loadInboxCount() }
+                    if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
+                       
+                        //    selectedTab = .timeline
+                       
+                    }
+                    
+                default: break
+                }
+            }
+        })
+        // React to inbox change notifications anywhere in the app
+        .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
+            print("inbox Changed")
+            Task { await loadInboxCount() }
+        }
+        
+
+    }
+    
+    private var regularView: some View {
+        iPadMainView()
+    }
+
+    private var compactView: some View {
         TabView() {
             
             Tab {
@@ -67,37 +116,6 @@ struct ContentView: View {
             
  
         }
-
-        
-        .task {
-            await loadInboxCount()
-        }
-        .onChange(of: phase, {
-            if SETTINGgoingBackToPlayerafterBackground{
-                switch phase {
-                case .background:
-                    setGoingToBackgroundDate()
-                   
-                case .active:
-                    // Refresh the badge when app becomes active
-                    Task { await loadInboxCount() }
-                    if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
-                       
-                        //    selectedTab = .timeline
-                       
-                    }
-                    
-                default: break
-                }
-            }
-        })
-        // React to inbox change notifications anywhere in the app
-        .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
-            print("inbox Changed")
-            Task { await loadInboxCount() }
-        }
-        
-
     }
     
     func setGoingToBackgroundDate() {
