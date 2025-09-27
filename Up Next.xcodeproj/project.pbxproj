@@ -32,12 +32,25 @@
 			name = "Embed ExtensionKit Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4845F16F2E7D32990096FCA6 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Entitlements.plist; sourceTree = "<group>"; };
 		4827FCD32DA5AC0500FA6778 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		4845F14F2E7968440096FCA6 /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
+		4845F15A2E7D32980096FCA6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = /System/Library/Frameworks/WidgetKit.framework; sourceTree = "<absolute>"; };
+		4845F15C2E7D32980096FCA6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = /System/Library/Frameworks/SwiftUI.framework; sourceTree = "<absolute>"; };
+		4845F1702E7D32C10096FCA6 /* PlayNextWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PlayNextWidgetExtension.entitlements; sourceTree = "<group>"; };
 		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
 		487F5C6F2D9D4F0C00056D08 /* Raul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Raul.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -66,6 +79,11 @@
 				48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "Raul" target */,
 			);
 			path = PlayerIntentsExtension;
+			sourceTree = "<group>";
+		};
+		4845F15E2E7D32980096FCA6 /* PlayNextWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PlayNextWidget;
 			sourceTree = "<group>";
 		};
 		487F5C712D9D4F0C00056D08 /* Raul */ = {
@@ -100,11 +118,13 @@
 		487F5C662D9D4F0C00056D08 = {
 			isa = PBXGroup;
 			children = (
+				4845F1702E7D32C10096FCA6 /* PlayNextWidgetExtension.entitlements */,
 				4827FCD32DA5AC0500FA6778 /* README.md */,
 				4878D3802DDA612600BA3D92 /* PodcastFeactures.md */,
 				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
+				4845F15E2E7D32980096FCA6 /* PlayNextWidget */,
 				487F5C962D9D59D000056D08 /* Frameworks */,
 				487F5C702D9D4F0C00056D08 /* Products */,
 				4845F14F2E7968440096FCA6 /* PeopleView.swift */,
@@ -122,6 +142,8 @@
 		487F5C962D9D59D000056D08 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				4845F15A2E7D32980096FCA6 /* WidgetKit.framework */,
+				4845F15C2E7D32980096FCA6 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -137,6 +159,7 @@
 				487F5C6C2D9D4F0C00056D08 /* Frameworks */,
 				487F5C6D2D9D4F0C00056D08 /* Resources */,
 				480234B92E0560EE0013C50D /* Embed ExtensionKit Extensions */,
+				4845F16F2E7D32990096FCA6 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
@@ -374,9 +397,11 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "To save exported clips to the library";
 				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -387,10 +412,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2,6";
 			};
 			name = Debug;
 		};
@@ -415,9 +440,11 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "To save exported clips to the library";
 				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -428,10 +455,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2,6";
 			};
 			name = Release;
 		};

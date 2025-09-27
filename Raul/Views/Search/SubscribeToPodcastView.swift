@@ -134,8 +134,7 @@ struct SubscribeToPodcastView: View {
                                             }
                                         }
                                     }
-                                    .buttonStyle(.glass)
-                                    
+                                    .buttonStyle(.glass(.clear))
                                
                                 
                             }

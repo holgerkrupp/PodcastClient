@@ -89,7 +89,7 @@ struct BookmarkListView: View {
                                         Label("Play", systemImage: "play.fill")
                                         
                                     }
-                                    .buttonStyle(.glass)
+                                    .buttonStyle(.glass(.clear))
                                     
                                 }
                             }
