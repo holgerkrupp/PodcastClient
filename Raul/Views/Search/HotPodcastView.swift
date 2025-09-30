@@ -25,7 +25,7 @@ struct HotPodcastView: View {
                 ProgressView()
             } else {
                 
-                
+               
                 ForEach(viewModel.hotPodcasts , id: \.self) { podcast in
                     SubscribeToPodcastView(newPodcastFeed: podcast)
                         .modelContext(context)
@@ -35,6 +35,7 @@ struct HotPodcastView: View {
                                              leading: 0,
                                              bottom: 0,
                                              trailing: 0))
+              
                     
                 }
                 

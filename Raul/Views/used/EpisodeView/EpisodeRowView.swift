@@ -153,16 +153,13 @@ struct EpisodeRowView: View {
                 .frame(height: height)
                 
                 .overlay(alignment: .bottomLeading) {
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(Color.accent)
-                            .frame(
-                                width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)),
-                                height: 4
-                            )
-                    }
+
                     
-              
+                    Rectangle()
+                        .fill(Color.accent)
+                      //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
+                        .scaleEffect(x: max(0.0, min(1.0, episode.maxPlayProgress)), y: 1, anchor: .leading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     
                     .frame(height: 4) // only care about height
                 }

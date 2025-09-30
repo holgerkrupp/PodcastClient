@@ -42,7 +42,7 @@ struct SubscribeToPodcastView: View {
 
     
     init(newPodcastFeed: PodcastFeed) {
-        print("view is loaded with newPodcastFeed")
+ 
         id = newPodcastFeed.hashValue
         self.newPodcastFeed = newPodcastFeed
         
@@ -58,27 +58,25 @@ struct SubscribeToPodcastView: View {
         
         
         if let url = newPodcastFeed.url, let podcast = allPodcasts.first(where: { $0.feed == url }){
-            
-            ZStack {
+         
+           
                
                 PodcastRowView(podcast: podcast)
                 
-               NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                    EmptyView()
-                }.opacity(0)
+   
             
-            }
+            
         
 
             
         }else{
             ZStack{
-                GeometryReader { geometry in
-                    CoverImageView(imageURL: newPodcastFeed.artworkURL )
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: 200)
-                        .clipped()
-                }
+                
+                CoverImageView(imageURL: newPodcastFeed.artworkURL )
+                    .scaledToFill()
+                    .frame(height: 200)
+                    .clipped()
+                
                 
                 
                 
@@ -110,33 +108,33 @@ struct SubscribeToPodcastView: View {
                             HStack{
                                 Spacer()
                                 
-                              
-                                    Button("Subscribe") {
+                                
+                                Button("Subscribe") {
+                                    
+                                    Task {
+                                        guard let url = newPodcastFeed.url else {
+                                            errorMessage = "Invalid URL"
+                                            return
+                                        }
                                         
-                                        Task {
-                                            guard let url = newPodcastFeed.url else {
-                                                errorMessage = "Invalid URL"
-                                                return
+                                        let actor = PodcastModelActor(modelContainer: context.container)
+                                        do {
+                                            subscribing = true
+                                            _ = try await actor.createPodcast(from: url)
+                                            await requestNotification()
+                                            await MainActor.run {
+                                                isSubscribed = true
+                                                subscribing = false
                                             }
                                             
-                                            let actor = PodcastModelActor(modelContainer: context.container)
-                                            do {
-                                                subscribing = true
-                                                _ = try await actor.createPodcast(from: url)
-                                                await requestNotification()
-                                                await MainActor.run {
-                                                    isSubscribed = true
-                                                    subscribing = false
-                                                }
-                                                
-                                            } catch {
-                                                errorMessage = error.localizedDescription
-                                            }
+                                        } catch {
+                                            errorMessage = error.localizedDescription
                                         }
                                     }
-                                    .buttonStyle(.glass)
-                                    
-                               
+                                }
+                                .buttonStyle(.glass(.clear))
+                                
+                                
                                 
                             }
                         }
@@ -153,8 +151,8 @@ struct SubscribeToPodcastView: View {
                 )
             }
             .frame(height: 200)
-           
-
+            
+            
             .overlay {
                 if loading {
                     ZStack {
@@ -173,7 +171,7 @@ struct SubscribeToPodcastView: View {
                         RoundedRectangle(cornerRadius:  8.0)
                             .fill(.background.opacity(0.3))
                     }
-                 
+                    
                     
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                     .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
@@ -194,7 +192,7 @@ struct SubscribeToPodcastView: View {
                         RoundedRectangle(cornerRadius:  8.0)
                             .fill(.background.opacity(0.3))
                     }
-                 
+                    
                     
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                     .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
@@ -211,13 +209,14 @@ struct SubscribeToPodcastView: View {
                         RoundedRectangle(cornerRadius:  8.0)
                             .fill(.background.opacity(0.3))
                     }
-                 
+                    
                     
                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                     .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-
+                    
                 }
             }
+            
         }
         
         
