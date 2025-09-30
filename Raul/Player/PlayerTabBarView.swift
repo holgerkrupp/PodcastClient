@@ -36,119 +36,127 @@ struct PlayerTabBarView: View {
             
             ZStack(alignment: .leading) {
                 
-
-                
-                // Background layer
-                ProgressView(value: player.progress, total: 1.0)
-                    .progressViewStyle(SimpleBarProgressStyle())
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                   
+              
+                        Rectangle()
+                            .fill(Color.accent.opacity(0.2))
+                          //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
+                            .scaleEffect(x: fakeProgress ?? player.progress, y: 1, anchor: .leading)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     
-               
-                  
-                  
-                
-                if placement == .inline {
-                    HStack{
-                        
-                        CoverImageView(episode: episode, timecode: player.currentChapter?.start)
-                            .scaledToFit()
-                            .clipShape(Circle())
-                            .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 0))
-                        
-                        
-                        
-                        VStack(alignment: .leading){
-                            Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
-                                .font(.caption2)
-                                .lineLimit(1)
-                                .foregroundColor(dynamicSecondaryColor)
-                            Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
-                                .font(.caption)
-                                .foregroundColor(dynamicPrimaryColor)
-                                .lineLimit(1)
+                    
+                    // Background layer
+                    /*
+                    ProgressView(value: player.progress ?? 0.0, total: 1.0)
+                        .progressViewStyle(SimpleBarProgressStyle())
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                    */
+                    
+                    
+                    
+                    if placement == .inline {
+                        HStack{
                             
-                        }
-                        
-                        //    .padding()
-                        Spacer()
-                        Group{
-
+                            CoverImageView(episode: episode, timecode: player.currentChapter?.start)
+                                .scaledToFit()
+                                .clipShape(Circle())
+                                .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 0))
                             
                             
-                            Button(action: {
-                                if player.isPlaying {
-                                    player.pause()
-                                } else {
-                                    player.play()
-                                }
-                            }) {
-                                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                    .resizable()
-                                    .scaledToFit()
+                            
+                            VStack(alignment: .leading){
+                                Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .foregroundColor(dynamicSecondaryColor)
+                                Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicPrimaryColor)
+                                    .lineLimit(1)
+                                
                             }
-                            .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
                             
+                            //    .padding()
+                            Spacer()
+                            Group{
+                                
+                                
+                                
+                                Button(action: {
+                                    if player.isPlaying {
+                                        player.pause()
+                                    } else {
+                                        player.play()
+                                    }
+                                }) {
+                                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                }
+                                .buttonStyle(.borderless)
+                                .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
+                                
+                                
+                                
+                                
+                            }
                             
-
                             
                         }
+                    }else{
                         
+                        HStack{
+                            
+                            
+                            CoverImageView(episode: episode, timecode: player.currentChapter?.start)
+                                .scaledToFit()
+                                .clipShape(Circle())
+                                .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 0))
+                            
+                            
+                            
+                            VStack(alignment: .leading){
+                                Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .foregroundColor(dynamicSecondaryColor)
+                                Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicPrimaryColor)
+                                    .lineLimit(1)
+                                
+                            }
+                            
+                            //    .padding()
+                            Spacer()
+                            Group{
+                                
+                                
+                                
+                                Button(action: {
+                                    if player.isPlaying {
+                                        player.pause()
+                                    } else {
+                                        player.play()
+                                    }
+                                }) {
+                                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                        .resizable()
+                                        .scaledToFit()
+                                }
+                                .buttonStyle(.borderless)
+                                .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
+                                
+                                
+                                
+                                
+                            }
+                            
+                            
+                        }
                         
                     }
-                }else{
-                 
-                    HStack{
-                        
-                        
-                        CoverImageView(episode: episode, timecode: player.currentChapter?.start)
-                            .scaledToFit()
-                            .clipShape(Circle())
-                            .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 0))
-                        
-                        
-                        
-                        VStack(alignment: .leading){
-                            Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
-                                .font(.caption2)
-                                .lineLimit(1)
-                                .foregroundColor(dynamicSecondaryColor)
-                            Text("\(player.currentEpisode?.title ?? "this could be an episode title")")
-                                .font(.caption)
-                                .foregroundColor(dynamicPrimaryColor)
-                                .lineLimit(1)
-                            
-                        }
-                        
-                        //    .padding()
-                        Spacer()
-                        Group{
-
-                            
-                            
-                            Button(action: {
-                                if player.isPlaying {
-                                    player.pause()
-                                } else {
-                                    player.play()
-                                }
-                            }) {
-                                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                    .resizable()
-                                    .scaledToFit()
-                            }
-                            .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
-                            
-                            
-
-                            
-                        }
-                        
-                        
-                    }
-                    
-                }
                 
             }
             

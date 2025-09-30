@@ -35,7 +35,7 @@ struct AddPodcastView: View {
 
                     }
                 }
-               
+
                 
              
                     PodcastSearchView(search: $search)
