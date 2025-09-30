@@ -53,7 +53,7 @@ struct PlayerView: View {
                                                 Link(destination: episodeLink) {
                                                     Label("Open in Browser", systemImage: "safari")
                                                 }
-                                                .buttonStyle(.glass)
+                                                .buttonStyle(.glass(.clear))
                                              //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                                             }
                                             Spacer()
@@ -63,7 +63,7 @@ struct PlayerView: View {
                                             }) {
                                                 Image(systemName: "scissors")
                                             }
-                                            .buttonStyle(.glass)
+                                            .buttonStyle(.glass(.clear))
                                             .frame(height: 30)
                                             .help("Share audio clip")
                                             .sheet(isPresented: $showClipExport) {
@@ -99,7 +99,7 @@ struct PlayerView: View {
                                               //  shareURL = IdentifiableURL(url: url)
                                                 ShareLink(item: positionedURL) { Label("Share", systemImage: "square.and.arrow.up")
                                                     .labelStyle(.iconOnly) }
-                                                .buttonStyle(.glass)
+                                                .buttonStyle(.glass(.clear))
 
                                             }
                                             
