@@ -7,7 +7,7 @@ import BasicLogger
 
 @Observable
 @MainActor
-class Player: NSObject {
+class Player {
     
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
@@ -87,10 +87,10 @@ class Player: NSObject {
     private var lastArtworkURL: URL?
 
     
-    override init()  {
+     init()  {
       //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
         
-        super.init()
+      //  super.init()
         loadLastPlayedEpisode()
         loadPlayBackSpeed()
         listenToEvent()
@@ -461,25 +461,21 @@ class Player: NSObject {
         }
     }
     
-    var progress:Double {
-        
-        set{
-            Task{
-                let seconds:Double  = newValue * (currentEpisode?.duration ?? 1.0)
+    var progress: Double {
+        get {
+            guard let duration = currentEpisode?.duration, duration > 0 else { return 0.0 }
+            return playPosition / duration
+        }
+        set {
+            Task {
+                guard let duration = currentEpisode?.duration, duration > 0 else { return }
+                let seconds = newValue * duration
                 let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
                 await jumpTo(time: newTime.seconds)
             }
         }
-        get{
-            
-            if let duration = currentEpisode?.duration {
-                return ((playPosition) / duration)
-            }else{
-                return 0.0
-            }
-        }
-        
     }
+    
     
     var maxPlayProgress: Double?{
         get{

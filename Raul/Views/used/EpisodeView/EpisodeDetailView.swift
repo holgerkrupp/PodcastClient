@@ -95,7 +95,7 @@ struct EpisodeDetailView: View {
                                 Link(destination: fund.url) {
                                     Label(fund.label, systemImage: style.currencySFSymbolName)
                                 }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.glass(.clear))
                                 if fund != episode.funding.last {
                                     Spacer()
                                 }
@@ -107,14 +107,14 @@ struct EpisodeDetailView: View {
                             NavigationLink(destination: BookmarkListView(episode: episode)) {
                                 Label("Bookmarks", systemImage: "bookmark.fill")
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass(.clear))
                             .padding()
                             
                             if let transcriptLines = episode.transcriptLines, transcriptLines.count > 0 {
                                 NavigationLink(destination:  TranscriptListView(transcriptLines: transcriptLines)) {
                                     Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
                                 }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.glass(.clear))
                                 .padding()
                             } else {
                                 // Replace the slot where you show "Transcribe" with:
@@ -152,7 +152,7 @@ struct EpisodeDetailView: View {
                                     }) {
                                         Label("Transcribe", systemImage: "quote.bubble.fill")
                                     }
-                                    .buttonStyle(.glass)
+                                    .buttonStyle(.glass(.clear))
                                     .padding()
                                 }
                             }
@@ -179,7 +179,7 @@ struct EpisodeDetailView: View {
                             Link(destination: episodeLink) {
                                 Label("Open in Browser", systemImage: "safari")
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass(.clear))
                         }
                         Spacer()
                         if let url = episode.deeplinks?.first ?? episode.link {
@@ -187,7 +187,7 @@ struct EpisodeDetailView: View {
                                 Label("Share", systemImage: "square.and.arrow.up")
                                     .labelStyle(.iconOnly)
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass(.clear))
                         }
                     }
                     .padding()

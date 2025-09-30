@@ -167,7 +167,7 @@ struct PodcastSearchView: View {
                     Label("Search is powered by fyyd", systemImage: "safari")
                 }
                 .padding()
-                .buttonStyle(.glass)
+                .buttonStyle(.glass(.clear))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             }

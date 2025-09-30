@@ -125,7 +125,7 @@ struct AudioClipExportView: View {
                                         )
                                         .frame(maxWidth: .infinity)
                                     }
-                                    .buttonStyle(.glass)
+                                    .buttonStyle(.glass(.clear))
                                 
                             }
                             .padding(.vertical)
@@ -144,7 +144,7 @@ struct AudioClipExportView: View {
                                 stopAudioPlayer()
                                 dismiss()
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.glass(.clear))
                             Spacer()
                             Button("Export") {
                                 exportClip()

@@ -350,6 +350,8 @@ actor PodcastModelActor {
     }
     
     func createPodcast(from url: URL) async throws -> PersistentIdentifier {
+        
+        print("createPodcast from url: \(url)")
         // Check URL STATUS
         var feedURL = url
         let status = try await url.status()

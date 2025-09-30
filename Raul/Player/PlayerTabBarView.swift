@@ -33,27 +33,27 @@ struct PlayerTabBarView: View {
     
     var body: some View {
         if let episode = player.currentEpisode{
-        GeometryReader { geo in
             
-            ZStack{
+            ZStack(alignment: .leading) {
+                
+
                 
                 // Background layer
-                
-                HStack{
-                    Rectangle()
-                        .fill(Color.accent.opacity(0.2))
-                        .frame(width: geo.size.width * (fakeProgress ?? player.progress))
-                    Spacer()
-                }
+                ProgressView(value: player.progress, total: 1.0)
+                    .progressViewStyle(SimpleBarProgressStyle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+               
+                  
+                  
                 
                 if placement == .inline {
                     HStack{
                         
                         CoverImageView(episode: episode, timecode: player.currentChapter?.start)
-                            .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
                             .scaledToFit()
                             .clipShape(Circle())
-                            .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
+                            .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 0))
                         
                         
                         
@@ -87,14 +87,13 @@ struct PlayerTabBarView: View {
                                     .scaledToFit()
                             }
                             .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 20))
+                            .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
                             
                             
 
                             
                         }
                         
-                        .frame(height: geo.size.height * 0.6)
                         
                     }
                 }else{
@@ -103,10 +102,9 @@ struct PlayerTabBarView: View {
                         
                         
                         CoverImageView(episode: episode, timecode: player.currentChapter?.start)
-                            .frame(width: geo.size.height * 0.75, height: geo.size.height * 0.75)
                             .scaledToFit()
                             .clipShape(Circle())
-                            .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
+                            .padding(EdgeInsets(top: 8, leading: 4, bottom: 8, trailing: 0))
                         
                         
                         
@@ -140,14 +138,13 @@ struct PlayerTabBarView: View {
                                     .scaledToFit()
                             }
                             .buttonStyle(.borderless)
-                            .padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 20))
+                            .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
                             
                             
 
                             
                         }
                         
-                        .frame(height: geo.size.height * 0.6)
                         
                     }
                     
@@ -160,7 +157,7 @@ struct PlayerTabBarView: View {
             .onTapGesture {
                 presentingModal = true
             }
-        }
+        
         .id(episode.id)
         .sheet(isPresented: $presentingModal, content: {
             
@@ -195,3 +192,18 @@ struct PlayerTabBarView: View {
     
 }
 
+
+struct SimpleBarProgressStyle: ProgressViewStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        let fraction = CGFloat(configuration.fractionCompleted ?? 0)
+
+     
+
+            Rectangle()
+                .fill(Color.accent.opacity(0.2)) // progress fill
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .scaleEffect(x: fraction, y: 1, anchor: .leading)
+        
+        //.clipShape(RoundedRectangle(cornerRadius: 2))
+    }
+}

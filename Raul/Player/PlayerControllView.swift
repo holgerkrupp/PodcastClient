@@ -100,7 +100,7 @@ struct PlayerControllView: View {
                            Button("Show all Settings") {
                                showSettings = true
                            }
-                           .buttonStyle(.glass)
+                           .buttonStyle(.glass(.clear))
                            Spacer()
 
                         }

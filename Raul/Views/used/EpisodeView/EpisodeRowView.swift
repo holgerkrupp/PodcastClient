@@ -143,15 +143,7 @@ struct EpisodeRowView: View {
                        
                     )
                      
-                        GeometryReader { geometry in
-                        Rectangle()
-                            .fill(Color.accent)
-                            .frame(width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)), height: 4)
-                            .position(x: geometry.size.width * CGFloat(max(0.0, min(1.0, episode.maxPlayProgress))) / 2, y: height - 2)
-                    }
-                    .allowsHitTesting(false)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
+
                     
                    
                    
@@ -159,6 +151,22 @@ struct EpisodeRowView: View {
             }
                 
                 .frame(height: height)
+                
+                .overlay(alignment: .bottomLeading) {
+                    GeometryReader { geometry in
+                        Rectangle()
+                            .fill(Color.accent)
+                            .frame(
+                                width: geometry.size.width * max(0.0, min(1.0, episode.maxPlayProgress)),
+                                height: 4
+                            )
+                    }
+                    
+              
+                    
+                    .frame(height: 4) // only care about height
+                }
+                 
             
         }
             
