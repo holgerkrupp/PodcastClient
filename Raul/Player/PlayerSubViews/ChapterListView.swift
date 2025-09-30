@@ -40,20 +40,28 @@ struct ChapterListView: View {
                
                 ForEach(sortedChapters, id: \.id) { chapter in
                     ZStack{
-                        GeometryReader { geometry in
+                     
                             // Background layer
+                            
+                            Rectangle()
+                                .fill(Color.accent.opacity(0.05))
+                              //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
+                                .scaleEffect(x: (player.currentChapter?.progress ?? 0.0), y: 1, anchor: .leading)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                             
                             if chapter.id == player.currentChapter?.id {
                                 Rectangle()
                                     .fill(Color.accent.opacity(0.1))
-                                    .frame(width: geometry.size.width * (player.chapterProgress ?? 0.0), height: geometry.size.height)
+                                    .scaleEffect(x: (player.chapterProgress  ?? 0.0), y: 1, anchor: .leading)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .animation(.easeInOut, value: player.chapterProgress)
                             } else {
                                 Rectangle()
                                     .fill(Color.accent.opacity(0.1))
-                                    .frame(width: geometry.size.width * (chapter.progress ?? 0.0), height: geometry.size.height)
+                                    .scaleEffect(x: (chapter.progress ?? 0.0), y: 1, anchor: .leading)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
-                        }
+                        
                         VStack{
                             ChapterRowView(chapter: chapter)
                                 .padding()

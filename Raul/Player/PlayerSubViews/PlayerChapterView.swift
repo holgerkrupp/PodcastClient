@@ -44,17 +44,14 @@ struct PlayerChapterView: View {
               
                 
                 ZStack{
-                    GeometryReader { geometry in
-                        // Background layer
-                        
-                       
-                            RoundedRectangle(cornerRadius: geometry.size.height * 0.3)
-                                .fill(Color.accent.opacity(0.05))
-                                .frame(width: geometry.size.width * (player.currentChapter?.progress ?? 0.0), height: geometry.size.height)
-                        
-                        
-                            
-                    }
+
+                    Rectangle()
+                        .fill(Color.accent.opacity(0.05))
+                      //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
+                        .scaleEffect(x: (player.currentChapter?.progress ?? 0.0), y: 1, anchor: .leading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                    
                     VStack{
                         Button {
                             

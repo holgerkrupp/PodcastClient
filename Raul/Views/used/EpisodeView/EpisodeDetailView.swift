@@ -34,21 +34,9 @@ struct EpisodeDetailView: View {
     }
     
     var body: some View {
-        GeometryReader { geometry in
+        
             ZStack {
-                if let image = UIImage(data: backgroundImageLoader.imageData) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .ignoresSafeArea()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                } else {
-                    Color.accent.ignoresSafeArea()
-                }
-                
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .ignoresSafeArea()
+
 
                 ScrollView {
                     if let podcast = episode.podcast {
@@ -207,10 +195,26 @@ struct EpisodeDetailView: View {
                     }
                 }
             }
+            .background{
+                if let image = UIImage(data: backgroundImageLoader.imageData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
+                                        .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
+                                        
+                        .blur(radius: 20)
+                        .opacity(0.3)
+
+                    
+                } else {
+                    Color.accent.ignoresSafeArea()
+                }
+            }
             .sheet(item: $shareURL) { identifiable in
                 ShareLink(item: identifiable.url) { Text("Share Episode") }
             }
-        }
+        
         .navigationTitle(episode.title)
         .navigationBarTitleDisplayMode(.inline)
     }
