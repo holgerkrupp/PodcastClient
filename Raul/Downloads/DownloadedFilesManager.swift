@@ -34,6 +34,10 @@ import Observation
 
         return downloadedFiles.contains(where: { $0.standardizedFileURL == standardizedURL })
     }
+     
+     func deleteAllFiles() throws {
+         try? FileManager.default.removeItem(at: monitoredFolder)
+     }
 
      
      func refreshDownloadedFiles() {

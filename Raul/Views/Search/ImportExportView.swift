@@ -62,6 +62,23 @@ struct ImportExportView: View {
                 Text("Export your subscriptions as OMPL file.")
             }
             
+#if DEBUG
+            Section{
+                Button("Delete all Podcasts") {
+                    Task{
+                        let actor = SubscriptionManager(modelContainer: context.container)
+                        await actor.deleteAllPodcasts()
+                    }
+                }
+             
+                .buttonStyle(.glass(.clear))
+            }header: {
+                Text("Delete")
+            }footer: {
+                Text("Delete all your subscriptions")
+            }
+#endif
+            
             if newPodcasts.filter({ newPod in
                 if newPod.existing == false && newPod.added == false {
                     return true

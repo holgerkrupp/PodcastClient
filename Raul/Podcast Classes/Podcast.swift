@@ -114,6 +114,19 @@ final class Podcast: Identifiable {
         self.title = feed.absoluteString.removingPercentEncoding ?? "default"
         self.metaData = PodcastMetaData()
     }
+    
+    init(from feedData: PodcastFeed) {
+            self.feed = feedData.url
+            self.title = feedData.title ?? feedData.url?.absoluteString.removingPercentEncoding ?? "New Podcast"
+            self.desc = feedData.description
+            self.author = feedData.artist
+            self.imageURL = feedData.artworkURL
+            self.metaData = PodcastMetaData()
+            self.settings = PodcastSettings()
+            // The other fields (like episodes, funding, etc.) can be populated later
+            // during the network update.
+        }
+    
 }
 
 
@@ -125,6 +138,8 @@ final class Podcast: Identifiable {
     // these properties are supposed to be used for background refresh checks
     var feedUpdated:Bool? // has the feed been updated and should refresh?
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
+    var subscriptionDate: Date? = Date()
+    
     
     @Transient var isUpdating: Bool = false
     @Transient var message: String?

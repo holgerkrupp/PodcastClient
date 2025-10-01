@@ -119,8 +119,8 @@ actor SubscriptionManager:NSObject{
     
     
 
-    func subscribe(all newPodcasts: [PodcastFeed]) async {
-        let podcastSemaphore = AsyncSemaphore(value: 10)
+    func subscribe_old(all newPodcasts: [PodcastFeed]) async {
+        let podcastSemaphore = AsyncSemaphore(value: 1)
         await withTaskGroup(of: Void.self) { group in
             for podcast in newPodcasts {
                 if let url = podcast.url {
@@ -137,6 +137,77 @@ actor SubscriptionManager:NSObject{
                 }
             }
         }
+    }
+    
+    
+    func subscribe(all newPodcasts: [PodcastFeed]) async {
+        
+        // 1. SERIAL PHASE: Mass-insert all new podcasts quickly.
+        //    Perform this on a single ModelContext serially to avoid "Database busy" errors
+        //    for the crucial insertion step.
+        
+        var newPodcastUUIDs: Set<UUID> = []
+        
+        
+        for podcastFeed in newPodcasts {
+            guard let url = podcastFeed.url else { continue }
+
+            
+            
+            
+            
+            // Check if podcast with this feed URL already exists (if PodcastFeed.existing is not reliable)
+            let descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.feed == url }
+            )
+            
+            // This fetch/insert/save is now done serially, preventing contention.
+            if let existingPodcasts = try? modelContext.fetch(descriptor),
+               let existingPodcast = existingPodcasts.first {
+                // Already exists, maybe update some basic properties from feedData if needed
+                existingPodcast.title = podcastFeed.title ?? existingPodcast.title
+                // existingPodcast.message = nil
+                
+                
+                newPodcastUUIDs.insert(existingPodcast.id)
+                
+            } else {
+                let podcast = Podcast(from: podcastFeed) // Use the fast, new initializer
+               
+                modelContext.insert(podcast)
+                
+                
+                newPodcastUUIDs.insert(podcast.id)
+            }
+        }
+        
+        // Commit all changes from the serial inserts at once.
+        // This is one large, safe save operation.
+        modelContext.saveIfNeeded()
+        
+        do{
+            let worker = PodcastModelActor(modelContainer: self.modelContainer)
+            for id in newPodcastUUIDs{
+                _ = try await worker.updatePodcast(id, silent: true)
+            }
+        }catch{
+            print("could not refresh podcasts")
+        }
+    }
+    
+    func deleteAllPodcasts() async {
+        let descriptor = FetchDescriptor<Podcast>()
+        do {
+            let all = try modelContext.fetch(descriptor)
+            for podcast in all {
+                modelContext.delete(podcast)
+            }
+            try modelContext.save()
+        } catch {
+            print("Failed to delete all podcasts: \(error)")
+        }
+        let downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
+        try? downloadedFilesManager.deleteAllFiles()
     }
     
     
@@ -220,3 +291,4 @@ extension String {
         return escaped
     }
 }
+

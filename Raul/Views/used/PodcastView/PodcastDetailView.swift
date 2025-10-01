@@ -226,7 +226,7 @@ struct PodcastDetailView: View {
                                         .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
                                         
                         .blur(radius: 20)
-                        .opacity(0.3)
+                        .opacity(0.5)
 
                     
                 } else {

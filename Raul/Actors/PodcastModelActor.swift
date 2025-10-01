@@ -293,21 +293,19 @@ actor PodcastModelActor {
                
                 for episodeData in episodesData {
                  //   print("Episode \(episodeData["title"] ?? "unknown") found")
-                    let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "")
-                    if let episodeID {
-                      //  // print("Episode exists")
-                        if let episodes = podcast.episodes, !episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                    
+                    if let episodes = podcast.episodes, !episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                        if let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "") {
                             linkEpisodeToPodcast(episodeID , podcast.id)
-                            modelContext.saveIfNeeded()
-
                         }
-                        continue
+                        modelContext.saveIfNeeded()
+
                     }
                     
                     
                     if let episode = Episode(from: episodeData, podcast: podcast) {
                         newEpisodes.append(episode)
-                        modelContext.saveIfNeeded()
+                     
                         
                         if silent == false{
                             await EpisodeActor(modelContainer: modelContainer).processAfterCreation(episodeID: episode.id)
@@ -475,7 +473,7 @@ actor PodcastModelActor {
         let podcasts = try modelContext.fetch(descriptor)
         let ids = podcasts.map(\.id)
 
-        let semaphore = AsyncSemaphore(value: 10) // 👈 max 5 at a time
+        let semaphore = AsyncSemaphore(value: 5) // 👈 max 5 at a time
 
         await withThrowingTaskGroup(of: Void.self) { group in
             for id in ids {
@@ -492,7 +490,6 @@ actor PodcastModelActor {
             }
         }
     }
-
 }
 
 actor AsyncSemaphore {

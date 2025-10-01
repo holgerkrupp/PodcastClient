@@ -263,6 +263,13 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return }
         
+        if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date() {
+            episode.metaData?.status = .archived
+            episode.metaData?.isArchived = true
+            modelContext.saveIfNeeded()
+            return
+        }
+        
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
         if playnext != .none {
