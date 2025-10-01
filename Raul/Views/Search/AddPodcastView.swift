@@ -35,7 +35,14 @@ struct AddPodcastView: View {
 
                     }
                 }
+                NavigationLink(destination:  HotPodcastView()
+                    .modelContext(context)) {
+                    HStack {
+                        Text("Hot Podcasts")
+                            .font(.headline)
 
+                    }
+                }
                 
              
                     PodcastSearchView(search: $search)

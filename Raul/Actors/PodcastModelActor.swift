@@ -395,17 +395,11 @@ actor PodcastModelActor {
             _ = try await updatePodcast(podcast.id, silent: true)
             podcast.message = nil
             try await archiveEpisodes(of: podcast.persistentModelID)
-            /*
-             
-             // The original idea was to keep the newest episode of a newly subscribed podcast in the Inbox, but i think this
-            if let lastEpisode = podcast.episodes.sorted(by: { $0.publishDate ?? Date.distantPast < $1.publishDate ?? Date.distantPast }).last {
-                try await unarchiveEpisode(lastEpisode.persistentModelID)
-            }
-             */
+
         } catch {
             // print("Could not update podcast: \(error)")
         }
-        
+        modelContext.saveIfNeeded()
         return podcast.persistentModelID
     }
     

@@ -117,19 +117,20 @@ struct SubscribeToPodcastView: View {
                                             return
                                         }
                                         
-                                        let actor = PodcastModelActor(modelContainer: context.container)
-                                        do {
+                                        
+                                        
+                                     //   let actor = PodcastModelActor(modelContainer: context.container)
+                                        
                                             subscribing = true
-                                            _ = try await actor.createPodcast(from: url)
+                                            await SubscriptionManager(modelContainer: ModelContainerManager.shared.container).subscribe(all: [newPodcastFeed])
+
                                             await requestNotification()
                                             await MainActor.run {
                                                 isSubscribed = true
                                                 subscribing = false
                                             }
                                             
-                                        } catch {
-                                            errorMessage = error.localizedDescription
-                                        }
+                                        
                                     }
                                 }
                                 .buttonStyle(.glass(.clear))
