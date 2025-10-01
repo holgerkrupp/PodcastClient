@@ -10,6 +10,25 @@ import fyyd_swift
 
 @Observable
 class PodcastFeed: Hashable, @unchecked Sendable {
+    
+    var title: String?
+    var subtitle: String?
+    var description: String?
+    var source: Source?
+    
+    var url: URL?
+    var existing: Bool = false
+    
+    var added: Bool = false
+    var subscribing: Bool = false
+    var status: URLstatus?
+    
+    var artist: String?
+    var artworkURL: URL?
+    var lastRelease: Date?
+    
+    
+    
     static func == (lhs: PodcastFeed, rhs: PodcastFeed) -> Bool {
         return lhs.url == rhs.url
     }
@@ -98,19 +117,5 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         self.source = .fyyd
     }
     
-    var title: String?
-    var subtitle: String?
-    var description: String?
-    var source: Source?
-    
-    var url: URL?
-    var existing: Bool = false
-    
-    var added: Bool = false
-    var subscribing: Bool = false
-    var status: URLstatus?
-    
-    var artist: String?
-    var artworkURL: URL?
-    var lastRelease: Date?
+
 }

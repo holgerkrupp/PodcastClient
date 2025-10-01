@@ -18,21 +18,10 @@ struct PlayerView: View {
             
             
                 if let episode = player.currentEpisode {
-                    GeometryReader { geometry in
-                        ZStack{
-                            
-                            // Background layer
-                            
-                            
-                            
-                            CoverImageView(episode: episode)
-                               
-                              
-                                .aspectRatio(1, contentMode: .fill)
-                                .scaledToFill()
-                               
-                                .frame(width: geometry.size.width, height: (fullSize && player.currentEpisode != nil) ? geometry.size.height : 80)
-                                .ignoresSafeArea(.all, edges: .bottom)
+                 
+                    
+                   
+                
                            
                             
                             Group{
@@ -125,21 +114,27 @@ struct PlayerView: View {
                             
                                 .background(
                                     
-                                    Rectangle()
-                                        .fill(.thinMaterial)
+                                    CoverImageView(episode: episode)
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .scaledToFill()
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
+                                                        .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
+                                                        
+                                        .blur(radius: 20)
+                                        .opacity(0.5)
                                       
                                     
                                 )
                                 
                               
-                            }
+                            
                         .ignoresSafeArea()
                         
                         
     
                        
     
-                    }
+                    
                     
 
                 } else {
