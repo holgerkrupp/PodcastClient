@@ -181,6 +181,8 @@ actor SubscriptionManager:NSObject{
             }
         }
         
+        dump(newPodcastUUIDs)
+        
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
         modelContext.saveIfNeeded()
@@ -188,6 +190,7 @@ actor SubscriptionManager:NSObject{
         do{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
             for id in newPodcastUUIDs{
+                print("updating podcast: \(id)")
                 _ = try await worker.updatePodcast(id, silent: true)
             }
         }catch{
