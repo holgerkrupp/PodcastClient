@@ -127,7 +127,7 @@ class PodcastListViewModel: ObservableObject {
                         let id = ids[index]
                         group.addTask {
                             let worker = PodcastModelActor(modelContainer: modelContainer)
-                            try? await worker.updatePodcast(id)
+                            _ = try? await worker.updatePodcast(id)
                         }
                         index += 1
                     }
@@ -143,7 +143,7 @@ class PodcastListViewModel: ObservableObject {
 
                             group.addTask {
                                 let worker = PodcastModelActor(modelContainer: modelContainer)
-                                try? await worker.updatePodcast(id)
+                                _ = try? await worker.updatePodcast(id)
                             }
                             index += 1
                         }else{

@@ -223,7 +223,9 @@ actor EpisodeActor {
 
         await deleteFile(episodeID: episodeID)
          modelContext.saveIfNeeded()
-        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
     }
     
     func moveToHistory(episodeID: UUID) async {
@@ -263,19 +265,19 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return }
         
-        if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date() {
+     /*   if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date() {
             episode.metaData?.status = .archived
             episode.metaData?.isArchived = true
             modelContext.saveIfNeeded()
             return
         }
+     */
         
-        await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
         if playnext != .none {
             try? await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
         }
-        
+        await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         await getRemoteChapters(episodeID: episodeID)
     }
     
@@ -748,7 +750,7 @@ actor EpisodeActor {
         }else{
             throw TranscriptError.noTranscriptFileFound
         }
-        return
+        
     }
     
     // Inside EpisodeActor

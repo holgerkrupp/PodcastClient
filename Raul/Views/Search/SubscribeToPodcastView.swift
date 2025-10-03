@@ -11,14 +11,6 @@ import SwiftData
 
 
 
-struct SubscribeToPodcastView2: View {
-    
-    var body: some View {
-            Text("Hello, World!")
-    }
-    
-}
-
 
 
 struct SubscribeToPodcastView: View {

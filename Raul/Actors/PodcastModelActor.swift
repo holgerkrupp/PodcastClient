@@ -164,7 +164,7 @@ actor PodcastModelActor {
         // --- FIRST await boundary ---
         if force == false {
             guard await checkIfFeedHasBeenUpdated(podcastID) != false else {
-             //   print("\(podcast.title ?? "unknown") not updated")
+                print("\(podcast.title ?? "unknown") not updated")
 
                 if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
                     freshMeta.isUpdating = false
@@ -208,6 +208,25 @@ actor PodcastModelActor {
         freshMeta.message = "Updating Podcast details"
         podcast.message = "Updating Podcast details"
         modelContext.saveIfNeeded()
+
+        await updateDetails(podcast, fullPodcast: fullPodcast)
+        
+        podcast.message = nil
+
+        // Final updates
+        podcast.message = nil
+        await updateLastRefresh(for: freshMeta.persistentModelID)
+        freshMeta.isUpdating = false
+        modelContext.saveIfNeeded()
+
+        return true
+    }
+    
+    func updateDetails(_ podcast: Podcast, fullPodcast: [String : Any], silent: Bool? = false) async{
+        
+        print("updateDetails for \(podcast.title ?? "unknown")")
+        // Fetch podcast just long enough to snapshot IDs & primitives
+      //  guard let podcast = await fetchPodcast(byID: podcastID) else { return nil }
         podcast.title = fullPodcast["title"] as? String ?? ""
         podcast.author = fullPodcast["itunes:author"] as? String
         podcast.desc = fullPodcast["description"] as? String
@@ -223,7 +242,6 @@ actor PodcastModelActor {
 
         podcast.metaData?.message = "Updating Podcast details"
         podcast.message = "Updating Podcast details"
-        modelContext.saveIfNeeded()
             podcast.title = fullPodcast["title"] as? String ?? ""
             podcast.author = fullPodcast["itunes:author"] as? String
             podcast.desc = fullPodcast["description"] as? String
@@ -287,7 +305,6 @@ actor PodcastModelActor {
                 
                 podcast.metaData?.message = "Updating Podcast Episodes"
                 podcast.message = "Updating Podcast Episodes"
-                modelContext.saveIfNeeded()
                 
                 var newEpisodes: [Episode] = []
                
@@ -297,42 +314,39 @@ actor PodcastModelActor {
                     if let episodes = podcast.episodes, !episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
                         if let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "") {
                             linkEpisodeToPodcast(episodeID , podcast.id)
-                        }
-                        modelContext.saveIfNeeded()
-
-                    }
-                    
-                    
-                    if let episode = Episode(from: episodeData, podcast: podcast) {
-                        newEpisodes.append(episode)
-                     
+                            continue
+                        }else if let episode = Episode(from: episodeData, podcast: podcast) {
+                            newEpisodes.append(episode)
+                         
+                            
+                            if silent == false{
+                                
+                                if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60*60*24*7) {
+                                       episode.metaData?.status = .archived
+                                       episode.metaData?.isArchived = true
+                                        episode.metaData?.isInbox = false
+                                       
+                                }else{
+                                    
+                                    
+                                    await EpisodeActor(modelContainer: modelContainer).processAfterCreation(episodeID: episode.id)
+                                }
+                            }else{
+                                episode.metaData?.isInbox = false
+                                episode.metaData?.status = .archived
+                            }
                         
-                        if silent == false{
-                            await EpisodeActor(modelContainer: modelContainer).processAfterCreation(episodeID: episode.id)
-                        }else{
-                            episode.metaData?.isInbox = false
-                            episode.metaData?.status = .archived
-                            modelContext.saveIfNeeded()
                         }
-                    
-                    }else{
-                       // print("Episode \(episodeData["title"] ?? "unknown") already exists")
-
                     }
+                    
+                    
+
                 }
                 
                 
             }
 
-        podcast.message = nil
 
-        // Final updates
-        podcast.message = nil
-        await updateLastRefresh(for: freshMeta.persistentModelID)
-        freshMeta.isUpdating = false
-        modelContext.saveIfNeeded()
-
-        return true
     }
     
 

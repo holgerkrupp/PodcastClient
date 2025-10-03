@@ -69,10 +69,10 @@ class CarPlayPlayNext {
         template.updateSections([section])
         
         // Add a back button to return to now playing
-        let backButton = CPBarButton(title: "Now Playing") { [weak self] _ in
+        let nowButton = CPBarButton(title: "Now Playing") { [weak self] _ in
             self?.returnToNowPlaying()
         }
-        template.trailingNavigationBarButtons = []
+        template.trailingNavigationBarButtons = [nowButton]
     }
     
     private func refreshEpisodeList() async{
