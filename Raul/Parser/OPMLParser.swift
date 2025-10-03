@@ -12,7 +12,6 @@ import Foundation
 class OPMLParser: NSObject, XMLParserDelegate{
     var podcastFeeds: [PodcastFeed] = []
     
-    
     func parserDidStartDocument(_ parser: XMLParser) {
         podcastFeeds.removeAll()
     }

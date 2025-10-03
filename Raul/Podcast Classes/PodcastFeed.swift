@@ -77,7 +77,7 @@ class PodcastFeed: Hashable, @unchecked Sendable {
                     let newTitle = parsed["title"] as? String
                     let newDescription = parsed["description"] as? String
                     let newAuthor = (parsed["itunes:author"] as? String) ?? (parsed["author"] as? String)
-                    let newArtwork = parsed["coverImage"] as? String
+                    _ = parsed["coverImage"] as? String
                     
                     
                     if let imageDict = parsed["image"] as? [String: Any],
