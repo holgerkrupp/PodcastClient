@@ -265,6 +265,7 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byID: episodeID) else {
             return }
         
+        
      /*   if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date() {
             episode.metaData?.status = .archived
             episode.metaData?.isArchived = true
@@ -274,6 +275,8 @@ actor EpisodeActor {
      */
         
         let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
+        print("Processing episode: \(episode.title) - playnext Status is \(playnext)")
+
         if playnext != .none {
             try? await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
         }

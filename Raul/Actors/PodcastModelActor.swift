@@ -309,29 +309,39 @@ actor PodcastModelActor {
                 var newEpisodes: [Episode] = []
                
                 for episodeData in episodesData {
-                 //   print("Episode \(episodeData["title"] ?? "unknown") found")
+                    
                     
                     if let episodes = podcast.episodes, !episodes.contains(where: { $0.guid == episodeData["guid"] as? String ?? "" }) {
+                        
+                        print("new episode: \(episodeData["title"] as? String ?? "")")
+                        
                         if let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "") {
+                            print("already existing")
+                            
                             linkEpisodeToPodcast(episodeID , podcast.id)
                             continue
                         }else if let episode = Episode(from: episodeData, podcast: podcast) {
+                            print("newly created")
                             newEpisodes.append(episode)
-                         
-                            
+                            modelContext.insert(episode)
+                            modelContext.saveIfNeeded()
                             if silent == false{
-                                
+                                print("NOT SILENT")
                                 if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60*60*24*7) {
+                                    
+                                    print("episode is old")
                                        episode.metaData?.status = .archived
                                        episode.metaData?.isArchived = true
-                                        episode.metaData?.isInbox = false
+                                    episode.metaData?.isInbox = false
                                        
                                 }else{
-                                    
+                                    print("episode is new")
                                     
                                     await EpisodeActor(modelContainer: modelContainer).processAfterCreation(episodeID: episode.id)
                                 }
                             }else{
+                                print("SILENT")
+
                                 episode.metaData?.isInbox = false
                                 episode.metaData?.status = .archived
                             }
