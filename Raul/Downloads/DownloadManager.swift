@@ -89,9 +89,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     }
 
     private func markDownloaded(for url: URL) async {
+        print("markDownloaded: \(url.path)")
         refreshDownloadedFiles()
-        let episodeActor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
-        await episodeActor.markEpisodeAvailable(fileURL: url)
+     //   let episodeActor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+     //   await episodeActor.markEpisodeAvailable(fileURL: url)
     }
 
     private func defaultDestination(for url: URL) -> URL {
@@ -124,6 +125,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                                 downloadTask: URLSessionDownloadTask,
                                 didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
+        print("downloaded \(url.absoluteString)")
 
         let tempCopy = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -135,7 +137,12 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             return
         }
 
+        
+        
         Task {
+            
+
+            
             guard let destination = await DownloadManager.shared.getDestination(for: url) else { return }
             do {
                 let dir = destination.deletingLastPathComponent()
@@ -145,7 +152,12 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
             try? FileManager.default.removeItem(at: tempCopy)
 
+            let episodeActor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+                await episodeActor.markEpisodeAvailable(fileURL: url)
+            
+            
             if let item = await DownloadManager.shared.getItem(for: url) {
+                print("item received")
                 await MainActor.run {
                     item.isDownloading = false
                     item.isFinished = true

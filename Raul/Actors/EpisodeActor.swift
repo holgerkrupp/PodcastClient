@@ -69,22 +69,22 @@ actor EpisodeActor {
     func updateDuration(fileURL: URL) async{
       
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        // print("updateDuration of \(episode.title)")
+         print("updateDuration of \(episode.title)")
        
-            if let localFile = episode.localFile, ((episode.metaData?.calculatedIsAvailableLocally) == true){
+            if let localFile = episode.localFile, FileManager.default.fileExists(atPath: localFile.path){
                 do{
                     let duration = try await AVURLAsset(url: localFile).load(.duration)
                     let seconds = CMTimeGetSeconds(duration)
                     if !seconds.isNaN{
                         episode.duration = seconds
                     }
-                    // print("new duration: \(seconds)")
+                     print("new duration: \(seconds)")
                     modelContext.saveIfNeeded()
                 }catch{
-                    // print(error)
+                     print(error)
                 }
             }else{
-                // print("no local file")
+                 print("no local file")
             }
         
     }
@@ -323,14 +323,17 @@ actor EpisodeActor {
     }
 
     func markEpisodeAvailable(fileURL: URL) async {
+        print("mark Available for \(fileURL)")
         guard let episode = await fetchEpisode(byURL: fileURL) else {
+            print("episode not found")
             return }
 
+        print ("markEpisodeAvailable for \(episode.title)")
         guard let url = episode.url else {
             return
         }
         episode.metaData?.isAvailableLocally = true
-        await updateDuration(fileURL: fileURL)
+        await updateDuration(fileURL: url)
 
         await createChapters(url)
         try? await transcribe(url) // delegates now
@@ -347,10 +350,14 @@ actor EpisodeActor {
                 try await downloadTranscript(episode.persistentModelID)
             }catch{
                 print(error)
-                await TranscriptionManager.shared.enqueueTranscription(episodeID: episode.id)
+                let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+                await transcriptionManager.enqueueTranscription(episodeID: episode.id)
             }
         }else{
-            await TranscriptionManager.shared.enqueueTranscription(episodeID: episode.id)
+            
+            let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+            await transcriptionManager.enqueueTranscription(episodeID: episode.id)
+            
         }
     }
     

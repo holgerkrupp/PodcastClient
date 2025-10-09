@@ -137,11 +137,12 @@ class AITranscripts {
             return nil
         }
         print("model ensured")
-#if DEBUG
 
-        let isInstalled = await installed(locale: locale)
+         let isInstalled = await installed(locale: locale)
+        guard isInstalled else {
+            return nil
+        }
         assert(isInstalled, "Locale should be installed after ensureModel")
-        #endif
         
         
     print("1")
