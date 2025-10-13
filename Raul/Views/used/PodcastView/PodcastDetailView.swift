@@ -9,6 +9,37 @@ import SwiftUI
 import RichText
 
 struct PodcastDetailView: View {
+    
+    enum EpisodeSortOption: String, CaseIterable, Identifiable {
+        case newestFirst
+        case oldestFirst
+        case titleAZ
+        case titleZA
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .newestFirst: return "Newest First"
+            case .oldestFirst: return "Oldest First"
+            case .titleAZ:     return "Title A–Z"
+            case .titleZA:     return "Title Z–A"
+            }
+        }
+
+        var comparator: (Episode, Episode) -> Bool {
+            switch self {
+            case .newestFirst:
+                return { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) }
+            case .oldestFirst:
+                return { ($0.publishDate ?? .distantFuture) < ($1.publishDate ?? .distantFuture) }
+            case .titleAZ:
+                return { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            case .titleZA:
+                return { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedDescending }
+            }
+        }
+    }
 
     
     @Bindable var podcast: Podcast
@@ -19,19 +50,43 @@ struct PodcastDetailView: View {
     @Environment(\.deviceUIStyle) var style
 
     @State private var showSettings: Bool = false
+    @AppStorage("EpisodeSortOption") private var sortOptionRawValue: String = EpisodeSortOption.newestFirst.rawValue
+    private var sortOption: EpisodeSortOption {
+        get { EpisodeSortOption(rawValue: sortOptionRawValue) ?? .newestFirst }
+        set { sortOptionRawValue = newValue.rawValue }
+    }
     
     @State private var searchText = ""
     @State private var searchInTitle = true
     @State private var searchInAuthor = false
     @State private var searchInDescription = true
     @State private var searchInTranscript = true
+    @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
 
-    var filteredPodcasts: [Episode] {
-        if searchText.isEmpty { return podcast.episodes ?? [] }
+    var filteredEpisodes: [Episode] {
+        let episodes = podcast.episodes ?? []
 
-        return podcast.episodes?.filter { episode in
-            let lowercased = searchText.lowercased()
+        // Apply optional hide filter first so search works on the visible set
+        let visibilityFiltered: [Episode]
+        if hidePlayedAndArchived {
+            visibilityFiltered = episodes.filter { ep in
+                let fullyPlayed = ep.maxPlayProgress >= 0.95
+ 
+                return !(fullyPlayed)
+            }
+        } else {
+            visibilityFiltered = episodes
+        }
 
+        // If there's no search text, just sort the visibility-filtered list
+        if searchText.isEmpty {
+            return visibilityFiltered.sorted(by: sortOption.comparator)
+        }
+
+        let lowercased = searchText.lowercased()
+
+        // Apply search filters
+        let searched = visibilityFiltered.filter { episode in
             var matches = false
             if searchInTitle {
                 matches = matches || episode.title.localizedStandardContains(lowercased)
@@ -42,9 +97,10 @@ struct PodcastDetailView: View {
             if searchInTranscript, let lines = episode.transcriptLines {
                 matches = matches || lines.contains(where: { $0.text.localizedStandardContains(lowercased)})
             }
-
             return matches
-        } ?? []
+        }
+
+        return searched.sorted(by: sortOption.comparator)
     }
     
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
@@ -186,7 +242,7 @@ struct PodcastDetailView: View {
                 }
                 
                 Section{
-                    ForEach(filteredPodcasts.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()}), id: \.id) { episode in
+                    ForEach(filteredEpisodes, id: \.id) { episode in
                         
                         ZStack {
                             EpisodeRowView(episode: episode)
@@ -208,9 +264,9 @@ struct PodcastDetailView: View {
                     .onDelete { indexSet in
                         Task {
                             for index in indexSet {
-                                if let episodeID = podcast.episodes?.sorted(by: {$0.publishDate ?? Date() > $1.publishDate ?? Date()})[index].persistentModelID{
+                                 let episodeID = filteredEpisodes[index].persistentModelID
                                     try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
-                                }
+                                
                             }
                         }
                     }
@@ -244,6 +300,24 @@ struct PodcastDetailView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Sort by", selection: Binding(
+                            get: { sortOptionRawValue },
+                            set: { sortOptionRawValue = $0 }
+                        )) {
+                            ForEach(EpisodeSortOption.allCases) { option in
+                                Text(option.label).tag(option.rawValue)
+                            }
+                        }
+                        Divider()
+                        Toggle(isOn: $hidePlayedAndArchived) {
+                            Label("Hide played Episodes", systemImage: "eye.slash")
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
                         showSettings.toggle()

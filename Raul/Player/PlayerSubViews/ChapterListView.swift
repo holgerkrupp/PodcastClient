@@ -41,15 +41,9 @@ struct ChapterListView: View {
                 ForEach(sortedChapters, id: \.id) { chapter in
                     ZStack{
                      
-                            // Background layer
+
                             
-                            Rectangle()
-                                .fill(Color.accent.opacity(0.05))
-                              //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
-                                .scaleEffect(x: (player.currentChapter?.progress ?? 0.0), y: 1, anchor: .leading)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            
-                            if chapter.id == player.currentChapter?.id {
+                        if chapter.id == player.currentChapter?.id {
                                 Rectangle()
                                     .fill(Color.accent.opacity(0.1))
                                     .scaleEffect(x: (player.chapterProgress  ?? 0.0), y: 1, anchor: .leading)

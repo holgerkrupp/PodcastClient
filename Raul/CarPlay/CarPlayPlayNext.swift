@@ -80,6 +80,11 @@ class CarPlayPlayNext {
     }
     
     private func returnToNowPlaying() {
-        // Using self.interfaceController, implement navigation back to the now playing screen
+        let nowPlaying = CarPlayNowPlaying(interfaceController: self.interfaceController)
+        
+        let nowPlayingTemplate = nowPlaying.template
+        
+        interfaceController.setRootTemplate(nowPlayingTemplate, animated: true, completion: nil)
     }
+
 }
