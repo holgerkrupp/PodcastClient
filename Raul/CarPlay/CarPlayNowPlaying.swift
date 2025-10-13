@@ -32,7 +32,7 @@ class CarPlayNowPlaying {
         
         var buttons : [CPNowPlayingButton] = []
     
-        if let chapters = player.currentEpisode?.chapters, chapters.isEmpty != false {
+        if let chapters = player.currentEpisode?.chapters, chapters.isEmpty != true {
             let listButton = CPNowPlayingImageButton(
                 image: UIImage(systemName: "list.bullet") ?? UIImage()
             ) { [weak self] _ in
