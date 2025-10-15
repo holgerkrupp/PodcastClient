@@ -9,6 +9,18 @@ import Foundation
 import SwiftUI
 import mp3ChapterReader
 
+/// Lightweight, sendable summary for use across actors/UI layers (e.g., CarPlay)
+struct EpisodeSummary: Sendable, Hashable {
+    let id: UUID
+    let title: String?
+    let desc: String?
+    let podcast: String?
+    let cover: URL?
+    let podcastCover: URL?
+    let file: URL?
+    let localfile: URL?
+}
+
 struct ExternalFile:Codable{
     
     enum FileType: String, Codable{
@@ -93,6 +105,20 @@ class EpisodeDownloadStatus{
     }
     // NEW: UI state for transcription
     @Transient var transcriptionItem: TranscriptionItem? = nil
+
+    /// A lightweight, cross-actor safe snapshot of this episode
+    var summary: EpisodeSummary {
+        EpisodeSummary(
+            id: id,
+            title: title.isEmpty ? nil : title,
+            desc: desc,
+            podcast: podcast?.title,
+            cover: imageURL,
+            podcastCover: podcast?.imageURL,
+            file: url,
+            localfile: localFile
+        )
+    }
 
     var remainingTime: Double? {
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
