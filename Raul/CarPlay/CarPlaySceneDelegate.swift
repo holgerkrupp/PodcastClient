@@ -5,6 +5,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     var interfaceController: CPInterfaceController?
     var playNext: CarPlayPlayNext?
     var nowPlaying: CarPlayNowPlaying?
+    var player = Player.shared
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController

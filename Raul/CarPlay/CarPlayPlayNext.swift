@@ -29,7 +29,37 @@ class CarPlayPlayNext {
     private func setupTemplate() async {
         // Fetch ordered episodes from the playlist
         await self.refreshEpisodeList()
-        // Load images asynchronously for all episodes
+
+        // Prepare an array of sections we will show in the template
+        var sections: [CPListSection] = []
+
+        // Section 0: Currently Playing (if any)
+        if let current = Player.shared.currentEpisode {
+            // Load current episode image
+            let currentImage = await self.loadImage(episode: current.summary) ?? UIImage()
+            let nowPlayingItem = CPListItem(
+                text: current.title,
+                detailText: current.desc ?? current.title,
+                image: currentImage
+            )
+            nowPlayingItem.userInfo = current
+            nowPlayingItem.isPlaying = true
+            nowPlayingItem.accessoryType = .disclosureIndicator
+            nowPlayingItem.handler = { [weak self] _, _ in
+                guard let self else { return }
+                // Push/show the Now Playing template
+                self.interfaceController.pushTemplate(
+                    CarPlayNowPlaying(interfaceController: self.interfaceController).template,
+                    animated: true,
+                    completion: { _, _ in }
+                )
+              
+            }
+            let nowPlayingSection = CPListSection(items: [nowPlayingItem])
+            sections.append(nowPlayingSection)
+        }
+
+        // Load images asynchronously for all episodes in Up Next
         let images: [UIImage?]? = try? await withThrowingTaskGroup(of: (Int, UIImage?).self) { group in
             for (index, episode) in episodes.enumerated() {
                 group.addTask { (index, await self.loadImage(episode: episode)) }
@@ -40,6 +70,8 @@ class CarPlayPlayNext {
             }
             return results
         }
+
+        // Build Up Next items
         let items = episodes.enumerated().map { (index, episode) in
             let cover = images?[index] ?? UIImage()
             let item = CPListItem(
@@ -54,25 +86,28 @@ class CarPlayPlayNext {
                 guard let self else { return }
                 let episode = self.episodes[index]
                 Task {
-                    // print("CP play next: \(episode.title ?? episode.id.uuidString)")
                     await Player.shared.playEpisode(episode.id)
-                    self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { success, error in
-                        // print(error ?? "Error loading CarPlay Items")
-                    })
+                    self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { _, _ in })
                     await self.setupTemplate()
-
                 }
             }
             return item
         }
-        let section = CPListSection(items: items)
-        template.updateSections([section])
-        
+
+        // Add Up Next section
+        let upNextSection = CPListSection(items: items)
+        sections.append(upNextSection)
+
+        // Update the template with all sections
+        template.updateSections(sections)
+
         // Add a back button to return to now playing
         let nowButton = CPBarButton(title: "Now Playing") { [weak self] _ in
-            self?.returnToNowPlaying()
+            guard let self else { return }
+            self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { _, _ in })
+
         }
-        template.trailingNavigationBarButtons = [nowButton]
+     //   template.trailingNavigationBarButtons = [nowButton]
     }
     
     private func refreshEpisodeList() async{

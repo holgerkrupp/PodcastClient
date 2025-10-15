@@ -217,15 +217,3 @@ actor PlaylistModelActor {
     func fetchEpisodeByID(_ id: UUID) throws -> Episode? { try fetchEpisode(byID: id) }
     func fetchEpisodeByURL(_ url: URL) throws -> Episode? { try fetchEpisode(byURL: url) }
 }
-
-// MARK: - Sendable summary value
-struct EpisodeSummary: Sendable {
-    let id: UUID
-    let title: String?
-    let desc: String?
-    let podcast: String?
-    let cover: URL?
-    let podcastCover: URL?
-    let file: URL?
-    let localfile: URL?
-}
