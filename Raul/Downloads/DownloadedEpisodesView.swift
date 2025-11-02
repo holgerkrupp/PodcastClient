@@ -35,7 +35,7 @@ struct DownloadedEpisodesView: View {
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
                                         Task{
-                                            await deleteEpisode(episode)
+                                            await deleteEpisode(episode.id)
                                         }
                                     } label: {
                                         Label("Delete", systemImage: "trash")
@@ -62,6 +62,11 @@ struct DownloadedEpisodesView: View {
                         Text("Title A–Z").tag(Sort.titleAZ.rawValue)
                     }
                     Button("Rescan") { filesManager.rescanDownloadedEpisodeIDs() }
+                    Button(role: .destructive) {
+                        Task { await deletePlayedEpisodes() }
+                    } label: {
+                        Label("Delete Played", systemImage: "trash.fill")
+                    }
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
                 }
@@ -75,23 +80,49 @@ struct DownloadedEpisodesView: View {
     
 
 
-    private func deleteEpisode(_ episode: Episode) async {
+    private func deleteEpisode(_ episodeID: UUID) async {
         // Attempt to remove the file for this episode using the files manager
-        // Adjust the API below to match your DownloadedFilesManager
-        if let id = Optional(episode.id) {
-            // Try common APIs by convention; comment/uncomment based on availability
-            // filesManager.deleteDownloadedEpisodeID(id)
-            // filesManager.removeDownloadedEpisode(id: id)
-            // filesManager.deleteFile(forEpisodeID: id)
-            // If your manager exposes a generic remove by ID, call it here. Otherwise, implement as needed.
-           // filesManager.removeDownloadedEpisodeID(id)
-            
-            let actor = EpisodeActor(modelContainer: modelContext.container)
-            await actor.deleteFile(episodeID: id)
-            
+        // Perform heavy work off the main actor to keep UI responsive
+       // guard let id = Optional(episode.id) else { return }
+
+        await withTaskCancellationHandler(operation: {
+            // Run file deletion in a detached background task
+            let _ = await Task.detached(priority: .background) { () -> Void in
+                let actor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+                await actor.deleteFile(episodeID: episodeID)
+            }.value
+
+            // Refresh the snapshot on the main actor so UI updates
+            await MainActor.run {
+                filesManager.rescanDownloadedEpisodeIDs()
+            }
+        }, onCancel: {
+            // No-op for now; could add cleanup if needed
+        })
+    }
+    
+    private func deletePlayedEpisodes() async {
+        // Capture IDs on the main actor to avoid sending non-Sendable values into concurrent tasks
+        let playedIDs: [UUID] = downloadedEpisodes
+            .filter { $0.maxPlayProgress == 1 }
+            .map { $0.id }
+
+        guard !playedIDs.isEmpty else { return }
+
+        // Delete concurrently in the background to avoid blocking UI
+        await withTaskGroup(of: Void.self) { group in
+            for id in playedIDs {
+                group.addTask(priority: .background) {
+                    await deleteEpisode(id)
+                }
+            }
+            await group.waitForAll()
         }
-        // Refresh the snapshot so UI updates
-        filesManager.rescanDownloadedEpisodeIDs()
+
+        // Ensure we refresh once after bulk deletion
+        await MainActor.run {
+            filesManager.rescanDownloadedEpisodeIDs()
+        }
     }
 }
 
@@ -101,3 +132,4 @@ struct DownloadedEpisodesView: View {
             .environment(DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!))
     }
 }
+

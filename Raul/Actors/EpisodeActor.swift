@@ -274,7 +274,7 @@ actor EpisodeActor {
         }
      */
         
-        let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.id)
+        let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.feed)
         print("Processing episode: \(episode.title) - playnext Status is \(playnext)")
 
         if playnext != .none {
@@ -387,6 +387,11 @@ actor EpisodeActor {
 
     func createChapters(_ fileURL: URL) async  {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+        
+        if episode.chapters == nil {
+            episode.chapters = []
+        }
+        
         if let chapters = episode.chapters, chapters.isEmpty {
             if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
                 if let url = URL(string: chapterFile.url) {
@@ -404,13 +409,10 @@ actor EpisodeActor {
             }
         }
         
-        if episode.chapters == nil {
-            episode.chapters = []
-        }
-        if let chapters = episode.chapters, chapters.isEmpty || !(chapters.contains(where: { $0.type == .mp3 }) || chapters.contains(where: { $0.type == .mp4 })) {
-            guard let url = episode.localFile else {
-                return
-            }
+
+        if let chapters = episode.chapters, !(chapters.contains(where: { $0.type == .mp3 }) || chapters.contains(where: { $0.type == .mp4 })) {
+            if let url = episode.localFile  {
+              
             do {
                 if let formatInfo = try await MetadataLoader.getAudioFormat(from: url) {
                     if formatInfo.formatID == kAudioFormatMPEGLayer3 {
@@ -420,6 +422,7 @@ actor EpisodeActor {
                     }
                 }
             } catch { }
+            }
         }
         if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
             await extractShownotesChapters(fileURL: url)
@@ -435,7 +438,7 @@ actor EpisodeActor {
             return
         }
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.id) else {
+        guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.feed) else {
             return
         }
         for skipWord in skipWord {

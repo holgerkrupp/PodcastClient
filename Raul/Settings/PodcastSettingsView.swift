@@ -35,11 +35,13 @@ struct PodcastSettingsView: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
                     .onChange(of: useCustomSettings) {
-                        Task {
-                            if  useCustomSettings == true {
-                                await actor.enableCustomSettings(for: podcast.id)
-                            } else {
-                                await actor.disableCustomSettings(for: podcast.id)
+                        if let feed = podcast.feed{
+                            Task {
+                                if  useCustomSettings == true {
+                                    await actor.enableCustomSettings(for: feed)
+                                } else {
+                                    await actor.disableCustomSettings(for: feed)
+                                }
                             }
                         }
                     }
@@ -116,7 +118,7 @@ struct PodcastSettingsView: View {
                                                  bottom: 0,
                                                  trailing: 0))
                     
-                 //   NavigationLink("Downloads") { DownloadedFilesListView() }
+                    
                     Spacer()
                         .listRowBackground(Color.clear)
                     CreatedByView()

@@ -362,21 +362,22 @@ struct PodcastDetailView: View {
     private func refreshEpisodes() async {
         isLoading = true
         errorMessage = nil
-        
-        do {
-            let actor = PodcastModelActor(modelContainer: modelContext.container)
-          
-               _ =  try await actor.updatePodcast(podcast.id, force: true)
-            podcast.message = nil
-            
-        } catch {
-            await MainActor.run {
-                errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"
+        if let feed = podcast.feed{
+            do {
+                let actor = PodcastModelActor(modelContainer: modelContext.container)
+                
+                _ =  try await actor.updatePodcast(feed, force: true)
+                podcast.message = nil
+                
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"
+                }
             }
-        }
-        
-        await MainActor.run {
-            isLoading = false
+            
+            await MainActor.run {
+                isLoading = false
+            }
         }
     }
 

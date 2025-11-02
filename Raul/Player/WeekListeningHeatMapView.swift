@@ -21,13 +21,13 @@ struct ListeningBlock: Identifiable {
 struct WeekListeningHeatMapView: View {
     @Query var sessions: [PlaySession]
     @Query var podcasts: [Podcast]
-    @State private var selectedPodcastID: UUID? = nil
+    @State private var selectedPodcastFeed: URL? = nil
     @State private var weekStartDate: Date? = nil
 
     var filteredSessions: [PlaySession] {
         sessions.filter { session in
             // Podcast filter
-            let podcastOK = selectedPodcastID == nil || session.episode?.podcast?.id == selectedPodcastID
+            let podcastOK = selectedPodcastFeed == nil || session.episode?.podcast?.feed == selectedPodcastFeed
             // Week filter
             guard let startDate = weekStartDate else { return podcastOK }
             guard let sessionStart = session.startTime else { return false }
@@ -78,7 +78,7 @@ struct WeekListeningHeatMapView: View {
     var body: some View {
         VStack(spacing: 25) {
             // Podcast Picker
-            Picker("Podcast", selection: $selectedPodcastID) {
+            Picker("Podcast", selection: $selectedPodcastFeed) {
                 Text("All Podcasts").tag(UUID?.none)
                 ForEach(podcasts, id: \.id) { podcast in
                     Text(podcast.title).tag(Optional(podcast.id))

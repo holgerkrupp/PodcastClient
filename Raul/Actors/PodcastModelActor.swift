@@ -11,16 +11,18 @@ import BasicLogger
 
 @ModelActor
 actor PodcastModelActor {
-    func fetchPodcast(byID podcastID: UUID) async -> Podcast? {
+
+    
+    func fetchPodcast(byFeed podcastFeed: URL) async -> Podcast? {
         let predicate = #Predicate<Podcast> { podcast in
-            podcast.id == podcastID
+            podcast.feed == podcastFeed
         }
 
         do {
             let results = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate))
             return results.first
         } catch {
-            print("❌ Error fetching episode for podcast ID: \(podcastID), Error: \(error)")
+            print("❌ Error fetching episode for podcast Feed: \(podcastFeed), Error: \(error)")
             return nil
         }
     }
@@ -32,10 +34,9 @@ actor PodcastModelActor {
         modelContext.saveIfNeeded()
     }
     
-    func linkEpisodeToPodcast(_ episodeID: UUID, _ podcastID: UUID) {
-        // Fetch fresh in the ModelActor
-        let podcastdescriptor = FetchDescriptor<Podcast>(predicate: #Predicate<Podcast> { $0.id == podcastID })
-        guard let podcast = try? modelContext.fetch(podcastdescriptor).first else { return }
+    func linkEpisodeToPodcast(_ episodeID: UUID, _ podcastFeed: URL) async {
+   
+        guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return }
         let episodedescriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.id == episodeID })
 
         guard let episode = try? modelContext.fetch(episodedescriptor).first else { return }
@@ -55,9 +56,9 @@ actor PodcastModelActor {
         return try? modelContext.fetch(descriptor).first
     }
     
-    func checkIfFeedHasBeenUpdated(_ podcastUUID: UUID) async -> Bool? {
+    func checkIfFeedHasBeenUpdated(_ podcastFeed: URL) async -> Bool? {
         // 1. Fetch podcast
-        guard let podcast = await fetchPodcast(byID: podcastUUID) else { return nil }
+        guard let podcast = await fetchPodcast(byFeed: podcastFeed)  else { return nil }
         let podcastID = podcast.persistentModelID
 
         // Ensure metaData exists
@@ -81,7 +82,11 @@ actor PodcastModelActor {
         let feedURL = podcast.feed
 
         // --- Async work with only value types ---
-        let serverLastModified = try? await feedURL?.status()?.lastModified
+        let status = try? await feedURL?.status()
+        let serverLastModified = status?.lastModified
+        
+
+
 
         // --- Re-fetch fresh models after await ---
         guard
@@ -92,22 +97,18 @@ actor PodcastModelActor {
             return nil
         }
 
+       
+        if let newURL = status?.newURL, newURL != feedURL, status?.statusCode == 301 {
+            freshPodcast.feed = newURL
+            modelContext.saveIfNeeded()
+        }
+        
         // --- Compare & update ---
         if let serverLastModified,
            serverLastModified > (lastRefreshSnapshot ?? .distantPast) {
             
                 await updateLastRefresh(for: metaID)
 
-            /*
-            
-                let descriptor = FetchDescriptor<PodcastMetaData>(
-                    predicate: #Predicate { $0.persistentModelID == metaID }
-                )
-                if let metaForUpdate = try? modelContext.fetch(descriptor).first {
-                    metaForUpdate.lastRefresh = Date()
-                    try? modelContext.save()
-                }
-            */
             
             return true
         }
@@ -124,12 +125,24 @@ actor PodcastModelActor {
         metaData?.lastRefresh = Date()
         modelContext.saveIfNeeded()
     }
+    
+    func updateFeedURL(_ podcastFeed: URL) async{
+        guard let podcast = await fetchPodcast(byFeed: podcastFeed)  else { return  }
+        guard let feedURL = podcast.feed else { return  }
 
-    func updatePodcast(_ podcastID: UUID, force: Bool? = false, silent: Bool? = false) async throws -> Bool {
+        let reachable = await feedURL.absoluteString.reachabilityStatus()
+        if let newURL = reachable?.finalURL, newURL != feedURL{
+            podcast.feed = newURL
+        }
+    }
+
+    func updatePodcast(_ podcastFeed: URL, force: Bool? = false, silent: Bool? = false) async throws -> Bool {
         // Fetch podcast just long enough to snapshot IDs & primitives
-        guard let podcast = await fetchPodcast(byID: podcastID) else { return false }
+        guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
         guard let feedURL = podcast.feed else { return false }
 
+
+        
     //    print("updating podcast: \(podcast.title ?? "unknown")")
         let podcastIDRef = podcast.persistentModelID
         var metaIDRef = podcast.metaData?.persistentModelID
@@ -163,8 +176,8 @@ actor PodcastModelActor {
 
         // --- FIRST await boundary ---
         if force == false {
-            guard await checkIfFeedHasBeenUpdated(podcastID) != false else {
-                print("\(podcast.title ?? "unknown") not updated")
+            guard await checkIfFeedHasBeenUpdated(podcastFeed) != false else {
+                print("\(podcast.title) not updated")
 
                 if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
                     freshMeta.isUpdating = false
@@ -224,7 +237,7 @@ actor PodcastModelActor {
     
     func updateDetails(_ podcast: Podcast, fullPodcast: [String : Any], silent: Bool? = false) async{
         
-        print("updateDetails for \(podcast.title ?? "unknown")")
+        print("updateDetails for \(podcast.title)")
         // Fetch podcast just long enough to snapshot IDs & primitives
       //  guard let podcast = await fetchPodcast(byID: podcastID) else { return nil }
         podcast.title = fullPodcast["title"] as? String ?? ""
@@ -315,10 +328,10 @@ actor PodcastModelActor {
                         
                         print("new episode: \(episodeData["title"] as? String ?? "")")
                         
-                        if let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? "") {
+                        if let episodeID = checkIfEpisodeExists(episodeData["guid"] as? String ?? ""), let feed = podcast.feed {
                             print("already existing")
                             
-                            linkEpisodeToPodcast(episodeID , podcast.id)
+                            await linkEpisodeToPodcast(episodeID , feed)
                             continue
                         }else if let episode = Episode(from: episodeData, podcast: podcast) {
                             print("newly created")
@@ -402,9 +415,9 @@ actor PodcastModelActor {
         )
         
         if let existingPodcasts = try? modelContext.fetch(descriptor),
-           let existingPodcast = existingPodcasts.first {
+           let existingPodcast = existingPodcasts.first, let feed = existingPodcast.feed {
             // If podcast exists, update it and return its ID
-            _ = try await updatePodcast(existingPodcast.id, silent: true)
+            _ = try await updatePodcast(feed, silent: true)
             existingPodcast.message = nil
             return existingPodcast.persistentModelID
         }
@@ -415,15 +428,19 @@ actor PodcastModelActor {
         let podcast = Podcast(feed: feedURL)
         modelContext.insert(podcast)
         modelContext.saveIfNeeded()
+        if let feed = podcast.feed {
         do {
-            _ = try await updatePodcast(podcast.id, silent: true)
-            podcast.message = nil
-            try await archiveEpisodes(of: podcast.persistentModelID)
-
+            
+                _ = try await updatePodcast(feed, silent: true)
+                podcast.message = nil
+                try await archiveEpisodes(of: podcast.persistentModelID)
+            
         } catch {
             // print("Could not update podcast: \(error)")
         }
         modelContext.saveIfNeeded()
+       
+        }
         return podcast.persistentModelID
     }
     
@@ -487,23 +504,34 @@ actor PodcastModelActor {
     }
     
     func refreshAllPodcasts() async throws {
-        let descriptor = FetchDescriptor<Podcast>()
+      //  let descriptor = FetchDescriptor<Podcast>()
+        
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { podcast in
+                podcast.metaData != nil && podcast.metaData!.isSubscribed != false
+            }
+        )
+        
+        
+        
         let podcasts = try modelContext.fetch(descriptor)
-        let ids = podcasts.map(\.id)
+        let feeds = podcasts.map(\.feed)
 
         let semaphore = AsyncSemaphore(value: 5) // 👈 max 5 at a time
 
         await withThrowingTaskGroup(of: Void.self) { group in
-            for id in ids {
-                group.addTask {
-                    await semaphore.wait()
-                    do {
-                        let worker = PodcastModelActor(modelContainer: self.modelContainer)
-                        _ = try await worker.updatePodcast(id)
-                    } catch {
-                        throw error
+            for feed in feeds {
+                if let feed{
+                    group.addTask {
+                        await semaphore.wait()
+                        do {
+                            let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                            _ = try await worker.updatePodcast(feed)
+                        } catch {
+                            throw error
+                        }
+                        await semaphore.signal()
                     }
-                    await semaphore.signal()
                 }
             }
         }

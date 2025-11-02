@@ -124,7 +124,7 @@ actor SubscriptionActor:NSObject{
         //    Perform this on a single ModelContext serially to avoid "Database busy" errors
         //    for the crucial insertion step.
         
-        var newPodcastUUIDs: Set<UUID> = []
+        var newPodcastFeeds: Set<URL?> = []
         
         
         for podcastFeed in newPodcasts {
@@ -145,7 +145,7 @@ actor SubscriptionActor:NSObject{
                 // existingPodcast.message = nil
                 
                 
-                newPodcastUUIDs.insert(existingPodcast.id)
+                newPodcastFeeds.insert(existingPodcast.feed)
                 
             } else {
                 let podcast = Podcast(from: podcastFeed) // Use the fast, new initializer
@@ -153,11 +153,11 @@ actor SubscriptionActor:NSObject{
                 modelContext.insert(podcast)
                 
                 
-                newPodcastUUIDs.insert(podcast.id)
+                newPodcastFeeds.insert(podcast.feed)
             }
         }
         
-        dump(newPodcastUUIDs)
+        dump(newPodcastFeeds)
         
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
@@ -165,12 +165,63 @@ actor SubscriptionActor:NSObject{
         
         do{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
-            for id in newPodcastUUIDs{
-                print("updating podcast: \(id)")
-                _ = try await worker.updatePodcast(id, force: true, silent: true)
+            for feed in newPodcastFeeds{
+                if let feed{
+                    print("updating podcast: \(feed)")
+                    _ = try await worker.updatePodcast(feed, force: true, silent: true)
+                }
             }
         }catch{
             print("could not refresh podcasts")
+        }
+    }
+    
+    /// Removes duplicate Podcast records that share the same feed URL, keeping the most recently refreshed one.
+    /// Chooses the survivor by comparing `metaData?.lastRefresh` (nil treated as distantPast).
+    /// Performs deletions and saves the context.
+    func cleanupDuplicates() async {
+        print("Starting duplicate cleanup...")
+        do {
+            // 1. Fetch all podcasts
+            let allPodcasts = try modelContext.fetch(FetchDescriptor<Podcast>())
+
+            // 2. Group podcasts by their unique feed URL
+            let groupedPodcasts = Dictionary(grouping: allPodcasts) { $0.feed }
+
+            for (_, group) in groupedPodcasts {
+                // Only process groups with more than one item (duplicates)
+                guard group.count > 1 else { continue }
+
+                // 3. Sort by last refresh date so the first is the survivor (most recently refreshed)
+                let sortedGroup = group.sorted {
+                    ($0.metaData?.lastRefresh ?? Date.distantPast) > ($1.metaData?.lastRefresh ?? Date.distantPast)
+                }
+
+                guard let survivor = sortedGroup.first else { continue }
+                let duplicates = sortedGroup.dropFirst()
+
+                // 4. Delete the duplicates
+                for duplicate in duplicates {
+                    let title = duplicate.title
+                    let feedString = duplicate.feed?.absoluteString ?? "N/A"
+                    print("Deleting duplicate podcast: \(title.xmlEscaped) with feed: \(feedString)")
+                    modelContext.delete(duplicate)
+                }
+
+                // Optionally, you could merge any additional data from duplicates into survivor here.
+                _ = survivor // silence unused warning if not used further
+            }
+
+            // 5. Save context
+            if let saveIfNeeded = (modelContext as AnyObject).perform?(Selector(("saveIfNeeded"))) {
+                // If extension exists, call regular save() to avoid fragile selector usage
+                try modelContext.save()
+            } else {
+                try modelContext.save()
+            }
+            print("Duplicate cleanup complete. Deletions saved.")
+        } catch {
+            print("Error during duplicate cleanup: \(error)")
         }
     }
     
@@ -201,7 +252,7 @@ actor SubscriptionActor:NSObject{
       
        //  await BasicLogger.shared.log("bgupdateFeeds")
         
-
+        await cleanupDuplicates() 
             setLastRefreshDate()
             fetchData()
         //let all = podcasts.count
@@ -209,10 +260,11 @@ actor SubscriptionActor:NSObject{
             for podcast in podcasts.sorted(by: { lhs, rhs in
                 lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
             }){
-             
-                let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.id)
-                podcast.message = nil
-                if new == true { updated += 1}
+                if let feed = podcast.feed{
+                    let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(feed)
+                    podcast.message = nil
+                    if new == true { updated += 1}
+                }
             }
             
     }
@@ -272,3 +324,4 @@ extension String {
 }
 
 */
+

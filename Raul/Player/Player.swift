@@ -156,7 +156,7 @@ class Player {
             Task { @MainActor in
                 self?.loadPlayBackSpeed()
                 self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
-                if let lockscreenEnable = await self?.settingsActor?.getAppSliderEnable() {
+                if let lockscreenEnable = await self?.settingsActor?.getLockScreenSliderEnable() {
                     RemoteCommandCenter.shared.updateLockScreenScrubbableState(lockscreenEnable)
                 }
                 
@@ -184,7 +184,7 @@ class Player {
         if isPlaying{
             Task{
                 await engine.setRate(playbackRate)
-                await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.id , to: playbackRate)
+                await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.feed , to: playbackRate)
                 if playbackRate >= 1 {
                     isPlaying = true
                 }
@@ -224,7 +224,7 @@ class Player {
     private func loadPlayBackSpeed() {
         // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
         Task{
-            let savedPlaybackRate = await settingsActor?.getPlaybackSpeed(for: currentEpisode?.podcast?.id) ?? 1.0
+            let savedPlaybackRate = await settingsActor?.getPlaybackSpeed(for: currentEpisode?.podcast?.feed) ?? 1.0
             // print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
             if savedPlaybackRate > 0, playbackRate != savedPlaybackRate {
                 playbackRate = savedPlaybackRate
