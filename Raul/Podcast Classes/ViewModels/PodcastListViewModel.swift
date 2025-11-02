@@ -75,25 +75,27 @@ class PodcastListViewModel: ObservableObject {
         await MainActor.run { total = podcasts?.count ?? 0; completed = 0 }
         
         let semaphore = AsyncSemaphore(value: 5)
-        if let ids = podcasts?.map(\.id){
+        if let feeds = podcasts?.map(\.feed){
             await withTaskGroup(of: Void.self) { group in
-                for id in ids {
-                    group.addTask {
-                        await semaphore.wait()
-                        defer { Task { await semaphore.signal() } }
-                        
-                        do {
-                            let worker = PodcastModelActor(modelContainer: self.modelContainer)
-                            _ = try await worker.updatePodcast(id)
+                for feed in feeds {
+                    if let feed{
+                        group.addTask {
+                            await semaphore.wait()
+                            defer { Task { await semaphore.signal() } }
                             
-                            // increment progress on the main actor
-                            await MainActor.run {
-                                self.completed += 1
-                            }
-                        } catch {
-                            // optionally handle errors per feed
-                            await MainActor.run {
-                                self.completed += 1
+                            do {
+                                let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                                _ = try await worker.updatePodcast(feed)
+                                
+                                // increment progress on the main actor
+                                await MainActor.run {
+                                    self.completed += 1
+                                }
+                            } catch {
+                                // optionally handle errors per feed
+                                await MainActor.run {
+                                    self.completed += 1
+                                }
                             }
                         }
                     }
@@ -106,10 +108,10 @@ class PodcastListViewModel: ObservableObject {
     func refreshAllPodcasts() async {
         let descriptor = FetchDescriptor<Podcast>()
         guard let podcasts = try? modelContainer.mainContext.fetch(descriptor) else { return }
-        let ids = podcasts.map(\.id)
+        let feeds = podcasts.map(\.feed)
         isLoading = true
         let modelContainer = self.modelContainer
-        let total = ids.count
+        let total = feeds.count
         self.completed = 0
         self.total = total
 
@@ -124,14 +126,15 @@ class PodcastListViewModel: ObservableObject {
                     // Kick off the first N tasks
                     for _ in 0..<min(maxConcurrent, total) {
                         
-                        let id = ids[index]
-                        group.addTask {
-                            let worker = PodcastModelActor(modelContainer: modelContainer)
-                            _ = try? await worker.updatePodcast(id)
+                        let feed = feeds[index]
+                        if let feed{
+                            group.addTask {
+                                let worker = PodcastModelActor(modelContainer: modelContainer)
+                                _ = try? await worker.updatePodcast(feed)
+                            }
+                            index += 1
                         }
-                        index += 1
                     }
-
                     // As each finishes, update progress + enqueue another
                     for try await _ in group {
                         await MainActor.run {
@@ -139,13 +142,14 @@ class PodcastListViewModel: ObservableObject {
                         }
 
                         if index < total {
-                            let id = ids[index]
-
-                            group.addTask {
-                                let worker = PodcastModelActor(modelContainer: modelContainer)
-                                _ = try? await worker.updatePodcast(id)
+                            let feed = feeds[index]
+                            if let feed{
+                                group.addTask {
+                                    let worker = PodcastModelActor(modelContainer: modelContainer)
+                                    _ = try? await worker.updatePodcast(feed)
+                                }
+                                index += 1
                             }
-                            index += 1
                         }else{
                             await MainActor.run {
                                 self.isLoading = false

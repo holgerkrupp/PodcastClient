@@ -147,7 +147,7 @@ actor SubscriptionManager:NSObject{
         //    for the crucial insertion step.
         
         var newPodcastUUIDs: Set<UUID> = []
-        
+        var newPodcastFeeds: Set<URL> = []
         
         for podcastFeed in newPodcasts {
             guard let url = podcastFeed.url else { continue }
@@ -163,25 +163,25 @@ actor SubscriptionManager:NSObject{
             
             // This fetch/insert/save is now done serially, preventing contention.
             if let existingPodcasts = try? modelContext.fetch(descriptor),
-               let existingPodcast = existingPodcasts.first {
+               let existingPodcast = existingPodcasts.first, let existinURL = existingPodcast.feed {
                 // Already exists, maybe update some basic properties from feedData if needed
                 existingPodcast.title = podcastFeed.title ?? existingPodcast.title
                 // existingPodcast.message = nil
                 
-                
-                newPodcastUUIDs.insert(existingPodcast.id)
+                newPodcastFeeds.insert(existinURL)
+             //   newPodcastUUIDs.insert(existingPodcast.id)
                 
             } else {
                 let podcast = Podcast(from: podcastFeed) // Use the fast, new initializer
+                if let feed = podcast.feed{
+                    modelContext.insert(podcast)
+                    newPodcastFeeds.insert(feed)
+                }
                
-                modelContext.insert(podcast)
-                
-                
-                newPodcastUUIDs.insert(podcast.id)
             }
         }
         
-        dump(newPodcastUUIDs)
+        dump(newPodcastFeeds)
         
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
@@ -189,9 +189,9 @@ actor SubscriptionManager:NSObject{
         
         do{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
-            for id in newPodcastUUIDs{
-                print("updating podcast: \(id)")
-                _ = try await worker.updatePodcast(id, silent: true)
+            for feed in newPodcastFeeds{
+                print("updating podcast: \(feed)")
+                _ = try await worker.updatePodcast(feed, silent: true)
             }
         }catch{
             print("could not refresh podcasts")
@@ -233,10 +233,11 @@ actor SubscriptionManager:NSObject{
             for podcast in podcasts.sorted(by: { lhs, rhs in
                 lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
             }){
-             
-                let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(podcast.id)
-                podcast.message = nil
-                if new == true { updated += 1}
+                if let feed = podcast.feed{
+                    let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(feed)
+                    podcast.message = nil
+                    if new == true { updated += 1}
+                }
             }
             
     }

@@ -8,6 +8,7 @@ import Foundation
 import SwiftData
 import BasicLogger
 
+
 @ModelActor
 actor PodcastSettingsModelActor {
     
@@ -41,9 +42,9 @@ actor PodcastSettingsModelActor {
         modelContext.model(for: settingsID) as? PodcastSettings
     }
     
-    func fetchPodcast(_ podcastID: UUID) -> Podcast? {
+    func fetchPodcast(_ podcastFeed: URL) -> Podcast? {
         let predicate = #Predicate<Podcast> { podcast in
-            podcast.id == podcastID
+            podcast.feed == podcastFeed
         }
         do {
             let results = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate))
@@ -56,13 +57,13 @@ actor PodcastSettingsModelActor {
     
     
     /// Create and insert a new PodcastSettings (optionally for a podcast)
-    func createSettings(for podcastID: UUID) async -> PodcastSettings? {
+    func createSettings(for podcastFeed: URL) async -> PodcastSettings? {
         // print("PodcastSettingsModelActor - createSettings for podcastID: \(podcastID)")
-        if let settings = await fetchPodcastSettings(for: podcastID){
+        if let settings = await fetchPodcastSettings(for: podcastFeed){
             modelContext.insert(settings)
             modelContext.saveIfNeeded()
             return settings
-        }else if let podcast = fetchPodcast(podcastID){
+        }else if let podcast = fetchPodcast(podcastFeed){
             let settings = PodcastSettings(podcast: podcast)
             modelContext.insert(settings)
             podcast.settings = settings
@@ -98,11 +99,11 @@ actor PodcastSettingsModelActor {
     }
     
     
-    func fetchPodcastSettings(for podcastID: UUID) async -> PodcastSettings? {
+    func fetchPodcastSettings(for podcastFeed: URL) async -> PodcastSettings? {
     //    await fetchAllPodcastSettings()
        //  await BasicLogger.shared.log("Fetching custom Settings for Podcast with ID: \(podcastID)")
         let predicate = #Predicate<PodcastSettings> { setting in
-            setting.podcast?.id == podcastID &&
+            setting.podcast?.feed == podcastFeed &&
             setting.isEnabled == true
         }
 
@@ -118,12 +119,12 @@ actor PodcastSettingsModelActor {
     }
     
     /// Enable custom settings for a podcast (creates or re-enables custom settings)
-    func enableCustomSettings(for podcastID: UUID) async {
-        guard let podcast = fetchPodcast(podcastID) else { return }
+    func enableCustomSettings(for podcastFeed: URL) async {
+        guard let podcast = fetchPodcast(podcastFeed) else { return }
 
         // Try to find existing settings for this podcast
         let predicate = #Predicate<PodcastSettings> {
-            $0.podcast?.id == podcastID
+            $0.podcast?.feed == podcastFeed
         }
         let existingSettings = (try? modelContext.fetch(FetchDescriptor<PodcastSettings>(predicate: predicate)).first)
 
@@ -144,28 +145,28 @@ actor PodcastSettingsModelActor {
     }
 
     /// Disable custom settings for a podcast
-    func disableCustomSettings(for podcastID: UUID) async {
-        guard let podcast = fetchPodcast(podcastID) else { return }
+    func disableCustomSettings(for podcastFeed: URL) async {
+        guard let podcast = fetchPodcast(podcastFeed) else { return }
         if let settings = podcast.settings {
             settings.isEnabled = false
         }
         modelContext.saveIfNeeded()
     }
     
-    func getChapterSkipKeywords(for podcastID: UUID?) async -> [skipKey]?{
-        guard let podcastID,let playbackSpeed = await fetchPodcastSettings(for: podcastID)?.autoSkipKeywords  else {
+    func getChapterSkipKeywords(for podcastFeed: URL?) async -> [skipKey]?{
+        guard let podcastFeed ,let playbackSpeed = await fetchPodcastSettings(for: podcastFeed)?.autoSkipKeywords  else {
            //  await BasicLogger.shared.log("getChapterSkipKeywords no PodcastID -> standard")
             return await standardSettings().autoSkipKeywords
         }
         return playbackSpeed
     }
     
-    func setChapterSkipKeywords(for podcastID: UUID?, to value: [skipKey]) async {
-        guard let podcastID  else {
+    func setChapterSkipKeywords(for podcastFeed: URL?, to value: [skipKey]) async {
+        guard let podcastFeed  else {
            //  await BasicLogger.shared.log("no PodcastID - not saving")
             return
         }
-        guard let settings = await fetchPodcastSettings(for: podcastID) else {
+        guard let settings = await fetchPodcastSettings(for: podcastFeed) else {
            //  await BasicLogger.shared.log("no Podcast Settings - not saving")
             return
         }
@@ -174,13 +175,13 @@ actor PodcastSettingsModelActor {
     }
     
     
-    func getPlaybackSpeed(for podcastID: UUID?) async -> Float{
+    func getPlaybackSpeed(for podcastFeed: URL?) async -> Float{
         
-        guard let podcastID  else {
+        guard let podcastFeed  else {
            //  await BasicLogger.shared.log("no PodcastID - standard PlaybackSpeed")
             return await standardSettings().playbackSpeed ?? 1.0 // is no podcastID is given, the global Settings are returned
         }
-        guard let playbackSpeed = await fetchPodcastSettings(for: podcastID)?.playbackSpeed else {
+        guard let playbackSpeed = await fetchPodcastSettings(for: podcastFeed)?.playbackSpeed else {
            //  await BasicLogger.shared.log("no Podcast Settings - standard PlaybackSpeed")
 
             return await standardSettings().playbackSpeed ?? 1.0 // is no podcastID is found, the global Settings are returned
@@ -190,9 +191,9 @@ actor PodcastSettingsModelActor {
         return playbackSpeed
     }
     
-    func setPlaybackSpeed(for podcastID: UUID?, to value: Float) async{
+    func setPlaybackSpeed(for podcastFeed: URL?, to value: Float) async{
         
-        if let podcastID, let setting = await fetchPodcastSettings(for: podcastID) {
+        if let podcastFeed, let setting = await fetchPodcastSettings(for: podcastFeed) {
              setting.playbackSpeed  = value// is no podcastID is found, the global Settings are returned
         } else {
             await standardSettings().playbackSpeed = value
@@ -200,13 +201,13 @@ actor PodcastSettingsModelActor {
         modelContext.saveIfNeeded()
     }
     
-    func getPlaynextposition(for podcastID: UUID?) async -> Playlist.Position{
+    func getPlaynextposition(for podcastFeed: URL?) async -> Playlist.Position{
        //  await BasicLogger.shared.log("getPlaynextposition for PodcastID: \(String(describing: podcastID))")
-        guard let podcastID else {
+        guard let podcastFeed else {
            //  await BasicLogger.shared.log("getPlaynextposition no PodcastID - standard Playnextposition")
             return await standardSettings().playnextPosition
         }
-        if let position =  await fetchPodcastSettings(for: podcastID)?.playnextPosition {
+        if let position =  await fetchPodcastSettings(for: podcastFeed)?.playnextPosition {
            //  await BasicLogger.shared.log("getPlaynextposition PodcastID - position: \(position)")
 
             return position

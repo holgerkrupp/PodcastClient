@@ -72,6 +72,16 @@ struct PodcastListView: View {
                         }
                     }
                 
+                NavigationLink(destination: DownloadedEpisodesView()) {
+                    HStack {
+                        Text("Downloaded Episodes")
+                            .font(.headline)
+
+                    }
+                }
+                
+              
+                
                 NavigationLink(destination: BookmarkListView()) {
                     HStack {
                         Text("All Bookmarks")

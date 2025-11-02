@@ -28,11 +28,11 @@ extension URL{
                     request.cachePolicy = .reloadIgnoringLocalCacheData  // Always fetch from server
 
                     request.httpMethod = "HEAD"
-        /*
-        if let appName = Bundle.main.applicationName{
+        
+        if let appName = Bundle.main.infoDictionary?["CFBundleName"] as? String{
                         request.setValue(appName, forHTTPHeaderField: "User-Agent")
                     }
-        */
+        
         do{
                         let (_, response) = try await session.data(for: request)
                         

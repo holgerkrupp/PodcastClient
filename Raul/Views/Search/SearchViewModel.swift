@@ -84,7 +84,7 @@ class PodcastSearchViewModel: ObservableObject {
                         self.isLoading = false
                         return
                     } else if (200..<400).contains(code) {
-                        self.singlePodcast = PodcastFeed(url: url)
+                        self.singlePodcast = PodcastFeed(url: status.finalURL ?? url)
                         self.isLoading = false
                         return
                     } else {

@@ -77,11 +77,10 @@ struct PersonInfo: Codable, Hashable, Identifiable {
 
 @Model
 final class Podcast: Identifiable {
-    var id = UUID()
     var title: String = "Loading..."
     var desc: String?
     var author: String?
-    var feed: URL?
+     var feed: URL?
     var link: URL?
     
     var language: String?
@@ -131,7 +130,7 @@ final class Podcast: Identifiable {
 
 
 @Model final class PodcastMetaData{
-    var id: UUID? = UUID()
+    
 
     var lastRefresh:Date?
     
