@@ -16,6 +16,10 @@ struct ChapterRowView: View {
     var body: some View {
 
             HStack {
+                #if DEBUG
+                Text(chapter.type.rawValue)
+                #endif
+                
                 if let imagedata = chapter.imageData {
                     ImageWithData(imagedata)
                     
