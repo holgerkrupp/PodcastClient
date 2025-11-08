@@ -201,6 +201,7 @@ struct PodcastDetailView: View {
                                 Label("Open in Browser", systemImage: "safari")
                             }
                             .buttonStyle(.glass(.clear))
+                            .accessibilityRemoveTraits(.isButton)
                         }
                     }
                 }
