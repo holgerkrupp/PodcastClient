@@ -213,12 +213,7 @@ actor SubscriptionActor:NSObject{
             }
 
             // 5. Save context
-            if let saveIfNeeded = (modelContext as AnyObject).perform?(Selector(("saveIfNeeded"))) {
-                // If extension exists, call regular save() to avoid fragile selector usage
-                try modelContext.save()
-            } else {
-                try modelContext.save()
-            }
+            modelContext.saveIfNeeded()
             print("Duplicate cleanup complete. Deletions saved.")
         } catch {
             print("Error during duplicate cleanup: \(error)")

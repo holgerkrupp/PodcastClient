@@ -48,6 +48,12 @@ struct PodcastSettingsView: View {
                 }
                 
                 Form {
+                    
+#if DEBUG
+    debugSettings()
+#endif
+                    
+                    
                     if let settings = settings, let podcast, useCustomSettings {
                         
                         HStack{
@@ -95,6 +101,7 @@ struct PodcastSettingsView: View {
                         
                         
                     }
+
 
                     
                         if let settings = defaultSettings.first {
@@ -257,6 +264,20 @@ struct PodcastSettingsView: View {
         
         
     }
+    
+    
+    @ViewBuilder
+    func debugSettings() -> some View {
+        Section(header: Text("Debug")) {
+            Button("Remove Duplicate Podcasts") {
+                Task{
+                        await SubscriptionActor(modelContainer: context.container).cleanupDuplicates()
+                }
+            }
+        }
+    }
+    
+    
 
     private func binding<Value>(for keyPath: ReferenceWritableKeyPath<PodcastSettings, Value>, in settings: PodcastSettings) -> Binding<Value> {
         Binding(
