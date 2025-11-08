@@ -18,10 +18,15 @@ struct ChapterListView: View {
 
     private var preferredChapters: [Marker] {
         let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-        let categoryGroups = Dictionary(grouping: episode.chapters ?? [], by: { $0.title + (Duration.seconds($0.start ?? 0).formatted(.units(width: .narrow))) })
-        return categoryGroups.values.flatMap { group in
-            let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
-            return group.filter { $0.type == highestCategory }
+        let chapters = episode.chapters ?? []
+
+        // Pick a single type for the whole list based on availability and preference order
+        let availableTypes = Set(chapters.map { $0.type })
+        if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
+            return chapters.filter { $0.type == chosenType }
+        } else {
+            // Fallback: no known preferred types found, return all chapters as-is
+            return chapters
         }
     }
     
@@ -41,8 +46,6 @@ struct ChapterListView: View {
                 ForEach(sortedChapters, id: \.id) { chapter in
                     ZStack{
                      
-
-                            
                         if chapter.id == player.currentChapter?.id {
                                 Rectangle()
                                     .fill(Color.accent.opacity(0.1))

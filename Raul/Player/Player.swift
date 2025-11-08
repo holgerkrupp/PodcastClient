@@ -191,7 +191,7 @@ class Player {
             }
         }
         
-        var info: [String: Any] = [
+        let info: [String: Any] = [
             MPNowPlayingInfoPropertyPlaybackRate: playbackRate
         ]
         
