@@ -82,7 +82,7 @@ struct BookmarkListView: View {
                                 if let episode = marker.bookmarkEpisode{
                                     Button {
                                         Task{
-                                            await Player.shared.playEpisode(episode.id, playDirectly: true, startingAt: marker.start)
+                                            await Player.shared.playEpisode(episode.url, playDirectly: true, startingAt: marker.start)
                                         }
                                     } label: {
                                         

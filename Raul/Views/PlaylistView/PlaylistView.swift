@@ -29,7 +29,7 @@ struct PlaylistView: View {
                 if let episode = Player.shared.currentEpisode {
                     ZStack {
                          EpisodeRowView(episode: episode)
-                            .id(episode.id)
+                          //  .id(episode.id)
                             .allowsHitTesting(false)
                        
                         Rectangle()
@@ -89,7 +89,7 @@ struct PlaylistView: View {
                             
                             ZStack {
                                EpisodeRowView(episode: episode)
-                                    .id(episode.id)
+                               //     .id(episode.id)
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()
                                 }.opacity(0)

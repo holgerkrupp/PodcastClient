@@ -23,7 +23,7 @@ struct EpisodeControlView: View {
         HStack {
             Button(action: {
                 Task{
-                    await Player.shared.playEpisode(episode.id)
+                    await Player.shared.playEpisode(episode.url)
                 }
             }) {
                 Label("Play", systemImage: "play.fill")

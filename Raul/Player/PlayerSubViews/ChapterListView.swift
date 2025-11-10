@@ -15,20 +15,6 @@ struct ChapterListView: View {
    @Bindable var episode: Episode
 
 
-
-    private var preferredChapters: [Marker] {
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-        let chapters = episode.chapters ?? []
-
-        // Pick a single type for the whole list based on availability and preference order
-        let availableTypes = Set(chapters.map { $0.type })
-        if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
-            return chapters.filter { $0.type == chosenType }
-        } else {
-            // Fallback: no known preferred types found, return all chapters as-is
-            return chapters
-        }
-    }
     
     @State private var sortedChapters: [Marker] = []
     
@@ -87,7 +73,7 @@ struct ChapterListView: View {
         print("Loading chapters for episode \(episode.id)")
 
         sortedChapters =
-        preferredChapters.sorted(by: { first, second in
+        episode.preferredChapters.sorted(by: { first, second in
                 first.start ?? 0.0 < second.start ?? 0
             })
     }

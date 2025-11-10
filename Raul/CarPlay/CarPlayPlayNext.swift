@@ -86,7 +86,7 @@ class CarPlayPlayNext {
                 guard let self else { return }
                 let episode = self.episodes[index]
                 Task {
-                    await Player.shared.playEpisode(episode.id)
+                    await Player.shared.playEpisode(episode.url)
                     self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { _, _ in })
                     await self.setupTemplate()
                 }

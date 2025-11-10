@@ -173,7 +173,7 @@ class Player {
                     // print("loading last episode: \(episode.title)")
                     currentEpisode = episode
                     currentEpisodeID = episode.id
-                    await playEpisode(episode.id, playDirectly: false)
+                    await playEpisode(episode.url, playDirectly: false)
 
                 }
             }
@@ -236,6 +236,15 @@ class Player {
     func fetchEpisode(with id: UUID) async -> Episode? {
         do {
             let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.id == id })
+            return try  episodeActor?.modelContainer.mainContext.fetch(descriptor).first
+        } catch {
+            return nil
+        }
+    }
+    
+    func fetchEpisode(with url: URL?) async -> Episode? {
+        do {
+            let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.url == url })
             return try  episodeActor?.modelContainer.mainContext.fetch(descriptor).first
         } catch {
             return nil
@@ -357,14 +366,14 @@ class Player {
     
     
     
-    func playEpisode(_ episodeUUID: UUID, playDirectly: Bool = true, startingAt time: Double? = nil) async {
+    func playEpisode(_ episodeURL: URL?, playDirectly: Bool = true, startingAt time: Double? = nil) async {
         
         // print("playEpisode \(episodeUUID)")
-        guard let episode = await fetchEpisode(with: episodeUUID) else { return }
-        if let currentEpisodeID, episodeUUID != currentEpisodeID{
+        guard let episode = await fetchEpisode(with: episodeURL) else { return }
+        if let currentEpisodeID, episode.id != currentEpisodeID{
             await unloadEpisode(episodeUUID: currentEpisodeID)
             
-            try? await playlistActor?.remove(episodeID: episodeUUID)
+            try? await playlistActor?.remove(episodeID: episode.id)
             
         }
         episode.metaData?.isInbox = false
@@ -377,6 +386,7 @@ class Player {
         
 
         UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
+        UserDefaults.standard.set(episode.url?.absoluteString , forKey: "lastPlayedEpisodeURL")
 
         Task { @MainActor in
             // print("loading new AVPlayerItem - \(isCurrentEpisodeDownloaded) - \(episode.localFile?.path ?? "nil")")
@@ -755,7 +765,7 @@ class Player {
     func skipTo(chapter: Marker) async{
         // print("skip to chapter \(chapter.title)")
             if let newEpisode = chapter.episode, let start = chapter.start{
-                await playEpisode(newEpisode.id, playDirectly: true, startingAt: start)
+                await playEpisode(newEpisode.url, playDirectly: true, startingAt: start)
             }
         
     }
@@ -800,9 +810,9 @@ class Player {
             Task{
                 let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
                 let sleepTimerContinuePlaying = !stopAfterEpisode
-                if sleepTimerContinuePlaying == true, continuePlaying == true, let nextEpisodeID = try? await playlistActor?.nextEpisode(){
+                if sleepTimerContinuePlaying == true, continuePlaying == true, let nextEpisodeURL = try? await playlistActor?.nextEpisode(){
                     BasicLogger.shared.log("Playing next episode")
-                    await playEpisode(nextEpisodeID, playDirectly: true)
+                    await playEpisode(nextEpisodeURL, playDirectly: true)
                 }else{
                     if let currentEpisodeID{
                         await unloadEpisode(episodeUUID: currentEpisodeID)
