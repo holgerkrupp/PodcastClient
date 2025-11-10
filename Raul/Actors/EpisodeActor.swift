@@ -209,10 +209,11 @@ actor EpisodeActor {
         }
     }
     
-    func archiveEpisode(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+    func archiveEpisode(_ episodeURL: URL?) async {
+        guard let episodeURL else { return }
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         
-        await removeFromPlaylist(episodeID)
+        await removeFromPlaylist(episode.id)
 
         if episode.metaData == nil {
             episode.metaData = EpisodeMetaData()
@@ -221,7 +222,7 @@ actor EpisodeActor {
         episode.metaData?.isInbox = false
         episode.metaData?.status = .archived
 
-        await deleteFile(episodeID: episodeID)
+        await deleteFile(episodeID: episode.id)
          modelContext.saveIfNeeded()
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
