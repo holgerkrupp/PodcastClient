@@ -103,16 +103,17 @@ actor PlaylistModelActor {
         return playlist.ordered.compactMap { $0.episode }
     }
 
-    func nextEpisode() throws -> UUID? {
+    func nextEpisode() throws -> URL? {
         normalizeOrder() // will save
 
-         return try orderedEpisodes().first?.id
+         return try orderedEpisodes().first?.url
     }
 
     func orderedEpisodeSummaries() throws -> [EpisodeSummary] {
         try orderedEpisodes().map { episode in
             EpisodeSummary(
                 id: episode.id,
+                url: episode.url,
                 title: episode.title,
                 desc: episode.subtitle ?? episode.desc ?? episode.podcast?.title,
                 podcast: episode.podcast?.title,
