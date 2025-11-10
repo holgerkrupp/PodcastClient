@@ -156,7 +156,7 @@ struct InboxView: View {
     
     private func archiveEpisode(_ episode: Episode) async {
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.archiveEpisode(episodeID: episode.id)
+        await episodeActor.archiveEpisode(episode.url)
         // Optional: post here if EpisodeActor doesn’t
         // Task { @MainActor in NotificationCenter.default.post(name: .inboxDidChange, object: nil) }
     }
@@ -170,9 +170,9 @@ struct InboxView: View {
     
     private func archiveAll() async {
         isArchiving = true
-        let episodeIDs = episodes.map { $0.id }
+        let episodeURLs = episodes.map { $0.url }
         let episodeActor = PodcastModelActor(modelContainer: modelContext.container)
-        try? await episodeActor.archiveEpisodes(episodeIDs: episodeIDs)
+        try? await episodeActor.archiveEpisodes(episodeURLs: episodeURLs)
         isArchiving = false
         // Optional: post here if PodcastModelActor doesn’t
         // Task { @MainActor in NotificationCenter.default.post(name: .inboxDidChange, object: nil) }

@@ -449,16 +449,16 @@ actor PodcastModelActor {
         if let episodes = podcast.episodes{
             for episode in episodes {
                 let episodeActor = EpisodeActor(modelContainer: modelContainer)
-                await episodeActor.archiveEpisode(episodeID: episode.id)
+                await episodeActor.archiveEpisode(episode.url)
             }
             modelContext.saveIfNeeded()
         }
     }
     
-    func archiveEpisodes(episodeIDs: [UUID]) async throws {
+    func archiveEpisodes(episodeURLs: [URL?]) async throws {
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
-        for episodeID in episodeIDs {
-            await episodeActor.archiveEpisode(episodeID: episodeID)
+        for episodeURL in episodeURLs {
+            await episodeActor.archiveEpisode(episodeURL)
         }
         modelContext.saveIfNeeded()
      
@@ -471,7 +471,7 @@ actor PodcastModelActor {
         let episodes = try modelContext.fetch(descriptor)
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
         for episode in episodes {
-            await episodeActor.archiveEpisode(episodeID: episode.id)
+            await episodeActor.archiveEpisode(episode.url)
 
         }
         modelContext.saveIfNeeded()

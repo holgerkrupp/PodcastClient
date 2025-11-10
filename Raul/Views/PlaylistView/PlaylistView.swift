@@ -166,7 +166,7 @@ struct PlaylistView: View {
         // print("archiveEpisode from PlaylistView - \(episode.title)")
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         
-            await episodeActor.archiveEpisode(episodeID: episode.id)
+            await episodeActor.archiveEpisode(episode.url)
         
     }
     

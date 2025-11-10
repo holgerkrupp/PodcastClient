@@ -86,7 +86,7 @@ struct EpisodeControlView: View {
             
             Button {
                 Task{
-                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episodeID: episode.id)
+                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episode.url)
                 }
             } label: {
                 
