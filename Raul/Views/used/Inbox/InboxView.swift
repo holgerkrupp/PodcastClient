@@ -163,7 +163,7 @@ struct InboxView: View {
     
     private func unarchiveEpisode(_ episode: Episode) async {
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.unarchiveEpisode(episodeID: episode.id)
+        await episodeActor.unarchiveEpisode(episode.url)
         // Optional: post here if EpisodeActor doesn’t
         // Task { @MainActor in NotificationCenter.default.post(name: .inboxDidChange, object: nil) }
     }

@@ -157,7 +157,7 @@ actor PlayerEngine {
 
     func pause() {
         avPlayer.pause()
-        deactiveSession()
+     //   deactiveSession()
     }
 
     func seek(to time: CMTime) {

@@ -16,7 +16,6 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var phase
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
-    // Removed live @Query to avoid frequent updates from playback writes
     @State private var inboxCount: Int = 0
     
     @State private var search:String = ""
