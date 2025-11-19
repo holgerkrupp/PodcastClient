@@ -162,7 +162,6 @@ actor PlaylistModelActor {
         episode.refresh.toggle()
 
          normalizeOrder() // will save
-       //  await BasicLogger.shared.log("✅ Saved playlist changes")
 
         if episode.metaData?.calculatedIsAvailableLocally != true {
             let episodeActor = EpisodeActor(modelContainer: self.modelContainer)

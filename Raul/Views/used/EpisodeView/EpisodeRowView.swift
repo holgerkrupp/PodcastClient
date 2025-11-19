@@ -129,7 +129,7 @@ struct EpisodeRowView: View {
                             }
                            
                         EpisodeControlView(episode: episode)
-                            .modelContainer(modelContext.container)
+                      //      .modelContainer(modelContext.container)
                             .frame(height: 50)
                             .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                                 

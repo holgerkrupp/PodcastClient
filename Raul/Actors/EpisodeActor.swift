@@ -61,8 +61,8 @@ actor EpisodeActor {
     }
     
     func getLastPlayedEpisode() async -> Episode? {
-        guard let episodeID = await getLastPlayedEpisodeID() else { return nil }
-        return await fetchEpisode(byID: episodeID)
+        guard let episodeURL = await getLastPlayedEpisodeURL() else { return nil }
+        return await fetchEpisode(byURL: episodeURL)
     }
 
     
@@ -151,7 +151,7 @@ actor EpisodeActor {
         episode.metaData?.wasSkipped = true
     }
     
-    func getLastPlayedEpisodeID() async -> UUID? {
+    func getLastPlayedEpisodeURL() async -> URL? {
         let predicate = #Predicate<Episode> { episode in
             episode.metaData?.isHistory == false
         }
@@ -161,7 +161,7 @@ actor EpisodeActor {
         do {
             let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate, sortBy: sortDescriptors))
 
-            return results.first?.id
+            return results.first?.url
         } catch {
             // print("❌ Error fetching or saving metadata: \(error)")
         }
@@ -227,6 +227,16 @@ actor EpisodeActor {
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
+    }
+    
+    func unarchiveEpisode(_ episodeURL: URL?) async  {
+        guard let episodeURL else { return }
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        
+        episode.metaData?.isArchived = false
+        episode.metaData?.isInbox = true
+        episode.metaData?.status = .inbox
+        modelContext.saveIfNeeded()
     }
     
     func moveToHistory(episodeID: UUID) async {
@@ -305,13 +315,7 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
     }
     
-    func unarchiveEpisode(episodeID: UUID) async  {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        episode.metaData?.isArchived = false
-        episode.metaData?.isInbox = true
-        episode.metaData?.status = .inbox
-        modelContext.saveIfNeeded()
-    }
+ 
     
     func deleteFile(episodeID: UUID) async{
         guard let episode = await fetchEpisode(byID: episodeID) else { return }

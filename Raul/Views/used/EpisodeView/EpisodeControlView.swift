@@ -44,8 +44,9 @@ struct EpisodeControlView: View {
                 HStack(spacing: 0.0) {
                     
                     Button {
+                        
                         Task{
-                            await PlaylistViewModel(container: episode.modelContext?.container ?? modelContext.container).addEpisode(episode, to: .front)
+                            await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .front)
                             
                         }
                     } label: {
