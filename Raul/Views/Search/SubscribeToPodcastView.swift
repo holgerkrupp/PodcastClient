@@ -15,12 +15,11 @@ import SwiftData
 
 struct SubscribeToPodcastView: View {
     var formatStyle = Date.RelativeFormatStyle()
-    @Environment(\.modelContext) private var context
     
     @State private var errorMessage: String?
-    @State private var isSubscribed: Bool = false
     @State private var subscribing: Bool = false
-    @State private var loading: Bool = false
+    @State private var subscriptionProgress: Double = 0
+    @State private var subscriptionMessage = "Preparing subscription"
     @Query private var allPodcasts: [Podcast]
     
     @Bindable var newPodcastFeed: PodcastFeed
@@ -104,28 +103,33 @@ struct SubscribeToPodcastView: View {
                                 Button("Subscribe") {
                                     
                                     Task {
-                                        guard let url = newPodcastFeed.url else {
+                                        guard newPodcastFeed.url != nil else {
                                             errorMessage = "Invalid URL"
                                             return
                                         }
-                                        
-                                        
-                                        
-                                     //   let actor = PodcastModelActor(modelContainer: context.container)
-                                        
-                                            subscribing = true
-                                            await SubscriptionManager(modelContainer: ModelContainerManager.shared.container).subscribe(all: [newPodcastFeed])
 
-                                            await requestNotification()
+                                        await MainActor.run {
+                                            errorMessage = nil
+                                            subscribing = true
+                                            subscriptionProgress = 0
+                                            subscriptionMessage = "Preparing subscription"
+                                        }
+
+                                        await SubscriptionManager(modelContainer: ModelContainerManager.shared.container).subscribe(all: [newPodcastFeed]) { update in
                                             await MainActor.run {
-                                                isSubscribed = true
-                                                subscribing = false
+                                                subscriptionProgress = update.fractionCompleted
+                                                subscriptionMessage = update.message
                                             }
-                                            
-                                        
+                                        }
+
+                                        await requestNotification()
+                                        await MainActor.run {
+                                            subscribing = false
+                                        }
                                     }
                                 }
                                 .buttonStyle(.glass(.clear))
+                                .disabled(subscribing)
                                 
                                 
                                 
@@ -147,39 +151,21 @@ struct SubscribeToPodcastView: View {
             
             
             .overlay {
-                if loading {
+                if subscribing {
                     ZStack {
                         RoundedRectangle(cornerRadius:  8.0)
                             .fill(Color.clear)
                             .ignoresSafeArea()
                         VStack(alignment: .center) {
-                            
-                            ProgressView()
-                                .frame(width: 100, height: 50)
-                            Text("Loading...")
-                                .padding()
+                            ProgressView(value: max(subscriptionProgress, 0.02), total: 1.0)
+                                .frame(width: 180)
+                            Text(subscriptionMessage)
+                                .padding(.top, 8)
+                            Text("\(Int(subscriptionProgress * 100))%")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                         }
-                    }
-                    .background{
-                        RoundedRectangle(cornerRadius:  8.0)
-                            .fill(.background.opacity(0.3))
-                    }
-                    
-                    
-                    .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                    .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-                }else if subscribing {
-                    ZStack {
-                        RoundedRectangle(cornerRadius:  8.0)
-                            .fill(Color.clear)
-                            .ignoresSafeArea()
-                        VStack(alignment: .center) {
-                            
-                            ProgressView()
-                                .frame(width: 100, height: 50)
-                            Text("Subscribing...")
-                                .padding()
-                        }
+                        .padding()
                     }
                     .background{
                         RoundedRectangle(cornerRadius:  8.0)
@@ -226,4 +212,3 @@ struct SubscribeToPodcastView: View {
         await notificationManager.requestAuthorizationIfUndetermined()
     }
 }
-

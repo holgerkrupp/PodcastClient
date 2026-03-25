@@ -141,6 +141,12 @@
     "Delete all files in Documents Directory" : {
 
     },
+    "Delete all Podcasts" : {
+
+    },
+    "Delete all your subscriptions" : {
+
+    },
     "Delete Bookmark" : {
 
     },
@@ -308,9 +314,6 @@
     "Loading Transcript" : {
 
     },
-    "Loading..." : {
-
-    },
     "Loading…" : {
 
     },
@@ -353,6 +356,12 @@
     "No Listening History" : {
 
     },
+    "No Podcasts" : {
+
+    },
+    "No podcasts are stored in the library yet." : {
+
+    },
     "No podcasts found" : {
 
     },
@@ -368,7 +377,13 @@
     "No Transcriptions Yet" : {
 
     },
+    "No Unsubscribed Podcasts" : {
+
+    },
     "None" : {
+
+    },
+    "Not Subscribed" : {
 
     },
     "Now Playing" : {
@@ -435,6 +450,12 @@
 
     },
     "Podcast" : {
+
+    },
+    "Podcast Scope" : {
+
+    },
+    "Podcasts kept in the database but excluded from refresh will appear here." : {
 
     },
     "Preset" : {
@@ -554,9 +575,6 @@
     "Subscribe to new podcasts" : {
 
     },
-    "Subscribing..." : {
-
-    },
     "Subscription" : {
 
     },
@@ -567,6 +585,9 @@
 
     },
     "Supported Models" : {
+
+    },
+    "This podcast stays in the database, but it is skipped by bulk refresh." : {
 
     },
     "This podcast uses the global settings. To customize, switch to 'Custom Settings'." : {
@@ -609,6 +630,9 @@
 
     },
     "Unarchive" : {
+
+    },
+    "Unsubscribe" : {
 
     },
     "Up next" : {

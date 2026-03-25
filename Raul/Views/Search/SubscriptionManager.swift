@@ -96,23 +96,22 @@ actor SubscriptionManager:NSObject{
     }
 
     
-    func subscribe(all urls:[URL?]) async{
+    func subscribe(all urls:[URL?], progress: SubscriptionProgressHandler? = nil) async{
         
         
-        for url in urls {
-            if let url{
-                // print("start subscribe for \(url.absoluteString)")
-                do {
-                    let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url)
-                    
-                } catch {
-                    print(error)
-                }
-                
-                // print("end subscribe for \(url.absoluteString)")
+        let validURLs = urls.compactMap { $0 }
+        let total = max(validURLs.count, 1)
 
+        for (index, url) in validURLs.enumerated() {
+            do {
+                let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url) { update in
+                    guard let progress else { return }
+                    let overall = (Double(index) + update.fractionCompleted) / Double(total)
+                    await progress(SubscriptionProgressUpdate(overall, update.message))
+                }
+            } catch {
+                print(error)
             }
-            
         }
     }
     
@@ -140,13 +139,12 @@ actor SubscriptionManager:NSObject{
     }
     
     
-    func subscribe(all newPodcasts: [PodcastFeed]) async {
+    func subscribe(all newPodcasts: [PodcastFeed], progress: SubscriptionProgressHandler? = nil) async {
         
         // 1. SERIAL PHASE: Mass-insert all new podcasts quickly.
         //    Perform this on a single ModelContext serially to avoid "Database busy" errors
         //    for the crucial insertion step.
         
-        var newPodcastUUIDs: Set<UUID> = []
         var newPodcastFeeds: Set<URL> = []
         
         for podcastFeed in newPodcasts {
@@ -166,10 +164,11 @@ actor SubscriptionManager:NSObject{
                let existingPodcast = existingPodcasts.first, let existinURL = existingPodcast.feed {
                 // Already exists, maybe update some basic properties from feedData if needed
                 existingPodcast.title = podcastFeed.title ?? existingPodcast.title
+                existingPodcast.metaData?.isSubscribed = true
+                existingPodcast.metaData?.subscriptionDate = Date()
                 // existingPodcast.message = nil
                 
                 newPodcastFeeds.insert(existinURL)
-             //   newPodcastUUIDs.insert(existingPodcast.id)
                 
             } else {
                 let podcast = Podcast(from: podcastFeed) // Use the fast, new initializer
@@ -189,9 +188,19 @@ actor SubscriptionManager:NSObject{
         
         do{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
-            for feed in newPodcastFeeds{
+            let feeds = Array(newPodcastFeeds)
+            let total = max(feeds.count, 1)
+
+            for (index, feed) in feeds.enumerated() {
                 print("updating podcast: \(feed)")
-                _ = try await worker.updatePodcast(feed, silent: true)
+                _ = try await worker.updatePodcast(feed, force: true, silent: true) { update in
+                    guard let progress else { return }
+                    let overall = (Double(index) + update.fractionCompleted) / Double(total)
+                    await progress(SubscriptionProgressUpdate(overall, update.message))
+                }
+            }
+            if let progress {
+                await progress(SubscriptionProgressUpdate(1.0, "Subscription complete"))
             }
         }catch{
             print("could not refresh podcasts")
@@ -295,4 +304,3 @@ extension String {
         return escaped
     }
 }
-

@@ -106,7 +106,11 @@ class PodcastListViewModel: ObservableObject {
     }
     
     func refreshAllPodcasts() async {
-        let descriptor = FetchDescriptor<Podcast>()
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { podcast in
+                podcast.metaData?.isSubscribed != false
+            }
+        )
         guard let podcasts = try? modelContainer.mainContext.fetch(descriptor) else { return }
         let feeds = podcasts.map(\.feed)
         isLoading = true
@@ -122,6 +126,13 @@ class PodcastListViewModel: ObservableObject {
             var index = 0
 
             do {
+                if total == 0 {
+                    await MainActor.run {
+                        self.isLoading = false
+                    }
+                    return
+                }
+
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     // Kick off the first N tasks
                     for _ in 0..<min(maxConcurrent, total) {
@@ -170,4 +181,3 @@ class PodcastListViewModel: ObservableObject {
     
     }
     
-

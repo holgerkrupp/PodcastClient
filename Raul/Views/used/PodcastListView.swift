@@ -2,10 +2,30 @@ import SwiftUI
 import SwiftData
 
 struct PodcastListView: View {
+    enum LibraryScope: String, CaseIterable, Identifiable {
+        case subscribed
+        case unsubscribed
+        case all
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .subscribed:
+                return "Subscribed"
+            case .unsubscribed:
+                return "Not Subscribed"
+            case .all:
+                return "All"
+            }
+        }
+    }
+
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @StateObject private var viewModel: PodcastListViewModel
     
     @State private var filteredPodcasts: [Podcast] = []
+    @State private var selectedScope: LibraryScope = .subscribed
     @State private var searchText = ""
     @State private var searchInTitle = true
     @State private var searchInAuthor = false
@@ -19,8 +39,14 @@ struct PodcastListView: View {
     var body: some View {
         Group {
             if filteredPodcasts.isEmpty {
-                if searchText.isEmpty {
+                if searchText.isEmpty, selectedScope == .subscribed {
                     PodcastsEmptyView()
+                } else if searchText.isEmpty {
+                    ContentUnavailableView(
+                        selectedScope == .unsubscribed ? "No Unsubscribed Podcasts" : "No Podcasts",
+                        systemImage: selectedScope == .unsubscribed ? "pause.circle" : "dot.radiowaves.left.and.right",
+                        description: Text(selectedScope == .unsubscribed ? "Podcasts kept in the database but excluded from refresh will appear here." : "No podcasts are stored in the library yet.")
+                    )
                 } else {
                     ContentUnavailableView(
                         "No Results",
@@ -30,6 +56,14 @@ struct PodcastListView: View {
                 }
             } else {
                 List {
+                    Section {
+                        Picker("Podcast Scope", selection: $selectedScope) {
+                            ForEach(LibraryScope.allCases) { scope in
+                                Text(scope.title).tag(scope)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
       
                     NavigationLink(destination: AllEpisodesListView()) {
                         HStack {
@@ -75,9 +109,14 @@ struct PodcastListView: View {
                 }
                 
                 ForEach(filteredPodcasts) { podcast in
-                    NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                    ZStack {
                         PodcastRowView(podcast: podcast)
+                       //     .id(episode.id)
+                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                            EmptyView()
+                        }.opacity(0)
                     }
+                    
                     .buttonStyle(.plain)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -119,10 +158,25 @@ struct PodcastListView: View {
         .onChange(of: searchInEpisodes) { _, _ in
             applyFilters()
         }
-        .onChange(of: podcasts.count) { _, _ in
+        .onChange(of: podcasts.map { "\($0.persistentModelID)-\($0.isSubscribed)" }) { _, _ in
+            applyFilters()
+        }
+        .onChange(of: selectedScope) { _, _ in
             applyFilters()
         }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Podcast Scope", selection: $selectedScope) {
+                        ForEach(LibraryScope.allCases) { scope in
+                            Text(scope.title).tag(scope)
+                        }
+                    }
+                } label: {
+                    Image(systemName: selectedScope == .unsubscribed ? "pause.circle" : "line.3.horizontal.decrease.circle")
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Toggle("Titles", isOn: $searchInTitle)
@@ -163,7 +217,16 @@ struct PodcastListView: View {
     }
 
     private func applyFilters() {
-        let currentPodcasts = podcasts
+        let currentPodcasts = podcasts.filter { podcast in
+            switch selectedScope {
+            case .subscribed:
+                return podcast.isSubscribed
+            case .unsubscribed:
+                return podcast.isSubscribed == false
+            case .all:
+                return true
+            }
+        }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard query.isEmpty == false else {
