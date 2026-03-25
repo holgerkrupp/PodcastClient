@@ -1,6 +1,49 @@
 import SwiftUI
 
+actor SharedImageRepository {
+    static let shared = SharedImageRepository()
 
+    private var inFlightTasks: [URL: Task<UIImage?, Never>] = [:]
+    nonisolated(unsafe) private static let memoryCache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 300
+        cache.totalCostLimit = 1024 * 1024 * 150
+        return cache
+    }()
+
+    nonisolated static func cachedImage(for url: URL) -> UIImage? {
+        memoryCache.object(forKey: url as NSURL)
+    }
+
+    nonisolated static func store(_ image: UIImage, for url: URL, cost: Int = 0) {
+        memoryCache.setObject(image, forKey: url as NSURL, cost: cost)
+    }
+
+    func image(for url: URL, saveTo: URL? = nil) async -> UIImage? {
+        if let cached = Self.cachedImage(for: url) {
+            return cached
+        }
+
+        if let task = inFlightTasks[url] {
+            return await task.value
+        }
+
+        let task = Task<UIImage?, Never> {
+            guard let data = await ImageLoaderAndCache.loadImageData(from: url, saveTo: saveTo),
+                  let image = UIImage(data: data) else {
+                return nil
+            }
+
+            Self.store(image, for: url, cost: data.count)
+            return image
+        }
+
+        inFlightTasks[url] = task
+        let image = await task.value
+        inFlightTasks[url] = nil
+        return image
+    }
+}
 
 struct ImageWithURL: View {
     @StateObject private var loader: ImageLoaderAndCache
@@ -63,10 +106,7 @@ class ImageLoaderAndCache: ObservableObject {
     }
     
     static func loadUIImage(from url: URL, saveTo: URL? = nil) async -> UIImage? {
-        if let data = await loadImageData(from: url, saveTo: saveTo) {
-            return UIImage(data: data)
-        }
-        return nil
+        await SharedImageRepository.shared.image(for: url, saveTo: saveTo)
     }
 }
 

@@ -257,7 +257,12 @@ struct PodcastSettingsView: View {
             Toggle(isOn: binding(for: \.getContinuousPlay, in: settings)) {
                 Text("Continues Playback")
             }
-            
+
+            NavigationLink {
+                TranscriptionSettingsView()
+            } label: {
+                Label("Transcriptions", systemImage: "waveform.and.mic")
+            }
 
             
         }

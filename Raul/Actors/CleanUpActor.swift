@@ -32,7 +32,9 @@ actor CleanUpActor {
                 episode.metaData?.isAvailableLocally == true else { continue }
             
             if episode.playlist?.count == 0 {
-                await episodeActor.deleteFile(episodeID: episode.id)
+              //  await episodeActor.deleteFile(episodeID: episode.id)
+                await episodeActor.deleteFile(episodeURL: episode.url)
+
             }
         }
     }

@@ -14,6 +14,7 @@ class RemoteCommandCenter {
     let player: Player = Player.shared
     var settingLockScreenScrubbing: Bool = false
     let RCC = MPRemoteCommandCenter.shared()
+    private let supportedPlaybackRates: [NSNumber] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0].map(NSNumber.init(value:))
     
     private init() {
         Task{
@@ -50,6 +51,17 @@ class RemoteCommandCenter {
                 return .success
             }
             return .commandFailed
+        }
+
+        RCC.changePlaybackRateCommand.isEnabled = true
+        RCC.changePlaybackRateCommand.supportedPlaybackRates = supportedPlaybackRates
+        RCC.changePlaybackRateCommand.addTarget { event in
+            guard let event = event as? MPChangePlaybackRateCommandEvent else {
+                return .commandFailed
+            }
+
+            self.player.setRate(event.playbackRate)
+            return .success
         }
         
         RCC.skipForwardCommand.isEnabled = true

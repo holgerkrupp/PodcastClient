@@ -14,12 +14,24 @@
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
 		488591272DE4D66F008604DA /* GlowEffects in Frameworks */ = {isa = PBXBuildFile; productRef = 488591262DE4D66F008604DA /* GlowEffects */; };
 		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
+		48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
 		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
 		48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */ = {isa = PBXBuildFile; productRef = 48C7E5E62E10816D007D1CD3 /* SwipeActions */; };
+		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A1B2C3082F00000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 487F5C672D9D4F0C00056D08 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3062F00000100000001;
+			remoteInfo = PlayNextWidget;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		480234B92E0560EE0013C50D /* Embed ExtensionKit Extensions */ = {
@@ -38,6 +50,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -52,6 +65,8 @@
 		4845F15C2E7D32980096FCA6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = /System/Library/Frameworks/SwiftUI.framework; sourceTree = "<absolute>"; };
 		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
 		487F5C6F2D9D4F0C00056D08 /* Raul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Raul.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		48B638D02F59999F00940B67 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -68,6 +83,13 @@
 				Info.plist,
 			);
 			target = 487F5C6E2D9D4F0C00056D08 /* Raul */;
+		};
+		A1B2C3032F00000100000001 /* Exceptions for "PlayNextWidget" folder in "PlayNextWidget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A1B2C3062F00000100000001 /* PlayNextWidget */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -88,6 +110,14 @@
 			path = Raul;
 			sourceTree = "<group>";
 		};
+		A1B2C3042F00000100000001 /* PlayNextWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1B2C3032F00000100000001 /* Exceptions for "PlayNextWidget" folder in "PlayNextWidget" target */,
+			);
+			path = PlayNextWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,15 +136,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3052F00000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		487F5C662D9D4F0C00056D08 = {
 			isa = PBXGroup;
 			children = (
+				48B638D02F59999F00940B67 /* Localizable.xcstrings */,
 				4827FCD32DA5AC0500FA6778 /* README.md */,
 				4878D3802DDA612600BA3D92 /* PodcastFeactures.md */,
 				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
+				A1B2C3042F00000100000001 /* PlayNextWidget */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
 				487F5C962D9D59D000056D08 /* Frameworks */,
@@ -126,6 +165,7 @@
 		487F5C702D9D4F0C00056D08 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3022F00000100000001 /* PlayNextWidget.appex */,
 				487F5C6F2D9D4F0C00056D08 /* Raul.app */,
 			);
 			name = Products;
@@ -156,6 +196,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				A1B2C3072F00000100000001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
@@ -176,6 +217,28 @@
 			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1B2C3062F00000100000001 /* PlayNextWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C30D2F00000100000001 /* Build configuration list for PBXNativeTarget "PlayNextWidget" */;
+			buildPhases = (
+				A1B2C30A2F00000100000001 /* Sources */,
+				A1B2C3052F00000100000001 /* Frameworks */,
+				A1B2C3092F00000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3042F00000100000001 /* PlayNextWidget */,
+			);
+			name = PlayNextWidget;
+			packageProductDependencies = (
+			);
+			productName = PlayNextWidget;
+			productReference = A1B2C3022F00000100000001 /* PlayNextWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -189,6 +252,9 @@
 					487F5C6E2D9D4F0C00056D08 = {
 						CreatedOnToolsVersion = 16.2;
 					};
+					A1B2C3062F00000100000001 = {
+						CreatedOnToolsVersion = 16.2;
+					};
 				};
 			};
 			buildConfigurationList = 487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Up Next" */;
@@ -197,6 +263,7 @@
 			knownRegions = (
 				en,
 				Base,
+				de,
 			);
 			mainGroup = 487F5C662D9D4F0C00056D08;
 			minimizedProjectReferenceProxies = 1;
@@ -215,6 +282,7 @@
 			projectRoot = "";
 			targets = (
 				487F5C6E2D9D4F0C00056D08 /* Raul */,
+				A1B2C3062F00000100000001 /* PlayNextWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -227,6 +295,14 @@
 				4827FCD42DA5AC0500FA6778 /* README.md in Resources */,
 				4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */,
 				4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */,
+				48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3092F00000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -241,7 +317,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C30A2F00000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1B2C3072F00000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3062F00000100000001 /* PlayNextWidget */;
+			targetProxy = A1B2C3082F00000100000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		487F5C7E2D9D4F0D00056D08 /* Debug */ = {
@@ -306,6 +397,7 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -365,18 +457,20 @@
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Release;
 		};
 		487F5C812D9D4F0D00056D08 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_APP_SANDBOX = YES;
@@ -400,8 +494,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2025.5;
-				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				MARKETING_VERSION = 2026.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -414,12 +508,13 @@
 		487F5C822D9D4F0D00056D08 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_APP_SANDBOX = YES;
@@ -443,14 +538,72 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2025.5;
-				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				MARKETING_VERSION = 2026.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,6";
+			};
+			name = Release;
+		};
+		A1B2C30B2F00000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlayNextWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2026.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		A1B2C30C2F00000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PlayNextWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2026.1;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -471,6 +624,15 @@
 			buildConfigurations = (
 				487F5C812D9D4F0D00056D08 /* Debug */,
 				487F5C822D9D4F0D00056D08 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C30D2F00000100000001 /* Build configuration list for PBXNativeTarget "PlayNextWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C30B2F00000100000001 /* Debug */,
+				A1B2C30C2F00000100000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

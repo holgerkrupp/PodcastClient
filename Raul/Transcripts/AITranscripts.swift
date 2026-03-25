@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AVFoundation
 import Speech
 import BasicLogger
 
@@ -14,15 +15,20 @@ class AITranscripts {
     //MARK: INPUT
     let url: URL
     var language: Locale = Locale.current
+    let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
     
     
     //MARK: OUTPUT
     var transcript: [SFTranscriptionSegment] = []
     
-    init(url: URL, language: String? = nil) async {
-        
+    init(
+        url: URL,
+        language: String? = nil,
+        progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
+    ) async {
         self.url = url
-         print("language set to: \(language ?? "nil") ")
+        self.progressHandler = progressHandler
+        print("language set to: \(language ?? "nil") ")
         if let language{
             self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
         }else{
@@ -62,7 +68,7 @@ class AITranscripts {
     
     func logEpisodeTitle(for url: URL) async {
         
-            let title = await EpisodeActor(modelContainer: ModelContainerManager.shared.container).getEpisodeTitlefrom(url: url)
+            _ = await EpisodeActor(modelContainer: ModelContainerManager.shared.container).getEpisodeTitlefrom(url: url)
            //  await BasicLogger.shared.log("Episode title: \(title ?? "unknown")")
         
     }
@@ -94,6 +100,7 @@ class AITranscripts {
     
     func transcribeTovTT() async throws -> String? {
         self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
+        await reportProgress(0.02, status: "Preparing audio…")
         // print("language finished")
         
         guard let segments = try await transcribe() else { return nil }
@@ -121,6 +128,8 @@ class AITranscripts {
         guard let audioFile = try? AVAudioFile(forReading: url) else {
              print("could not load audio file")
             return nil }
+
+        let audioDuration = transcriptionDuration(for: audioFile)
         
         print("transcribe to lang: \(language.identifier(.bcp47))")
         self.language = await bestMatchingSupportedLocale(for: language.identifier(.bcp47)) ?? Locale.current
@@ -130,6 +139,7 @@ class AITranscripts {
         
         print("normalized:", locale.identifier(.bcp47))
         
+        await reportProgress(0.05, status: "Checking speech model…")
         do {
             try await ensureModel(transcriber: transcriber, locale: locale)
         } catch {
@@ -137,6 +147,7 @@ class AITranscripts {
             return nil
         }
         print("model ensured")
+        await reportProgress(0.1, status: "Starting transcription…")
 
          let isInstalled = await installed(locale: locale)
         guard isInstalled else {
@@ -147,10 +158,12 @@ class AITranscripts {
         
     print("1")
         
-        async let transcriptionFuture = try await transcriber.results.reduce(into: [(range: CMTimeRange, text: String)]()) { arr, result in
-            print(result.range.start.value.formatted(), result.range.end.value.formatted(), result.text)
-            arr.append((range: result.range, text: result.text.description))
-        }
+        let progressReporter = self.progressHandler
+        async let transcriptionFuture = Self.collectTranscriptionResults(
+            from: transcriber,
+            audioDuration: audioDuration,
+            progressHandler: progressReporter
+        )
         print("2")
         
         do {
@@ -182,6 +195,7 @@ class AITranscripts {
             await analyzer.cancelAndFinishNow()
         }
         print("4")
+        await reportProgress(0.92, status: "Finalizing transcript…")
         let transcription = try await transcriptionFuture
         
         return transcription
@@ -199,6 +213,7 @@ class AITranscripts {
                 return
             } else {
                 print("need to download \(locale.identifier) support")
+                await reportProgress(0.08, status: "Downloading language model…")
                 try await downloadIfNeeded(for: transcriber)
             }
         }
@@ -220,6 +235,47 @@ class AITranscripts {
                 try await downloader.downloadAndInstall()
             }
         }
+
+    private func transcriptionDuration(for audioFile: AVAudioFile) -> Double {
+        let sampleRate = audioFile.processingFormat.sampleRate
+        guard sampleRate > 0 else { return 0 }
+        return Double(audioFile.length) / sampleRate
+    }
+
+    private static func progressUpdate(resultEnd: CMTime, audioDuration: Double) -> (progress: Double, status: String) {
+        guard audioDuration > 0 else {
+            return (0.55, "Transcribing audio…")
+        }
+
+        let endSeconds = CMTimeGetSeconds(resultEnd)
+        guard endSeconds.isFinite else {
+            return (0.55, "Transcribing audio…")
+        }
+
+        let fraction = min(max(endSeconds / audioDuration, 0), 1)
+        let normalized = 0.1 + (fraction * 0.8)
+        let percent = Int(fraction * 100)
+        return (normalized, "Transcribing audio… \(percent)%")
+    }
+
+    private static func collectTranscriptionResults(
+        from transcriber: SpeechTranscriber,
+        audioDuration: Double,
+        progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
+    ) async throws -> [(range: CMTimeRange, text: String)] {
+        var results: [(range: CMTimeRange, text: String)] = []
+        for try await result in transcriber.results {
+            print(result.range.start.value.formatted(), result.range.end.value.formatted(), result.text)
+            results.append((range: result.range, text: result.text.description))
+            let update = Self.progressUpdate(resultEnd: result.range.end, audioDuration: audioDuration)
+            await progressHandler?(update.progress, update.status)
+        }
+        return results
+    }
+
+    private func reportProgress(_ progress: Double, status: String) async {
+        await progressHandler?(min(max(progress, 0), 1), status)
+    }
     
     private func formatCMTime(_ time: CMTime) -> String {
         guard time.isNumeric else { return "00:00:00.000" }

@@ -4,8 +4,8 @@ import SwiftData
 struct PodcastListView: View {
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @StateObject private var viewModel: PodcastListViewModel
-    @Environment(\.modelContext) private var modelContext
     
+    @State private var filteredPodcasts: [Podcast] = []
     @State private var searchText = ""
     @State private var searchInTitle = true
     @State private var searchInAuthor = false
@@ -16,43 +16,20 @@ struct PodcastListView: View {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
     }
 
-    var filteredPodcasts: [Podcast] {
-        let currentPodcasts = podcasts // capture snapshot
-        if searchText.isEmpty { return currentPodcasts }
-
-        return currentPodcasts.filter { podcast in
-            let lowercased = searchText.lowercased()
-
-            var matches = false
-            if searchInTitle {
-                matches = matches || podcast.title.localizedStandardContains(lowercased)
-            }
-            if searchInEpisodes, let episodes = podcast.episodes {
-                matches = matches || episodes.contains(where: { $0.title.localizedStandardContains(lowercased) })
-            }
-            if searchInAuthor, let author = podcast.author {
-                matches = matches || author.localizedStandardContains(lowercased)
-            }
-            if searchInDescription, let desc = podcast.desc {
-                matches = matches || desc.localizedStandardContains(lowercased)
-            }
-            if searchInEpisodes, searchInDescription, let episodes = podcast.episodes {
-                matches = matches || episodes.contains(where: { $0.desc?.localizedStandardContains(lowercased) ?? false })
-            }
-            return matches
-        }
-    }
-
     var body: some View {
-        if filteredPodcasts.isEmpty{
-            if searchText.isEmpty {
-                PodcastsEmptyView()
-            }else{
-                Text("No results found for \"\(searchText)\"")
-            }
-            
-        } else {
-            List {
+        Group {
+            if filteredPodcasts.isEmpty {
+                if searchText.isEmpty {
+                    PodcastsEmptyView()
+                } else {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("No podcasts matched \"\(searchText)\".")
+                    )
+                }
+            } else {
+                List {
       
                     NavigationLink(destination: AllEpisodesListView()) {
                         HStack {
@@ -89,104 +66,133 @@ struct PodcastListView: View {
 
                     }
                 }
-                #if DEBUG
                 NavigationLink(destination: PlaySessionDebugView()) {
                     HStack {
-                        Text("Play Sessions")
+                        Text("Listening History")
                             .font(.headline)
 
                     }
                 }
-                #endif
                 
-                
-     
-                  
-                        ForEach(filteredPodcasts) { podcast in
-
-                            
-                            ZStack {
-                               
-                                PodcastRowView(podcast: podcast)
-                                
-                               NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                                    EmptyView()
-                                }.opacity(0)
-                            
-                            }
-                        
-                           
+                ForEach(filteredPodcasts) { podcast in
+                    NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                        PodcastRowView(podcast: podcast)
+                    }
+                    .buttonStyle(.plain)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0,
                                                  leading: 0,
                                                  bottom: 0,
                                                  trailing: 0))
-                             
-                            
-                            
-                        }
-                    
-                        .onDelete { indexSet in
-                            Task {
-                                for index in indexSet {
-                                    await viewModel.deletePodcast(filteredPodcasts[index])
-                                }
-                            }
-                        }
-                      //  .searchable(text: $searchText)
-                
-                    
                 }
-            .animation(.easeInOut, value: filteredPodcasts)
-
-            .listStyle(.plain)
-            .navigationTitle("Library")
-        
-            .toolbar {
-              //  DefaultToolbarItem(kind: .search, placement: .automatic)
-                
- 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        Task { await viewModel.refreshAllPodcasts() }
-                    } label: {
-                        if viewModel.isLoading {
-                            if viewModel.total != 0 {
-                                CircularProgressView(
-                                    value: Double(viewModel.completed),
-                                    total: Double(viewModel.total)
-                                )
-                           
-                                
-                                
-                            }else{
-                                ProgressView()
-                            }
-                        } else {
-                            Image(systemName: "arrow.clockwise")
+                .onDelete { indexSet in
+                    Task {
+                        for index in indexSet {
+                            await viewModel.deletePodcast(filteredPodcasts[index])
                         }
                     }
-                    .disabled(viewModel.isLoading)
+                }
+                }
+                .animation(.easeInOut, value: filteredPodcasts.map(\.persistentModelID))
+                .listStyle(.plain)
+                .listRowSpacing(0)
+            }
+        }
+        .navigationTitle("Library")
+        .searchable(text: $searchText, prompt: "Search podcasts")
+        .task {
+            applyFilters()
+        }
+        .onChange(of: searchText) { _, _ in
+            debounceFilters()
+        }
+        .onChange(of: searchInTitle) { _, _ in
+            applyFilters()
+        }
+        .onChange(of: searchInAuthor) { _, _ in
+            applyFilters()
+        }
+        .onChange(of: searchInDescription) { _, _ in
+            applyFilters()
+        }
+        .onChange(of: searchInEpisodes) { _, _ in
+            applyFilters()
+        }
+        .onChange(of: podcasts.count) { _, _ in
+            applyFilters()
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Toggle("Titles", isOn: $searchInTitle)
+                    Toggle("Authors", isOn: $searchInAuthor)
+                    Toggle("Descriptions", isOn: $searchInDescription)
+                    Toggle("Episodes", isOn: $searchInEpisodes)
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
                 }
             }
-            /*
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") { viewModel.errorMessage = nil }
-            } message: {
-                if let message = viewModel.errorMessage {
-                    Text(message)
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    Task { await viewModel.refreshAllPodcasts() }
+                } label: {
+                    if viewModel.isLoading {
+                        if viewModel.total != 0 {
+                            CircularProgressView(
+                                value: Double(viewModel.completed),
+                                total: Double(viewModel.total)
+                            )
+                        } else {
+                            ProgressView()
+                        }
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(viewModel.isLoading)
+            }
+        }
+    }
+
+    private func debounceFilters() {
+        Debounce.shared.perform {
+            applyFilters()
+        }
+    }
+
+    private func applyFilters() {
+        let currentPodcasts = podcasts
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard query.isEmpty == false else {
+            filteredPodcasts = currentPodcasts
+            return
+        }
+
+        filteredPodcasts = currentPodcasts.filter { podcast in
+            if searchInTitle, podcast.title.localizedStandardContains(query) {
+                return true
+            }
+            if searchInAuthor, let author = podcast.author, author.localizedStandardContains(query) {
+                return true
+            }
+            if searchInDescription, let desc = podcast.desc, desc.localizedStandardContains(query) {
+                return true
+            }
+            if searchInEpisodes, let episodes = podcast.episodes {
+                if episodes.contains(where: { $0.title.localizedStandardContains(query) }) {
+                    return true
+                }
+                if searchInDescription,
+                   episodes.contains(where: { $0.desc?.localizedStandardContains(query) == true }) {
+                    return true
                 }
             }
-            */
-            }
 
-       
-            
-        
-
-        
-        
+            return false
+        }
     }
 }
 

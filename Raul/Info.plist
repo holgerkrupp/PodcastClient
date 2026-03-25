@@ -7,6 +7,17 @@
 		<string>feedRefresh</string>
 		<string>checkFeedUpdates</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>de.holgerkrupp.PodcastClient.widget</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>upnext</string>
+			</array>
+		</dict>
+	</array>
 	<key>IntentsSupported</key>
 	<array>
 		<string>ResumePlaybackIntent</string>

@@ -32,13 +32,23 @@ struct DownloadControllView: View {
                 
             } else if let url = episode.url, fileManager.isDownloaded(episode.localFile) != true {
                 
-                if let downloadItem = DownloadManager.shared.getItem(for: url), downloadItem.isDownloading {
-                  
-                    DownloadProgressView(item: downloadItem, viewModel: viewModel)
+                // Avoid calling actor-isolated API synchronously from the view body.
+                // Kick off a task to capture any ongoing download and bind it to the view model.
+                let _ = {
+                    let currentURL = url
+                    Task { @MainActor in
+                        if let item = await DownloadManager.shared.getItem(for: currentURL), item.isDownloading {
+                            viewModel.item = item
+                        }
+                    }
+                }()
+
+                if let item = viewModel.item, item.isDownloading {
+                    DownloadProgressView(item: item, viewModel: viewModel)
                         .progressViewStyle(CircularProgressViewStyle())
                 }
             
-                /*
+                
                 else {
                    
                     Button {
@@ -49,7 +59,7 @@ struct DownloadControllView: View {
                     }
                 }
                 
-                */
+                
             } else {
                 
                 if showDelete {
@@ -57,7 +67,7 @@ struct DownloadControllView: View {
                     Button {
                         Task {
                             if let container = episode.modelContext?.container {
-                                await EpisodeActor(modelContainer: container).deleteFile(episodeID: episode.id)
+                                await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
                             }
                         }
                     } label: {
@@ -122,3 +132,4 @@ struct DownloadProgressView: View {
         }
     }
 }
+

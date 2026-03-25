@@ -9,74 +9,53 @@ import SwiftData
 
 struct PodcastRowView: View {
     let podcast: Podcast
-    
 
-    
     var body: some View {
-        
-        
-            ZStack{
-                
+        ZStack {
+            CoverImageView(podcast: podcast)
+                .scaledToFill()
+                .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
+                .blur(radius: 8)
+                .opacity(0.45)
+                .clipped()
 
-                
-               
-                    CoverImageView(podcast: podcast)
-                        .scaledToFill()
-                        .frame(height: 180)
-                        .clipped()
-                
+            HStack(spacing: 14) {
+                CoverImageView(podcast: podcast)
+                    .frame(width: 112, height: 112)
 
-                VStack(alignment: .leading){
-                    HStack {
-                        CoverImageView(podcast: podcast)
-                            .frame(width: 150, height: 150)
-                            .cornerRadius(8)
-                        
-                        
-                        VStack(alignment: .leading) {
-                            Text(podcast.title)
-                                .font(.headline)
-                            Spacer()
-                            if let author = podcast.author {
-                                Text(author)
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                            }
-                            if let desc = podcast.desc {
-                                Text(desc)
-                                    .font(.caption)
-                                    .lineLimit(5)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                            }
-                        }
-                        .frame(height: 150)
-                        
-                        Spacer()
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(podcast.title)
+                        .font(.headline)
+                        .lineLimit(2)
+
+                    if let author = podcast.author, author.isEmpty == false {
+                        Text(author)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
- 
+
+                    if let desc = podcast.desc, desc.isEmpty == false {
+                        Text(desc)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+
+                    Spacer(minLength: 0)
                 }
-                
-               
-                
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding()
-                .background(
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                    
-                )
-                
-                
-                
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            
-            
-        
+            .padding(8)
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
+            .background(
+                Rectangle()
+                    .fill(.thinMaterial)
+            )
+        }
+        .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
         .overlay {
             if  let message = podcast.message {
-                
                 ZStack {
                     RoundedRectangle(cornerRadius:  8.0)
                         .fill(Color.clear)
@@ -90,21 +69,14 @@ struct PodcastRowView: View {
                             .font(.title.bold())
                             
                     }
-                }
-                .background{
-                    RoundedRectangle(cornerRadius:  8.0)
-                        .fill(.background.opacity(0.3))
-                }
-             
-                
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-            
-          
-                
-             
+                        }
+                        .background{
+                            RoundedRectangle(cornerRadius:  8.0)
+                                .fill(.background.opacity(0.3))
+                        }
+                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                        .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
             }
-        
         }
     }
 }
@@ -127,4 +99,3 @@ struct PodcastRowView: View {
     return PodcastRowView(podcast: podcast)
         .padding()
 }
-

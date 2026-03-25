@@ -33,21 +33,17 @@ struct AllEpisodesListView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(episodes) { episode in
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                            EpisodeRowView(episode: episode)
-                                .id(episode.id)
-
-                        }
-                       
-                       
+            List {
+                ForEach(episodes) { episode in
+                    NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                        EpisodeRowView(episode: episode)
                     }
-                    
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
                 }
-                
             }
+            .listStyle(.plain)
+            .listRowSpacing(0)
             .navigationTitle(navigationTitleText)
             .searchable(text: $searchText)
             .onAppear {
@@ -154,4 +150,3 @@ struct AllEpisodesListView: View {
     AllEpisodesListView(filterMode: .all)
         .modelContainer(for: Episode.self, inMemory: true) // Preview-safe
 }
-

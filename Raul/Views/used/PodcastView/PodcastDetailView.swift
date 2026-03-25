@@ -61,47 +61,8 @@ struct PodcastDetailView: View {
     @State private var searchInAuthor = false
     @State private var searchInDescription = true
     @State private var searchInTranscript = true
+    @State private var filteredEpisodes: [Episode] = []
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
-
-    var filteredEpisodes: [Episode] {
-        let episodes = podcast.episodes ?? []
-
-        // Apply optional hide filter first so search works on the visible set
-        let visibilityFiltered: [Episode]
-        if hidePlayedAndArchived {
-            visibilityFiltered = episodes.filter { ep in
-                let fullyPlayed = ep.maxPlayProgress >= 0.95
- 
-                return !(fullyPlayed)
-            }
-        } else {
-            visibilityFiltered = episodes
-        }
-
-        // If there's no search text, just sort the visibility-filtered list
-        if searchText.isEmpty {
-            return visibilityFiltered.sorted(by: sortOption.comparator)
-        }
-
-        let lowercased = searchText.lowercased()
-
-        // Apply search filters
-        let searched = visibilityFiltered.filter { episode in
-            var matches = false
-            if searchInTitle {
-                matches = matches || episode.title.localizedStandardContains(lowercased)
-            }
-            if searchInDescription, let desc = episode.desc {
-                matches = matches || desc.localizedStandardContains(lowercased)
-            }
-            if searchInTranscript, let lines = episode.transcriptLines {
-                matches = matches || lines.contains(where: { $0.text.localizedStandardContains(lowercased)})
-            }
-            return matches
-        }
-
-        return searched.sorted(by: sortOption.comparator)
-    }
     
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
 
@@ -244,14 +205,10 @@ struct PodcastDetailView: View {
                 
                 Section{
                     ForEach(filteredEpisodes, id: \.id) { episode in
-                        
-                        ZStack {
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EpisodeRowView(episode: episode)
-                                .id(episode.id)
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                EmptyView()
-                            }.opacity(0)
                         }
+                        .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
@@ -292,8 +249,36 @@ struct PodcastDetailView: View {
             }
 
             .listStyle(PlainListStyle())
+            .listRowSpacing(0)
             .padding(.top, 0)
             .searchable(text: $searchText)
+            .task {
+                applyEpisodeFilters()
+            }
+            .onChange(of: searchText) { _, _ in
+                debounceEpisodeFilters()
+            }
+            .onChange(of: searchInTitle) { _, _ in
+                applyEpisodeFilters()
+            }
+            .onChange(of: searchInAuthor) { _, _ in
+                applyEpisodeFilters()
+            }
+            .onChange(of: searchInDescription) { _, _ in
+                applyEpisodeFilters()
+            }
+            .onChange(of: searchInTranscript) { _, _ in
+                debounceEpisodeFilters()
+            }
+            .onChange(of: hidePlayedAndArchived) { _, _ in
+                applyEpisodeFilters()
+            }
+            .onChange(of: sortOptionRawValue) { _, _ in
+                applyEpisodeFilters()
+            }
+            .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
+                applyEpisodeFilters()
+            }
             .navigationTitle(podcast.title)
             .refreshable {
                 Task{
@@ -358,6 +343,50 @@ struct PodcastDetailView: View {
         }
         
 
+    }
+
+    private func debounceEpisodeFilters() {
+        Debounce.shared.perform {
+            applyEpisodeFilters()
+        }
+    }
+
+    private func applyEpisodeFilters() {
+        let episodes = podcast.episodes ?? []
+
+        let visibleEpisodes: [Episode]
+        if hidePlayedAndArchived {
+            visibleEpisodes = episodes.filter { $0.maxPlayProgress < 0.95 }
+        } else {
+            visibleEpisodes = episodes
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else {
+            filteredEpisodes = visibleEpisodes.sorted(by: sortOption.comparator)
+            return
+        }
+
+        filteredEpisodes = visibleEpisodes
+            .filter { episode in
+                if searchInTitle, episode.title.localizedStandardContains(query) {
+                    return true
+                }
+                if searchInAuthor, let author = episode.author, author.localizedStandardContains(query) {
+                    return true
+                }
+                if searchInDescription, let desc = episode.desc, desc.localizedStandardContains(query) {
+                    return true
+                }
+                if searchInTranscript,
+                   let lines = episode.transcriptLines,
+                   lines.contains(where: { $0.text.localizedStandardContains(query) }) {
+                    return true
+                }
+
+                return false
+            }
+            .sorted(by: sortOption.comparator)
     }
     
     private func refreshEpisodes() async {

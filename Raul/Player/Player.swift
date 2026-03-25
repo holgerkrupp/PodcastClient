@@ -91,7 +91,11 @@ class Player {
       //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
         
       //  super.init()
-        loadLastPlayedEpisode()
+        Task {
+            // One-time migration from old UserDefaults storage of lastPlayedEpisodeID to playlist system
+            await migrateLastPlayedFromUserDefaultsIfNeeded()
+            await restoreLastPlayedFromPlaylist()
+        }
         loadPlayBackSpeed()
         listenToEvent()
         Task{
@@ -103,6 +107,33 @@ class Player {
             allowScrubbing = await settingsActor?.getAppSliderEnable()
         }
         
+    }
+    
+    /// One-time migration from UserDefaults key "lastPlayedEpisodeID" to playlist system.
+    /// If a last played episode ID exists in UserDefaults, fetch the episode, add it to the front of the playlist,
+    /// then remove the UserDefaults entry. This prevents loss of last played info after update.
+    private func migrateLastPlayedFromUserDefaultsIfNeeded() async {
+        let key = "lastPlayedEpisodeID"
+        if let idString = UserDefaults.standard.string(forKey: key),
+           let episodeID = UUID(uuidString: idString),
+           let episode = await fetchEpisode(with: episodeID) {
+            do {
+                try await playlistActor?.add(episodeID: episodeID, to: .front)
+            } catch {
+                // handle error silently or log if needed
+            }
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+    
+    /// New method to restore last played episode from the playlist
+    /// Note: This now relies on a 'orderedEpisodeIDs' method in PlaylistModelActor.
+    func restoreLastPlayedFromPlaylist() async {
+        if let episodeIDs = try? await playlistActor?.orderedEpisodeIDs(), let firstID = episodeIDs.first {
+            if let episode = await fetchEpisode(with: firstID) {
+                await playEpisode(episode.url, playDirectly: false)
+            }
+        }
     }
     
     func setSleepTimer(minutes: Int) {
@@ -164,22 +195,6 @@ class Player {
         })
     }
     
-    private func loadLastPlayedEpisode() {
-        if let episodeIDString = UserDefaults.standard.string(forKey: "lastPlayedEpisodeID"),
-           let episodeUUID = UUID(uuidString: episodeIDString) {
-            
-            Task { 
-                if let episode = await fetchEpisode(with: episodeUUID) {
-                    // print("loading last episode: \(episode.title)")
-                    currentEpisode = episode
-                    currentEpisodeID = episode.id
-                    await playEpisode(episode.url, playDirectly: false)
-
-                }
-            }
-        }
-    }
-    
     private func setPlayBackSpeed(to playbackRate: Float){
         if isPlaying{
             Task{
@@ -190,12 +205,13 @@ class Player {
                 }
             }
         }
-        
-        let info: [String: Any] = [
-            MPNowPlayingInfoPropertyPlaybackRate: playbackRate
-        ]
-        
-        nowPlayingInfoActor.updateInfo(info)
+
+        if currentEpisode != nil {
+            updateNowPlayingInfo()
+        } else {
+            nowPlayingInfoActor.updateField(key: MPNowPlayingInfoPropertyPlaybackRate, value: playbackRate)
+            nowPlayingInfoActor.updateField(key: MPNowPlayingInfoPropertyDefaultPlaybackRate, value: 1.0)
+        }
         
         Task {
             if currentEpisode != nil {
@@ -346,14 +362,16 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = nil
+        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeID: nil)
         
         
-        UserDefaults.standard.removeObject(forKey: "lastPlayedEpisodeID")
-        
-        
+        // Removed UserDefaults removal for lastPlayedEpisodeID
+                
         if episode.playProgress >= progressThreshold {
-
-            await episodeActor?.markasPlayed(episodeUUID)
+            if let episodeURL = episode.url {
+                await episodeActor?.setCompletionDate(episodeURL: episodeURL)
+                await episodeActor?.archiveEpisode(episodeURL)
+            }
             
         }else{
 
@@ -373,7 +391,7 @@ class Player {
         if let currentEpisodeID, episode.id != currentEpisodeID{
             await unloadEpisode(episodeUUID: currentEpisodeID)
             
-            try? await playlistActor?.remove(episodeID: episode.id)
+            // Removed code removing episode from playlist here
             
         }
         episode.metaData?.isInbox = false
@@ -384,9 +402,11 @@ class Player {
 
         updateChapters()
         
-
-        UserDefaults.standard.set(episode.id.uuidString, forKey: "lastPlayedEpisodeID")
-        UserDefaults.standard.set(episode.url?.absoluteString , forKey: "lastPlayedEpisodeURL")
+        // Removed UserDefaults storage for last played episode
+        
+        // Add to front of playlist
+        try? await playlistActor?.add(episodeID: episode.id, to: .front)
+        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeID: episode.id)
 
         Task { @MainActor in
             // print("loading new AVPlayerItem - \(isCurrentEpisodeDownloaded) - \(episode.localFile?.path ?? "nil")")
@@ -817,7 +837,6 @@ class Player {
                     if let currentEpisodeID{
                         await unloadEpisode(episodeUUID: currentEpisodeID)
                     }
-                    
                 }
             }
 
@@ -837,7 +856,8 @@ class Player {
             MPMediaItemPropertyArtist:  episode.podcast?.title ?? episode.podcast?.author ?? episode.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
-            MPNowPlayingInfoPropertyPlaybackRate: playbackRate
+            MPNowPlayingInfoPropertyPlaybackRate: playbackRate,
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
         ]
         if let artwork {
             info[MPMediaItemPropertyArtwork] = artwork
@@ -931,4 +951,3 @@ class Player {
         nowPlayingInfoTimer = nil
     }
 }
-

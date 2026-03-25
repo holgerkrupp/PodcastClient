@@ -9,10 +9,8 @@ import SwiftUI
 import Foundation
 
 struct SettingsView: View {
-    
-    
+    @Environment(\.modelContext) private var modelContext
 
-    
     var body: some View {
         VStack{
             NotificationSettingsView()
@@ -22,6 +20,12 @@ struct SettingsView: View {
             }
             Button("Delete all files in Cahes Directory") {
                 deleteAllFiles(in: .cachesDirectory)
+            }
+            Button("Rebuild Listening Analytics") {
+                let container = modelContext.container
+                Task {
+                    await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
+                }
             }
             
         //    PodcastSettingsView()

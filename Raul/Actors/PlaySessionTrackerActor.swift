@@ -10,6 +10,11 @@ import Foundation
 import SwiftData
 import UIKit
 
+private struct SummaryPeriodKey: Hashable {
+    let period: PlaySessionSummaryPeriod
+    let periodStart: Date
+}
+
 
 @Model
 final class RateSegment: Identifiable {
@@ -63,7 +68,7 @@ final class PlaySession: Identifiable {
     var endPosition: Double?
     
     // Relationship to RateSegment with explicit inverse to RateSegment.parentSession for syncing
-    @Relationship(inverse: \RateSegment.parentSession) var segments: [RateSegment]?
+    @Relationship(deleteRule: .cascade, inverse: \RateSegment.parentSession) var segments: [RateSegment]?
 
     var endedCleanly: Bool?
 
@@ -97,13 +102,17 @@ final class PlaySession: Identifiable {
 
 @ModelActor
 actor PlaySessionTrackerActor {
+    private let rawSessionRetentionDays = 30
     private var currentSession: PlaySession?
 
 
     /// Call this after initialization to kick off recovery.
     func startRecovery()  {
-        Task{
-             recoverIncompleteSessionIfNeeded()
+        Task {
+            recoverIncompleteSessionIfNeeded()
+            backfillListeningStatsIfNeeded()
+            backfillSummariesIfNeeded()
+            pruneOldSessionsIfNeeded()
         }
     }
 
@@ -171,9 +180,11 @@ actor PlaySessionTrackerActor {
         session.endedCleanly = !appTerminated
         endCurrentRateSegment(at: now, position: position)
         currentSession = nil
-       
-            saveSession()
-        
+
+        let touchedHours = recordListeningStats(for: session)
+        rebuildSummaries(forHourStarts: touchedHours, podcastFeed: session.episode?.podcast?.feed, podcastName: session.podcastName)
+        pruneOldSessionsIfNeeded()
+        saveSession()
     }
 
     private func endCurrentRateSegment(at date: Date, position: Double) {
@@ -195,6 +206,212 @@ actor PlaySessionTrackerActor {
         }
         session.segments?.append(segment)
         currentSession = session
+    }
+
+    @discardableResult
+    private func recordListeningStats(for session: PlaySession) -> [Date] {
+        guard let start = session.startTime, let end = session.endTime, end > start else { return [] }
+
+        let podcastFeed = session.episode?.podcast?.feed
+        let podcastName = session.podcastName
+        let calendar = Calendar.current
+
+        var buckets: [Date: Double] = [:]
+        var cursor = start
+        while cursor < end {
+            let hourStart = calendar.dateInterval(of: .hour, for: cursor)?.start ?? cursor
+            let nextHour = calendar.date(byAdding: .hour, value: 1, to: hourStart) ?? end
+            let blockEnd = min(nextHour, end)
+            let seconds = blockEnd.timeIntervalSince(cursor)
+            buckets[hourStart, default: 0] += seconds
+            cursor = blockEnd
+        }
+
+        guard let firstHour = buckets.keys.min() else { return [] }
+        let lastHour = buckets.keys.max() ?? firstHour
+        let endLimit = calendar.date(byAdding: .hour, value: 1, to: lastHour) ?? end
+
+        let predicate: Predicate<ListeningStat>?
+        if let podcastFeed {
+            predicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= firstHour
+                && stat.startOfHour! < endLimit
+                && stat.podcastFeed == podcastFeed
+            }
+        } else {
+            predicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= firstHour
+                && stat.startOfHour! < endLimit
+            }
+        }
+
+        let descriptor = FetchDescriptor<ListeningStat>(predicate: predicate)
+        let existing = (try? modelContext.fetch(descriptor)) ?? []
+        var existingByHour: [Date: ListeningStat] = [:]
+        for stat in existing {
+            if let startOfHour = stat.startOfHour {
+                existingByHour[startOfHour] = stat
+            }
+        }
+
+        for (hourStart, seconds) in buckets {
+            if let stat = existingByHour[hourStart] {
+                stat.totalSeconds = (stat.totalSeconds ?? 0) + seconds
+                if stat.podcastName == nil { stat.podcastName = podcastName }
+            } else {
+                let stat = ListeningStat(
+                    id: UUID(),
+                    startOfHour: hourStart,
+                    podcastFeed: podcastFeed,
+                    podcastName: podcastName,
+                    totalSeconds: seconds
+                )
+                modelContext.insert(stat)
+            }
+        }
+        return Array(buckets.keys)
+    }
+
+    private func rebuildSummaries(forHourStarts hourStarts: [Date], podcastFeed: URL?, podcastName: String?) {
+        guard !hourStarts.isEmpty else { return }
+
+        let periods = Set(hourStarts.flatMap { hourStart in
+            PlaySessionSummaryPeriod.allCases.map { period in
+                SummaryPeriodKey(period: period, periodStart: summaryPeriodStart(for: period, containing: hourStart))
+            }
+        })
+
+        for period in periods {
+            rebuildSummary(period: period.period, periodStart: period.periodStart, podcastFeed: podcastFeed, podcastName: podcastName)
+        }
+    }
+
+    private func rebuildSummary(
+        period: PlaySessionSummaryPeriod,
+        periodStart: Date,
+        podcastFeed: URL?,
+        podcastName: String?
+    ) {
+        let interval = summaryInterval(for: period, periodStart: periodStart)
+        let periodKind = period.rawValue
+
+        let statPredicate: Predicate<ListeningStat>
+        if let podcastFeed {
+            statPredicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= interval.start
+                && stat.startOfHour! < interval.end
+                && stat.podcastFeed == podcastFeed
+            }
+        } else {
+            statPredicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= interval.start
+                && stat.startOfHour! < interval.end
+                && stat.podcastFeed == nil
+            }
+        }
+
+        let stats = (try? modelContext.fetch(FetchDescriptor<ListeningStat>(predicate: statPredicate))) ?? []
+        let totalSeconds = stats.reduce(0.0) { $0 + ($1.totalSeconds ?? 0) }
+        let activeHourCount = stats.filter { ($0.totalSeconds ?? 0) > 0 }.count
+
+        let summaryPredicate: Predicate<PlaySessionSummary>
+        if let podcastFeed {
+            summaryPredicate = #Predicate<PlaySessionSummary> { summary in
+                summary.periodKind == periodKind
+                && summary.periodStart == periodStart
+                && summary.podcastFeed == podcastFeed
+            }
+        } else {
+            summaryPredicate = #Predicate<PlaySessionSummary> { summary in
+                summary.periodKind == periodKind
+                && summary.periodStart == periodStart
+                && summary.podcastFeed == nil
+            }
+        }
+
+        let existing = try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>(predicate: summaryPredicate)).first
+
+        if totalSeconds > 0 {
+            let summary = existing ?? PlaySessionSummary(
+                id: UUID(),
+                periodKind: period.rawValue,
+                periodStart: periodStart,
+                podcastFeed: podcastFeed,
+                podcastName: podcastName,
+                totalSeconds: totalSeconds,
+                activeHourCount: activeHourCount
+            )
+            summary.periodKind = period.rawValue
+            summary.periodStart = periodStart
+            summary.podcastFeed = podcastFeed
+            summary.podcastName = podcastName ?? summary.podcastName
+            summary.totalSeconds = totalSeconds
+            summary.activeHourCount = activeHourCount
+            if existing == nil {
+                modelContext.insert(summary)
+            }
+        } else if let existing {
+            modelContext.delete(existing)
+        }
+    }
+
+    private func backfillListeningStatsIfNeeded() {
+        let existing = (try? modelContext.fetch(FetchDescriptor<ListeningStat>())) ?? []
+        if !existing.isEmpty { return }
+
+        let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
+        for session in allSessions {
+            recordListeningStats(for: session)
+        }
+        modelContext.saveIfNeeded()
+    }
+
+    private func backfillSummariesIfNeeded() {
+        let existing = (try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>())) ?? []
+        if !existing.isEmpty { return }
+        rebuildSummariesFromListeningStats()
+    }
+
+    func rebuildListeningStats() {
+        let existing = (try? modelContext.fetch(FetchDescriptor<ListeningStat>())) ?? []
+        for stat in existing {
+            modelContext.delete(stat)
+        }
+
+        let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
+        for session in allSessions {
+            recordListeningStats(for: session)
+        }
+        rebuildSummariesFromListeningStats()
+        modelContext.saveIfNeeded()
+    }
+
+    private func rebuildSummariesFromListeningStats() {
+        let existing = (try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>())) ?? []
+        for summary in existing {
+            modelContext.delete(summary)
+        }
+
+        let allStats = (try? modelContext.fetch(FetchDescriptor<ListeningStat>())) ?? []
+        let groupedStats = Dictionary(grouping: allStats) { $0.podcastFeed }
+
+        for (podcastFeed, stats) in groupedStats {
+            let podcastName = stats.first(where: { ($0.podcastName?.isEmpty == false) })?.podcastName
+            let hourStarts = stats.compactMap(\.startOfHour)
+            let periods = Set(hourStarts.flatMap { hourStart in
+                PlaySessionSummaryPeriod.allCases.map { period in
+                    SummaryPeriodKey(period: period, periodStart: summaryPeriodStart(for: period, containing: hourStart))
+                }
+            })
+
+            for period in periods {
+                rebuildSummary(period: period.period, periodStart: period.periodStart, podcastFeed: podcastFeed, podcastName: podcastName)
+            }
+        }
     }
 
     // Recovery logic: On launch, check if a session was left open, and finalize it
@@ -245,10 +462,64 @@ actor PlaySessionTrackerActor {
                         session.endTime = start.addingTimeInterval(duration / Double(rate))
                     }
                 }
+                let touchedHours = recordListeningStats(for: session)
+                rebuildSummaries(forHourStarts: touchedHours, podcastFeed: episode.podcast?.feed, podcastName: session.podcastName)
                 // Save the session
                 modelContext.saveIfNeeded()
             }
         }
+    }
+
+    private func pruneOldSessionsIfNeeded() {
+        guard let cutoff = Calendar.current.date(byAdding: .day, value: -rawSessionRetentionDays, to: Date()) else { return }
+        let descriptor = FetchDescriptor<PlaySession>(
+            predicate: #Predicate<PlaySession> {
+                $0.endTime != nil && $0.endTime! < cutoff
+            }
+        )
+
+        let oldSessions = (try? modelContext.fetch(descriptor)) ?? []
+        for session in oldSessions {
+            if let segments = session.segments {
+                for segment in segments {
+                    modelContext.delete(segment)
+                }
+            }
+            modelContext.delete(session)
+        }
+    }
+
+    private func summaryPeriodStart(for period: PlaySessionSummaryPeriod, containing date: Date) -> Date {
+        let calendar = Calendar.current
+        switch period {
+        case .day:
+            return calendar.startOfDay(for: date)
+        case .week:
+            let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+            return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+        case .month:
+            let components = calendar.dateComponents([.year, .month], from: date)
+            return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+        case .year:
+            let components = calendar.dateComponents([.year], from: date)
+            return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+        }
+    }
+
+    private func summaryInterval(for period: PlaySessionSummaryPeriod, periodStart: Date) -> DateInterval {
+        let calendar = Calendar.current
+        let end: Date
+        switch period {
+        case .day:
+            end = calendar.date(byAdding: .day, value: 1, to: periodStart) ?? periodStart
+        case .week:
+            end = calendar.date(byAdding: .day, value: 7, to: periodStart) ?? periodStart
+        case .month:
+            end = calendar.date(byAdding: .month, value: 1, to: periodStart) ?? periodStart
+        case .year:
+            end = calendar.date(byAdding: .year, value: 1, to: periodStart) ?? periodStart
+        }
+        return DateInterval(start: periodStart, end: end)
     }
 
 

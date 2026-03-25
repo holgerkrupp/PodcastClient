@@ -45,7 +45,7 @@ import Observation
     }
 
     func isDownloaded(_ fileName: String) -> Bool {
-        let fileURL = monitoredFolder.appendingPathComponent(fileName)
+        let fileURL = monitoredFolder.appendingPathComponent(fileName).standardizedFileURL
         return downloadedFiles.contains(fileURL)
     }
     
@@ -53,10 +53,7 @@ import Observation
     
     func isDownloaded(_ fileURL: URL?) -> Bool? {
         guard let fileURL else { return nil }
-
-        let standardizedURL = fileURL.standardizedFileURL
-
-        return downloadedFiles.contains(where: { $0.standardizedFileURL == standardizedURL })
+        return downloadedFiles.contains(fileURL.standardizedFileURL)
     }
      
      func deleteAllFiles() throws {
@@ -70,14 +67,17 @@ import Observation
 
             let fileManager = FileManager.default
 
-            let allFiles = (fileManager.enumerator(
+            let allFiles: [URL] = (fileManager.enumerator(
                 at: monitoredFolder,
                 includingPropertiesForKeys: nil
             )?.compactMap { $0 as? URL }) ?? []
 
-            let updated = Set(allFiles.filter { url in
+            let updated: Set<URL> = Set(allFiles.compactMap { url in
                 var isDir: ObjCBool = false
-                return fileManager.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
+                guard fileManager.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue else {
+                    return nil
+                }
+                return url.standardizedFileURL
             })
 
             

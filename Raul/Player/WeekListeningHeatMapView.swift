@@ -19,23 +19,13 @@ struct ListeningBlock: Identifiable {
 }
 
 struct WeekListeningHeatMapView: View {
-    @Query var sessions: [PlaySession]
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \ListeningStat.startOfHour, order: .reverse) var latestStat: [ListeningStat]
     @Query var podcasts: [Podcast]
     @State private var selectedPodcastFeed: URL? = nil
     @State private var weekStartDate: Date? = nil
-
-    var filteredSessions: [PlaySession] {
-        sessions.filter { session in
-            // Podcast filter
-            let podcastOK = selectedPodcastFeed == nil || session.episode?.podcast?.feed == selectedPodcastFeed
-            // Week filter
-            guard let startDate = weekStartDate else { return podcastOK }
-            guard let sessionStart = session.startTime else { return false }
-            let calendar = Calendar.current
-            guard let weekEnd = calendar.date(byAdding: .day, value: 7, to: startDate) else { return false }
-            return podcastOK && sessionStart >= startDate && sessionStart < weekEnd
-        }
-    }
+    @State private var blocksByHour: [HourOfWeek: Double] = [:]
+    @State private var maxSeconds: Double = 1
 
     let hours = Array(0..<24)
 
@@ -49,30 +39,63 @@ struct WeekListeningHeatMapView: View {
         return (0..<7).map { (first + $0) % 7 }
     }
 
-    // Precompute the heat map blocks
-    var blocks: [ListeningBlock] {
-        var result: [HourOfWeek: Double] = [:]
-        for session in filteredSessions {
-            guard let start = session.startTime, let end = session.endTime, end > start else { continue }
-            let calendar = Calendar.current
-            var cursor = start
-            while cursor < end {
-                let nextHour = calendar.date(byAdding: .hour, value: 1, to: cursor) ?? end
-                let blockEnd = min(nextHour, end)
-                let comps = calendar.dateComponents([.weekday, .hour], from: cursor)
-                let weekday = ((comps.weekday ?? 1) - 1) // 0 = Sunday
-                let hour = comps.hour ?? 0
-                let blockKey = HourOfWeek(weekday: weekday, hour: hour)
-                let seconds = blockEnd.timeIntervalSince(cursor)
-                result[blockKey, default: 0] += seconds
-                cursor = blockEnd
-            }
-        }
-        return result.map { ListeningBlock(id: $0.key, totalSeconds: $0.value) }
+    private var sessionSignature: String {
+        let latestStart = latestStat.first?.startOfHour?.timeIntervalSinceReferenceDate ?? 0
+        let latestTotal = latestStat.first?.totalSeconds ?? 0
+        let weekKey = weekStartDate?.timeIntervalSinceReferenceDate ?? 0
+        let feedKey = selectedPodcastFeed?.absoluteString ?? ""
+        return "\(latestStart)-\(latestTotal)-\(weekKey)-\(feedKey)"
     }
 
-    var maxSeconds: Double {
-        blocks.map { $0.totalSeconds }.max() ?? 1
+    private func recalculateBlocks() async {
+        let selectedFeed = selectedPodcastFeed
+        let weekStart = weekStartDate
+        let weekEnd = weekStart.flatMap { Calendar.current.date(byAdding: .day, value: 7, to: $0) }
+
+        let predicate: Predicate<ListeningStat>?
+        if let weekStart, let weekEnd, let selectedFeed {
+            predicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= weekStart
+                && stat.startOfHour! < weekEnd
+                && stat.podcastFeed == selectedFeed
+            }
+        } else if let weekStart, let weekEnd {
+            predicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= weekStart
+                && stat.startOfHour! < weekEnd
+            }
+        } else if let selectedFeed {
+            predicate = #Predicate<ListeningStat> { stat in
+                stat.podcastFeed == selectedFeed
+            }
+        } else {
+            predicate = nil
+        }
+
+        let descriptor = FetchDescriptor<ListeningStat>(predicate: predicate, sortBy: [SortDescriptor(\.startOfHour, order: .forward)])
+        let fetched: [ListeningStat]
+        do {
+            fetched = try modelContext.fetch(descriptor)
+        } catch {
+            return
+        }
+
+        var totals: [HourOfWeek: Double] = [:]
+        let calendar = Calendar.current
+
+        for stat in fetched {
+            guard let startOfHour = stat.startOfHour, let seconds = stat.totalSeconds, seconds > 0 else { continue }
+            let comps = calendar.dateComponents([.weekday, .hour], from: startOfHour)
+            let weekday = ((comps.weekday ?? 1) - 1)
+            let hour = comps.hour ?? 0
+            let blockKey = HourOfWeek(weekday: weekday, hour: hour)
+            totals[blockKey, default: 0] += seconds
+        }
+
+        blocksByHour = totals
+        maxSeconds = totals.values.max() ?? 1
     }
 
     var body: some View {
@@ -143,14 +166,14 @@ struct WeekListeningHeatMapView: View {
                         VStack(spacing: 0) {
                             ForEach(hours, id: \.self) { hour in
                                 let key = HourOfWeek(weekday: weekday, hour: hour)
-                                let block = blocks.first(where: { $0.id == key })
-                                let percent = min(1.0, (block?.totalSeconds ?? 0) / maxSeconds)
+                                let seconds = blocksByHour[key] ?? 0
+                                let percent = min(1.0, seconds / maxSeconds)
                                 Rectangle()
                                     .fill(Color.red.opacity(percent * 0.8 + 0.1))
                                     .frame(width: blockWidth, height: blockHeight)
                                 /*
                                     .overlay(
-                                        percent > 0.55 ? Text("\(Int((block?.totalSeconds ?? 0) / 60))m")
+                                        percent > 0.55 ? Text("\(Int(seconds / 60))m")
                                             .font(.caption2)
                                             .foregroundColor(.white)
                                         : nil
@@ -170,6 +193,9 @@ struct WeekListeningHeatMapView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: sessionSignature) {
+            await recalculateBlocks()
+        }
         .navigationTitle(weekStartDate == nil ? "Weekly Listening Heat Map" : {
             let weekEnd = weekStartDate.flatMap { Calendar.current.date(byAdding: .day, value: 6, to: $0) } ?? Date()
             return "Heat Map (\(weekStartDate?.formatted(date: .abbreviated, time: .omitted) ?? "") – \(weekEnd.formatted(date: .abbreviated, time: .omitted)))"

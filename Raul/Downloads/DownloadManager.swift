@@ -32,7 +32,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         if let existing = downloads[url] {
             return existing
         }
-
+        
         let finalDestination = destination ?? defaultDestination(for: url)
         guard !fileExists(at: finalDestination) else {
             await markDownloaded(for: finalDestination)
@@ -44,12 +44,23 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
         downloads[url] = item
         destinations[url] = finalDestination
-
+        
         let task = session.downloadTask(with: url)
         urlToTask[url] = task
         await MainActor.run { item.isDownloading = true }
         task.resume()
+        
+        // Notify the view model that a download has started
+        await notifyViewModel(for: url)
+        
         return item
+    }
+    func notifyViewModel(for url: URL) async {
+        if let item = downloads[url] {
+            await MainActor.run {
+                item.isDownloading = true
+            }
+        }
     }
     
     func cancelDownload(for url: URL) {

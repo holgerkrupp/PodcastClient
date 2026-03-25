@@ -209,11 +209,19 @@ actor EpisodeActor {
         }
     }
     
+    func removeFromPlaylist(_ episodeURL: URL) async {
+        if let PlaylistmodelActor = try? PlaylistModelActor(modelContainer: modelContainer){
+            try? await PlaylistmodelActor.remove(episodeURL: episodeURL)
+        }
+    }
+    
     func archiveEpisode(_ episodeURL: URL?) async {
         guard let episodeURL else { return }
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            print("could not find episode with URL \(episodeURL) to archive")
+            return }
         
-        await removeFromPlaylist(episode.id)
+        await removeFromPlaylist(episodeURL)
 
         if episode.metaData == nil {
             episode.metaData = EpisodeMetaData()
@@ -222,7 +230,7 @@ actor EpisodeActor {
         episode.metaData?.isInbox = false
         episode.metaData?.status = .archived
 
-        await deleteFile(episodeID: episode.id)
+        await deleteFile(episodeURL: episodeURL)
          modelContext.saveIfNeeded()
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
@@ -241,7 +249,10 @@ actor EpisodeActor {
     
     func moveToHistory(episodeID: UUID) async {
         guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        await removeFromPlaylist(episodeID)
+        if let episodeurl = episode.url {
+            await removeFromPlaylist(episodeurl)
+        }
+        
 
         if episode.metaData == nil {
             episode.metaData = EpisodeMetaData()
@@ -289,8 +300,10 @@ actor EpisodeActor {
         print("Processing episode: \(episode.title) - playnext Status is \(playnext)")
 
         if playnext != .none {
-            try? await PlaylistModelActor(modelContainer: modelContainer).add(episodeID: episodeID, to: playnext)
+            let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
+            try? await playlistActor?.add(episodeID: episodeID, to: playnext)
         }
+
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         await getRemoteChapters(episodeID: episodeID)
     }
@@ -324,6 +337,21 @@ actor EpisodeActor {
             try? FileManager.default.removeItem(at: file)
         }
         episode.metaData?.isAvailableLocally = false
+        episode.playlist?.removeAll()
+
+        modelContext.saveIfNeeded()
+    }
+    
+    func deleteFile(episodeURL: URL?) async{
+        guard let episodeURL else { return }
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+
+        if let file = episode.localFile{
+            try? FileManager.default.removeItem(at: file)
+        }
+        episode.metaData?.isAvailableLocally = false
+        episode.playlist?.removeAll()
+        
         modelContext.saveIfNeeded()
     }
 
@@ -789,6 +817,20 @@ actor EpisodeActor {
         return (local, episode.podcast?.language)
     }
 
+    func transcriptionSnapshot(for episodeID: UUID) async -> TranscriptionEpisodeSnapshot? {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let localFile = episode.localFile else { return nil }
+
+        return TranscriptionEpisodeSnapshot(
+            episodeID: episode.id,
+            episodeTitle: episode.title,
+            podcastTitle: episode.podcast?.title,
+            audioDuration: episode.duration ?? 0,
+            localFile: localFile,
+            language: episode.podcast?.language
+        )
+    }
+
     // 2) Attach a TranscriptionItem to the Episode safely
     @MainActor
     func attachTranscriptionItem(_ item: TranscriptionItem, to episodeID: UUID) async {
@@ -810,6 +852,25 @@ actor EpisodeActor {
         let lines = decodeTranscription(vtt) // existing helper returns [TranscriptLineAndTime]
         episode.transcriptLines = lines
         episode.refresh.toggle()
+        modelContext.saveIfNeeded()
+    }
+
+    func saveTranscriptionRecord(
+        for snapshot: TranscriptionEpisodeSnapshot,
+        localeIdentifier: String,
+        startedAt: Date,
+        finishedAt: Date
+    ) async {
+        let record = TranscriptionRecord(
+            episodeID: snapshot.episodeID,
+            episodeTitle: snapshot.episodeTitle,
+            podcastTitle: snapshot.podcastTitle,
+            localeIdentifier: localeIdentifier,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            audioDuration: snapshot.audioDuration
+        )
+        modelContext.insert(record)
         modelContext.saveIfNeeded()
     }
 
@@ -852,6 +913,15 @@ private struct SendableChapterData: Sendable {
     let start: Double
     let duration: Double?
     let imageData: Data?
+}
+
+struct TranscriptionEpisodeSnapshot: Sendable {
+    let episodeID: UUID
+    let episodeTitle: String
+    let podcastTitle: String?
+    let audioDuration: Double
+    let localFile: URL
+    let language: String?
 }
 
 private struct AudioFormatInfo: Sendable {
