@@ -44,7 +44,7 @@ struct EpisodeRowView: View {
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
                 .blur(radius: 8)
-                .opacity(0.45)
+                //.opacity(0.45)
                 .clipped()
 
             VStack(alignment: .leading, spacing: 12) {

@@ -3,15 +3,17 @@ import SwiftData
 import Charts
 
 private struct ListeningOverviewPoint: Identifiable {
-    let id = UUID()
     let date: Date
     let totalSeconds: Double
+
+    var id: Date { date }
 }
 
 private struct PodcastRollup: Identifiable {
-    let id = UUID()
     let podcastName: String
     let totalSeconds: Double
+
+    var id: String { podcastName }
 }
 
 private struct PeriodListeningTotal: Identifiable {
@@ -29,12 +31,61 @@ private struct WeekdayListeningTotal: Identifiable {
     var id: Int { weekday }
 }
 
-private struct ListeningHabitCell: Identifiable {
-    let weekday: Int
-    let hour: Int
-    let totalSeconds: Double
+private struct RecentListeningSession: Identifiable {
+    let id: String
+    let episodeTitle: String
+    let podcastName: String
+    let listenedSeconds: Double
+    let startTime: Date
+    let endedCleanly: Bool
+    let startPosition: Double?
+    let endPosition: Double?
+}
 
-    var id: String { "\(weekday)-\(hour)" }
+private struct ListeningHeatMapSnapshot {
+    static let empty = ListeningHeatMapSnapshot(secondsByWeekday: [:], maxSeconds: 1)
+
+    let secondsByWeekday: [Int: [Double]]
+    let maxSeconds: Double
+
+    var hasData: Bool {
+        secondsByWeekday.values.contains { hours in
+            hours.contains(where: { $0 > 0 })
+        }
+    }
+
+    func seconds(weekday: Int, hour: Int) -> Double {
+        guard let hours = secondsByWeekday[weekday], hours.indices.contains(hour) else { return 0 }
+        return hours[hour]
+    }
+}
+
+private struct ListeningHistorySnapshot {
+    static let empty = ListeningHistorySnapshot(
+        selectedPodcastTitle: "All Podcasts",
+        groupedTotals: [],
+        chartPoints: [],
+        totalListeningSeconds: 0,
+        averagePeriodSeconds: 0,
+        bestPeriod: nil,
+        podcastBreakdown: [],
+        recentSessions: [],
+        weekdayTotals: [],
+        heatMap: .empty,
+        isUsingSummaryTotals: false
+    )
+
+    let selectedPodcastTitle: String
+    let groupedTotals: [PeriodListeningTotal]
+    let chartPoints: [ListeningOverviewPoint]
+    let totalListeningSeconds: Double
+    let averagePeriodSeconds: Double
+    let bestPeriod: PeriodListeningTotal?
+    let podcastBreakdown: [PodcastRollup]
+    let recentSessions: [RecentListeningSession]
+    let weekdayTotals: [WeekdayListeningTotal]
+    let heatMap: ListeningHeatMapSnapshot
+    let isUsingSummaryTotals: Bool
 }
 
 struct PlaySessionDebugView: View {
@@ -47,106 +98,12 @@ struct PlaySessionDebugView: View {
     @State private var selectedPeriod: PlaySessionSummaryPeriod = .week
     @State private var selectedPodcastFeedString: String? = nil
     @State private var hasTriggeredRebuild = false
+    @State private var snapshot = ListeningHistorySnapshot.empty
 
-    private var selectedPodcastTitle: String {
-        guard let selectedPodcastFeedString else { return "All Podcasts" }
-        return podcasts.first(where: { $0.feed?.absoluteString == selectedPodcastFeedString })?.title ?? "Selected Podcast"
-    }
-
-    private var filteredSummaries: [PlaySessionSummary] {
-        summaries.filter { summary in
-            summary.periodKind == selectedPeriod.rawValue
-            && (selectedPodcastFeedString == nil || summary.podcastFeed?.absoluteString == selectedPodcastFeedString)
-        }
-    }
-
-    private var filteredSessions: [PlaySession] {
-        sessions.filter { session in
-            selectedPodcastFeedString == nil || session.episode?.podcast?.feed?.absoluteString == selectedPodcastFeedString
-        }
-    }
-
-    private var summaryTotals: [PeriodListeningTotal] {
-        Dictionary(grouping: filteredSummaries.compactMap { summary -> (Date, Double)? in
-            guard let periodStart = summary.periodStart else { return nil }
-            return (periodStart, summary.totalSeconds ?? 0)
-        }, by: \.0)
-        .map { key, values in
-            PeriodListeningTotal(start: key, totalSeconds: values.reduce(0) { $0 + $1.1 })
-        }
-        .sorted { $0.start > $1.start }
-    }
-
-    private var rawSessionTotals: [PeriodListeningTotal] {
-        Dictionary(grouping: filteredSessions.compactMap { session -> (Date, Double)? in
-            guard let startTime = session.startTime else { return nil }
-            let listened = listenedSeconds(for: session)
-            guard listened > 0 else { return nil }
-            return (periodStart(for: startTime, period: selectedPeriod), listened)
-        }, by: \.0)
-        .map { key, values in
-            PeriodListeningTotal(start: key, totalSeconds: values.reduce(0) { $0 + $1.1 })
-        }
-        .sorted { $0.start > $1.start }
-    }
-
-    private var groupedTotals: [PeriodListeningTotal] {
-        summaryTotals.isEmpty ? rawSessionTotals : summaryTotals
-    }
-
-    private var chartPoints: [ListeningOverviewPoint] {
-        groupedTotals
-            .prefix(12)
-            .map { ListeningOverviewPoint(date: $0.start, totalSeconds: $0.totalSeconds) }
-            .reversed()
-    }
-
-    private var totalListeningSeconds: Double {
-        groupedTotals.reduce(0) { $0 + $1.totalSeconds }
-    }
-
-    private var averagePeriodSeconds: Double {
-        guard !groupedTotals.isEmpty else { return 0 }
-        return totalListeningSeconds / Double(groupedTotals.count)
-    }
-
-    private var bestPeriod: PeriodListeningTotal? {
-        groupedTotals.max { $0.totalSeconds < $1.totalSeconds }
-    }
-
-    private var podcastBreakdown: [PodcastRollup] {
-        if !filteredSummaries.isEmpty {
-            return Dictionary(grouping: filteredSummaries.compactMap { summary -> (String, Double)? in
-                guard let name = summary.podcastName, let seconds = summary.totalSeconds, seconds > 0 else { return nil }
-                return (name, seconds)
-            }, by: \.0)
-            .map { name, values in
-                PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
-            }
-            .sorted { $0.totalSeconds > $1.totalSeconds }
-        }
-
-        return Dictionary(grouping: sessions.compactMap { session -> (String, Double)? in
-            guard selectedPodcastFeedString == nil else { return nil }
-            let listened = listenedSeconds(for: session)
-            guard listened > 0 else { return nil }
-            return (session.podcastName ?? "Unknown Podcast", listened)
-        }, by: \.0)
-        .map { name, values in
-            PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
-        }
-        .sorted { $0.totalSeconds > $1.totalSeconds }
-    }
-
-    private var recentSessions: [PlaySession] {
-        filteredSessions
-    }
-
-    private var filteredListeningStats: [ListeningStat] {
-        listeningStats.filter { stat in
-            selectedPodcastFeedString == nil || stat.podcastFeed?.absoluteString == selectedPodcastFeedString
-        }
-    }
+    private let summaryGrid = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12)
+    ]
 
     private var weekdayLabels: [String] {
         let symbols = Calendar.current.shortWeekdaySymbols
@@ -161,90 +118,26 @@ struct PlaySessionDebugView: View {
         return (0..<7).map { (firstWeekday + $0) % 7 }
     }
 
-    private var weekdayTotals: [WeekdayListeningTotal] {
-        let totals: [Int: Double]
-        if !filteredListeningStats.isEmpty {
-            totals = Dictionary(grouping: filteredListeningStats.compactMap { stat -> (Int, Double)? in
-                guard let startOfHour = stat.startOfHour, let totalSeconds = stat.totalSeconds, totalSeconds > 0 else { return nil }
-                let weekday = (Calendar.current.component(.weekday, from: startOfHour) - 1)
-                return (weekday, totalSeconds)
-            }, by: \.0).mapValues { values in
-                values.reduce(0) { $0 + $1.1 }
-            }
-        } else {
-            totals = Dictionary(grouping: filteredSessions.compactMap { session -> (Int, Double)? in
-                guard let startTime = session.startTime else { return nil }
-                let totalSeconds = listenedSeconds(for: session)
-                guard totalSeconds > 0 else { return nil }
-                let weekday = (Calendar.current.component(.weekday, from: startTime) - 1)
-                return (weekday, totalSeconds)
-            }, by: \.0).mapValues { values in
-                values.reduce(0) { $0 + $1.1 }
-            }
-        }
-
-        return weekdayOrder.enumerated().map { index, weekday in
-            WeekdayListeningTotal(
-                weekday: weekday,
-                label: weekdayLabels[index],
-                totalSeconds: totals[weekday] ?? 0
-            )
-        }
-    }
-
-    private var habitHeatMapCells: [ListeningHabitCell] {
-        let totals: [String: Double]
-        if !filteredListeningStats.isEmpty {
-            totals = Dictionary(grouping: filteredListeningStats.compactMap { stat -> (String, Double)? in
-                guard let startOfHour = stat.startOfHour, let totalSeconds = stat.totalSeconds, totalSeconds > 0 else { return nil }
-                let weekday = Calendar.current.component(.weekday, from: startOfHour) - 1
-                let hour = Calendar.current.component(.hour, from: startOfHour)
-                return ("\(weekday)-\(hour)", totalSeconds)
-            }, by: \.0).mapValues { values in
-                values.reduce(0) { $0 + $1.1 }
-            }
-        } else {
-            totals = Dictionary(grouping: filteredSessions.compactMap { session -> (String, Double)? in
-                guard let startTime = session.startTime else { return nil }
-                let totalSeconds = listenedSeconds(for: session)
-                guard totalSeconds > 0 else { return nil }
-                let weekday = Calendar.current.component(.weekday, from: startTime) - 1
-                let hour = Calendar.current.component(.hour, from: startTime)
-                return ("\(weekday)-\(hour)", totalSeconds)
-            }, by: \.0).mapValues { values in
-                values.reduce(0) { $0 + $1.1 }
-            }
-        }
-
-        return weekdayOrder.flatMap { weekday in
-            (0..<24).map { hour in
-                let key = "\(weekday)-\(hour)"
-                return ListeningHabitCell(weekday: weekday, hour: hour, totalSeconds: totals[key] ?? 0)
-            }
-        }
-    }
-
-    private var habitHeatMapMaxSeconds: Double {
-        max(habitHeatMapCells.map(\.totalSeconds).max() ?? 0, 1)
+    private var selectedPeriodSingular: String {
+        String(selectedPeriod.title.dropLast())
     }
 
     private var shouldRebuildAnalytics: Bool {
         !hasTriggeredRebuild && summaries.isEmpty && !sessions.isEmpty
     }
 
-    private func rebuildAnalyticsIfNeeded() {
-        guard shouldRebuildAnalytics else { return }
-        hasTriggeredRebuild = true
-        let container = modelContext.container
-        Task {
-            await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
-        }
-    }
+    private var statisticsSignature: String {
+        let firstSummary = summaries.first
+        let firstSession = sessions.first
+        let firstStat = listeningStats.first
+        let firstPodcast = podcasts.first
+        let summarySignature = "\(signatureValue(firstSummary?.id))|\(signatureValue(firstSummary?.periodStart))|\(signatureValue(firstSummary?.totalSeconds))"
+        let sessionSignature = "\(signatureValue(firstSession?.id))|\(signatureValue(firstSession?.startTime))|\(signatureValue(firstSession?.endTime))"
+        let statSignature = "\(signatureValue(firstStat?.id))|\(signatureValue(firstStat?.startOfHour))|\(signatureValue(firstStat?.totalSeconds))"
+        let podcastSignature = "\(signatureValue(firstPodcast?.id))|\(firstPodcast?.title ?? "")"
 
-    private let summaryGrid = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
+        return "\(selectedPeriod.rawValue)|\(selectedPodcastFeedString ?? "all")|\(summaries.count)|\(summarySignature)|\(sessions.count)|\(sessionSignature)|\(listeningStats.count)|\(statSignature)|\(podcasts.count)|\(podcastSignature)"
+    }
 
     var body: some View {
         List {
@@ -269,36 +162,36 @@ struct PlaySessionDebugView: View {
                 LazyVGrid(columns: summaryGrid, spacing: 12) {
                     summaryCard(
                         title: "Total Listening",
-                        value: formatDuration(totalListeningSeconds),
-                        detail: "\(groupedTotals.count) \(selectedPeriod.title.lowercased()) tracked"
+                        value: formatDuration(snapshot.totalListeningSeconds),
+                        detail: "\(snapshot.groupedTotals.count) \(selectedPeriod.title.lowercased()) tracked"
                     )
                     summaryCard(
-                        title: "Average \(selectedPeriod.title.dropLast())",
-                        value: formatDuration(averagePeriodSeconds),
-                        detail: selectedPodcastTitle
+                        title: "Average \(selectedPeriodSingular)",
+                        value: formatDuration(snapshot.averagePeriodSeconds),
+                        detail: snapshot.selectedPodcastTitle
                     )
                     summaryCard(
-                        title: "Best \(selectedPeriod.title.dropLast())",
-                        value: bestPeriod.map { formatDuration($0.totalSeconds) } ?? "None",
-                        detail: bestPeriod.map { periodLabel(for: $0.start, period: selectedPeriod) } ?? "No data yet"
+                        title: "Best \(selectedPeriodSingular)",
+                        value: snapshot.bestPeriod.map { formatDuration($0.totalSeconds) } ?? "None",
+                        detail: snapshot.bestPeriod.map { periodLabel(for: $0.start, period: selectedPeriod) } ?? "No data yet"
                     )
                     summaryCard(
                         title: "Recent Sessions",
-                        value: "\(recentSessions.prefix(30).count)",
-                        detail: summaryTotals.isEmpty ? "Showing live data from raw sessions" : "Detailed history kept for the newest sessions"
+                        value: "\(snapshot.recentSessions.count)",
+                        detail: snapshot.isUsingSummaryTotals ? "Detailed history kept for the newest sessions" : "Showing live data from raw sessions"
                     )
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 .listRowBackground(Color.clear)
             }
 
-            if !chartPoints.isEmpty {
+            if !snapshot.chartPoints.isEmpty {
                 Section("Listening Trend") {
-                    Text("Y-axis: listening time per \(selectedPeriod.title.dropLast().lowercased()).")
+                    Text("Y-axis: listening time per \(selectedPeriodSingular.lowercased()).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Chart(chartPoints) { point in
+                    Chart(snapshot.chartPoints) { point in
                         AreaMark(
                             x: .value("Period", point.date),
                             y: .value("Listening", point.totalSeconds)
@@ -327,7 +220,7 @@ struct PlaySessionDebugView: View {
                 }
             }
 
-            if !weekdayTotals.allSatisfy({ $0.totalSeconds == 0 }) {
+            if snapshot.heatMap.hasData {
                 Section("Listening Habits") {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("When you usually listen")
@@ -336,7 +229,7 @@ struct PlaySessionDebugView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Chart(weekdayTotals) { item in
+                        Chart(snapshot.weekdayTotals) { item in
                             BarMark(
                                 x: .value("Weekday", item.label),
                                 y: .value("Listening", item.totalSeconds)
@@ -362,9 +255,10 @@ struct PlaySessionDebugView: View {
                 }
             }
 
-            if selectedPodcastFeedString == nil && !podcastBreakdown.isEmpty {
+            if selectedPodcastFeedString == nil && !snapshot.podcastBreakdown.isEmpty {
                 Section("Top Podcasts") {
-                    ForEach(podcastBreakdown.prefix(8)) { rollup in
+                    let maxPodcastSeconds = snapshot.podcastBreakdown.first?.totalSeconds ?? 0
+                    ForEach(snapshot.podcastBreakdown.prefix(8)) { rollup in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(rollup.podcastName)
@@ -376,7 +270,7 @@ struct PlaySessionDebugView: View {
                             Spacer()
                             ProgressView(
                                 value: rollup.totalSeconds,
-                                total: podcastBreakdown.first?.totalSeconds ?? rollup.totalSeconds
+                                total: maxPodcastSeconds == 0 ? rollup.totalSeconds : maxPodcastSeconds
                             )
                             .frame(width: 100)
                         }
@@ -385,19 +279,19 @@ struct PlaySessionDebugView: View {
             }
 
             Section("\(selectedPeriod.title) History") {
-                if groupedTotals.isEmpty {
+                if snapshot.groupedTotals.isEmpty {
                     ContentUnavailableView(
                         "No Listening History",
                         systemImage: "chart.bar.xaxis",
                         description: Text("Start listening to see your summarized playback history here.")
                     )
                 } else {
-                    ForEach(groupedTotals) { item in
+                    ForEach(snapshot.groupedTotals) { item in
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(periodLabel(for: item.start, period: selectedPeriod))
                                     .font(.headline)
-                                Text(selectedPodcastTitle)
+                                Text(snapshot.selectedPodcastTitle)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -411,26 +305,26 @@ struct PlaySessionDebugView: View {
             }
 
             Section("Recent Session History") {
-                ForEach(recentSessions.prefix(20)) { session in
+                ForEach(snapshot.recentSessions) { session in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(session.episode?.title ?? "Unknown Episode")
+                                Text(session.episodeTitle)
                                     .font(.headline)
-                                Text(session.podcastName ?? "Unknown Podcast")
+                                Text(session.podcastName)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(formatDuration(listenedSeconds(for: session)))
+                            Text(formatDuration(session.listenedSeconds))
                                 .font(.subheadline.weight(.semibold))
                                 .monospacedDigit()
                         }
 
                         HStack {
-                            Text(session.startTime ?? Date(), format: .dateTime.month().day().hour().minute())
+                            Text(session.startTime, format: .dateTime.month().day().hour().minute())
                             Spacer()
-                            Text(session.endedCleanly == true ? "Ended cleanly" : "Recovered / interrupted")
+                            Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -456,17 +350,184 @@ struct PlaySessionDebugView: View {
         }
         .navigationTitle("Listening History")
         .listStyle(.insetGrouped)
-        .task {
+        .task(id: statisticsSignature) {
+            refreshSnapshot()
             rebuildAnalyticsIfNeeded()
         }
-        .onChange(of: sessions.count) { _, _ in
-            rebuildAnalyticsIfNeeded()
+    }
+
+    private func refreshSnapshot() {
+        let selectedPodcastTitle: String
+        if let selectedPodcastFeedString {
+            selectedPodcastTitle = podcasts.first(where: { $0.feed?.absoluteString == selectedPodcastFeedString })?.title ?? "Selected Podcast"
+        } else {
+            selectedPodcastTitle = "All Podcasts"
         }
-        .onChange(of: summaries.count) { _, _ in
-            if summaries.isEmpty {
-                rebuildAnalyticsIfNeeded()
+
+        let filteredSummaries = summaries.filter { summary in
+            summary.periodKind == selectedPeriod.rawValue
+            && (selectedPodcastFeedString == nil || summary.podcastFeed?.absoluteString == selectedPodcastFeedString)
+        }
+        let filteredSessions = sessions.filter { session in
+            selectedPodcastFeedString == nil || session.episode?.podcast?.feed?.absoluteString == selectedPodcastFeedString
+        }
+        let filteredListeningStats = listeningStats.filter { stat in
+            selectedPodcastFeedString == nil || stat.podcastFeed?.absoluteString == selectedPodcastFeedString
+        }
+
+        let summaryTotals = Dictionary(grouping: filteredSummaries.compactMap { summary -> (Date, Double)? in
+            guard let periodStart = summary.periodStart else { return nil }
+            return (periodStart, summary.totalSeconds ?? 0)
+        }, by: \.0)
+        .map { key, values in
+            PeriodListeningTotal(start: key, totalSeconds: values.reduce(0) { $0 + $1.1 })
+        }
+        .sorted { $0.start > $1.start }
+
+        let rawSessionTotals = Dictionary(grouping: filteredSessions.compactMap { session -> (Date, Double)? in
+            guard let startTime = session.startTime else { return nil }
+            let listened = listenedSeconds(for: session)
+            guard listened > 0 else { return nil }
+            return (periodStart(for: startTime, period: selectedPeriod), listened)
+        }, by: \.0)
+        .map { key, values in
+            PeriodListeningTotal(start: key, totalSeconds: values.reduce(0) { $0 + $1.1 })
+        }
+        .sorted { $0.start > $1.start }
+
+        let groupedTotals = summaryTotals.isEmpty ? rawSessionTotals : summaryTotals
+        let totalListeningSeconds = groupedTotals.reduce(0) { $0 + $1.totalSeconds }
+        let averagePeriodSeconds = groupedTotals.isEmpty ? 0 : (totalListeningSeconds / Double(groupedTotals.count))
+        let chartPoints = Array(
+            groupedTotals
+                .prefix(12)
+                .map { ListeningOverviewPoint(date: $0.start, totalSeconds: $0.totalSeconds) }
+                .reversed()
+        )
+
+        let podcastBreakdown: [PodcastRollup]
+        if !filteredSummaries.isEmpty {
+            podcastBreakdown = Dictionary(grouping: filteredSummaries.compactMap { summary -> (String, Double)? in
+                guard let name = summary.podcastName, let seconds = summary.totalSeconds, seconds > 0 else { return nil }
+                return (name, seconds)
+            }, by: \.0)
+            .map { name, values in
+                PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
+            }
+            .sorted { $0.totalSeconds > $1.totalSeconds }
+        } else if selectedPodcastFeedString == nil {
+            podcastBreakdown = Dictionary(grouping: filteredSessions.compactMap { session -> (String, Double)? in
+                let listened = listenedSeconds(for: session)
+                guard listened > 0 else { return nil }
+                return (session.podcastName ?? "Unknown Podcast", listened)
+            }, by: \.0)
+            .map { name, values in
+                PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
+            }
+            .sorted { $0.totalSeconds > $1.totalSeconds }
+        } else {
+            podcastBreakdown = []
+        }
+
+        let recentSessions = Array(filteredSessions.prefix(20)).map { session in
+            RecentListeningSession(
+                id: session.id?.uuidString ?? "\(session.startTime?.timeIntervalSinceReferenceDate ?? 0)-\(session.podcastName ?? "unknown")",
+                episodeTitle: session.episode?.title ?? "Unknown Episode",
+                podcastName: session.podcastName ?? "Unknown Podcast",
+                listenedSeconds: listenedSeconds(for: session),
+                startTime: session.startTime ?? Date(),
+                endedCleanly: session.endedCleanly ?? false,
+                startPosition: session.startPosition,
+                endPosition: session.endPosition
+            )
+        }
+
+        var weekdaySeconds: [Int: Double] = [:]
+        var secondsByWeekday = Dictionary(uniqueKeysWithValues: weekdayOrder.map { ($0, Array(repeating: 0.0, count: 24)) })
+        let calendar = Calendar.current
+
+        if !filteredListeningStats.isEmpty {
+            for stat in filteredListeningStats {
+                guard let startOfHour = stat.startOfHour, let totalSeconds = stat.totalSeconds, totalSeconds > 0 else { continue }
+                accumulateListening(
+                    seconds: totalSeconds,
+                    on: startOfHour,
+                    calendar: calendar,
+                    weekdaySeconds: &weekdaySeconds,
+                    secondsByWeekday: &secondsByWeekday
+                )
+            }
+        } else {
+            for session in filteredSessions {
+                guard let startTime = session.startTime else { continue }
+                let totalSeconds = listenedSeconds(for: session)
+                guard totalSeconds > 0 else { continue }
+                accumulateListening(
+                    seconds: totalSeconds,
+                    on: startTime,
+                    calendar: calendar,
+                    weekdaySeconds: &weekdaySeconds,
+                    secondsByWeekday: &secondsByWeekday
+                )
             }
         }
+
+        let weekdayTotals = weekdayOrder.enumerated().map { index, weekday in
+            WeekdayListeningTotal(
+                weekday: weekday,
+                label: weekdayLabels[index],
+                totalSeconds: weekdaySeconds[weekday] ?? 0
+            )
+        }
+        let heatMap = ListeningHeatMapSnapshot(
+            secondsByWeekday: secondsByWeekday,
+            maxSeconds: max(secondsByWeekday.values.compactMap { $0.max() }.max() ?? 0, 1)
+        )
+
+        snapshot = ListeningHistorySnapshot(
+            selectedPodcastTitle: selectedPodcastTitle,
+            groupedTotals: groupedTotals,
+            chartPoints: chartPoints,
+            totalListeningSeconds: totalListeningSeconds,
+            averagePeriodSeconds: averagePeriodSeconds,
+            bestPeriod: groupedTotals.max { $0.totalSeconds < $1.totalSeconds },
+            podcastBreakdown: podcastBreakdown,
+            recentSessions: recentSessions,
+            weekdayTotals: weekdayTotals,
+            heatMap: heatMap,
+            isUsingSummaryTotals: !summaryTotals.isEmpty
+        )
+    }
+
+    private func rebuildAnalyticsIfNeeded() {
+        guard shouldRebuildAnalytics else { return }
+        hasTriggeredRebuild = true
+        let container = modelContext.container
+        Task {
+            await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
+        }
+    }
+
+    private func signatureValue<T>(_ value: T?) -> String {
+        value.map { String(describing: $0) } ?? ""
+    }
+
+    private func accumulateListening(
+        seconds: Double,
+        on date: Date,
+        calendar: Calendar,
+        weekdaySeconds: inout [Int: Double],
+        secondsByWeekday: inout [Int: [Double]]
+    ) {
+        let weekday = calendar.component(.weekday, from: date) - 1
+        let hour = calendar.component(.hour, from: date)
+        weekdaySeconds[weekday, default: 0] += seconds
+
+        var hours = secondsByWeekday[weekday] ?? Array(repeating: 0, count: 24)
+        if hours.indices.contains(hour) {
+            hours[hour] += seconds
+        }
+        secondsByWeekday[weekday] = hours
     }
 
     @ViewBuilder
@@ -485,7 +546,10 @@ struct PlaySessionDebugView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
     }
 
     private var listeningHeatMap: some View {
@@ -514,9 +578,8 @@ struct PlaySessionDebugView: View {
                             .frame(height: 16)
 
                         ForEach(0..<24, id: \.self) { hour in
-                            let seconds = habitHeatMapCells.first(where: { $0.weekday == weekday && $0.hour == hour })?.totalSeconds ?? 0
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(heatColor(for: seconds))
+                                .fill(heatColor(for: snapshot.heatMap.seconds(weekday: weekday, hour: hour)))
                                 .frame(width: 22, height: 12)
                         }
                     }
@@ -529,8 +592,8 @@ struct PlaySessionDebugView: View {
                     .foregroundStyle(.secondary)
                 LinearGradient(colors: [
                     heatColor(for: 0),
-                    heatColor(for: habitHeatMapMaxSeconds * 0.35),
-                    heatColor(for: habitHeatMapMaxSeconds)
+                    heatColor(for: snapshot.heatMap.maxSeconds * 0.35),
+                    heatColor(for: snapshot.heatMap.maxSeconds)
                 ], startPoint: .leading, endPoint: .trailing)
                 .frame(height: 10)
                 .clipShape(Capsule())
@@ -607,7 +670,7 @@ struct PlaySessionDebugView: View {
     }
 
     private func heatColor(for seconds: Double) -> Color {
-        let intensity = min(max(seconds / habitHeatMapMaxSeconds, 0), 1)
+        let intensity = min(max(seconds / snapshot.heatMap.maxSeconds, 0), 1)
         return Color.accentColor.opacity(0.12 + intensity * 0.88)
     }
 }

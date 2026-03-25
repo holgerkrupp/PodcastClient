@@ -99,6 +99,12 @@ struct SubscribeToPodcastView: View {
                             HStack{
                                 Spacer()
                                 
+                                if newPodcastFeed.url == nil {
+                                    Text("This feed can be previewed, but it does not expose a reusable subscribe URL.")
+                                        .font(.caption)
+                                        .multilineTextAlignment(.trailing)
+                                        .foregroundStyle(.secondary)
+                                }
                                 
                                 Button("Subscribe") {
                                     
@@ -129,7 +135,7 @@ struct SubscribeToPodcastView: View {
                                     }
                                 }
                                 .buttonStyle(.glass(.clear))
-                                .disabled(subscribing)
+                                .disabled(subscribing || newPodcastFeed.url == nil)
                                 
                                 
                                 

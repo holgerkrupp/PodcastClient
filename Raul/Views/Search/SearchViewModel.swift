@@ -73,36 +73,23 @@ class PodcastSearchViewModel: ObservableObject {
         if urlString.isValidURL, let url = URL(string: urlString) {
             
             Task {
-                // Prefer a status-aware check so we can detect 401
-                if let status = await urlString.reachabilityStatus(),
-                   let code = status.statusCode {
-                    print("Status: \(code)")
-                    if code == 401 {
-                        // Prompt for basic auth
-                        self.pendingURLForAuth = url
+                do {
+                    let resolution = try await PodcastFeedResolver.resolve(url: url, allowAuthenticationPrompt: true)
+
+                    switch resolution {
+                    case .podcast(let podcastFeed):
+                        self.singlePodcast = podcastFeed
+                        self.shouldPromptForBasicAuth = false
+                        self.pendingURLForAuth = nil
+                        self.authErrorMessage = nil
+                    case .requiresBasicAuth(let protectedURL):
+                        self.pendingURLForAuth = protectedURL
                         self.shouldPromptForBasicAuth = true
-                        self.isLoading = false
-                        return
-                    } else if (200..<400).contains(code) {
-                        self.singlePodcast = PodcastFeed(url: status.finalURL ?? url)
-                        self.isLoading = false
-                        return
-                    } else {
-                        // Not reachable or other status code
-                        self.isLoading = false
-                        return
                     }
-                } else if await urlString.isReachableURL() == false {
-                    // Fallback check returned false
-                    self.isLoading = false
-                    return
+                } catch {
+                    self.singlePodcast = nil
                 }
-                
-                if let feedURL = await resolvePodcastFeedURL(from: url) {
-                    self.singlePodcast = PodcastFeed(url: feedURL)
-                } else {
-                    self.singlePodcast = PodcastFeed(url: url) // fallback (might be website)
-                }
+
                 self.isLoading = false
             }
         } else {
@@ -164,63 +151,28 @@ class PodcastSearchViewModel: ObservableObject {
                 return
             }
             
-            // Retry reachability using HEAD
-            let status = try? await credentialedURL.status()
-            if let code = status?.statusCode, (200..<400).contains(code) {
-                if let feedURL = await self.resolvePodcastFeedURL(from: credentialedURL) {
-                    self.singlePodcast = PodcastFeed(url: feedURL)
-                } else {
-                    self.singlePodcast = PodcastFeed(url: credentialedURL)
+            do {
+                let resolution = try await PodcastFeedResolver.resolve(url: credentialedURL)
+
+                switch resolution {
+                case .podcast(let podcastFeed):
+                    self.singlePodcast = podcastFeed
+                    self.isLoading = false
+                    self.pendingURLForAuth = nil
+                case .requiresBasicAuth:
+                    self.authErrorMessage = "Authentication failed. Please check your credentials."
+                    self.isLoading = false
+                    self.shouldPromptForBasicAuth = true
                 }
-                self.isLoading = false
-                self.pendingURLForAuth = nil
-            } else if let code = status?.statusCode, code == 401 {
+            } catch PodcastFeedResolverError.authenticationRequired {
                 self.authErrorMessage = "Authentication failed. Please check your credentials."
                 self.isLoading = false
-                // Re-open the sheet to allow retry
                 self.shouldPromptForBasicAuth = true
-            } else {
+            } catch {
                 self.authErrorMessage = "Failed to reach URL."
                 self.isLoading = false
             }
         }
-    }
-    
-    /// Try to determine if a URL is an XML podcast feed. If not, try extracting a feed URL from HTML.
-    private func resolvePodcastFeedURL(from url: URL) async -> URL? {
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            if let httpResp = response as? HTTPURLResponse {
-                print("Fetched URL: \(url) [status: \(httpResp.statusCode)]")
-            }
-            let text = String(data: data, encoding: .utf8) ?? ""
-            // Quick heuristic: check if it's XML with <rss> or <feed>
-            if text.contains("<rss") || text.contains("<feed") {
-                return url
-            }
-            if let feedURL = extractFeedURL(fromHTML: text, baseURL: url) {
-                return feedURL
-            }
-        } catch {
-            print("Error fetching or analyzing URL: \(url) - \(error)")
-        }
-        return nil
-    }
-    
-    /// Extract feed URL from HTML meta/link tags.
-    private func extractFeedURL(fromHTML html: String, baseURL: URL) -> URL? {
-        let pattern = #"<link[^>]+rel=["']alternate["'][^>]+type=["']application/(rss|atom)\+xml["'][^>]+href=["']([^"'>]+)["']"#
-        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-            let nsrange = NSRange(html.startIndex..<html.endIndex, in: html)
-            if let match = regex.firstMatch(in: html, options: [], range: nsrange),
-                let hrefRange = Range(match.range(at: 2), in: html) {
-                let href = String(html[hrefRange])
-                if let absURL = URL(string: href, relativeTo: baseURL)?.absoluteURL {
-                    return absURL
-                }
-            }
-        }
-        return nil
     }
 
     
