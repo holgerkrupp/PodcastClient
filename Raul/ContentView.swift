@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var selectedTab: RootTab = .playlist
     
     @State private var search:String = ""
+    @StateObject private var incomingPodcastSubscription = IncomingPodcastSubscriptionController()
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
 
     
@@ -96,8 +97,20 @@ struct ContentView: View {
             Task { await loadInboxCount() }
         }
         .onOpenURL { url in
+            if IncomingPodcastSubscriptionController.canHandle(url) {
+                selectedTab = .add
+                incomingPodcastSubscription.handleIncomingURL(url)
+                return
+            }
+
             guard url.scheme == "upnext" else { return }
             selectedTab = .playlist
+        }
+        .sheet(isPresented: $incomingPodcastSubscription.isPresented, onDismiss: {
+            incomingPodcastSubscription.dismiss()
+        }) {
+            IncomingPodcastSubscriptionView(controller: incomingPodcastSubscription)
+                .presentationDetents([.medium, .large])
         }
         
 

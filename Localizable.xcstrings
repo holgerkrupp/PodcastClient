@@ -120,6 +120,9 @@
     "Continues Playback" : {
 
     },
+    "Could Not Open Podcast" : {
+
+    },
     "Create a bookmark at the current playback position." : {
 
     },
@@ -157,6 +160,9 @@
 
     },
     "Descriptions" : {
+
+    },
+    "Done" : {
 
     },
     "Download" : {
@@ -354,6 +360,9 @@
 
     },
     "No Listening History" : {
+
+    },
+    "No Podcast" : {
 
     },
     "No Podcasts" : {
@@ -585,6 +594,9 @@
 
     },
     "Supported Models" : {
+
+    },
+    "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
 
     },
     "This podcast stays in the database, but it is skipped by bulk refresh." : {

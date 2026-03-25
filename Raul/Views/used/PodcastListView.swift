@@ -56,14 +56,7 @@ struct PodcastListView: View {
                 }
             } else {
                 List {
-                    Section {
-                        Picker("Podcast Scope", selection: $selectedScope) {
-                            ForEach(LibraryScope.allCases) { scope in
-                                Text(scope.title).tag(scope)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
+
       
                     NavigationLink(destination: AllEpisodesListView()) {
                         HStack {

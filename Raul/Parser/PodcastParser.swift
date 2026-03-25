@@ -26,6 +26,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var currentElements:[String] = []
     
     // RFC 5005 paged feed support URLs
+    var selfFeedURL: String?
     var nextPageURL: String?
     var prevPageURL: String?
     var firstPageURL: String?
@@ -86,6 +87,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         currentValue = ""
         externalFilesArray.removeAll()
         
+        selfFeedURL = nil
         nextPageURL = nil
         prevPageURL = nil
         firstPageURL = nil
@@ -113,6 +115,8 @@ class PodcastParser:NSObject, XMLParserDelegate{
         if currentElement == "atom:link" {
             if let rel = attributeDict["rel"], let href = attributeDict["href"] {
                 switch rel {
+                case "self":
+                    selfFeedURL = href
                 case "next":
                     nextPageURL = href
                 case "prev":
@@ -350,6 +354,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     func parserDidEndDocument(_ parser: XMLParser)   {
         podcastDictArr.updateValue(episodesArray, forKey: "episodes")
+        if let selfFeedURL {
+            podcastDictArr.updateValue(selfFeedURL, forKey: "selfURL")
+        }
         if !podcastFundingArray.isEmpty {
             podcastDictArr.updateValue(podcastFundingArray, forKey: "funding")
         }
@@ -405,4 +412,3 @@ extension PodcastParser {
         return podcastHeader
     }
 }
-

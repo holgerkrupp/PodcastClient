@@ -99,13 +99,13 @@ private struct PodcastCategoryViewLeaf: View {
                             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                             .onAppear {
                                 if podcast == viewModel.podcasts.last,
-                                   let _ = viewModel.paging?.next_page,
+                                   let _ = viewModel.paging?.nextPage,
                                    !viewModel.isLoadingPage {
                                     viewModel.loadPodcastsForSelectedCategory(loadNextPage: true)
                                 }
                             }
                     }
-                    if viewModel.isLoadingPage && viewModel.paging?.next_page != nil {
+                    if viewModel.isLoadingPage && viewModel.paging?.nextPage != nil {
                         HStack { Spacer(); ProgressView(); Spacer() }
                     }
                 }
@@ -174,7 +174,7 @@ final class CategoryPodcastViewModel: ObservableObject {
         if isLoadingPage { return }
         isLoadingPage = true
         isLoading = !loadNextPage
-        let nextPage = loadNextPage ? ((paging?.next_page) ?? (currentPage + 1)) : 0
+        let nextPage = loadNextPage ? ((paging?.nextPage) ?? (currentPage + 1)) : 0
         Task {
             let result = await fyydManager.getPodcastsByCategory(id: category.id, count: 30, page: nextPage)
             
