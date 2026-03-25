@@ -8,13 +8,17 @@ extension Notification.Name {
 struct InboxView: View {
  
     @State private var episodes: [Episode] = []
-    @State private var isLoading = false
     @State private var isArchiving = false
 
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var refreshViewModel: PodcastListViewModel
     
-    init() { }
+    init() {
+        _refreshViewModel = StateObject(
+            wrappedValue: PodcastListViewModel(modelContainer: ModelContainerManager.shared.container)
+        )
+    }
     
     var body: some View {
         if episodes.isEmpty{
@@ -34,13 +38,20 @@ struct InboxView: View {
                                 await loadEpisodes()
                             }
                         }) {
-                            if isLoading {
-                                ProgressView()
+                            if refreshViewModel.isLoading {
+                                if refreshViewModel.total != 0 {
+                                    CircularProgressView(
+                                        value: Double(refreshViewModel.completed),
+                                        total: Double(refreshViewModel.total)
+                                    )
+                                } else {
+                                    ProgressView()
+                                }
                             }else{
                                 Image(systemName: "arrow.clockwise")
                             }
                         }
-                        .disabled(isLoading)
+                        .disabled(refreshViewModel.isLoading)
                     }
                 }
             }
@@ -93,13 +104,20 @@ struct InboxView: View {
                                 await loadEpisodes()
                             }
                         }) {
-                            if isLoading {
-                                ProgressView()
+                            if refreshViewModel.isLoading {
+                                if refreshViewModel.total != 0 {
+                                    CircularProgressView(
+                                        value: Double(refreshViewModel.completed),
+                                        total: Double(refreshViewModel.total)
+                                    )
+                                } else {
+                                    ProgressView()
+                                }
                             }else{
                                 Image(systemName: "arrow.clockwise")
                             }
                         }
-                        .disabled(isLoading)
+                        .disabled(refreshViewModel.isLoading)
                     }
                     
                     ToolbarItem(placement: .topBarTrailing) {
@@ -120,7 +138,7 @@ struct InboxView: View {
                 }
             }
             .overlay {
-                if isLoading {
+                if refreshViewModel.isLoading && refreshViewModel.total == 0 {
                     ProgressView()
                 }
             }
@@ -179,16 +197,11 @@ struct InboxView: View {
     }
     
     private func refreshEpisodes() async {
-        await MainActor.run { isLoading = true; errorMessage = nil }
-        do {
-            let actor = PodcastModelActor(modelContainer: modelContext.container)
-            try await actor.refreshAllPodcasts()
-        } catch {
-            await MainActor.run {
-                errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"
-            }
+        await MainActor.run { errorMessage = nil }
+        await refreshViewModel.refreshAllPodcasts()
+        await MainActor.run {
+            errorMessage = refreshViewModel.errorMessage
         }
-        await MainActor.run { isLoading = false }
     }
 }
 

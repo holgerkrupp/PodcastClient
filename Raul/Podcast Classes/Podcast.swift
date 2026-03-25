@@ -126,6 +126,9 @@ final class Podcast: Identifiable {
             // during the network update.
         }
     
+    var isSubscribed: Bool {
+        metaData?.isSubscribed != false
+    }
 }
 
 
@@ -150,4 +153,3 @@ final class Podcast: Identifiable {
     init() {
     }
 }
-

@@ -42,6 +42,12 @@ struct PodcastRowView: View {
                             .lineLimit(3)
                     }
 
+                    if podcast.isSubscribed == false {
+                        Label("Not Subscribed", systemImage: "pause.circle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

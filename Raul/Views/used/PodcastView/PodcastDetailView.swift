@@ -43,8 +43,9 @@ struct PodcastDetailView: View {
 
     
     @Bindable var podcast: Podcast
-    @State private var image: Image?
+    @State private var backgroundUIImage: UIImage?
     @State private var isLoading = false
+    @State private var refreshProgress: Double = 0
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
@@ -63,14 +64,10 @@ struct PodcastDetailView: View {
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
-    
-    @StateObject private var backgroundImageLoader: ImageLoaderAndCache
 
     
     init(podcast: Podcast) {
         self._podcast = Bindable(wrappedValue: podcast)
-        let imageURL = podcast.imageURL
-        _backgroundImageLoader = StateObject(wrappedValue: ImageLoaderAndCache(imageURL: imageURL ?? URL(string: "about:blank")!))
     }
     
   
@@ -164,6 +161,19 @@ struct PodcastDetailView: View {
                             .buttonStyle(.glass(.clear))
                             .accessibilityRemoveTraits(.isButton)
                         }
+
+                        Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {
+                            Task {
+                                await toggleSubscriptionStatus()
+                            }
+                        }
+                        .buttonStyle(.glass(.clear))
+
+                        if podcast.isSubscribed == false {
+                            Text("This podcast stays in the database, but it is skipped by bulk refresh.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .listRowSeparator(.hidden)
@@ -205,9 +215,15 @@ struct PodcastDetailView: View {
                 
                 Section{
                     ForEach(filteredEpisodes, id: \.id) { episode in
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                            EpisodeRowView(episode: episode)
+                        ZStack {
+                           EpisodeRowView(episode: episode)
+                           //     .id(episode.id)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
                         }
+                        
+                       
                         .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -232,8 +248,8 @@ struct PodcastDetailView: View {
                 .listRowSeparator(.hidden)
             }
             .background{
-                if let image = UIImage(data: backgroundImageLoader.imageData) {
-                    Image(uiImage: image)
+                if let backgroundUIImage {
+                    Image(uiImage: backgroundUIImage)
                         .resizable()
                         .scaledToFill()
                         .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
@@ -254,6 +270,9 @@ struct PodcastDetailView: View {
             .searchable(text: $searchText)
             .task {
                 applyEpisodeFilters()
+            }
+            .task(id: podcast.imageURL) {
+                await loadBackgroundImage()
             }
             .onChange(of: searchText) { _, _ in
                 debounceEpisodeFilters()
@@ -318,8 +337,16 @@ struct PodcastDetailView: View {
                             await refreshEpisodes()
                         }
                     }) {
-                        Image(systemName: "arrow.clockwise")
+                        if isLoading {
+                            CircularProgressView(
+                                value: max(refreshProgress, 0.02),
+                                total: 1.0
+                            )
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
+                    .disabled(podcast.isSubscribed == false || isLoading)
                     
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -348,6 +375,20 @@ struct PodcastDetailView: View {
     private func debounceEpisodeFilters() {
         Debounce.shared.perform {
             applyEpisodeFilters()
+        }
+    }
+
+    private func loadBackgroundImage() async {
+        guard let imageURL = podcast.imageURL else {
+            await MainActor.run {
+                backgroundUIImage = nil
+            }
+            return
+        }
+
+        let uiImage = await ImageLoaderAndCache.loadUIImage(from: imageURL)
+        await MainActor.run {
+            backgroundUIImage = uiImage
         }
     }
 
@@ -390,13 +431,22 @@ struct PodcastDetailView: View {
     }
     
     private func refreshEpisodes() async {
+        guard podcast.isSubscribed else {
+            return
+        }
+
         isLoading = true
+        refreshProgress = 0
         errorMessage = nil
         if let feed = podcast.feed{
             do {
                 let actor = PodcastModelActor(modelContainer: modelContext.container)
                 
-                _ =  try await actor.updatePodcast(feed, force: true)
+                _ =  try await actor.updatePodcast(feed, force: true) { update in
+                    await MainActor.run {
+                        refreshProgress = update.fractionCompleted
+                    }
+                }
                 podcast.message = nil
                 
             } catch {
@@ -407,8 +457,14 @@ struct PodcastDetailView: View {
             
             await MainActor.run {
                 isLoading = false
+                refreshProgress = 0
             }
         }
+    }
+
+    private func toggleSubscriptionStatus() async {
+        let actor = PodcastModelActor(modelContainer: modelContext.container)
+        await actor.setSubscriptionStatus(podcast.persistentModelID, isSubscribed: !podcast.isSubscribed)
     }
 
 }
