@@ -11,6 +11,7 @@ import BasicLogger
 
 @ModelActor
 actor PodcastModelActor {
+    private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
 
     
     func fetchPodcast(byFeed podcastFeed: URL) async -> Podcast? {
@@ -84,6 +85,7 @@ actor PodcastModelActor {
         // --- Async work with only value types ---
         let status = try? await feedURL?.status()
         let serverLastModified = status?.lastModified
+        let now = Date()
         
 
 
@@ -103,16 +105,33 @@ actor PodcastModelActor {
             modelContext.saveIfNeeded()
         }
         
-        // --- Compare & update ---
-        if let serverLastModified,
-           serverLastModified > (lastRefreshSnapshot ?? .distantPast) {
-            
-                await updateLastRefresh(for: metaID)
+        await setFeedUpdated(freshMeta.persistentModelID, to: nil)
 
-            
+        // Treat the preflight request as advisory only. Some feeds either reject HEAD
+        // requests or return stale/missing Last-Modified values.
+        guard let statusCode = status?.statusCode else {
+            return nil
+        }
+
+        guard (200...299).contains(statusCode) || (300...399).contains(statusCode) else {
+            return nil
+        }
+
+        guard let serverLastModified else {
+            return nil
+        }
+
+        if serverLastModified > (lastRefreshSnapshot ?? .distantPast) {
+            await setFeedUpdated(freshMeta.persistentModelID, to: true)
             return true
         }
 
+        if let lastRefreshSnapshot,
+           now.timeIntervalSince(lastRefreshSnapshot) > maximumTrustedHeaderSkipInterval {
+            return nil
+        }
+
+        await setFeedUpdated(freshMeta.persistentModelID, to: false)
         return false
     }
     
@@ -121,8 +140,9 @@ actor PodcastModelActor {
         let descriptor = FetchDescriptor<PodcastMetaData>(
             predicate: #Predicate { $0.persistentModelID == metadataID }
         )
-        var metaData = try? modelContext.fetch(descriptor).first
+        let metaData = try? modelContext.fetch(descriptor).first
         metaData?.lastRefresh = Date()
+        metaData?.feedUpdateCheckDate = Date()
         modelContext.saveIfNeeded()
     }
     
@@ -177,7 +197,7 @@ actor PodcastModelActor {
         // --- FIRST await boundary ---
         if force == false {
             guard await checkIfFeedHasBeenUpdated(podcastFeed) != false else {
-                print("\(podcast.title) not updated")
+                print("\(titleSnapshot) not updated")
 
                 if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
                     freshMeta.isUpdating = false
@@ -192,47 +212,57 @@ actor PodcastModelActor {
         }
 
         // --- SECOND await boundary ---
-        var request = URLRequest(url: feedURL)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        let (data, _) = try await URLSession.shared.data(for: request)
-
-        // Re-fetch podcast after await
-        
         guard
               let metaIDRef,
-              let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData else {
+              let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
+              let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast else {
             return false
         }
          
-      //  print("\(podcast.title ?? "unknown") reading feed")
-
         // Safe updates again
         freshMeta.message = "Reading Podcast Feed."
-        podcast.message = "Reading Podcast Feed."
+        freshPodcast.message = "Reading Podcast Feed."
         modelContext.saveIfNeeded()
 
-        // Parse XML
-        let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
+        do {
+            // Parse XML
+            let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
 
-        // Re-fetch again after await
-   
+            guard
+                let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
+                let finalPodcast = modelContext.model(for: podcastIDRef) as? Podcast
+            else {
+                return false
+            }
 
-        // Update podcast details safely
-        freshMeta.message = "Updating Podcast details"
-        podcast.message = "Updating Podcast details"
-        modelContext.saveIfNeeded()
+            // Update podcast details safely
+            finalMeta.message = "Updating Podcast details"
+            finalPodcast.message = "Updating Podcast details"
+            modelContext.saveIfNeeded()
 
-        await updateDetails(podcast, fullPodcast: fullPodcast)
-        
-        podcast.message = nil
+            await updateDetails(finalPodcast, fullPodcast: fullPodcast)
 
-        // Final updates
-        podcast.message = nil
-        await updateLastRefresh(for: freshMeta.persistentModelID)
-        freshMeta.isUpdating = false
-        modelContext.saveIfNeeded()
+            finalPodcast.message = nil
+            finalMeta.message = nil
+            finalMeta.isUpdating = false
+            finalMeta.feedUpdated = true
+            await updateLastRefresh(for: finalMeta.persistentModelID)
+            modelContext.saveIfNeeded()
 
-        return true
+            return true
+        } catch {
+            if let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                failedMeta.isUpdating = false
+                failedMeta.message = nil
+                failedMeta.feedUpdateCheckDate = Date()
+                failedMeta.feedUpdated = nil
+            }
+            if let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                failedPodcast.message = nil
+            }
+            modelContext.saveIfNeeded()
+            throw error
+        }
     }
     
     func updateDetails(_ podcast: Podcast, fullPodcast: [String : Any], silent: Bool? = false) async{
@@ -489,7 +519,7 @@ actor PodcastModelActor {
     
     func deleteEpisode(_ episodeID: PersistentIdentifier) async throws {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
-        await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeID: episode.id)
+        await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeURL: episode.url)
         modelContext.delete(episode)
         modelContext.saveIfNeeded()
     }
@@ -565,4 +595,3 @@ actor AsyncSemaphore {
         }
     }
 }
-

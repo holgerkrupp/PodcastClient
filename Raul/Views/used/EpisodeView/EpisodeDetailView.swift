@@ -22,8 +22,10 @@ struct EpisodeDetailView: View {
     @State private var shareURL: IdentifiableURL?
 
     @State private var errorMessage: String? = nil
-    // Add this near your other state vars:
     @State private var liveTranscriptionItem: TranscriptionItem?
+    @State private var isLoadingTranscript: Bool = false
+    @State private var isStartingTranscription: Bool = false
+    @State private var showTranscriptSheet: Bool = false
 
 
     
@@ -34,6 +36,10 @@ struct EpisodeDetailView: View {
     }
     
     var body: some View {
+        let _ = episode.refresh
+        let hasLoadedTranscript = episode.transcriptLines?.isEmpty == false
+        let hasRemoteTranscript = episode.externalFiles.contains(where: { $0.category == .transcript })
+        let activeTranscriptionItem = liveTranscriptionItem ?? episode.transcriptionItem
         
             ZStack {
 
@@ -98,51 +104,33 @@ struct EpisodeDetailView: View {
                             .buttonStyle(.glass(.clear))
                             .padding()
                             
-                            if let transcriptLines = episode.transcriptLines, transcriptLines.count > 0 {
-                                NavigationLink(destination:  TranscriptListView(transcriptLines: transcriptLines)) {
-                                    Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
+                            if hasLoadedTranscript || hasRemoteTranscript {
+                                Button {
+                                    Task { @MainActor in
+                                        await openTranscript()
+                                    }
+                                } label: {
+                                    if isLoadingTranscript {
+                                        Label("Loading Transcript", systemImage: "ellipsis")
+                                    } else {
+                                        Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
+                                    }
                                 }
                                 .buttonStyle(.glass(.clear))
                                 .padding()
-                            } else {
-                                // Replace the slot where you show "Transcribe" with:
-                                if let item = liveTranscriptionItem ?? episode.transcriptionItem, item.isTranscribing {
-                                    TranscriptionProgressView(item: item)
-                                        .padding()
-                                        .onAppear {
-                                            // Keep local state synced if episode.transcriptionItem arrives later
-                                            if liveTranscriptionItem == nil {
-                                                liveTranscriptionItem = episode.transcriptionItem
-                                            }
-                                        }
-                                } else if let url = episode.url {
-                                    Button(action: {
-                                        Task { @MainActor in
-                                            do {
-                                                let actor = EpisodeActor(modelContainer: context.container)
-                                                try await actor.transcribe(url)
-                                                // Grab the item from the manager and set local state so UI flips immediately
-                                                if let id = episode.id as UUID?,
-                                                   let item = await TranscriptionManager.shared.item(for: id) {
-                                                    liveTranscriptionItem = item
-                                                } else {
-                                                    // Fallback: if item not yet registered, poll once after a short delay
-                                                    try? await Task.sleep(nanoseconds: 200_000_000)
-                                                    if let id = episode.id as UUID?,
-                                                       let item = await TranscriptionManager.shared.item(for: id) {
-                                                        liveTranscriptionItem = item
-                                                    }
-                                                }
-                                            } catch {
-                                                errorMessage = error.localizedDescription
-                                            }
-                                        }
-                                    }) {
-                                        Label("Transcribe", systemImage: "quote.bubble.fill")
-                                    }
-                                    .buttonStyle(.glass(.clear))
+                                .disabled(isLoadingTranscript)
+                            } else if let item = activeTranscriptionItem, item.isTranscribing || isStartingTranscription {
+                                TranscriptionProgressView(item: item)
                                     .padding()
+                            } else if let url = episode.url {
+                                Button(action: {
+                                    Task { await startTranscription(from: url) }
+                                }) {
+                                    Label("Transcribe", systemImage: "quote.bubble.fill")
                                 }
+                                .buttonStyle(.glass(.clear))
+                                .padding()
+                                .disabled(isStartingTranscription)
                             }
                         }
                     }
@@ -214,25 +202,101 @@ struct EpisodeDetailView: View {
             .sheet(item: $shareURL) { identifiable in
                 ShareLink(item: identifiable.url) { Text("Share Episode") }
             }
+            .sheet(isPresented: $showTranscriptSheet) {
+                NavigationStack {
+                    if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
+                        TranscriptListView(transcriptLines: transcriptLines)
+                            .navigationTitle("Transcript")
+                            .navigationBarTitleDisplayMode(.inline)
+                    } else {
+                        ContentUnavailableView("Transcript Unavailable", systemImage: "quote.bubble")
+                    }
+                }
+            }
+            .task(id: episode.id) {
+                liveTranscriptionItem = await currentTranscriptionItem()
+            }
+            .onChange(of: activeTranscriptionItem?.state) {
+                if case .finished = activeTranscriptionItem?.state {
+                    liveTranscriptionItem = nil
+                }
+            }
         
         .navigationTitle(episode.title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @MainActor
+    private func openTranscript() async {
+        if episode.transcriptLines?.isEmpty == false {
+            showTranscriptSheet = true
+            return
+        }
+
+        guard !isLoadingTranscript else { return }
+        isLoadingTranscript = true
+        defer { isLoadingTranscript = false }
+
+        do {
+            let actor = EpisodeActor(modelContainer: context.container)
+            try await actor.downloadTranscript(episode.persistentModelID)
+            showTranscriptSheet = episode.transcriptLines?.isEmpty == false
+            if showTranscriptSheet == false {
+                errorMessage = "The transcript file could not be loaded."
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func startTranscription(from url: URL) async {
+        guard !isStartingTranscription else { return }
+        isStartingTranscription = true
+        errorMessage = nil
+
+        if let existingItem = await currentTranscriptionItem() {
+            liveTranscriptionItem = existingItem
+        } else {
+            let placeholder = TranscriptionItem(episodeID: episode.id, sourceURL: url)
+            placeholder.setState(.queued, progress: 0.0, status: "Queued")
+            liveTranscriptionItem = placeholder
+        }
+
+        defer {
+            isStartingTranscription = false
+        }
+
+        do {
+            let actor = EpisodeActor(modelContainer: context.container)
+            try await actor.transcribe(url)
+            if let item = await currentTranscriptionItem() {
+                liveTranscriptionItem = item
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+            liveTranscriptionItem?.setState(.failed(error: error.localizedDescription), status: "Failed")
+        }
+    }
+
+    private func currentTranscriptionItem() async -> TranscriptionItem? {
+        await TranscriptionManager.shared.item(for: episode.id)
     }
 }
 
 // A compact progress/status view that fits where the button sits.
 @MainActor
 private struct TranscriptionProgressView: View {
-    @State var item: TranscriptionItem
+    let item: TranscriptionItem
     
     var body: some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 10) {
             Group {
                 switch item.state {
                 case .queued, .preparingModel, .downloadingModel, .analyzing, .saving:
-                    ProgressView(value: progressValue, total: 1.0)
-                        .progressViewStyle(.linear)
-                        .frame(width: 120)
+                    Image(systemName: "quote.bubble.fill")
+                        .symbolEffect(.pulse.byLayer, options: .repeat(.continuous))
+                        .foregroundStyle(.accent)
                 case .finished:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 case .failed:
@@ -243,19 +307,32 @@ private struct TranscriptionProgressView: View {
                     EmptyView()
                 }
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(statusTitle)
-                    .font(.caption)
-                if showsPercent {
-                    Text("\(Int((item.progress.clamped(to: 0...1)) * 100))%")
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Transcribing")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 6)
+                    if showsPercent {
+                        Text("\(Int((progressValue.clamped(to: 0...1)) * 100))%")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                ProgressView(value: progressValue, total: 1.0)
+                    .progressViewStyle(.linear)
+                    .tint(.accent)
+                Text(statusTitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
-        .padding(8)
+        .frame(width: 200, alignment: .leading)
+        .padding(10)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 12))
+        .animation(.easeInOut(duration: 0.2), value: item.progress)
+        .animation(.easeInOut(duration: 0.2), value: item.state)
     }
     
     private var progressValue: Double {
@@ -281,6 +358,10 @@ private struct TranscriptionProgressView: View {
     }
     
     private var statusTitle: String {
+        if item.statusText.isEmpty == false {
+            return item.statusText
+        }
+
         switch item.state {
         case .queued: return "Queued"
         case .preparingModel: return "Preparing model…"

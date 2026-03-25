@@ -14,34 +14,50 @@ struct PodcastListeningStat: Identifiable {
 }
 
 struct ListeningTimeByPodcastChart: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var weekStartDate: Date? = nil
-    @Query(sort: \PlaySession.startTime, order: .reverse) var sessions: [PlaySession]
-    
-    var filteredSessions: [PlaySession] {
-        guard let startDate = weekStartDate else { return sessions }
-        let calendar = Calendar.current
-        guard let weekEnd = calendar.date(byAdding: .day, value: 7, to: startDate) else { return sessions }
-        return sessions.filter { session in
-            guard let sessionStart = session.startTime else { return false }
-            return sessionStart >= startDate && sessionStart < weekEnd
-        }
+    @State private var podcastStats: [PodcastListeningStat] = []
+    @Query(sort: \ListeningStat.startOfHour, order: .reverse) var latestStat: [ListeningStat]
+
+    private var sessionSignature: String {
+        let latestStart = latestStat.first?.startOfHour?.timeIntervalSinceReferenceDate ?? 0
+        let latestTotal = latestStat.first?.totalSeconds ?? 0
+        let weekKey = weekStartDate?.timeIntervalSinceReferenceDate ?? 0
+        return "\(latestStart)-\(latestTotal)-\(weekKey)"
     }
-    
-    // Compute total seconds listened per podcast
-    var podcastStats: [PodcastListeningStat] {
-        let grouped = Dictionary(grouping: filteredSessions.compactMap { session -> (String, Double)? in
-            guard
-                let name = session.podcastName,
-                let start = session.startTime,
-                let end = session.endTime,
-                end > start
-            else { return nil }
-            return (name, end.timeIntervalSince(start))
-        }) { $0.0 }
-        return grouped.map { (podcast, tuples) in
-            PodcastListeningStat(podcastName: podcast, totalSeconds: tuples.map { $0.1 }.reduce(0, +))
+
+    private func recalculateStats() async {
+        let weekStart = weekStartDate
+        let weekEnd = weekStart.flatMap { Calendar.current.date(byAdding: .day, value: 7, to: $0) }
+
+        let predicate: Predicate<ListeningStat>?
+        if let weekStart, let weekEnd {
+            predicate = #Predicate<ListeningStat> { stat in
+                stat.startOfHour != nil
+                && stat.startOfHour! >= weekStart
+                && stat.startOfHour! < weekEnd
+            }
+        } else {
+            predicate = nil
         }
-        .sorted { $0.totalSeconds > $1.totalSeconds }
+
+        let descriptor = FetchDescriptor<ListeningStat>(predicate: predicate, sortBy: [SortDescriptor(\.startOfHour, order: .forward)])
+        let fetched: [ListeningStat]
+        do {
+            fetched = try modelContext.fetch(descriptor)
+        } catch {
+            return
+        }
+
+        var totals: [String: Double] = [:]
+
+        for stat in fetched {
+            guard let name = stat.podcastName, let seconds = stat.totalSeconds, seconds > 0 else { continue }
+            totals[name, default: 0] += seconds
+        }
+
+        podcastStats = totals.map { PodcastListeningStat(podcastName: $0.key, totalSeconds: $0.value) }
+            .sorted { $0.totalSeconds > $1.totalSeconds }
     }
 
     var body: some View {
@@ -95,10 +111,11 @@ struct ListeningTimeByPodcastChart: View {
                     )
                     .foregroundStyle(by: .value("Podcast", "\(stat.podcastName) (\(formatTime(stat.totalSeconds)))"))
                 }
-                
-
             }
             Spacer()
+        }
+        .task(id: sessionSignature) {
+            await recalculateStats()
         }
         .padding()
     }

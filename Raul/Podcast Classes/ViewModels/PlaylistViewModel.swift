@@ -47,18 +47,26 @@ class PlaylistViewModel: ObservableObject {
     }
 
     func addEpisode(_ episode: Episode, to position: Playlist.Position = .end) async {
-        guard let actor = actor else {
-            // print("PlaylistModelActor not available")
-            return
-        }
-        try? await actor.add(episodeID: episode.id, to: position)
-        await loadEntries()
+        guard let actor = actor else { return }
 
+        if position == .front {
+            // Get the ID of the now playing episode
+            let nowPlayingID = Player.shared.currentEpisode?.id
+            
+            print("Moving \(episode.title) to follow episode ID: \(String(describing: nowPlayingID))")
+            
+            // Pass the ID, let the actor find the correct spot
+            try? await actor.insert(episodeID: episode.id, after: nowPlayingID)
+        } else {
+            try? await actor.add(episodeID: episode.id, to: position)
+        }
+
+        await loadEntries()
     }
 
     func removeEpisode(_ episode: Episode) async {
         guard let actor = actor else {
-            // print("PlaylistModelActor not available")
+             print("PlaylistModelActor not available")
             return
         }
         try? await actor.remove(episodeID: episode.id)

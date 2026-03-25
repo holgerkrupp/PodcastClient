@@ -12,11 +12,19 @@ import BasicLogger
 
 
 struct ContentView: View {
+    private enum RootTab: Hashable {
+        case playlist
+        case inbox
+        case library
+        case add
+    }
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @State private var inboxCount: Int = 0
+    @State private var selectedTab: RootTab = .playlist
     
     @State private var search:String = ""
     private var SETTINGgoingBackToPlayerafterBackground: Bool = true
@@ -26,32 +34,24 @@ struct ContentView: View {
     
     var body: some View {
         
-        TabView() {
+        TabView(selection: $selectedTab) {
             
-            Tab {
+            Tab("Up next", systemImage: "calendar.day.timeline.leading", value: RootTab.playlist) {
                 PlaylistView()
-            } label: {
-                Label("Up next", systemImage: "calendar.day.timeline.leading")
             }
           
-            Tab {
+            Tab("Inbox", systemImage: "tray.fill", value: RootTab.inbox) {
                 InboxView()
-            } label: {
-                Label("Inbox", systemImage: "tray.fill")
             }
             .badge(inboxCount)
 
-            Tab {
+            Tab("Library", systemImage: "books.vertical", value: RootTab.library) {
                 LibraryView()
-            } label: {
-                Label("Library", systemImage: "books.vertical")
             }
 
             
-            Tab(role: .search) {
+            Tab("Add", systemImage: "plus", value: RootTab.add, role: .search) {
                 AddPodcastView(search: $search)
-            } label: {
-                Label("Add", systemImage: "plus")
             }
 
             
@@ -94,6 +94,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
             print("inbox Changed")
             Task { await loadInboxCount() }
+        }
+        .onOpenURL { url in
+            guard url.scheme == "upnext" else { return }
+            selectedTab = .playlist
         }
         
 

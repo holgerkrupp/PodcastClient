@@ -70,6 +70,53 @@
 			<key>type</key>
 			<string>bookmark</string>
 		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>92</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>91</string>
+					<key>Timestamp</key>
+					<string>795878403.336017</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>Raul/Downloads/DownloadedEpisodesView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>                await actor.deleteFile(episodeID: episodeID)
+</string>
+				<key>leading</key>
+				<string>            let _ = await Task.detached(priority: .background) { () -&gt; Void in
+                let actor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+</string>
+				<key>trailing</key>
+				<string>            }.value
+
+            // Refresh the snapshot on the main actor so UI updates
+</string>
+			</dict>
+			<key>title</key>
+			<string>replace episodeID with eposideURL</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -45,9 +45,7 @@ struct CoverImageView: View {
         guard let time = timecode, time > 0 else { return nil }
         let chapters = episode.preferredChapters
         guard !chapters.isEmpty else { return nil }
-        return chapters
-            .sorted(by: { ($0.start ?? 0) < ($1.start ?? 0) })
-            .last(where: { ($0.start ?? 0) <= time })
+        return chapters.last(where: { ($0.start ?? 0) <= time })
     }
 
     // Determine the most appropriate URL to use if no chapter-specific image is available.

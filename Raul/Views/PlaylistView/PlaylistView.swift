@@ -26,63 +26,7 @@ struct PlaylistView: View {
             
             List{
 
-                if let episode = Player.shared.currentEpisode {
-                    ZStack {
-                         EpisodeRowView(episode: episode)
-                          //  .id(episode.id)
-                            .allowsHitTesting(false)
-                       
-                        Rectangle()
-                            .fill(Color.background)
-                            .opacity(0.6)
-                            .allowsHitTesting(false)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                            EmptyView()
-                        }.opacity(0)
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-                    .animation(.easeInOut, value: Player.shared.currentEpisode)
-                    
-                     /// Glass style overlay - looks cool but the non glass overlay is better
-                    .overlay{
-  
-
-                     
-                                Group {
-                                    if Player.shared.isPlaying {
-                                        Label("Now Playing", systemImage: "waveform")
-                                            .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
-                                            .foregroundStyle(Color.primary)
-                                            .font(.title.bold())
-                                    } else {
-                                        Label("Now Playing", systemImage: "waveform.low")
-                                            .foregroundStyle(Color.primary)
-                                            .font(.title.bold())
-                                    }
-                                }
-                                .frame(width: 300, height: 120)
-                      
-                                
-                            
-                     .background{
-                         RoundedRectangle(cornerRadius:  20.0)
-                             .fill(.background.opacity(0.3))
-                     }
-                  
-                     
-                     .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  20.0))
-                     .frame(maxWidth: 300, maxHeight: 120, alignment: .center)
-                    }
-                    
-                    
-                }
              
                     ForEach(playListEntries, id: \.id) { entry in
                         if let episode = entry.episode {
@@ -94,6 +38,9 @@ struct PlaylistView: View {
                                     EmptyView()
                                 }.opacity(0)
                             }
+                            
+                            
+
 
                             .swipeActions(edge: .trailing){
                                 
@@ -117,6 +64,7 @@ struct PlaylistView: View {
                                                      bottom: 0,
                                                      trailing: 0))
                                 .ignoresSafeArea()
+                            
                         }
                            
                         
@@ -163,7 +111,7 @@ struct PlaylistView: View {
     }
     
     private func archiveEpisode(_ episode: Episode) async {
-        // print("archiveEpisode from PlaylistView - \(episode.title)")
+         print("archiveEpisode from PlaylistView - \(episode.title)")
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         
             await episodeActor.archiveEpisode(episode.url)

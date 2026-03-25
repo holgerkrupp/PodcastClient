@@ -1,7 +1,667 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
 
+    },
+    " - " : {
+
+    },
+    "%@" : {
+
+    },
+    "%@ – %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ – %2$@"
+          }
+        }
+      }
+    },
+    "%@ History" : {
+
+    },
+    "%@:" : {
+
+    },
+    "%lld" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "Add" : {
+
+    },
+    "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list." : {
+
+    },
+    "Add Keyword" : {
+
+    },
+    "Additional Settings" : {
+
+    },
+    "All Bookmarks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Lesezeichen"
+          }
+        }
+      }
+    },
+    "All Episodes" : {
+
+    },
+    "All Podcasts" : {
+
+    },
+    "already subscribed" : {
+
+    },
+    "Apple SpeechTranscriber" : {
+
+    },
+    "apps" : {
+
+    },
+    "Archive" : {
+
+    },
+    "Archive Episode" : {
+
+    },
+    "at %@" : {
+
+    },
+    "Authentication Required" : {
+
+    },
+    "Authors" : {
+
+    },
+    "Bookmark" : {
+
+    },
+    "Bookmark This" : {
+
+    },
+    "Bookmarks" : {
+
+    },
+    "Bottom" : {
+
+    },
+    "Browse by Category" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Chapter Skip Keywords" : {
+
+    },
+    "Chapters" : {
+
+    },
+    "Chapters containing any of these keywords will be skipped during playback. The rules are applied when new episodes with chapters are added." : {
+
+    },
+    "Contains" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Continues Playback" : {
+
+    },
+    "Create a bookmark at the current playback position." : {
+
+    },
+    "Created in Buxtehude by" : {
+
+    },
+    "Custom Settings" : {
+
+    },
+    "Debug" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete all files in Cahes Directory" : {
+
+    },
+    "Delete all files in Documents Directory" : {
+
+    },
+    "Delete Bookmark" : {
+
+    },
+    "Delete Files" : {
+
+    },
+    "Delete Played" : {
+
+    },
+    "Descriptions" : {
+
+    },
+    "Download" : {
+
+    },
+    "Downloaded Episodes" : {
+
+    },
+    "Downloads" : {
+
+    },
+    "Enable Notifications" : {
+
+    },
+    "End: %@" : {
+
+    },
+    "Ended cleanly" : {
+
+    },
+    "EndsWith" : {
+
+    },
+    "Engine" : {
+
+    },
+    "Episodes" : {
+
+    },
+    "Episodes you download will appear here." : {
+
+    },
+    "Error" : {
+
+    },
+    "Export" : {
+
+    },
+    "Export Podcasts" : {
+
+    },
+    "Export your subscriptions as OMPL file." : {
+
+    },
+    "Exporting…" : {
+
+    },
+    "Exporting... %lld%%" : {
+
+    },
+    "extremely" : {
+
+    },
+    "Extremely Successful Apps" : {
+
+    },
+    "From %@ to %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "From %1$@ to %2$@"
+          }
+        }
+      }
+    },
+    "Get the source code" : {
+
+    },
+    "Global Settings" : {
+
+    },
+    "Heat Map (%@ – %@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heat Map (%1$@ – %2$@)"
+          }
+        }
+      }
+    },
+    "Hide played Episodes" : {
+
+    },
+    "Hot Podcasts" : {
+
+    },
+    "Hour By Weekday" : {
+
+    },
+    "Import" : {
+
+    },
+    "Import / Export" : {
+
+    },
+    "Inbox" : {
+
+    },
+    "Installed Models" : {
+
+    },
+    "Is" : {
+
+    },
+    "Keyword" : {
+
+    },
+    "Language" : {
+
+    },
+    "Last refresh: %@" : {
+
+    },
+    "Last updated: %@" : {
+
+    },
+    "Less" : {
+
+    },
+    "Library" : {
+
+    },
+    "Listening" : {
+
+    },
+    "Listening Habits" : {
+
+    },
+    "Listening Heatmap" : {
+
+    },
+    "Listening History" : {
+
+    },
+    "Listening Time" : {
+
+    },
+    "Listening Time by Podcast" : {
+
+    },
+    "Listening Trend" : {
+
+    },
+    "Loading categories..." : {
+
+    },
+    "Loading languages..." : {
+
+    },
+    "Loading podcasts..." : {
+
+    },
+    "Loading Transcript" : {
+
+    },
+    "Loading..." : {
+
+    },
+    "Loading…" : {
+
+    },
+    "Lockscreen Slider" : {
+
+    },
+    "max play position" : {
+
+    },
+    "Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale." : {
+
+    },
+    "More" : {
+
+    },
+    "More Views" : {
+
+    },
+    "New episodes of subscribed podcasts appear here. You can add them to your listening queue or archive them, if you are not interested in an episode." : {
+
+    },
+    "new Podcasts" : {
+
+    },
+    "Newest First" : {
+
+    },
+    "No Bookmarks saved for this podcast." : {
+
+    },
+    "No Downloads" : {
+
+    },
+    "No episode playing." : {
+
+    },
+    "No listening data yet." : {
+
+    },
+    "No Listening History" : {
+
+    },
+    "No podcasts found" : {
+
+    },
+    "No podcasts matched \"%@\"." : {
+
+    },
+    "No Results" : {
+
+    },
+    "no results for %@" : {
+
+    },
+    "No Transcriptions Yet" : {
+
+    },
+    "None" : {
+
+    },
+    "Now Playing" : {
+
+    },
+    "Now Playing Slider" : {
+
+    },
+    "Off" : {
+
+    },
+    "OK" : {
+
+    },
+    "On-Device Transcription" : {
+
+    },
+    "Open in Browser" : {
+
+    },
+    "Open Notification Settings" : {
+
+    },
+    "Operator" : {
+
+    },
+    "Other" : {
+
+    },
+    "Password" : {
+
+    },
+    "Pause" : {
+
+    },
+    "People" : {
+
+    },
+    "Period" : {
+
+    },
+    "Play" : {
+
+    },
+    "Play Chapter" : {
+
+    },
+    "Play Last" : {
+
+    },
+    "Play Next" : {
+
+    },
+    "Playback" : {
+
+    },
+    "Playback Settings" : {
+
+    },
+    "Playback Speed" : {
+
+    },
+    "PlayerIntentsExtension" : {
+
+    },
+    "Podcast" : {
+
+    },
+    "Preset" : {
+
+    },
+    "Preview" : {
+
+    },
+    "Preview is only available for downloaded audio files." : {
+
+    },
+    "Preview unavailable" : {
+
+    },
+    "Progress Slider" : {
+
+    },
+    "Rebuild Listening Analytics" : {
+
+    },
+    "Recent on-device transcriptions will appear here once you create one." : {
+
+    },
+    "Recent Session History" : {
+
+    },
+    "Recent Transcriptions" : {
+
+    },
+    "Recently Played Episodes" : {
+
+    },
+    "Recovered / interrupted" : {
+
+    },
+    "Remove Download" : {
+
+    },
+    "Remove Duplicate Podcasts" : {
+
+    },
+    "Rescan" : {
+
+    },
+    "Resume" : {
+
+    },
+    "Resume Playback" : {
+
+    },
+    "Search is powered by fyyd" : {
+
+    },
+    "Search podcasts" : {
+
+    },
+    "Search transcript..." : {
+
+    },
+    "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
+
+    },
+    "Select file to import" : {
+
+    },
+    "Select the segment to share" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Settings Mode" : {
+
+    },
+    "Share" : {
+
+    },
+    "Share audio clip" : {
+
+    },
+    "Share Episode" : {
+
+    },
+    "Show all Settings" : {
+
+    },
+    "Skip Back" : {
+
+    },
+    "Sleep Timer" : {
+
+    },
+    "Social links" : {
+
+    },
+    "Sort" : {
+
+    },
+    "Sort by" : {
+
+    },
+    "Start listening to see your summarized playback history here." : {
+
+    },
+    "Start: %@" : {
+
+    },
+    "StartsWith" : {
+
+    },
+    "Stop after this episode" : {
+
+    },
+    "Subscribe" : {
+
+    },
+    "Subscribe to new podcasts" : {
+
+    },
+    "Subscribing..." : {
+
+    },
+    "Subscription" : {
+
+    },
+    "successful" : {
+
+    },
+    "Summary" : {
+
+    },
+    "Supported Models" : {
+
+    },
+    "This podcast uses the global settings. To customize, switch to 'Custom Settings'." : {
+
+    },
+    "Title A–Z" : {
+
+    },
+    "Titles" : {
+
+    },
+    "To avoid accidential skipping, you can disable scrubbing inside the app and on the lockscreen." : {
+
+    },
+    "Top" : {
+
+    },
+    "Top Podcasts" : {
+
+    },
+    "Total Listening Time per Podcast" : {
+
+    },
+    "Transcribe" : {
+
+    },
+    "Transcribing" : {
+
+    },
+    "Transcript" : {
+
+    },
+    "Transcript Unavailable" : {
+
+    },
+    "Transcription" : {
+
+    },
+    "Transcriptions" : {
+
+    },
+    "Unarchive" : {
+
+    },
+    "Up next" : {
+
+    },
+    "Up Next" : {
+
+    },
+    "Up Next Position" : {
+
+    },
+    "URL or Search" : {
+
+    },
+    "Username" : {
+
+    },
+    "Video Size" : {
+
+    },
+    "Weekday" : {
+
+    },
+    "Weekday totals and an hour-by-weekday heat map based on your listening history." : {
+
+    },
+    "Weekly Listening Heat Map" : {
+
+    },
+    "When you usually listen" : {
+
+    },
+    "Where should a new Episode be added to the playlist?" : {
+
+    },
+    "Y-axis: listening time per %@." : {
+
+    },
+    "You have not saved a bookmark yet. Tap the bookmark icon during playback to add a bookmark. Bookmarking allows you to listen to a segment of an episode later on. It also works in CarPlay or by saying 'Bookmark this in Up Next'." : {
+
+    },
+    "You have not subscribed to any podcasts yet. Tap the + Button in the bottom right corner to subscribe to some podcasts. You can import a OPML File, search the directory or browse for trending podcasts in different languages." : {
+
+    },
+    "Your Inbox is empty" : {
+
+    },
+    "Your Library is empty" : {
+
+    },
+    "Your Playlist is empty" : {
+
+    }
   },
   "version" : "1.1"
 }

@@ -72,7 +72,7 @@ class CarPlayPlayNext {
         }
 
         // Build Up Next items
-        let items = episodes.enumerated().map { (index, episode) in
+        let items = episodes.enumerated().map { index, episode in
             let cover = images?[index] ?? UIImage()
             let item = CPListItem(
                 text: episode.title ?? "",
@@ -84,10 +84,17 @@ class CarPlayPlayNext {
             item.isPlaying = (episode.id == Player.shared.currentEpisodeID)
             item.handler = { [weak self] _, _ in
                 guard let self else { return }
-                let episode = self.episodes[index]
                 Task {
-                    await Player.shared.playEpisode(episode.url)
-                    self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { _, _ in })
+                    if episode.id == Player.shared.currentEpisodeID {
+                        Player.shared.play()
+                    } else {
+                        await Player.shared.playEpisode(episode.url)
+                    }
+                    self.interfaceController.pushTemplate(
+                        CarPlayNowPlaying(interfaceController: self.interfaceController).template,
+                        animated: true,
+                        completion: { _, _ in }
+                    )
                     await self.setupTemplate()
                 }
             }

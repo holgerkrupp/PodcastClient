@@ -12,167 +12,156 @@ struct EpisodeRowView: View {
         lhs.episode.id == rhs.episode.id &&
         lhs.episode.metaData?.lastPlayed == rhs.episode.metaData?.lastPlayed
     }
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
 
-
-    @State private var presentingModal : Bool = false
-    var episode: Episode
+    @Bindable var episode: Episode
     private let height:CGFloat = 210
+
+    init(episode: Episode) {
+        self._episode = Bindable(wrappedValue: episode)
+    }
   
     
     var body: some View {
+        let _ = episode.refresh
+        let podcastTitle = episode.podcast?.title ?? ""
+        let publishText = episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""
+        let duration = episode.duration ?? 0.0
+        let remainingTime = episode.remainingTime
+        let showRemaining = remainingTime != nil && remainingTime != duration && (remainingTime ?? 0) > 0
+        let timeText = Duration.seconds(showRemaining ? (remainingTime ?? 0) : duration).formatted(.units(width: .narrow))
+        let timeDisplay = showRemaining ? timeText + " remaining" : timeText
+        let completionDate = episode.metaData?.completionDate
+        let isDownloaded = fileManager.isDownloaded(episode.localFile) == true
+        let hasChapters = episode.chapters?.isEmpty == false
+        let hasTranscript = episode.externalFiles.contains(where: { $0.category == .transcript }) || (episode.transcriptLines?.isEmpty == false)
+        let hasBookmarks = episode.bookmarks?.isEmpty == false
+        let progress = max(0.0, min(1.0, episode.maxPlayProgress))
 
-            VStack(alignment: .center) {
-                ZStack{
-                    
-                    
-                        CoverImageView(podcast: episode.podcast)
-                            .scaledToFill()
-                            .frame(height: height)
-                            .clipped()
-                        
-                       
-                        
-                    VStack(alignment: .leading){
-  
+        ZStack {
+            CoverImageView(podcast: episode.podcast)
+                .scaledToFill()
+                .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+                .blur(radius: 8)
+                .opacity(0.45)
+                .clipped()
 
-                            HStack{
-                                ZStack(alignment: .topTrailing) {
-                                    CoverImageView(episode: episode)
-                                        .frame(width: 120, height: 120)
-                                        .cornerRadius(8)
-                                    if episode.bookmarks?.isEmpty == false {
-                                        Image(systemName: "bookmark.fill")
-                                            .resizable()
-                                            .frame(height: 50)
-                                            .foregroundColor(.accent)
-                                            .scaledToFit()
-                                            
-                                    }
-                                }
-                                VStack(alignment: .leading){
-                                    HStack{
-                                        Text(episode.podcast?.title ?? "")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(2)
-                                        Spacer()
-                                        Text((episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""))
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Text(episode.title)
-                                        .font(.headline)
-                                        .lineLimit(3)
-                                        .minimumScaleFactor(0.5)
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    HStack {
-                                        if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                                            Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }else{
-                                            Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        Spacer()
-   
-                                        
-                                        
-                                    }
-                                    
-                                    HStack {
-                                        
-                                        if episode.metaData?.completionDate != nil {
-                                            Image("custom.play.circle.badge.checkmark")
-                                        } else {
-                                            if fileManager.isDownloaded(episode.localFile) == true {
-                                                Image(systemName: style.sfSymbolName)
-                                            }else{
-                                                Image(systemName: "cloud")
-                                            }
-                                        }
-                                        
-                                        if (episode.chapters?.count ?? 0)  > 0 {
-                                            Image(systemName: "list.bullet")
-                                        }
-                                        if episode.externalFiles.contains(where: {$0.category == .transcript}) || episode.transcriptLines?.count ?? 0 > 0 {
-                                            
-                                            Image(systemName: "quote.bubble")
-                                            
-                                           
-                                        }
-                                        
-                                     
-                                        
-                                            Spacer()
-                                        
-                               
-                                      
-                                         DownloadControllView(episode: episode, showDelete: false)
-                                            .symbolRenderingMode(.hierarchical)
-                                            .padding(8)
-                                            .foregroundColor(.primary)
-                                            .labelStyle(.iconOnly)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 14) {
+                    ZStack(alignment: .topTrailing) {
+                        CoverImageView(episode: episode)
+                            .frame(width: 120, height: 120)
 
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: 30)
-                                    .buttonStyle(.plain)
-                                 
+                        if hasBookmarks {
+                            Image(systemName: "bookmark.fill")
+                                .font(.title2)
+                                .foregroundStyle(.accent)
+                                .padding(8)
+                        }
+                    }
 
-                                }
-                                .frame(height: 120)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top) {
+                            Text(podcastTitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                            Spacer(minLength: 8)
+                            Text(publishText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(episode.title)
+                            .font(.headline)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.75)
+                            .foregroundStyle(.primary)
+
+                        Spacer(minLength: 0)
+
+                        Text(timeDisplay)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 10) {
+                            if completionDate != nil {
+                                Image("custom.play.circle.badge.checkmark")
+                            } else if isDownloaded {
+                                Image(systemName: style.sfSymbolName)
+                            } else {
+                                Image(systemName: "cloud")
                             }
-                           
-                        EpisodeControlView(episode: episode)
-                      //      .modelContainer(modelContext.container)
-                            .frame(height: 50)
-                            .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                                
 
-                           
-                        }.padding()
-                    
-                    .background(
-                        Rectangle()
-                            .fill(.ultraThinMaterial)
-                       
-                    )
-                     
+                            if hasChapters {
+                                Image(systemName: "list.bullet")
+                            }
+                            if hasTranscript {
+                                Image(systemName: "quote.bubble")
+                            }
 
+                            Spacer()
+
+                            DownloadControllView(episode: episode, showDelete: false)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundColor(.primary)
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+                }
+
+                EpisodeControlView(episode: episode)
+                    .frame(height: 50)
+            }
+            .padding(8)
+            .background(
+                Rectangle()
+                    .fill(.thinMaterial)
+            )
+        }
+        .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+        .overlay(alignment: .bottomLeading) {
+            Rectangle()
+                .fill(Color.accent)
+                .scaleEffect(x: progress, y: 1, anchor: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: 4)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        }
+            .overlay{
+
+
+                if episode.url == Player.shared.currentEpisode?.url {
+                        Group {
+                            if Player.shared.isPlaying {
+                                Label("Now Playing", systemImage: "waveform")
+                                    .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                            } else {
+                                Label("Now Playing", systemImage: "waveform.low")
+                                    .foregroundStyle(Color.primary)
+                                    .font(.title.bold())
+                            }
+                        }
+                        .frame(width: 300, height: 120)
+              
+                        
                     
-                   
-                   
-                
+             .background{
+                 RoundedRectangle(cornerRadius:  20.0)
+                     .fill(.background.opacity(0.3))
+             }
+          
+             
+             .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  20.0))
+             .frame(maxWidth: 300, maxHeight: 120, alignment: .center)
             }
                 
-                .frame(height: height)
-                
-                .overlay(alignment: .bottomLeading) {
-
-                    
-                    Rectangle()
-                        .fill(Color.accent)
-                      //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
-                        .scaleEffect(x: max(0.0, min(1.0, episode.maxPlayProgress)), y: 1, anchor: .leading)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    
-                    .frame(height: 4) // only care about height
-                }
-                 
-            
-        }
-            
-            .sheet(isPresented: $presentingModal, content: {
-                EpisodeDetailView(episode: episode)
-                  
-            })
-          
-        
+            }
 
     }
     
@@ -208,5 +197,3 @@ struct EpisodeRowView: View {
     return EpisodeRowView(episode: episode)
         .environment(previewFilesManager)
 }
-
-

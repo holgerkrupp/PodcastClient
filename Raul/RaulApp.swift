@@ -30,6 +30,9 @@ struct RaulApp: App {
                         Task { @Sendable in
                             await DownloadManager.shared.injectDownloadedFilesManager(manager)
                         }
+                        Task {
+                            await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
+                        }
                     }
              
             

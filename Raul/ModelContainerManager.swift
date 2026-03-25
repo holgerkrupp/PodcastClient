@@ -29,6 +29,9 @@ class ModelContainerManager: ObservableObject {
                         Bookmark.self,
                         RateSegment.self,
                         PlaySession.self,
+                        ListeningStat.self,
+                        PlaySessionSummary.self,
+                        TranscriptionRecord.self,
                     configurations: configuration
                 )
                 
@@ -46,6 +49,9 @@ class ModelContainerManager: ObservableObject {
                     Bookmark.self,
                     RateSegment.self,
                     PlaySession.self,
+                    ListeningStat.self,
+                    PlaySessionSummary.self,
+                    TranscriptionRecord.self,
                     configurations: configuration
                 )
             }
