@@ -38,10 +38,7 @@
     "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list." : {
 
     },
-    "Add Keyword" : {
-
-    },
-    "Additional Settings" : {
+    "Add Rule" : {
 
     },
     "All Bookmarks" : {
@@ -63,7 +60,13 @@
     "already subscribed" : {
 
     },
+    "App-Wide Controls" : {
+
+    },
     "Apple SpeechTranscriber" : {
+
+    },
+    "Applied Right Now" : {
 
     },
     "apps" : {
@@ -93,9 +96,6 @@
     "Bookmarks" : {
 
     },
-    "Bottom" : {
-
-    },
     "Browse by Category" : {
 
     },
@@ -108,22 +108,16 @@
     "Cancel" : {
 
     },
-    "Chapter Skip Keywords" : {
+    "Chapter Skip Rules" : {
 
     },
     "Chapters" : {
 
     },
-    "Chapters containing any of these keywords will be skipped during playback. The rules are applied when new episodes with chapters are added." : {
-
-    },
-    "Contains" : {
-
-    },
     "Continue" : {
 
     },
-    "Continues Playback" : {
+    "Continuous playback" : {
 
     },
     "Could Not Open Podcast" : {
@@ -135,19 +129,19 @@
     "Created in Buxtehude by" : {
 
     },
-    "Custom Settings" : {
+    "Custom" : {
+
+    },
+    "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global." : {
 
     },
     "Debug" : {
 
     },
+    "Default speed" : {
+
+    },
     "Delete" : {
-
-    },
-    "Delete all files in Cahes Directory" : {
-
-    },
-    "Delete all files in Documents Directory" : {
 
     },
     "Delete all Podcasts" : {
@@ -157,6 +151,12 @@
 
     },
     "Delete Bookmark" : {
+
+    },
+    "Delete Cache Files" : {
+
+    },
+    "Delete Documents Files" : {
 
     },
     "Delete Files" : {
@@ -180,6 +180,9 @@
     "Downloads" : {
 
     },
+    "Enable Custom to give this podcast its own queue placement, playback speed, and chapter rules." : {
+
+    },
     "Enable Notifications" : {
 
     },
@@ -187,9 +190,6 @@
 
     },
     "Ended cleanly" : {
-
-    },
-    "EndsWith" : {
 
     },
     "Engine" : {
@@ -225,6 +225,9 @@
     "Extremely Successful Apps" : {
 
     },
+    "Following global defaults" : {
+
+    },
     "From %@ to %@" : {
       "localizations" : {
         "en" : {
@@ -238,7 +241,16 @@
     "Get the source code" : {
 
     },
-    "Global Settings" : {
+    "Global" : {
+
+    },
+    "Global Defaults" : {
+
+    },
+    "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently." : {
+
+    },
+    "Global Playback Settings" : {
 
     },
     "Heat Map (%@ – %@)" : {
@@ -269,13 +281,16 @@
     "Inbox" : {
 
     },
+    "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue." : {
+
+    },
     "Installed Models" : {
 
     },
-    "Is" : {
+    "Integrations" : {
 
     },
-    "Keyword" : {
+    "Keyword or phrase" : {
 
     },
     "Language" : {
@@ -323,13 +338,22 @@
     "Loading podcasts..." : {
 
     },
+    "Loading settings…" : {
+
+    },
     "Loading Transcript" : {
 
     },
     "Loading…" : {
 
     },
-    "Lockscreen Slider" : {
+    "Lock screen slider" : {
+
+    },
+    "Maintenance" : {
+
+    },
+    "Match" : {
 
     },
     "max play position" : {
@@ -344,6 +368,9 @@
     "More Views" : {
 
     },
+    "New episodes go to" : {
+
+    },
     "New episodes of subscribed podcasts appear here. You can add them to your listening queue or archive them, if you are not interested in an episode." : {
 
     },
@@ -354,6 +381,9 @@
 
     },
     "No Bookmarks saved for this podcast." : {
+
+    },
+    "No chapter rules yet. Add a rule to automatically skip matching chapter titles." : {
 
     },
     "No Downloads" : {
@@ -401,10 +431,13 @@
     "Not Subscribed" : {
 
     },
+    "Notifications" : {
+
+    },
     "Now Playing" : {
 
     },
-    "Now Playing Slider" : {
+    "Now Playing slider" : {
 
     },
     "Off" : {
@@ -423,12 +456,6 @@
 
     },
     "Open Podcast" : {
-
-    },
-    "Operator" : {
-
-    },
-    "Other" : {
 
     },
     "Password" : {
@@ -458,6 +485,9 @@
     "Playback" : {
 
     },
+    "Playback & Queue" : {
+
+    },
     "Playback Settings" : {
 
     },
@@ -473,7 +503,13 @@
     "Podcast Not Found" : {
 
     },
+    "Podcast Overrides" : {
+
+    },
     "Podcast Scope" : {
+
+    },
+    "Podcast Settings" : {
 
     },
     "Podcasts kept in the database but excluded from refresh will appear here." : {
@@ -491,7 +527,7 @@
     "Preview unavailable" : {
 
     },
-    "Progress Slider" : {
+    "Queue" : {
 
     },
     "Rebuild Listening Analytics" : {
@@ -512,6 +548,9 @@
     "Recovered / interrupted" : {
 
     },
+    "Remove" : {
+
+    },
     "Remove Download" : {
 
     },
@@ -525,6 +564,12 @@
 
     },
     "Resume Playback" : {
+
+    },
+    "Rules compare against chapter titles and mark matching chapters to be skipped." : {
+
+    },
+    "Scope" : {
 
     },
     "Search is powered by fyyd" : {
@@ -584,9 +629,6 @@
     "Start: %@" : {
 
     },
-    "StartsWith" : {
-
-    },
     "Stop after this episode" : {
 
     },
@@ -599,9 +641,6 @@
     "Subscribed" : {
 
     },
-    "Subscription" : {
-
-    },
     "successful" : {
 
     },
@@ -609,6 +648,12 @@
 
     },
     "Supported Models" : {
+
+    },
+    "These settings are global only. They affect every podcast and cannot be customized per show." : {
+
+    },
+    "These values apply across the app unless a podcast is switched to custom settings." : {
 
     },
     "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
@@ -620,19 +665,19 @@
     "This podcast stays in the database, but it is skipped by bulk refresh." : {
 
     },
-    "This podcast uses the global settings. To customize, switch to 'Custom Settings'." : {
+    "This removes files from the selected app folder but keeps the database and subscriptions." : {
+
+    },
+    "This screen shows which settings currently affect this podcast, and which controls stay global for the whole app." : {
+
+    },
+    "This speed is used when playback starts. The player speed control also writes back here." : {
 
     },
     "Title A–Z" : {
 
     },
     "Titles" : {
-
-    },
-    "To avoid accidential skipping, you can disable scrubbing inside the app and on the lockscreen." : {
-
-    },
-    "Top" : {
 
     },
     "Top Podcasts" : {
@@ -671,13 +716,16 @@
     "Up Next" : {
 
     },
-    "Up Next Position" : {
-
-    },
     "URL or Search" : {
 
     },
     "Username" : {
+
+    },
+    "Using Global Defaults" : {
+
+    },
+    "Using podcast-specific settings" : {
 
     },
     "Video Size" : {
@@ -693,9 +741,6 @@
 
     },
     "When you usually listen" : {
-
-    },
-    "Where should a new Episode be added to the playlist?" : {
 
     },
     "Y-axis: listening time per %@." : {

@@ -1,4 +1,0 @@
-module RichText {
-header "RichText-Swift.h"
-export *
-}

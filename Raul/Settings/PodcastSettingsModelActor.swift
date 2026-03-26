@@ -11,6 +11,10 @@ import BasicLogger
 
 @ModelActor
 actor PodcastSettingsModelActor {
+
+    func ensureStandardSettingsExists() async {
+        _ = await standardSettings()
+    }
     
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
     func standardSettings() async -> PodcastSettings {
@@ -231,4 +235,3 @@ actor PodcastSettingsModelActor {
 
     }
 }
-

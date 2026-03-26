@@ -53,6 +53,10 @@ final class WatchSyncStore: NSObject, ObservableObject {
         Self.format(bytes: storageSettings.maxStorageBytes)
     }
 
+    func episode(withID episodeID: String) -> WatchSyncEpisode? {
+        playlist.first(where: { $0.id == episodeID }) ?? inbox.first(where: { $0.id == episodeID })
+    }
+
     func isDownloaded(_ episode: WatchSyncEpisode) -> Bool {
         guard let url = localFileURL(forEpisodeID: episode.id) else { return false }
         return fileManager.fileExists(atPath: url.path)
@@ -60,6 +64,24 @@ final class WatchSyncStore: NSObject, ObservableObject {
 
     func isDownloading(_ episode: WatchSyncEpisode) -> Bool {
         downloadingEpisodeIDs.contains(episode.id)
+    }
+
+    func playbackURL(for episode: WatchSyncEpisode) -> URL? {
+        localFileURL(forEpisodeID: episode.id) ?? episode.resolvedAudioURL
+    }
+
+    func syncPlaybackProgress(for episodeID: String, position: Double) {
+        guard position.isFinite else { return }
+        updateEpisodePlaybackPosition(for: episodeID, position: position)
+        send(
+            command: WatchCommand(
+                kind: .syncPlaybackProgress,
+                episodeID: episodeID,
+                playPosition: position
+            ),
+            preferImmediateDelivery: true,
+            showErrors: false
+        )
     }
 
     func requestSnapshot(silently: Bool = false) {
@@ -169,7 +191,9 @@ final class WatchSyncStore: NSObject, ObservableObject {
         if preferImmediateDelivery && session.isReachable {
             session.sendMessage(payload, replyHandler: nil) { [weak self] error in
                 Task { @MainActor in
-                    self?.errorMessage = error.localizedDescription
+                    if showErrors {
+                        self?.errorMessage = error.localizedDescription
+                    }
                 }
             }
             return
@@ -220,6 +244,53 @@ final class WatchSyncStore: NSObject, ObservableObject {
         persistSnapshot()
         enforceStorageLimit()
         sendStorageReport()
+    }
+
+    private func updateEpisodePlaybackPosition(for episodeID: String, position: Double) {
+        let playlist = snapshot.playlist.map { episode in
+            updatedEpisode(episode, matching: episodeID, playPosition: position)
+        }
+        let inbox = snapshot.inbox.map { episode in
+            updatedEpisode(episode, matching: episodeID, playPosition: position)
+        }
+
+        snapshot = WatchSyncSnapshot(
+            generatedAt: snapshot.generatedAt,
+            playlist: playlist,
+            inbox: inbox
+        )
+        persistSnapshot()
+    }
+
+    private func updatedEpisode(
+        _ episode: WatchSyncEpisode,
+        matching episodeID: String,
+        playPosition: Double
+    ) -> WatchSyncEpisode {
+        guard episode.id == episodeID else { return episode }
+
+        let clampedPosition: Double
+        if let duration = episode.duration, duration > 0 {
+            clampedPosition = min(max(playPosition, 0), duration)
+        } else {
+            clampedPosition = max(playPosition, 0)
+        }
+
+        return WatchSyncEpisode(
+            id: episode.id,
+            episodeURL: episode.episodeURL,
+            audioURL: episode.audioURL,
+            title: episode.title,
+            subtitle: episode.subtitle,
+            podcastTitle: episode.podcastTitle,
+            publishDate: episode.publishDate,
+            duration: episode.duration,
+            imageURL: episode.imageURL,
+            phoneHasLocalFile: episode.phoneHasLocalFile,
+            fileSize: episode.fileSize,
+            playPosition: clampedPosition,
+            chapters: episode.chapters
+        )
     }
 
     private func optimisticallyQueueEpisode(_ episode: WatchSyncEpisode) {

@@ -107,8 +107,57 @@ final class PhoneWatchSyncController: NSObject {
             duration: episode.duration,
             imageURL: imageURL,
             phoneHasLocalFile: episode.metaData?.calculatedIsAvailableLocally ?? false,
-            fileSize: resolvedFileSize(for: episode)
+            fileSize: resolvedFileSize(for: episode),
+            playPosition: episode.metaData?.playPosition,
+            chapters: makeSyncChapters(from: episode)
         )
+    }
+
+    private func makeSyncChapters(from episode: Episode) -> [WatchSyncChapter] {
+        resolvedChapters(for: episode).map { chapter in
+            WatchSyncChapter(
+                id: chapter.uuid?.uuidString ?? "\(chapter.start ?? 0)-\(chapter.title)",
+                title: chapter.title,
+                start: chapter.start ?? 0,
+                duration: chapter.duration,
+                imageURL: chapter.image?.absoluteString
+            )
+        }
+    }
+
+    private func resolvedChapters(for episode: Episode) -> [Marker] {
+        let chapters = episode.chapters ?? []
+        guard chapters.isEmpty == false else { return [] }
+
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let priorityByType = Dictionary(
+            uniqueKeysWithValues: preferredOrder.enumerated().map { ($1, $0) }
+        )
+        let categoryGroups = Dictionary(grouping: chapters) {
+            $0.title + Duration.seconds($0.start ?? 0).formatted(.units(width: .narrow))
+        }
+
+        var resolved: [Marker] = []
+        resolved.reserveCapacity(chapters.count)
+
+        for group in categoryGroups.values {
+            var bestType: MarkerType?
+            var bestPriority = preferredOrder.count
+
+            for marker in group {
+                let priority = priorityByType[marker.type] ?? preferredOrder.count
+                if priority < bestPriority {
+                    bestPriority = priority
+                    bestType = marker.type
+                }
+            }
+
+            guard let bestType else { continue }
+            resolved.append(contentsOf: group.filter { $0.type == bestType })
+        }
+
+        resolved.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+        return resolved
     }
 
     private func makeTransferCandidate(from episode: Episode) -> TransferCandidate? {
@@ -205,6 +254,18 @@ final class PhoneWatchSyncController: NSObject {
 
             try? await playlistActor.add(episodeURL: episodeURL, to: .front)
             await refreshSnapshotAndTransfers()
+
+        case .syncPlaybackProgress:
+            guard let episodeIDString = command.episodeID,
+                  let episodeID = UUID(uuidString: episodeIDString),
+                  let playPosition = command.playPosition
+            else {
+                return
+            }
+
+            let episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+            await episodeActor.setLastPlayed(episodeID)
+            await episodeActor.setPlayPosition(episodeID: episodeID, position: playPosition)
         }
     }
 

@@ -7,7 +7,7 @@
         "key": "Up Next Watch",
         "location": {
           "startingColumn": 13,
-          "startingLine": 25
+          "startingLine": 30
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "OK",
         "location": {
           "startingColumn": 20,
-          "startingLine": 35
+          "startingLine": 41
         }
       },
       {
@@ -23,79 +23,79 @@
         "key": "Up Next",
         "location": {
           "startingColumn": 26,
-          "startingLine": 80
+          "startingLine": 92
         }
       },
       {
         "comment": "",
-        "key": "Up Next is empty",
+        "key": "Downloads prefer Wi-Fi and stay within your watch storage limit.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 125
+        }
+      },
+      {
+        "comment": "",
+        "key": "Watch Storage",
         "location": {
           "startingColumn": 26,
-          "startingLine": 54
+          "startingLine": 114
         }
       },
       {
         "comment": "",
-        "key": "Sync Now",
+        "key": "Now Playing",
         "location": {
-          "startingColumn": 28,
-          "startingLine": 56
+          "startingColumn": 30,
+          "startingLine": 154
         }
       },
       {
         "comment": "",
-        "key": "%@ of %@ used",
-        "location": {
-          "startingColumn": 34,
-          "startingLine": 65
-        }
-      },
-      {
-        "comment": "",
-        "key": "Episodes that do not fit stay visible here and can be downloaded on demand.",
-        "location": {
-          "startingColumn": 34,
-          "startingLine": 68
-        }
-      },
-      {
-        "comment": "",
-        "key": "The iPhone already has this download. It will sync here automatically when space is available.",
+        "key": "The iPhone already has this file, so it should sync here when space opens up.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 137
+          "startingLine": 278
         }
       },
       {
         "comment": "",
-        "key": "On Watch",
+        "key": "Pause",
         "location": {
-          "startingColumn": 27,
-          "startingLine": 112
+          "startingColumn": 66,
+          "startingLine": 258
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 258
         }
       },
       {
         "comment": "",
         "key": "Remove",
         "location": {
-          "startingColumn": 28,
-          "startingLine": 118
+          "startingColumn": 32,
+          "startingLine": 264
         }
       },
       {
         "comment": "",
-        "key": "Downloading",
+        "key": "Loading",
         "location": {
-          "startingColumn": 56,
-          "startingLine": 129
+          "startingColumn": 63,
+          "startingLine": 269
         }
       },
       {
         "comment": "",
         "key": "Download",
         "location": {
-          "startingColumn": 72,
-          "startingLine": 129
+          "startingColumn": 75,
+          "startingLine": 269
         }
       },
       {
@@ -103,47 +103,63 @@
         "key": "Inbox",
         "location": {
           "startingColumn": 26,
-          "startingLine": 170
+          "startingLine": 341
         }
       },
       {
         "comment": "",
-        "key": "Inbox is empty",
+        "key": "Inbox",
         "location": {
-          "startingColumn": 26,
-          "startingLine": 156
+          "startingColumn": 34,
+          "startingLine": 306
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pull new episodes from the phone, then send the ones you want straight into Up Next.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 310
         }
       },
       {
         "comment": "",
         "key": "Refreshing…",
         "location": {
-          "startingColumn": 54,
-          "startingLine": 158
+          "startingColumn": 62,
+          "startingLine": 314
         }
       },
       {
         "comment": "",
         "key": "Refresh Inbox",
         "location": {
-          "startingColumn": 72,
-          "startingLine": 158
+          "startingColumn": 80,
+          "startingLine": 314
         }
       },
       {
         "comment": "",
         "key": "Add to Up Next",
         "location": {
-          "startingColumn": 54,
-          "startingLine": 205
+          "startingColumn": 58,
+          "startingLine": 393
         }
       },
       {
         "comment": "",
         "key": "Queue + Download",
         "location": {
-          "startingColumn": 73,
-          "startingLine": 205
+          "startingColumn": 77,
+          "startingLine": 393
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sync Now",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 424
         }
       }
     ]

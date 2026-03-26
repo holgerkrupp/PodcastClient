@@ -1,0 +1,32 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchPlayerView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Player",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 180
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapters",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 130
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode is no longer available here.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 172
+        }
+      }
+    ]
+  },
+  "version": 1
+}
