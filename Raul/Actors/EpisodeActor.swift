@@ -169,18 +169,20 @@ actor EpisodeActor {
 
     }
     
-    func setLastPlayed(_ episodeID: UUID, to date: Date = Date()) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else {
-            
-            // print("could not find episode with ID \(episodeID) to set last played date")
-            return }
-        // print("setting last played date for \(episode.title) to \(date.formatted())")
+    func setLastPlayed(episodeURL: URL, to date: Date = Date()) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
     }
+
+    func setLastPlayed(_ episodeID: UUID, to date: Date = Date()) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await setLastPlayed(episodeURL: episodeURL, to: date)
+    }
     
-    func setPlayPosition(episodeID: UUID, position: TimeInterval) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+    func setPlayPosition(episodeURL: URL, position: TimeInterval) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         let previousPosition = episode.metaData?.playPosition ?? 0.0
         if abs(previousPosition - position) > 10 {
         if position > episode.metaData?.maxPlayposition ?? 0.0 {
@@ -192,21 +194,32 @@ actor EpisodeActor {
         }
 
     }
+
+    func setPlayPosition(episodeID: UUID, position: TimeInterval) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await setPlayPosition(episodeURL: episodeURL, position: position)
+    }
     
-    func markasPlayed(_ episodeID: UUID) async {
-        // print("marking episode \(episodeID) as played")
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+    func markasPlayed(_ episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
     }
+
+    func markasPlayed(_ episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await markasPlayed(episodeURL)
+    }
     
     func removeFromPlaylist(_ episodeID: UUID) async {
-        if let PlaylistmodelActor = try? PlaylistModelActor(modelContainer: modelContainer){
-            try? await PlaylistmodelActor.remove(episodeID: episodeID)
-        }
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await removeFromPlaylist(episodeURL)
     }
     
     func removeFromPlaylist(_ episodeURL: URL) async {
@@ -235,6 +248,7 @@ actor EpisodeActor {
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
+        WatchSyncCoordinator.refreshSoon()
     }
     
     func unarchiveEpisode(_ episodeURL: URL?) async  {
@@ -245,15 +259,12 @@ actor EpisodeActor {
         episode.metaData?.isInbox = true
         episode.metaData?.status = .inbox
         modelContext.saveIfNeeded()
+        WatchSyncCoordinator.refreshSoon()
     }
     
-    func moveToHistory(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
-        if let episodeurl = episode.url {
-            await removeFromPlaylist(episodeurl)
-        }
-        
-
+    func moveToHistory(episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        await removeFromPlaylist(episodeURL)
         if episode.metaData == nil {
             episode.metaData = EpisodeMetaData()
         }
@@ -267,24 +278,37 @@ actor EpisodeActor {
         
         modelContext.saveIfNeeded()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        WatchSyncCoordinator.refreshSoon()
+    }
+
+    func moveToHistory(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await moveToHistory(episodeURL: episodeURL)
     }
     
     
-    func download(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else {
+    func download(episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
             return }
 
         if let localFile = episode.localFile {
-            if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile, episodeID: episode.id) != nil {
+            if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile) != nil {
             }
             try? await downloadTranscript(episode.persistentModelID)
 
         }
         
     }
+
+    func download(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await download(episodeURL: episodeURL)
+    }
     
-    func processAfterCreation(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else {
+    func processAfterCreation(episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
             return }
         
         
@@ -301,31 +325,49 @@ actor EpisodeActor {
 
         if playnext != .none {
             let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
-            try? await playlistActor?.add(episodeID: episodeID, to: playnext)
+            try? await playlistActor?.add(episodeURL: episodeURL, to: playnext)
         }
 
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
-        await getRemoteChapters(episodeID: episodeID)
+        await getRemoteChapters(episodeURL: episodeURL)
+    }
+
+    func processAfterCreation(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await processAfterCreation(episodeURL: episodeURL)
     }
     
-    func getRemoteChapters(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else {
+    func getRemoteChapters(episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
             return }
         if let url = episode.url, let pubDate = episode.publishDate,
                let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
                pubDate > oneWeekAgo{
                 await extractRemoteMP3Chapters(url)
-                await applyAutoSkipWords(episodeID: episodeID)
+                await applyAutoSkipWords(episodeURL: episodeURL)
         }
     }
+
+    func getRemoteChapters(episodeID: UUID) async {
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await getRemoteChapters(episodeURL: episodeURL)
+    }
     
-    func createBookMarkfor(episodeID: UUID, at playPosition: Double) async{
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+    func createBookmark(for episodeURL: URL, at playPosition: Double) async{
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
 
         let bookmarkTitle = episode.transcriptLines?.sorted(by: { $0.startTime < $1.startTime }).last(where: { $0.startTime < playPosition })?.text ?? episode.title
         let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
+    }
+
+    func createBookMarkfor(episodeID: UUID, at playPosition: Double) async{
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await createBookmark(for: episodeURL, at: playPosition)
     }
     
  
@@ -340,6 +382,7 @@ actor EpisodeActor {
         episode.playlist?.removeAll()
 
         modelContext.saveIfNeeded()
+        WatchSyncCoordinator.refreshSoon()
     }
     
     func deleteFile(episodeURL: URL?) async{
@@ -353,6 +396,7 @@ actor EpisodeActor {
         episode.playlist?.removeAll()
         
         modelContext.saveIfNeeded()
+        WatchSyncCoordinator.refreshSoon()
     }
 
     func markEpisodeAvailable(fileURL: URL) async {
@@ -371,6 +415,7 @@ actor EpisodeActor {
         await createChapters(url)
         try? await transcribe(url) // delegates now
         modelContext.saveIfNeeded()
+        WatchSyncCoordinator.refreshSoon()
     }
     
     // NEW: Delegate to TranscriptionManager
@@ -463,13 +508,13 @@ actor EpisodeActor {
         if let url = episode.url{
             await updateChapterDurations(episodeURL: url)
         }
-        await applyAutoSkipWords(episodeID: episode.id)
+        if let url = episode.url {
+            await applyAutoSkipWords(episodeURL: url)
+        }
     }
     
-    private func applyAutoSkipWords(episodeID: UUID) async{
-        guard let episode = await fetchEpisode(byID: episodeID) else {
-            return
-        }
+    private func applyAutoSkipWords(episodeURL: URL) async{
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.feed) else {
             return
@@ -496,6 +541,12 @@ actor EpisodeActor {
             }
         }
         modelContext.saveIfNeeded()
+    }
+
+    private func applyAutoSkipWords(episodeID: UUID) async{
+        guard let episode = await fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        await applyAutoSkipWords(episodeURL: episodeURL)
     }
     
     private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {

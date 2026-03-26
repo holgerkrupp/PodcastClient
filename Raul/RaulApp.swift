@@ -13,7 +13,7 @@ struct RaulApp: App {
 
     init() {
         _ = Player.shared
-      
+        WatchSyncCoordinator.activate()
     }
 
     var body: some Scene {
@@ -32,6 +32,7 @@ struct RaulApp: App {
                         }
                         Task {
                             await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
+                            WatchSyncCoordinator.refreshSoon()
                         }
                     }
              
@@ -63,6 +64,7 @@ struct RaulApp: App {
     }
 
     func refreshOnActive(){
+        WatchSyncCoordinator.refreshSoon()
         if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
             Task .detached {
                 await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()

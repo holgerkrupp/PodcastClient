@@ -81,11 +81,11 @@ class CarPlayPlayNext {
             )
             item.userInfo = episode
             item.accessoryType = .disclosureIndicator
-            item.isPlaying = (episode.id == Player.shared.currentEpisodeID)
+            item.isPlaying = (episode.url == Player.shared.currentEpisodeURL)
             item.handler = { [weak self] _, _ in
                 guard let self else { return }
                 Task {
-                    if episode.id == Player.shared.currentEpisodeID {
+                    if episode.url == Player.shared.currentEpisodeURL {
                         Player.shared.play()
                     } else {
                         await Player.shared.playEpisode(episode.url)

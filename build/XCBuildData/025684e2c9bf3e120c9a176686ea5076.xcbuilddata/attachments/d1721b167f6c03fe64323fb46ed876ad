@@ -1,0 +1,109 @@
+{
+  "" : {
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText-primary.dia",
+    "emit-module-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText-primary-emit-module.d",
+    "emit-module-diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText-primary-emit-module.dia",
+    "pch" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText-primary-Bridging-header.pch",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText-primary.swiftdeps"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Extensions/Color+Extension.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Color+Extension~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Extensions/RichText+Extension.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText+Extension~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Extensions/TextAlignment+Extension.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/TextAlignment+Extension~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Models/ColorSet.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/ColorSet~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Models/Configuration.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Configuration~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Models/RichTextConstants.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextConstants~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Models/RichTextEnums.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichTextEnums~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Views/RichText.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/RichText~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/Sources/RichText/Views/Webview.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/Webview~partial.swiftmodule"
+  },
+  "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/DerivedSources/resource_bundle_accessor.swift" : {
+    "const-values" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.swiftconstvalues",
+    "dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.d",
+    "diagnostics" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.dia",
+    "index-unit-output-path" : "/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.o",
+    "llvm-bc" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.bc",
+    "object" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.o",
+    "swift-dependencies" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor.swiftdeps",
+    "swiftmodule" : "/tmp/codex-home/Library/Developer/Xcode/DerivedData/Up_Next-eqbbswfxuwpvmkeqpdbnlubcqfla/SourcePackages/checkouts/RichText/build/RichText.build/Debug-iphoneos/RichText.build/Objects-normal/arm64/resource_bundle_accessor~partial.swiftmodule"
+  }
+}

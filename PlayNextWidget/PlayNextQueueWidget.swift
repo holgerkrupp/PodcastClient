@@ -3,7 +3,7 @@ import WidgetKit
 
 private struct QueueSnapshot: Codable {
     struct Item: Codable, Identifiable {
-        let id: UUID
+        let id: String
         let title: String
         let subtitle: String?
         let podcast: String?
@@ -58,9 +58,9 @@ private extension QueueSnapshot {
         QueueSnapshot(
             generatedAt: .now,
             items: [
-                .init(id: UUID(), title: "Current episode", subtitle: "Resume where you left off", podcast: "Up Next", isCurrent: true),
-                .init(id: UUID(), title: "Next in queue", subtitle: "Queued for later", podcast: "Up Next", isCurrent: false),
-                .init(id: UUID(), title: "Another episode", subtitle: "Ready to play", podcast: "Up Next", isCurrent: false),
+                .init(id: "current", title: "Current episode", subtitle: "Resume where you left off", podcast: "Up Next", isCurrent: true),
+                .init(id: "next", title: "Next in queue", subtitle: "Queued for later", podcast: "Up Next", isCurrent: false),
+                .init(id: "later", title: "Another episode", subtitle: "Ready to play", podcast: "Up Next", isCurrent: false),
             ]
         )
     }

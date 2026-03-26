@@ -7,7 +7,7 @@ import WidgetKit
 
 struct PlayNextWidgetSnapshot: Codable {
     struct Item: Codable, Identifiable {
-        let id: UUID
+        let id: String
         let title: String
         let subtitle: String?
         let podcast: String?
@@ -24,18 +24,18 @@ enum PlayNextWidgetSync {
 
     static func refresh(
         using container: ModelContainer? = nil,
-        currentEpisodeID: UUID? = nil
+        currentEpisodeURL: URL? = nil
     ) async {
         let resolvedContainer = await MainActor.run { container ?? ModelContainerManager.shared.container }
         guard let playlistActor = try? PlaylistModelActor(modelContainer: resolvedContainer) else { return }
         let episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
-        let resolvedCurrentID: UUID?
-        if let currentEpisodeID {
-            resolvedCurrentID = currentEpisodeID
+        let resolvedCurrentURL: URL?
+        if let currentEpisodeURL {
+            resolvedCurrentURL = currentEpisodeURL
         } else {
-            resolvedCurrentID = await MainActor.run { Player.shared.currentEpisodeID }
+            resolvedCurrentURL = await MainActor.run { Player.shared.currentEpisodeURL }
         }
-        writeSnapshot(episodes: episodes, currentEpisodeID: resolvedCurrentID)
+        writeSnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL)
     }
 
     static func clear() {
@@ -43,17 +43,17 @@ enum PlayNextWidgetSync {
         persist(snapshot)
     }
 
-    private static func writeSnapshot(episodes: [EpisodeSummary], currentEpisodeID: UUID?) {
+    private static func writeSnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?) {
         let items: [PlayNextWidgetSnapshot.Item] = episodes.prefix(12).compactMap { episode in
             let title = episode.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard title.isEmpty == false else { return nil }
 
             return PlayNextWidgetSnapshot.Item(
-                id: episode.id,
+                id: episode.url?.absoluteString ?? episode.id.uuidString,
                 title: title,
                 subtitle: episode.desc?.trimmingCharacters(in: .whitespacesAndNewlines),
                 podcast: episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),
-                isCurrent: episode.id == currentEpisodeID
+                isCurrent: episode.url == currentEpisodeURL
             )
         }
 
