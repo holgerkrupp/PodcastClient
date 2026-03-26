@@ -99,6 +99,12 @@
     "Browse by Category" : {
 
     },
+    "Browse Episodes" : {
+
+    },
+    "Browse Episodes adds this podcast to your library without subscribing, so you can download or queue individual episodes." : {
+
+    },
     "Cancel" : {
 
     },
@@ -416,6 +422,9 @@
     "Open Notification Settings" : {
 
     },
+    "Open Podcast" : {
+
+    },
     "Operator" : {
 
     },
@@ -459,6 +468,9 @@
 
     },
     "Podcast" : {
+
+    },
+    "Podcast Not Found" : {
 
     },
     "Podcast Scope" : {
@@ -584,6 +596,9 @@
     "Subscribe to new podcasts" : {
 
     },
+    "Subscribed" : {
+
+    },
     "Subscription" : {
 
     },
@@ -597,6 +612,9 @@
 
     },
     "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
+
+    },
+    "This podcast is already stored without a subscription. Open it to download or queue individual episodes, or subscribe to keep it refreshed." : {
 
     },
     "This podcast stays in the database, but it is skipped by bulk refresh." : {

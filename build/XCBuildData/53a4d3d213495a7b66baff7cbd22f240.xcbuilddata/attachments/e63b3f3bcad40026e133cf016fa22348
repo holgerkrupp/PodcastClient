@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/fyyd-swift/Sources/fyyd-swift/FyydModels.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.dia",
+    "index-unit-output-path" : "/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.bc",
+    "object" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/FyydModels~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/fyyd-swift/Sources/fyyd-swift/fyyd_swift.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.dia",
+    "index-unit-output-path" : "/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.bc",
+    "object" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/fyyd-swift/build/fyyd_swift.build/Debug-iphoneos/fyyd_swift.build/Objects-normal/arm64/fyyd_swift~partial.swiftmodule"
+  }
+}

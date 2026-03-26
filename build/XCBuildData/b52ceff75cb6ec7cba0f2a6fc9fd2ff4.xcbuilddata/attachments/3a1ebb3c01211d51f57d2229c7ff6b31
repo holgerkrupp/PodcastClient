@@ -1,0 +1,59 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatch-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatch-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatch-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatch-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatch-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/UpNextWatchApp.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/UpNextWatchApp~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchRootView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchRootView~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchStorageSettingsView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchStorageSettingsView~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchSyncStore.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncStore~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchSyncModels.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-watchos/UpNextWatch.build/Objects-normal/arm64_32/WatchSyncModels~partial.swiftmodule"
+  }
+}

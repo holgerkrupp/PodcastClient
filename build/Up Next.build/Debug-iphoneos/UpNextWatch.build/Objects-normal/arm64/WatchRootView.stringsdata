@@ -1,0 +1,152 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchRootView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Up Next Watch",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next is empty",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sync Now",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 56
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ of %@ used",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episodes that do not fit stay visible here and can be downloaded on demand.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 68
+        }
+      },
+      {
+        "comment": "",
+        "key": "The iPhone already has this download. It will sync here automatically when space is available.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 137
+        }
+      },
+      {
+        "comment": "",
+        "key": "On Watch",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 118
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloading",
+        "location": {
+          "startingColumn": 56,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "Download",
+        "location": {
+          "startingColumn": 72,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 170
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox is empty",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 156
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing…",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh Inbox",
+        "location": {
+          "startingColumn": 72,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to Up Next",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 205
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue + Download",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 205
+        }
+      }
+    ]
+  },
+  "version": 1
+}

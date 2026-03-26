@@ -1,0 +1,72 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/AllEpisodesListView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AllEpisodesListView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AllEpisodesListView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AllEpisodesListView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AllEpisodesListView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AllEpisodesListView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/BookmarkEmptyView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkEmptyView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkEmptyView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkEmptyView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkEmptyView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkEmptyView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/BookmarkListView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkListView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkListView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkListView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkListView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/BookmarkListView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/EpisodeView/EpisodeRowView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/EpisodeRowView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/EpisodeRowView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/EpisodeRowView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/EpisodeRowView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/EpisodeRowView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/Inbox/InboxEmptyView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxEmptyView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxEmptyView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxEmptyView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxEmptyView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxEmptyView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/Inbox/InboxView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/InboxView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/LibraryView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/LibraryView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/LibraryView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/LibraryView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/LibraryView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/LibraryView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/PodcastView/PodcastDetailView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastDetailView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastDetailView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastDetailView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastDetailView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastDetailView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/PodcastView/PodcastRowView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastRowView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastRowView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastRowView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastRowView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastRowView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Views/used/PodcastView/PodcastsEmptyView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastsEmptyView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastsEmptyView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastsEmptyView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastsEmptyView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/PodcastsEmptyView.swiftdeps"
+  }
+}

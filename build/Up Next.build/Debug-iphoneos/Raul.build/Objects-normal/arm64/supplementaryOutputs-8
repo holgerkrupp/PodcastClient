@@ -1,0 +1,72 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/DoubleExtensions.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/DoubleExtensions.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/DoubleExtensions.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/DoubleExtensions.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/DoubleExtensions.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/DoubleExtensions.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/ImageLoader.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/ImageLoader.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/ImageLoader.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/ImageLoader.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/ImageLoader.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/ImageLoader.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/NotificationManager.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/NotificationManager.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/NotificationManager.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/NotificationManager.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/NotificationManager.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/NotificationManager.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/SequenceExtension.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SequenceExtension.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SequenceExtension.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SequenceExtension.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SequenceExtension.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SequenceExtension.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/String2FlagEmoji.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/String2FlagEmoji.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/String2FlagEmoji.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/String2FlagEmoji.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/String2FlagEmoji.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/String2FlagEmoji.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/Stringextensions.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/Stringextensions.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/Stringextensions.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/Stringextensions.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/Stringextensions.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/Stringextensions.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/SwiftDataExtensions.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SwiftDataExtensions.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SwiftDataExtensions.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SwiftDataExtensions.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SwiftDataExtensions.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/SwiftDataExtensions.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Support Functions/URLextension.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/URLextension.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/URLextension.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/URLextension.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/URLextension.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/URLextension.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Transcripts/AITranscripts.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AITranscripts.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AITranscripts.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AITranscripts.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AITranscripts.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/AITranscripts.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Transcripts/TranscriptDecoder.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/TranscriptDecoder.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/TranscriptDecoder.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/TranscriptDecoder.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/TranscriptDecoder.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/Raul.build/Objects-normal/arm64/TranscriptDecoder.swiftdeps"
+  }
+}

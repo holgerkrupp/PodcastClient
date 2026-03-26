@@ -1,0 +1,29 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidget-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidget-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidget-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidget-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidget-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextQueueWidget~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextWidgetBundle.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Up Next.build/Debug-iphoneos/PlayNextWidget.build/Objects-normal/arm64/PlayNextWidgetBundle~partial.swiftmodule"
+  }
+}

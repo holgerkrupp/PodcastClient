@@ -28,7 +28,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     private override init() {}
 
     // MARK: - Public API
-    func download(from url: URL, saveTo destination: URL? = nil, episodeID: UUID? = nil) async -> DownloadItem? {
+    func download(from url: URL, saveTo destination: URL? = nil) async -> DownloadItem? {
         if let existing = downloads[url] {
             return existing
         }
@@ -39,9 +39,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             return nil
         }
         
-        let item = await MainActor.run {
-            DownloadItem(url: url, episodeID: episodeID)
-        }
+        let item = await MainActor.run { DownloadItem(url: url) }
         downloads[url] = item
         destinations[url] = finalDestination
         

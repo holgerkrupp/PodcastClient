@@ -15,10 +15,12 @@ enum PlaybackInterruptionEvent {
 
 actor PlayerEngine {
     private var avPlayer = AVPlayer()
-    private var endObserver: Any?
-    private var playbackEndedContinuation: AsyncStream<Void>.Continuation?
     private let session = AVAudioSession.sharedInstance()
     private var interruptionHandler: (@Sendable (PlaybackInterruptionEvent) -> Void)?
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
+    private var endObserver: NSObjectProtocol?
+    private var activePlaybackStreamID: UInt64 = 0
 
 
      init() {
@@ -31,8 +33,8 @@ actor PlayerEngine {
         }
         
          Task {
-             await self.addEndObserver()
-             await self.addChangeObserver()
+             await self.addInterruptionObserver()
+             await self.addRouteChangeObserver()
          }
         
       }
@@ -40,8 +42,12 @@ actor PlayerEngine {
            interruptionHandler = handler
        }
     
-    private  func addEndObserver() {
-        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
+    private  func addInterruptionObserver() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
             guard let userInfo = notification.userInfo,
                   let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
@@ -75,8 +81,8 @@ actor PlayerEngine {
             }
         }
     }
-    private  func addChangeObserver() {
-        NotificationCenter.default.addObserver(
+    private  func addRouteChangeObserver() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
             queue: .main
@@ -100,7 +106,7 @@ actor PlayerEngine {
             self.interruptionHandler?(.began)
         case .ended:
             activateSession()
-            break
+            self.interruptionHandler?(.ended)
         case .pause:
                 deactiveSession()
                self.interruptionHandler?(.pause)
@@ -123,24 +129,8 @@ actor PlayerEngine {
         guard  avPlayer.currentItem != item else {
             return
         }
+        removeEndObserver()
         avPlayer.replaceCurrentItem(with: item)
-
-        // Remove any previous observer
-        if let observer = endObserver {
-            NotificationCenter.default.removeObserver(observer)
-            endObserver = nil
-        }
-
-        /*
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            Task {
-            }
-        }
-        */
     }
     
 
@@ -160,8 +150,12 @@ actor PlayerEngine {
      //   deactiveSession()
     }
 
-    func seek(to time: CMTime) {
-        avPlayer.seek(to: time)
+    func seek(to time: CMTime) async {
+        await withCheckedContinuation { continuation in
+            avPlayer.seek(to: time) { _ in
+                continuation.resume()
+            }
+        }
     }
 
 
@@ -170,7 +164,6 @@ actor PlayerEngine {
      }
     
     private func deactiveSession()  {
-        print ("deactiveSession called")
         do{
             try session.setActive(false)
         }catch{
@@ -179,8 +172,6 @@ actor PlayerEngine {
     }
     
     private func activateSession()  {
-        print ("activateSession called")
-        
         do{
             try session.setActive(true)
         }catch{
@@ -188,33 +179,60 @@ actor PlayerEngine {
         }
     }
 
+    private func currentTime() -> Double {
+        avPlayer.currentTime().seconds
+    }
+
+    private func removeEndObserver() {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+    }
+
+    private func removeEndObserver(for streamID: UInt64) {
+        guard streamID == activePlaybackStreamID else { return }
+        removeEndObserver()
+    }
     
     func playbackStream(interval: TimeInterval = 0.5) -> AsyncStream<PlaybackEvent> {
-        AsyncStream { continuation in
-            let task = Task {
+        let currentItem = avPlayer.currentItem
+        activePlaybackStreamID &+= 1
+        let streamID = activePlaybackStreamID
+        removeEndObserver()
+
+        return AsyncStream<PlaybackEvent> { continuation in
+            let task: Task<Void, Never> = Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
                 while !Task.isCancelled {
-                    let position = avPlayer.currentTime().seconds
+                    let position = await self.currentTime()
                     continuation.yield(.position(position))
                     try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 }
             }
 
-            NotificationCenter.default.addObserver(
+            let endObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
-                object: avPlayer.currentItem,
+                object: currentItem,
                 queue: .main
-            ) { _ in
+            ) { [weak self] _ in
                 continuation.yield(.ended)
                 continuation.finish()
                 task.cancel()
                 Task{
-                    await self.sendInterrupt(type: .finished)
+                    await self?.sendInterrupt(type: .finished)
                 }
             }
+            self.endObserver = endObserver
 
-            continuation.onTermination = { _ in
-           //     NotificationCenter.default.removeObserver(endObserver)
+            continuation.onTermination = { [weak self] _ in
                 task.cancel()
+                Task {
+                    await self?.removeEndObserver(for: streamID)
+                }
             }
         }
     }

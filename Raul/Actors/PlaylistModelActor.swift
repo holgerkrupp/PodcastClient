@@ -69,15 +69,11 @@ actor PlaylistModelActor {
     }
 
     private func fetchEpisode(byID episodeID: UUID) throws -> Episode? {
-        normalizeOrder() // will save
-
         let predicate = #Predicate<Episode> { $0.id == episodeID }
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
     }
 
     private func fetchEpisode(byURL fileURL: URL) throws -> Episode? {
-        normalizeOrder() // will save
-
         let predicate = #Predicate<Episode> { $0.url == fileURL }
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
     }
@@ -91,15 +87,11 @@ actor PlaylistModelActor {
             throw NSError(domain: "PlaylistModelActor", code: 404,
                           userInfo: [NSLocalizedDescriptionKey: "Playlist not found during refresh"])
         }
-        normalizeOrder() // will save
-
         return p
     }
 
     func orderedEpisodes() throws -> [Episode] {
         guard let playlist = try fetchPlaylist() else { return [] }
-        normalizeOrder() // will save
-
         return playlist.ordered.compactMap { $0.episode }
     }
 
@@ -108,26 +100,60 @@ actor PlaylistModelActor {
         return try orderedEpisodes().map { $0.id }
     }
 
-    func nextEpisode() throws -> URL? {
-        normalizeOrder() // will save
-        
-        return try orderedEpisodes().dropFirst().first?.url
+    public func orderedEpisodeURLs() throws -> [URL] {
+        try orderedEpisodes().compactMap(\.url)
     }
 
-    private func currentPlayingEpisodeID() async -> UUID? {
+    func nextEpisodeURL() throws -> URL? {
+        try orderedEpisodes().dropFirst().compactMap(\.url).first
+    }
+
+    func nextEpisode() throws -> URL? {
+        try nextEpisodeURL()
+    }
+
+    private func currentPlayingEpisodeURL() async -> URL? {
         await MainActor.run {
-            Player.shared.currentEpisodeID
+            Player.shared.currentEpisodeURL
         }
     }
 
     private func frontInsertionIndex(
-        for episodeID: UUID,
+        for episodeURL: URL,
         sortedEntries: [PlaylistEntry],
-        pinnedEpisodeID: UUID?
+        pinnedEpisodeURL: URL?
     ) -> Int {
-        guard pinnedEpisodeID != nil else { return 0 }
-        if pinnedEpisodeID == episodeID { return 0 }
+        guard pinnedEpisodeURL != nil else { return 0 }
+        if pinnedEpisodeURL == episodeURL { return 0 }
         return min(1, sortedEntries.count)
+    }
+
+    private func existingEntry(for episodeURL: URL, in playlist: Playlist) -> PlaylistEntry? {
+        playlist.items?.first(where: { $0.episode?.url == episodeURL })
+    }
+
+    private func updateQueuedEpisodeMetadata(_ episode: Episode) {
+        episode.metaData?.isInbox = false
+        episode.metaData?.isArchived = false
+        episode.metaData?.status = .none
+        episode.refresh.toggle()
+    }
+
+    private func insertEntry(
+        for episode: Episode,
+        episodeURL: URL,
+        into playlist: Playlist,
+        sortedEntries: inout [PlaylistEntry],
+        at targetIndex: Int
+    ) {
+        if let existingEntry = existingEntry(for: episodeURL, in: playlist) {
+            sortedEntries.insert(existingEntry, at: targetIndex)
+        } else {
+            let newEntry = PlaylistEntry(episode: episode, order: 0)
+            modelContext.insert(newEntry)
+            newEntry.playlist = playlist
+            sortedEntries.insert(newEntry, at: targetIndex)
+        }
     }
 
     func orderedEpisodeSummaries() throws -> [EpisodeSummary] {
@@ -149,40 +175,44 @@ actor PlaylistModelActor {
  
     /// Inserts an episode specifically after another episode (the anchor).
     func insert(episodeID: UUID, after anchorEpisodeID: UUID?) throws {
+        guard let episode = try fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        let anchorEpisodeURL = try anchorEpisodeID.flatMap { try fetchEpisode(byID: $0)?.url }
+        try insert(episodeURL: episodeURL, after: anchorEpisodeURL)
+    }
+
+    func insert(episodeURL: URL, after anchorEpisodeURL: URL?) throws {
         guard let playlist = try fetchPlaylist(),
-              let episode = try fetchEpisode(byID: episodeID) else { return }
+              let episode = try fetchEpisode(byURL: episodeURL) else { return }
 
         var sortedEntries = playlist.ordered
         
         // 1. Remove the item if it's already there (to prevent duplicates/shifts)
-        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.id == episodeID }) {
+        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.url == episodeURL }) {
             sortedEntries.remove(at: existingIndex)
         }
         
         // 2. Find the anchor's new position after the removal
-        if let anchorID = anchorEpisodeID,
-           let anchorIndex = sortedEntries.firstIndex(where: { $0.episode?.id == anchorID }) {
+        if let anchorEpisodeURL,
+           let anchorIndex = sortedEntries.firstIndex(where: { $0.episode?.url == anchorEpisodeURL }) {
             // Insert at the position immediately following the anchor
             let targetIndex = anchorIndex + 1
-            
-            if let existingEntry = playlist.items?.first(where: { $0.episode?.id == episodeID }) {
-                sortedEntries.insert(existingEntry, at: targetIndex)
-            } else {
-                let newEntry = PlaylistEntry(episode: episode, order: 0)
-                modelContext.insert(newEntry)
-                newEntry.playlist = playlist
-                sortedEntries.insert(newEntry, at: targetIndex)
-            }
+            insertEntry(
+                for: episode,
+                episodeURL: episodeURL,
+                into: playlist,
+                sortedEntries: &sortedEntries,
+                at: targetIndex
+            )
         } else {
             // Fallback: If no anchor is found, put it at the front (index 0)
-            if let existingEntry = playlist.items?.first(where: { $0.episode?.id == episodeID }) {
-                sortedEntries.insert(existingEntry, at: 0)
-            } else {
-                let newEntry = PlaylistEntry(episode: episode, order: 0)
-                modelContext.insert(newEntry)
-                newEntry.playlist = playlist
-                sortedEntries.insert(newEntry, at: 0)
-            }
+            insertEntry(
+                for: episode,
+                episodeURL: episodeURL,
+                into: playlist,
+                sortedEntries: &sortedEntries,
+                at: 0
+            )
         }
         
         // 3. Re-index and save
@@ -190,25 +220,32 @@ actor PlaylistModelActor {
             entry.order = i
         }
         
-        episode.metaData?.isInbox = false
-        episode.refresh.toggle()
+        updateQueuedEpisodeMetadata(episode)
         modelContext.saveIfNeeded()
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer)
+            WatchSyncCoordinator.refreshSoon()
         }
     }
 
     /// Add/move an episode within the playlist.
     func add(episodeID: UUID, to position: Playlist.Position = .end) async throws {
+        guard let episode = try fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        try await add(episodeURL: episodeURL, to: position)
+    }
+
+    /// Add/move an episode within the playlist.
+    func add(episodeURL: URL, to position: Playlist.Position = .end) async throws {
         guard let playlist = try fetchPlaylist(),
-              let episode = try fetchEpisode(byID: episodeID) else { return }
+              let episode = try fetchEpisode(byURL: episodeURL) else { return }
 
         // Create a working copy of the ordered entries
         var sortedEntries = playlist.ordered
-        let pinnedEpisodeID = await currentPlayingEpisodeID()
+        let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
         // Remove existing entry if present to avoid duplicates and position drift
-        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.id == episodeID }) {
+        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.url == episodeURL }) {
             sortedEntries.remove(at: existingIndex)
         }
 
@@ -217,9 +254,9 @@ actor PlaylistModelActor {
         switch position {
         case .front:
             targetIndex = frontInsertionIndex(
-                for: episodeID,
+                for: episodeURL,
                 sortedEntries: sortedEntries,
-                pinnedEpisodeID: pinnedEpisodeID
+                pinnedEpisodeURL: pinnedEpisodeURL
             )
         case .end:
             targetIndex = sortedEntries.count
@@ -227,16 +264,13 @@ actor PlaylistModelActor {
             targetIndex = sortedEntries.count
         }
 
-        // Reuse existing entry if it exists in the playlist items, otherwise create
-        if let existingEntry = playlist.items?.first(where: { $0.episode?.id == episodeID }) {
-            // Ensure it's detached from previous position: it was removed from sortedEntries above
-            sortedEntries.insert(existingEntry, at: targetIndex)
-        } else {
-            let newEntry = PlaylistEntry(episode: episode, order: 0)
-            modelContext.insert(newEntry)
-            newEntry.playlist = playlist
-            sortedEntries.insert(newEntry, at: targetIndex)
-        }
+        insertEntry(
+            for: episode,
+            episodeURL: episodeURL,
+            into: playlist,
+            sortedEntries: &sortedEntries,
+            at: targetIndex
+        )
 
         // Reindex to contiguous order values
         for (i, entry) in sortedEntries.enumerated() {
@@ -244,31 +278,36 @@ actor PlaylistModelActor {
         }
 
         // Update episode metadata
-        episode.metaData?.isInbox = false
-        episode.metaData?.isArchived = false
-        episode.metaData?.status = .none
-        episode.refresh.toggle()
+        updateQueuedEpisodeMetadata(episode)
 
         modelContext.saveIfNeeded()
 
         // Trigger download if not available locally
         if episode.metaData?.calculatedIsAvailableLocally != true {
             let episodeActor = EpisodeActor(modelContainer: self.modelContainer)
-            await episodeActor.download(episodeID: episode.id)
+            await episodeActor.download(episodeURL: episodeURL)
         }
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
+        WatchSyncCoordinator.refreshSoon()
     }
 
     /// Add/move an episode with explicit index control within the visual order.
     func add(episodeID: UUID, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
+        guard let episode = try fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        try await add(episodeURL: episodeURL, to: position, index: explicitIndex)
+    }
+
+    /// Add/move an episode with explicit index control within the visual order.
+    func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
         guard let playlist = try fetchPlaylist(),
-              let episode = try fetchEpisode(byID: episodeID) else { return }
+              let episode = try fetchEpisode(byURL: episodeURL) else { return }
 
         var sortedEntries = playlist.ordered
-        let pinnedEpisodeID = await currentPlayingEpisodeID()
+        let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
-        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.id == episodeID }) {
+        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.url == episodeURL }) {
             sortedEntries.remove(at: existingIndex)
         }
 
@@ -276,9 +315,9 @@ actor PlaylistModelActor {
         switch position {
         case .front:
             defaultIndex = frontInsertionIndex(
-                for: episodeID,
+                for: episodeURL,
                 sortedEntries: sortedEntries,
-                pinnedEpisodeID: pinnedEpisodeID
+                pinnedEpisodeURL: pinnedEpisodeURL
             )
         case .end:
             defaultIndex = sortedEntries.count
@@ -288,50 +327,35 @@ actor PlaylistModelActor {
 
         let targetIndex = max(0, min(explicitIndex ?? defaultIndex, sortedEntries.count))
 
-        if let existingEntry = playlist.items?.first(where: { $0.episode?.id == episodeID }) {
-            sortedEntries.insert(existingEntry, at: targetIndex)
-        } else {
-            let newEntry = PlaylistEntry(episode: episode, order: 0)
-            modelContext.insert(newEntry)
-            newEntry.playlist = playlist
-            sortedEntries.insert(newEntry, at: targetIndex)
-        }
+        insertEntry(
+            for: episode,
+            episodeURL: episodeURL,
+            into: playlist,
+            sortedEntries: &sortedEntries,
+            at: targetIndex
+        )
 
         for (i, entry) in sortedEntries.enumerated() {
             entry.order = i
         }
 
-        episode.metaData?.isInbox = false
-        episode.metaData?.isArchived = false
-        episode.metaData?.status = .none
-        episode.refresh.toggle()
+        updateQueuedEpisodeMetadata(episode)
 
         modelContext.saveIfNeeded()
 
         if episode.metaData?.calculatedIsAvailableLocally != true {
             let episodeActor = EpisodeActor(modelContainer: self.modelContainer)
-            await episodeActor.download(episodeID: episode.id)
+            await episodeActor.download(episodeURL: episodeURL)
         }
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
+        WatchSyncCoordinator.refreshSoon()
     }
 
     func remove(episodeID: UUID) throws {
-        guard let playlist = try fetchPlaylist() else { return }
-        
-        if let entry = playlist.items?.first(where: { $0.episode?.id == episodeID }){
-            
-            modelContext.delete(entry)
-            normalizeOrder()
-            entry.episode?.refresh.toggle()
-            modelContext.saveIfNeeded()
-            Task {
-                await PlayNextWidgetSync.refresh(using: modelContainer)
-            }
-            // print("✅ PlaylistEntry deleted and context saved")
-        }else{
-            // print("No such episode")
-        }
+        guard let episode = try fetchEpisode(byID: episodeID),
+              let episodeURL = episode.url else { return }
+        try remove(episodeURL: episodeURL)
     }
     
     func remove(episodeURL: URL) throws {
@@ -345,6 +369,7 @@ actor PlaylistModelActor {
             modelContext.saveIfNeeded()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer)
+                WatchSyncCoordinator.refreshSoon()
             }
             // print("✅ PlaylistEntry deleted and context saved")
         }else{
@@ -379,6 +404,7 @@ actor PlaylistModelActor {
             normalizeOrder()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer)
+                WatchSyncCoordinator.refreshSoon()
             }
         }
     }
