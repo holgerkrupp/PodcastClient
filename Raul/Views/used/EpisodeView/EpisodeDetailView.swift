@@ -143,7 +143,7 @@ struct EpisodeDetailView: View {
                         .foregroundColor(.accent)
                         .labelStyle(.iconOnly)
                     
-                    if Player.shared.currentEpisodeID != episode.id {
+                    if Player.shared.currentEpisodeURL != episode.url {
                         EpisodeControlView(episode: episode)
                             .modelContainer(context.container)
                             .frame(height: 50)

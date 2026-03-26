@@ -59,8 +59,7 @@ class Player {
     
     
     var currentEpisode: Episode?
-    var currentEpisodeID: UUID?
-    
+    var currentEpisodeURL: URL?
     
     let fileMonitor = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
 
@@ -116,9 +115,10 @@ class Player {
         let key = "lastPlayedEpisodeID"
         if let idString = UserDefaults.standard.string(forKey: key),
            let episodeID = UUID(uuidString: idString),
-           let episode = await fetchEpisode(with: episodeID) {
+           let episode = await fetchEpisode(with: episodeID),
+           let episodeURL = episode.url {
             do {
-                try await playlistActor?.add(episodeID: episodeID, to: .front)
+                try await playlistActor?.add(episodeURL: episodeURL, to: .front)
             } catch {
                 // handle error silently or log if needed
             }
@@ -126,13 +126,10 @@ class Player {
         }
     }
     
-    /// New method to restore last played episode from the playlist
-    /// Note: This now relies on a 'orderedEpisodeIDs' method in PlaylistModelActor.
     func restoreLastPlayedFromPlaylist() async {
-        if let episodeIDs = try? await playlistActor?.orderedEpisodeIDs(), let firstID = episodeIDs.first {
-            if let episode = await fetchEpisode(with: firstID) {
-                await playEpisode(episode.url, playDirectly: false)
-            }
+        if let episodeURLs = try? await playlistActor?.orderedEpisodeURLs(),
+           let firstURL = episodeURLs.first {
+            await playEpisode(firstURL, playDirectly: false)
         }
     }
     
@@ -266,76 +263,90 @@ class Player {
             return nil
         }
     }
-    
 
-    
-    private func fetchChapters(for episodeID: UUID)  async -> [Marker]? {
-        
-        guard let episode = await fetchEpisode(with: episodeID) else { return [] }
-    
+    private func resolvedChapters(for episode: Episode) -> [Marker] {
+        let chapters = episode.chapters ?? []
+        guard chapters.isEmpty == false else { return [] }
 
-           
-             let chapters = episode.chapters
-            
-        if !(chapters?.isEmpty ?? true){
-            
-                
-                
-                let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-                
-                let categoryGroups = Dictionary(grouping: chapters ?? [], by: { $0.title + (Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))) })
-                
-                return categoryGroups.values.flatMap { group in
-                let highestCategory = group.max(by: { preferredOrder.firstIndex(of: $0.type) ?? 0 < preferredOrder.firstIndex(of: $1.type) ?? preferredOrder.count })?.type
-                 
-           
-                    
-                return group.filter { $0.type == highestCategory }
-                }
-            
-            
-        } else {
-      
-            return []
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let priorityByType = Dictionary(
+            uniqueKeysWithValues: preferredOrder.enumerated().map { ($1, $0) }
+        )
+        let categoryGroups = Dictionary(grouping: chapters) {
+            $0.title + Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))
         }
+
+        var resolved: [Marker] = []
+        resolved.reserveCapacity(chapters.count)
+
+        for group in categoryGroups.values {
+            var bestType: MarkerType?
+            var bestPriority = preferredOrder.count
+
+            for marker in group {
+                let priority = priorityByType[marker.type] ?? preferredOrder.count
+                if priority < bestPriority {
+                    bestPriority = priority
+                    bestType = marker.type
+                }
+            }
+
+            guard let bestType else { continue }
+            resolved.append(contentsOf: group.filter { $0.type == bestType })
+        }
+
+        resolved.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+        return resolved
     }
-    
+
     private func updateChapters() {
-        Task{
-            guard let currentEpisodeID else { return }
-            chapters = await fetchChapters(for: currentEpisodeID)
+        guard let currentEpisode else {
+            chapters = []
+            currentChapter = nil
+            nextChapter = nil
+            return
         }
+
+        chapters = resolvedChapters(for: currentEpisode)
     }
     
-    private func updateCurrentChapter() -> Bool{
-        if currentEpisode?.chapters != nil, currentEpisode?.chapters?.isEmpty == false {
-            updateChapters()
-            let playingChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= self.playPosition})
-            if currentChapter != playingChapter {
-                
-                if let chapterProgress, let currentChapter  {
-                    saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
-                }
-                currentChapter = playingChapter
-                if let currentChapterID = currentChapter?.uuid{
-                    Task{
-                        currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true // check that the user has not recently changed the toggle to play this chapter
-                    }
-                }
-                chapterProgress = 0.0
-                updateChapterProgress()
-                nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 > self.playPosition})
-                
-                return true
+    private func updateCurrentChapter() -> Bool {
+        guard let chapters, chapters.isEmpty == false else {
+            currentChapter = nil
+            nextChapter = nil
+            chapterProgress = nil
+            return false
+        }
+
+        let playingChapter = chapters.last(where: { ($0.start ?? 0) <= playPosition })
+        nextChapter = chapters.first(where: { ($0.start ?? 0) > playPosition })
+
+        guard currentChapter != playingChapter else { return false }
+
+        if let chapterProgress, let currentChapter {
+            saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
+        }
+
+        currentChapter = playingChapter
+        if let currentChapterID = currentChapter?.uuid {
+            Task {
+                currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true
             }
         }
-        return false
+        chapterProgress = 0.0
+        updateChapterProgress()
+        Task {
+            await updateNowPlayingCover()
+        }
+        return true
     }
     
     private func updateChapterProgress(){
         guard let currentChapter = currentChapter else { return }
         let chapterEnd = currentChapter.end ?? nextChapter?.start ?? currentEpisode?.duration ?? 1.0
-        chapterProgress = (playPosition - (currentChapter.start ?? 0)) / ((chapterEnd) - (currentChapter.start ?? 0))
+        let chapterStart = currentChapter.start ?? 0
+        let duration = max(chapterEnd - chapterStart, .leastNonzeroMagnitude)
+        chapterProgress = (playPosition - chapterStart) / duration
         currentChapter.progress = chapterProgress
         if progressUpdateCounter >= progressSaveInterval {
             guard let chapterProgress  else { return }
@@ -345,139 +356,98 @@ class Player {
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
         if let chapterID = chapter.uuid{
-            
+
+            let chapterActor = self.chapterActor
             Task.detached(priority: .background) {
-                await self.chapterActor?.setChapterProgress(progress, for: chapterID)
+                await chapterActor?.setChapterProgress(progress, for: chapterID)
             }
         }
     }
-        
-    private func unloadEpisode(episodeUUID: UUID) async{
-        // print("unloadEpisode \(episodeUUID)")
 
-        guard let episode = await fetchEpisode(with: episodeUUID) else { return }
+    
+    private func playbackItem(for episode: Episode) -> AVPlayerItem? {
+        if episode.metaData?.calculatedIsAvailableLocally == true,
+           let localFile = episode.localFile,
+           FileManager.default.fileExists(atPath: localFile.path) {
+            return AVPlayerItem(url: localFile)
+        }
+
+        guard let remoteURL = episode.url else { return nil }
+        return AVPlayerItem(url: remoteURL)
+    }
+
+    private func unloadEpisode(episodeURL: URL) async {
+        let episode = (currentEpisode?.url == episodeURL) ? currentEpisode : await fetchEpisode(with: episodeURL)
+        guard let episode else { return }
+
+        stopPlaybackUpdates()
         currentEpisode = nil
-        currentEpisodeID = nil
+        currentEpisodeURL = nil
         currentChapter = nil
         chapterProgress = nil
         nextChapter = nil
-        chapters = nil
-        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeID: nil)
-        
-        
-        // Removed UserDefaults removal for lastPlayedEpisodeID
-                
+        chapters = []
+        progressUpdateCounter = 0
+        lastArtworkURL = nil
+        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
+
         if episode.playProgress >= progressThreshold {
-            if let episodeURL = episode.url {
-                await episodeActor?.setCompletionDate(episodeURL: episodeURL)
-                await episodeActor?.archiveEpisode(episodeURL)
-            }
-            
-        }else{
-
-            try? await playlistActor?.add(episodeID: episodeUUID, to: .front)
-
+            await episodeActor?.setCompletionDate(episodeURL: episodeURL)
+            await episodeActor?.archiveEpisode(episodeURL)
+        } else {
+            try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
         }
-        
-        
     }
     
     
     
     func playEpisode(_ episodeURL: URL?, playDirectly: Bool = true, startingAt time: Double? = nil) async {
-        
-        // print("playEpisode \(episodeUUID)")
-        guard let episode = await fetchEpisode(with: episodeURL) else { return }
-        if let currentEpisodeID, episode.id != currentEpisodeID{
-            await unloadEpisode(episodeUUID: currentEpisodeID)
-            
-            // Removed code removing episode from playlist here
-            
+        guard let episodeURL,
+              let episode = await fetchEpisode(with: episodeURL) else { return }
+
+        if let currentEpisodeURL, currentEpisodeURL != episodeURL {
+            await unloadEpisode(episodeURL: currentEpisodeURL)
         }
+
         episode.metaData?.isInbox = false
 
         currentEpisode = episode
-        currentEpisodeID = episode.id
+        currentEpisodeURL = episodeURL
+        progressUpdateCounter = 0
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
         updateChapters()
-        
-        // Removed UserDefaults storage for last played episode
-        
-        // Add to front of playlist
-        try? await playlistActor?.add(episodeID: episode.id, to: .front)
-        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeID: episode.id)
 
-        Task { @MainActor in
-            // print("loading new AVPlayerItem - \(isCurrentEpisodeDownloaded) - \(episode.localFile?.path ?? "nil")")
-            // Load the AVPlayerItem asynchronously
-            let item: AVPlayerItem = {
-                if isCurrentEpisodeDownloaded, let localFile = episode.localFile {
-                
-                    let localURL: URL
-                    if localFile.isFileURL && FileManager.default.fileExists(atPath: localFile.path) {
-                       
-                        localURL = localFile
-                        // print("file Exists - \(localURL.path)")
-                    } else {
-                        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-                        localURL = caches.appendingPathComponent(localFile.path)
-                        // print("file does not exist - \(localURL.path)")
+        try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
+        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
 
-                    }
-                    guard FileManager.default.fileExists(atPath: localURL.path) else {
-                        // print("Local file does not exist at \(localURL.path), falling back to remote.")
-                        if let remoteURL = episode.url {
-                            return AVPlayerItem(url: remoteURL)
-                        } else {
-                            fatalError("No valid URL for playback.")
-                        }
-                    }
-                    return AVPlayerItem(url: localURL)
-                } else if let remoteURL = episode.url {
-                    // print("loading remote file from \(remoteURL.absoluteString)")
-                    return AVPlayerItem(url: remoteURL)
-                } else {
-                    fatalError("No valid URL for playback.")
-                }
-            }()
-           
-            let duration = item.duration.seconds
-            
-            // print("comparing episode Duration \(currentEpisode?.duration ?? 0.0) with item duration \(duration) ")
-            
-            if duration.isNormal && currentEpisode?.duration != duration {
-                currentEpisode?.duration = duration
-            }
-            
-            await engine.replaceCurrentItem(with: item)
-            
-            BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
-            if let time  {
-                BasicLogger.shared.log("Time provided when calling the playEpisode function: \(time)")
+        guard let item = playbackItem(for: episode) else { return }
 
-                await jumpTo(time: time)
-            }else if let lastPlayPosition = currentEpisode?.metaData?.playPosition, lastPlayPosition < ((currentEpisode?.duration ?? 1.0) * progressThreshold) {
-             
-
-                BasicLogger.shared.log("jump to last position: \(lastPlayPosition)")
-                
-                await jumpTo(time: lastPlayPosition)
-            } else {
-                BasicLogger.shared.log("no time - jump to beginning")
-
-                await jumpTo(time: 0)
-            }
-            _ = updateCurrentChapter()
-            // initRemoteCommandCenter() // moved to init
-            setupStaticNowPlayingInfo()
-        await   updateNowPlayingCover()
-            if playDirectly {
-                play()
-            }
-            
+        let duration = item.duration.seconds
+        if duration.isNormal && currentEpisode?.duration != duration {
+            currentEpisode?.duration = duration
         }
-        
+
+        await engine.replaceCurrentItem(with: item)
+
+        BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
+        if let time {
+            BasicLogger.shared.log("Time provided when calling the playEpisode function: \(time)")
+            await jumpTo(time: time)
+        } else if let lastPlayPosition = currentEpisode?.metaData?.playPosition,
+                  lastPlayPosition < ((currentEpisode?.duration ?? 1.0) * progressThreshold) {
+            BasicLogger.shared.log("jump to last position: \(lastPlayPosition)")
+            await jumpTo(time: lastPlayPosition)
+        } else {
+            BasicLogger.shared.log("no time - jump to beginning")
+            await jumpTo(time: 0)
+        }
+        _ = updateCurrentChapter()
+        setupStaticNowPlayingInfo()
+        await updateNowPlayingCover()
+        if playDirectly {
+            play()
+        }
     }
     
     var coverImage: some View{
@@ -522,41 +492,17 @@ class Player {
     }
     
     func listenToEvent() {
-        Task{
+        Task {
             await engine.setInterruptionHandler { [weak self] event in
-                // print("received interruption event: \(event)")
-
-        
-                guard let self else { return }
-                switch event {
-                case .began:
-                    Task{
-                       //  await BasicLogger.shared.log("received interruption event: began")
-                        await self.handleInterruptionBegan()
-                    }
-                case .ended:
-                    Task{
-                       //  await BasicLogger.shared.log("received interruption event: ended")
-
-                        await self.resumeAfterInterruption()
-                    }
-                case .pause:
-                    Task{
-                       //  await BasicLogger.shared.log("received interruption event: pause")
-
-                        await self.handleInterruptionBegan()
-                    }
-                case .resume:
-                    Task{
-                       //  await BasicLogger.shared.log("received interruption event: reume")
-
-                        await self.resumeAfterInterruption()
-                    }
-                case .finished:
-                    Task{
-                       //  await BasicLogger.shared.log("received interruption event: finished")
-
-                        await self.handlePlaybackFinished()
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    switch event {
+                    case .began, .pause:
+                        self.handleInterruptionBegan()
+                    case .ended, .resume:
+                        self.resumeAfterInterruption()
+                    case .finished:
+                        self.handlePlaybackFinished()
                     }
                 }
             }
@@ -642,11 +588,9 @@ class Player {
         let safeTime = max(0, time)
         let cmTime = CMTime(seconds: safeTime, preferredTimescale: 600)
 
-        // Wait for seek to finish
         await engine.seek(to: cmTime)
 
-        // Only after seek completes, update state
-        playPosition = time
+        playPosition = safeTime
         updateNowPlayingInfo()
         _ = updateCurrentChapter()
         updateChapterProgress()
@@ -668,36 +612,38 @@ class Player {
     private func stopPlaybackUpdates() {
         playbackTask?.cancel()
         playbackTask = nil
-        
     }
     
     
 
     private func startPlaybackUpdates() {
-        Task {
-            for await event in await engine.playbackStream() {
+        stopPlaybackUpdates()
+        playbackTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let stream = await engine.playbackStream()
+            for await event in stream {
+                guard !Task.isCancelled else { break }
                 switch event {
                 case .position(let time):
-                    playPosition = time
-                    updateEpisodeProgress(to: time)
-             //       setupStaticNowPlayingInfo()
+                    self.playPosition = time
+                    self.updateEpisodeProgress(to: time)
                 case .ended:
                     BasicLogger.shared.log("Playback finished automatically")
-                    handlePlaybackFinished()
+                    self.handlePlaybackFinished()
                 }
             }
-            // print("Loop ended") // This should run if the loop ends gracefully
-
         }
     }
     
     
     
     func updateLastPlayed()  {
-        if let currentEpisode {
-            Task{
-                await episodeActor?.setLastPlayed(currentEpisode.id)
-                await episodeActor?.setPlayPosition(episodeID: currentEpisode.id, position: playPosition)
+        if let currentEpisodeURL {
+            let episodeActor = self.episodeActor
+            let currentPlayPosition = playPosition
+            Task {
+                await episodeActor?.setLastPlayed(episodeURL: currentEpisodeURL)
+                await episodeActor?.setPlayPosition(episodeURL: currentEpisodeURL, position: currentPlayPosition)
             }
         }
     }
@@ -710,31 +656,30 @@ class Player {
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
         
-            
-        if let chapters = currentEpisode?.chapters, chapters.count > 0 {
-            Task{
-                let chapterChange = updateCurrentChapter()
-                updateChapterProgress()
-                await skipIfNeeded(chapterChange: chapterChange)
+        if let chapters, chapters.isEmpty == false {
+            let chapterChange = updateCurrentChapter()
+            updateChapterProgress()
+            if chapterChange {
+                Task {
+                    await skipIfNeeded(chapterChange: chapterChange)
+                }
             }
         }
 
-        
-            progressUpdateCounter += 1
-            if progressUpdateCounter >= progressSaveInterval {
-                if let chapters = currentEpisode?.chapters, chapters.count > 0 {
-                    updateChapters()
-                }
-                updateNowPlayingInfo()
-                savePlayPosition()
-                progressUpdateCounter = 0
+        progressUpdateCounter += 1
+        if progressUpdateCounter >= progressSaveInterval {
+            if currentEpisode?.chapters?.isEmpty == false {
+                updateChapters()
             }
+            updateNowPlayingInfo()
+            savePlayPosition()
+            progressUpdateCounter = 0
         }
+    }
     
     // Helper to cascade skip consecutive skipped chapters and handle last skipped chapter
     private func skipIfNeeded(chapterChange: Bool) async {
         guard chapterChange else { return }
-        updateChapters()
         await skipOverChapters()
     }
 
@@ -744,13 +689,12 @@ class Player {
         if currentChapter.shouldPlay { return }
 
         if let id = currentChapter.uuid {
+            let chapterActor = self.chapterActor
             Task.detached(priority: .background) {
-                await self.chapterActor?.markChapterAsSkipped(id)
+                await chapterActor?.markChapterAsSkipped(id)
             }
         }
-        guard let nextChapter = chapters?
-            .sorted(by: { ($0.start ?? 0) < ($1.start ?? 0) })
-            .first(where: { ($0.start ?? 0) > self.playPosition })
+        guard let nextChapter = chapters?.first(where: { ($0.start ?? 0) > playPosition })
         else {
             handlePlaybackFinished()
             return
@@ -771,13 +715,12 @@ class Player {
     
     
     private func savePlayPosition() {
-        guard let episode = currentEpisode else { return }
+        guard let currentEpisodeURL else { return }
+        let episodeActor = self.episodeActor
+        let currentPlayPosition = playPosition
         Task.detached(priority: .background) {
-            await self.episodeActor?.setPlayPosition(episodeID: episode.id, position: self.playPosition) // this updates the playposition in the database
-
-          
+            await episodeActor?.setPlayPosition(episodeURL: currentEpisodeURL, position: currentPlayPosition)
         }
-
     }
     
     
@@ -791,13 +734,8 @@ class Player {
     }
     
     func skipToNextChapter() async{
-        
-        
-        
-        let nextChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).first(where: {$0.start ?? 0 >= self.playPosition})
-        
-        
-        
+        let nextChapter = chapters?.first(where: { ($0.start ?? 0) >= playPosition })
+
         if let start = nextChapter?.start{
              await jumpTo(time: start)
         }else if let end = currentChapter?.end{
@@ -830,12 +768,14 @@ class Player {
             Task{
                 let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
                 let sleepTimerContinuePlaying = !stopAfterEpisode
-                if sleepTimerContinuePlaying == true, continuePlaying == true, let nextEpisodeURL = try? await playlistActor?.nextEpisode(){
+                if sleepTimerContinuePlaying == true,
+                   continuePlaying == true,
+                   let nextEpisodeURL = try? await playlistActor?.nextEpisodeURL() {
                     BasicLogger.shared.log("Playing next episode")
                     await playEpisode(nextEpisodeURL, playDirectly: true)
                 }else{
-                    if let currentEpisodeID{
-                        await unloadEpisode(episodeUUID: currentEpisodeID)
+                    if let currentEpisodeURL {
+                        await unloadEpisode(episodeURL: currentEpisodeURL)
                     }
                 }
             }
@@ -887,9 +827,10 @@ class Player {
     }
     
     func createBookmark() {
-        Task{
-            if  let currentEpisodeID{
-                await EpisodeActor(modelContainer: ModelContainerManager.shared.container).createBookMarkfor(episodeID: currentEpisodeID, at: playPosition)
+        Task {
+            if let currentEpisodeURL {
+                await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+                    .createBookmark(for: currentEpisodeURL, at: playPosition)
             }
         }
     }

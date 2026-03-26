@@ -10,34 +10,10 @@ import Observation
 
     private(set) var downloadedFiles: Set<URL> = []
 
-    /// Episode IDs inferred from downloaded files. We detect files named like "<UUID>_originalFilename.ext".
-    /// This array is kept in sync with `downloadedFiles`.
-    private(set) var downloadedEpisodeIDs: [UUID] = []
-
-    /// Extract a UUID prefix from a filename that starts with "<uuid>_".
-    private func episodeID(from fileURL: URL) -> UUID? {
-        let name = fileURL.lastPathComponent
-        // Expect pattern: <uuid>_...
-        guard let underscoreIndex = name.firstIndex(of: "_") else { return nil }
-        let uuidString = String(name[..<underscoreIndex])
-        return UUID(uuidString: uuidString)
-    }
-
-    /// Recalculate `downloadedEpisodeIDs` from `downloadedFiles`.
-   // @MainActor
-    private func updateDownloadedEpisodeIDs() {
-        let ids = downloadedFiles.compactMap { episodeID(from: $0) }
-        // Preserve stable order by sorting (optional)
-        self.downloadedEpisodeIDs = Array(Set(ids)).sorted { $0.uuidString < $1.uuidString }
-    }
-
     init(folder: URL) {
         self.monitoredFolder = folder
         refreshDownloadedFiles()
         startMonitoring()
-        
-        updateDownloadedEpisodeIDs()
-        
     }
 
     deinit {
@@ -84,7 +60,6 @@ import Observation
             Task { @MainActor in
                 
                 self.downloadedFiles = updated
-                self.updateDownloadedEpisodeIDs()
             }
         }
     }
@@ -129,15 +104,7 @@ import Observation
         pollTimer = nil
     }
 
-    /// Returns the current list of episode IDs that have downloaded files.
-    func currentDownloadedEpisodeIDs() -> [UUID] {
-        return downloadedEpisodeIDs
-    }
-
-    /// Forces a rescan of the folder and recomputes episode IDs.
-    func rescanDownloadedEpisodeIDs() {
+    func rescanDownloadedFiles() {
         refreshDownloadedFiles()
-        // `updateDownloadedEpisodeIDs()` will be called on main actor after refresh.
     }
 }
-

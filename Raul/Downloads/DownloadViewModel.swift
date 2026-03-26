@@ -19,7 +19,7 @@ final class DownloadViewModel: ObservableObject {
     func startDownload(for episode: Episode) {
         Task {
             if let url = episode.url {
-                let item = await DownloadManager.shared.download(from: url, saveTo: episode.localFile, episodeID: episode.id)
+                let item = await DownloadManager.shared.download(from: url, saveTo: episode.localFile)
                 self.item = item
             }
            
