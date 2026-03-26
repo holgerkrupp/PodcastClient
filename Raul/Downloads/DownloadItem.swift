@@ -14,9 +14,7 @@ import SwiftData
 final class DownloadItem: ObservableObject, Identifiable {
     let id = UUID()
     let url: URL
-    
-    public var episodeID: UUID?
-    
+
     @Published var isFinished: Bool = false
 
     @Published var isDownloading = false
@@ -25,11 +23,9 @@ final class DownloadItem: ObservableObject, Identifiable {
     @Published var totalBytes: Int64?
     @Published var downloadedBytes: Int64 = 0
 
-    init(url: URL, episodeID: UUID? = nil) {
+    init(url: URL) {
         // print("create DownloadItem \(url)")
         self.url = url
-        self.episodeID = episodeID
-        
     }
 
     func update(bytesWritten: Int64, totalBytes: Int64) {
