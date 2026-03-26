@@ -69,7 +69,7 @@ class PodcastSettings {
     }
 }
 
-enum Operator:Codable {
+enum Operator: Codable, CaseIterable, Hashable {
     case Is, Contains, StartsWith, EndsWith
 }
 
@@ -101,4 +101,3 @@ enum SkipSteps:Int, Codable, CaseIterable{
         return "goforward.".appending(rawValue.description)
     }
 }
-
