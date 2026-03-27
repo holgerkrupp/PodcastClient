@@ -57,7 +57,7 @@ struct ContentView: View {
 
             
         }
-        .searchable(text: $search, prompt: "URL or Search")
+       // .searchable(text: $search, prompt: "URL or Search")
         .tabBarMinimizeBehavior(.onScrollDown)
         
         .tabViewBottomAccessory {

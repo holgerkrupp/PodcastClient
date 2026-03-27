@@ -26,9 +26,9 @@ struct RaulApp: App {
                     .withDeviceStyle()
 
                     .onAppear {
-                        let manager = downloadedFilesManager  // Capture outside the @Sendable closure
-                        Task { @Sendable in
-                            await DownloadManager.shared.injectDownloadedFilesManager(manager)
+                        let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
+                        Task {
+                            await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
                         }
                         Task {
                             await PlayNextWidgetSync.refresh(using: modelContainerManager.container)

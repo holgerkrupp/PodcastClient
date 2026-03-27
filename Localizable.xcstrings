@@ -2,16 +2,43 @@
   "sourceLanguage" : "en",
   "strings" : {
     "" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ""
+          }
+        }
+      }
     },
     " - " : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " - "
+          }
+        }
+      }
     },
     "%@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@"
+          }
+        }
+      }
     },
     "%@ – %@" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ – %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
@@ -21,25 +48,74 @@
       }
     },
     "%@ History" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-Verlauf"
+          }
+        }
+      }
     },
     "%@:" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@:"
+          }
+        }
+      }
     },
     "%lld" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld"
+          }
+        }
+      }
     },
     "%lld%%" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%%"
+          }
+        }
+      }
     },
     "Add" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
+          }
+        }
+      }
     },
     "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge Episoden aus deinen abonnierten Podcasts zum Anhören hinzu. Die Episoden werden in der Reihenfolge abgespielt, in der sie zu deiner Playlist hinzugefügt wurden. Du kannst sie neu anordnen, indem du sie in der Liste verschiebst."
+          }
+        }
+      }
     },
     "Add Rule" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regel hinzufügen"
+          }
+        }
+      }
     },
     "All Bookmarks" : {
       "localizations" : {
@@ -52,184 +128,625 @@
       }
     },
     "All Episodes" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Episoden"
+          }
+        }
+      }
     },
     "All Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Podcasts"
+          }
+        }
+      }
+    },
+    "All podcasts already use custom settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Podcasts verwenden bereits individuelle Einstellungen."
+          }
+        }
+      }
     },
     "already subscribed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits abonniert"
+          }
+        }
+      }
     },
     "App-Wide Controls" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-weite Einstellungen"
+          }
+        }
+      }
     },
     "Apple SpeechTranscriber" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple SpeechTranscriber"
+          }
+        }
+      }
     },
     "Applied Right Now" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuell wirksam"
+          }
+        }
+      }
     },
     "apps" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps"
+          }
+        }
+      }
     },
     "Archive" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archivieren"
+          }
+        }
+      }
     },
     "Archive Episode" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode archivieren"
+          }
+        }
+      }
     },
     "at %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bei %@"
+          }
+        }
+      }
     },
     "Authentication Required" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentifizierung erforderlich"
+          }
+        }
+      }
     },
     "Authors" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoren"
+          }
+        }
+      }
     },
     "Bookmark" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen"
+          }
+        }
+      }
     },
     "Bookmark This" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier Lesezeichen setzen"
+          }
+        }
+      }
     },
     "Bookmarks" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen"
+          }
+        }
+      }
     },
     "Browse by Category" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Kategorie durchsuchen"
+          }
+        }
+      }
     },
     "Browse Episodes" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden durchsuchen"
+          }
+        }
+      }
     },
     "Browse Episodes adds this podcast to your library without subscribing, so you can download or queue individual episodes." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Funktion Episoden durchsuchen fügt diesen Podcast deiner Mediathek hinzu, ohne ihn zu abonnieren, sodass du einzelne Episoden herunterladen oder in die Warteschlange legen kannst."
+          }
+        }
+      }
     },
     "Cancel" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        }
+      }
     },
     "Chapter Skip Rules" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regeln zum Überspringen von Kapiteln"
+          }
+        }
+      }
     },
     "Chapters" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapitel"
+          }
+        }
+      }
     },
     "Continue" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortfahren"
+          }
+        }
+      }
     },
     "Continuous playback" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontinuierliche Wiedergabe"
+          }
+        }
+      }
     },
     "Could Not Open Podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast konnte nicht geöffnet werden"
+          }
+        }
+      }
     },
     "Create a bookmark at the current playback position." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstelle an der aktuellen Wiedergabeposition ein Lesezeichen."
+          }
+        }
+      }
     },
     "Created in Buxtehude by" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt in Buxtehude von"
+          }
+        }
+      }
     },
     "Custom" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Individuell"
+          }
+        }
+      }
     },
     "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der individuelle Modus erstellt eine podcast-eigene Kopie von Warteschlangenposition, Wiedergabegeschwindigkeit und Kapitelregeln. Spätere globale Änderungen wirken sich nicht mehr auf diesen Podcast aus, bis du wieder zu Global wechselst."
+          }
+        }
+      }
     },
     "Debug" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Debug"
+          }
+        }
+      }
     },
     "Default speed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardgeschwindigkeit"
+          }
+        }
+      }
     },
     "Delete" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        }
+      }
     },
     "Delete all Podcasts" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Podcasts löschen"
+          }
+        }
+      }
     },
     "Delete all your subscriptions" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle deine Abonnements löschen"
+          }
+        }
+      }
     },
     "Delete Bookmark" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen löschen"
+          }
+        }
+      }
     },
     "Delete Cache Files" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cache-Dateien löschen"
+          }
+        }
+      }
     },
     "Delete Documents Files" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokumentdateien löschen"
+          }
+        }
+      }
     },
     "Delete Files" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dateien löschen"
+          }
+        }
+      }
     },
     "Delete Played" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespielte löschen"
+          }
+        }
+      }
     },
     "Descriptions" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibungen"
+          }
+        }
+      }
     },
     "Done" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        }
+      }
     },
     "Download" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herunterladen"
+          }
+        }
+      }
     },
     "Downloaded Episodes" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladene Episoden"
+          }
+        }
+      }
     },
     "Downloads" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloads"
+          }
+        }
+      }
+    },
+    "Enable Custom Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Individuelle Einstellungen aktivieren"
+          }
+        }
+      }
     },
     "Enable Custom to give this podcast its own queue placement, playback speed, and chapter rules." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviere Individuell, damit dieser Podcast seine eigene Warteschlangenposition, Wiedergabegeschwindigkeit und Kapitelregeln erhält."
+          }
+        }
+      }
     },
     "Enable Notifications" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtigungen aktivieren"
+          }
+        }
+      }
     },
     "End: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende: %@"
+          }
+        }
+      }
     },
     "Ended cleanly" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordnungsgemäß beendet"
+          }
+        }
+      }
     },
     "Engine" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engine"
+          }
+        }
+      }
     },
     "Episodes" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden"
+          }
+        }
+      }
     },
     "Episodes you download will appear here." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden, die du herunterlädst, erscheinen hier."
+          }
+        }
+      }
     },
     "Error" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler"
+          }
+        }
+      }
     },
     "Export" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportieren"
+          }
+        }
+      }
     },
     "Export Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts exportieren"
+          }
+        }
+      }
     },
     "Export your subscriptions as OMPL file." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportiere deine Abonnements als OPML-Datei."
+          }
+        }
+      }
     },
     "Exporting…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird exportiert…"
+          }
+        }
+      }
     },
     "Exporting... %lld%%" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird exportiert... %lld%%"
+          }
+        }
+      }
     },
     "extremely" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "extrem"
+          }
+        }
+      }
     },
     "Extremely Successful Apps" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extrem erfolgreiche Apps"
+          }
+        }
+      }
     },
     "Following global defaults" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folgt den globalen Standardwerten"
+          }
+        }
+      }
     },
     "From %@ to %@" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von %1$@ bis %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
@@ -239,22 +756,63 @@
       }
     },
     "Get the source code" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quellcode anzeigen"
+          }
+        }
+      }
     },
     "Global" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Global"
+          }
+        }
+      }
     },
     "Global Defaults" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Globale Standardwerte"
+          }
+        }
+      }
     },
     "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der globale Modus belässt diesen Podcast bei den gemeinsamen Standardwerten. Wechsle nur dann zu Individuell, wenn sich diese Sendung anders verhalten soll."
+          }
+        }
+      }
     },
     "Global Playback Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Globale Wiedergabeeinstellungen"
+          }
+        }
+      }
     },
     "Heat Map (%@ – %@)" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heatmap (%1$@ – %2$@)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
@@ -264,502 +822,1695 @@
       }
     },
     "Hide played Episodes" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespielte Episoden ausblenden"
+          }
+        }
+      }
     },
     "Hot Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beliebte Podcasts"
+          }
+        }
+      }
     },
     "Hour By Weekday" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stunde nach Wochentag"
+          }
+        }
+      }
     },
     "Import" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importieren"
+          }
+        }
+      }
     },
     "Import / Export" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import / Export"
+          }
+        }
+      }
     },
     "Inbox" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posteingang"
+          }
+        }
+      }
     },
     "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Posteingang hält neue Episoden aus Up Next heraus. Oben und Unten platzieren sie direkt in der Warteschlange."
+          }
+        }
+      }
     },
     "Installed Models" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installierte Modelle"
+          }
+        }
+      }
     },
     "Integrations" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integrationen"
+          }
+        }
+      }
     },
     "Keyword or phrase" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stichwort oder Ausdruck"
+          }
+        }
+      }
     },
     "Language" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache"
+          }
+        }
+      }
     },
     "Last refresh: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Aktualisierung: %@"
+          }
+        }
+      }
     },
     "Last updated: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt aktualisiert: %@"
+          }
+        }
+      }
     },
     "Less" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weniger"
+          }
+        }
+      }
     },
     "Library" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mediathek"
+          }
+        }
+      }
     },
     "Listening" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hören"
+          }
+        }
+      }
     },
     "Listening Habits" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hörgewohnheiten"
+          }
+        }
+      }
     },
     "Listening Heatmap" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hör-Heatmap"
+          }
+        }
+      }
     },
     "Listening History" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hörverlauf"
+          }
+        }
+      }
     },
     "Listening Time" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hörzeit"
+          }
+        }
+      }
     },
     "Listening Time by Podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hörzeit nach Podcast"
+          }
+        }
+      }
     },
     "Listening Trend" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hörtrend"
+          }
+        }
+      }
     },
     "Loading categories..." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategorien werden geladen..."
+          }
+        }
+      }
     },
     "Loading languages..." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachen werden geladen..."
+          }
+        }
+      }
     },
     "Loading podcasts..." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts werden geladen..."
+          }
+        }
+      }
     },
     "Loading settings…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen werden geladen…"
+          }
+        }
+      }
     },
     "Loading Transcript" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript wird geladen"
+          }
+        }
+      }
     },
     "Loading…" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird geladen…"
+          }
+        }
+      }
     },
     "Lock screen slider" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slider auf Sperrbildschirm"
+          }
+        }
+      }
     },
     "Maintenance" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartung"
+          }
+        }
+      }
     },
     "Match" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übereinstimmung"
+          }
+        }
+      }
     },
     "max play position" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Max. Wiedergabeposition"
+          }
+        }
+      }
     },
     "Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelle sind sprachspezifische Sprachressourcen auf dem Gerät. Die App verwendet nach Möglichkeit die Sprache der Episode und greift andernfalls auf das aktuelle Gebietsschema des Geräts zurück."
+          }
+        }
+      }
     },
     "More" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr"
+          }
+        }
+      }
     },
     "More Views" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Ansichten"
+          }
+        }
+      }
     },
     "New episodes go to" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Episoden landen in"
+          }
+        }
+      }
     },
     "New episodes of subscribed podcasts appear here. You can add them to your listening queue or archive them, if you are not interested in an episode." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Episoden abonnierter Podcasts erscheinen hier. Du kannst sie zu deiner Warteschlange hinzufügen oder archivieren, wenn dich eine Episode nicht interessiert."
+          }
+        }
+      }
     },
     "new Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Podcasts"
+          }
+        }
+      }
     },
     "Newest First" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste zuerst"
+          }
+        }
+      }
     },
     "No Bookmarks saved for this podcast." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Podcast sind keine Lesezeichen gespeichert."
+          }
+        }
+      }
     },
     "No chapter rules yet. Add a rule to automatically skip matching chapter titles." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt noch keine Kapitelregeln. Füge eine Regel hinzu, um passende Kapiteltitel automatisch zu überspringen."
+          }
+        }
+      }
     },
     "No Downloads" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Downloads"
+          }
+        }
+      }
     },
     "No episode playing." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es wird keine Episode abgespielt."
+          }
+        }
+      }
     },
     "No listening data yet." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt noch keine Hördaten."
+          }
+        }
+      }
     },
     "No Listening History" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Hörverlauf"
+          }
+        }
+      }
     },
     "No Podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Podcast"
+          }
+        }
+      }
     },
     "No Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Podcasts"
+          }
+        }
+      }
     },
     "No podcasts are stored in the library yet." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In der Mediathek sind noch keine Podcasts gespeichert."
+          }
+        }
+      }
+    },
+    "No podcasts are using custom settings yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Podcasts verwenden individuelle Einstellungen."
+          }
+        }
+      }
     },
     "No podcasts found" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Podcasts gefunden"
+          }
+        }
+      }
     },
     "No podcasts matched \"%@\"." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Podcasts passten zu \"%@\"."
+          }
+        }
+      }
     },
     "No Results" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Ergebnisse"
+          }
+        }
+      }
     },
     "no results for %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Ergebnisse für %@"
+          }
+        }
+      }
     },
     "No Transcriptions Yet" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Transkriptionen"
+          }
+        }
+      }
     },
     "No Unsubscribed Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine nicht abonnierten Podcasts"
+          }
+        }
+      }
     },
     "None" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine"
+          }
+        }
+      }
     },
     "Not Subscribed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht abonniert"
+          }
+        }
+      }
     },
     "Notifications" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtigungen"
+          }
+        }
+      }
     },
     "Now Playing" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt läuft"
+          }
+        }
+      }
     },
     "Now Playing slider" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slider im Bereich Jetzt läuft"
+          }
+        }
+      }
     },
     "Off" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus"
+          }
+        }
+      }
     },
     "OK" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
     },
     "On-Device Transcription" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription auf dem Gerät"
+          }
+        }
+      }
     },
     "Open in Browser" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Browser öffnen"
+          }
+        }
+      }
     },
     "Open Notification Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtigungseinstellungen öffnen"
+          }
+        }
+      }
     },
     "Open Podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast öffnen"
+          }
+        }
+      }
     },
     "Password" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passwort"
+          }
+        }
+      }
     },
     "Pause" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        }
+      }
     },
     "People" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personen"
+          }
+        }
+      }
     },
     "Period" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeitraum"
+          }
+        }
+      }
     },
     "Play" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abspielen"
+          }
+        }
+      }
     },
     "Play Chapter" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapitel abspielen"
+          }
+        }
+      }
     },
     "Play Last" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Letztes abspielen"
+          }
+        }
+      }
     },
     "Play Next" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes abspielen"
+          }
+        }
+      }
     },
     "Playback" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe"
+          }
+        }
+      }
     },
     "Playback & Queue" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe & Warteschlange"
+          }
+        }
+      }
     },
     "Playback Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabeeinstellungen"
+          }
+        }
+      }
     },
     "Playback Speed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabegeschwindigkeit"
+          }
+        }
+      }
     },
     "PlayerIntentsExtension" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PlayerIntentsExtension"
+          }
+        }
+      }
     },
     "Podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast"
+          }
+        }
+      }
     },
     "Podcast Not Found" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast nicht gefunden"
+          }
+        }
+      }
     },
     "Podcast Overrides" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-spezifische Anpassungen"
+          }
+        }
+      }
     },
     "Podcast Scope" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Filter"
+          }
+        }
+      }
     },
     "Podcast Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Einstellungen"
+          }
+        }
+      }
     },
     "Podcasts kept in the database but excluded from refresh will appear here." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts, die in der Datenbank verbleiben, aber von der Aktualisierung ausgeschlossen sind, erscheinen hier."
+          }
+        }
+      }
+    },
+    "Podcasts With Custom Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts mit individuellen Einstellungen"
+          }
+        }
+      }
     },
     "Preset" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung"
+          }
+        }
+      }
     },
     "Preview" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau"
+          }
+        }
+      }
     },
     "Preview is only available for downloaded audio files." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Vorschau ist nur für heruntergeladene Audiodateien verfügbar."
+          }
+        }
+      }
     },
     "Preview unavailable" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau nicht verfügbar"
+          }
+        }
+      }
     },
     "Queue" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warteschlange"
+          }
+        }
+      }
     },
     "Rebuild Listening Analytics" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höranalyse neu berechnen"
+          }
+        }
+      }
     },
     "Recent on-device transcriptions will appear here once you create one." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuere Transkriptionen auf dem Gerät erscheinen hier, sobald du eine erstellt hast."
+          }
+        }
+      }
     },
     "Recent Session History" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlauf letzter Sitzungen"
+          }
+        }
+      }
     },
     "Recent Transcriptions" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Transkriptionen"
+          }
+        }
+      }
     },
     "Recently Played Episodes" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kürzlich gespielte Episoden"
+          }
+        }
+      }
     },
     "Recovered / interrupted" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederhergestellt / unterbrochen"
+          }
+        }
+      }
     },
     "Remove" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen"
+          }
+        }
+      }
     },
     "Remove Download" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download entfernen"
+          }
+        }
+      }
     },
     "Remove Duplicate Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppelte Podcasts entfernen"
+          }
+        }
+      }
     },
     "Rescan" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut scannen"
+          }
+        }
+      }
     },
     "Resume" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortsetzen"
+          }
+        }
+      }
     },
     "Resume Playback" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe fortsetzen"
+          }
+        }
+      }
     },
     "Rules compare against chapter titles and mark matching chapters to be skipped." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regeln werden mit Kapiteltiteln verglichen und passende Kapitel zum Überspringen markiert."
+          }
+        }
+      }
     },
     "Scope" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geltungsbereich"
+          }
+        }
+      }
     },
     "Search is powered by fyyd" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Suche wird von fyyd bereitgestellt"
+          }
+        }
+      }
     },
     "Search podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts durchsuchen"
+          }
+        }
+      }
     },
     "Search transcript..." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript durchsuchen..."
+          }
+        }
+      }
     },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine OPML-Datei aus, um deine Podcast-Abonnements aus anderen Podcast-Apps zu importieren"
+          }
+        }
+      }
     },
     "Select file to import" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu importierende Datei auswählen"
+          }
+        }
+      }
     },
     "Select the segment to share" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle den Abschnitt zum Teilen aus"
+          }
+        }
+      }
     },
     "Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        }
+      }
     },
     "Settings Mode" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungsmodus"
+          }
+        }
+      }
     },
     "Share" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen"
+          }
+        }
+      }
     },
     "Share audio clip" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioclip teilen"
+          }
+        }
+      }
     },
     "Share Episode" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode teilen"
+          }
+        }
+      }
     },
     "Show all Settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Einstellungen anzeigen"
+          }
+        }
+      }
     },
     "Skip Back" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurückspringen"
+          }
+        }
+      }
     },
     "Sleep Timer" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sleep-Timer"
+          }
+        }
+      }
     },
     "Social links" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Social-Links"
+          }
+        }
+      }
     },
     "Sort" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortieren"
+          }
+        }
+      }
     },
     "Sort by" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sortieren nach"
+          }
+        }
+      }
     },
     "Start listening to see your summarized playback history here." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beginne mit dem Hören, damit hier dein zusammengefasster Wiedergabeverlauf angezeigt wird."
+          }
+        }
+      }
     },
     "Start: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start: %@"
+          }
+        }
+      }
     },
     "Stop after this episode" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dieser Episode stoppen"
+          }
+        }
+      }
     },
     "Subscribe" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abonnieren"
+          }
+        }
+      }
     },
     "Subscribe to new podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Podcasts abonnieren"
+          }
+        }
+      }
     },
     "Subscribed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abonniert"
+          }
+        }
+      }
     },
     "successful" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "erfolgreiche"
+          }
+        }
+      }
     },
     "Summary" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammenfassung"
+          }
+        }
+      }
     },
     "Supported Models" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterstützte Modelle"
+          }
+        }
+      }
     },
     "These settings are global only. They affect every podcast and cannot be customized per show." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Einstellungen sind nur global verfügbar. Sie betreffen jeden Podcast und können nicht pro Sendung angepasst werden."
+          }
+        }
+      }
     },
     "These values apply across the app unless a podcast is switched to custom settings." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Werte gelten in der gesamten App, sofern ein Podcast nicht auf Individuell umgestellt wird."
+          }
+        }
+      }
     },
     "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Feed kann in der Vorschau angesehen werden, stellt aber keine wiederverwendbare Abonnement-URL bereit."
+          }
+        }
+      }
     },
     "This podcast is already stored without a subscription. Open it to download or queue individual episodes, or subscribe to keep it refreshed." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast ist bereits ohne Abonnement gespeichert. Öffne ihn, um einzelne Episoden herunterzuladen oder in die Warteschlange zu legen, oder abonniere ihn, damit er aktuell gehalten wird."
+          }
+        }
+      }
     },
     "This podcast stays in the database, but it is skipped by bulk refresh." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast bleibt in der Datenbank, wird aber bei der Sammelaktualisierung übersprungen."
+          }
+        }
+      }
     },
     "This removes files from the selected app folder but keeps the database and subscriptions." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dadurch werden Dateien aus dem ausgewählten App-Ordner entfernt, die Datenbank und Abonnements bleiben jedoch erhalten."
+          }
+        }
+      }
     },
     "This screen shows which settings currently affect this podcast, and which controls stay global for the whole app." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Bildschirm zeigt, welche Einstellungen diesen Podcast aktuell beeinflussen und welche Steuerelemente für die gesamte App global bleiben."
+          }
+        }
+      }
     },
     "This speed is used when playback starts. The player speed control also writes back here." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Geschwindigkeit wird verwendet, wenn die Wiedergabe startet. Die Geschwindigkeitssteuerung im Player speichert Änderungen ebenfalls hier."
+          }
+        }
+      }
     },
     "Title A–Z" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel A–Z"
+          }
+        }
+      }
     },
     "Titles" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel"
+          }
+        }
+      }
     },
     "Top Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top-Podcasts"
+          }
+        }
+      }
     },
     "Total Listening Time per Podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamte Hörzeit pro Podcast"
+          }
+        }
+      }
     },
     "Transcribe" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribieren"
+          }
+        }
+      }
     },
     "Transcribing" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird transkribiert"
+          }
+        }
+      }
     },
     "Transcript" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript"
+          }
+        }
+      }
     },
     "Transcript Unavailable" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript nicht verfügbar"
+          }
+        }
+      }
     },
     "Transcription" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription"
+          }
+        }
+      }
     },
     "Transcriptions" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionen"
+          }
+        }
+      }
     },
     "Unarchive" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dem Archiv holen"
+          }
+        }
+      }
     },
     "Unsubscribe" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbestellen"
+          }
+        }
+      }
     },
     "Up next" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes"
+          }
+        }
+      }
     },
     "Up Next" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes"
+          }
+        }
+      }
     },
     "URL or Search" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL oder Suche"
+          }
+        }
+      }
+    },
+    "Use Custom" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Individuell verwenden"
+          }
+        }
+      }
     },
     "Username" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benutzername"
+          }
+        }
+      }
     },
     "Using Global Defaults" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Globale Standardwerte werden verwendet"
+          }
+        }
+      }
     },
     "Using podcast-specific settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-spezifische Einstellungen werden verwendet"
+          }
+        }
+      }
     },
     "Video Size" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Videogröße"
+          }
+        }
+      }
     },
     "Weekday" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wochentag"
+          }
+        }
+      }
     },
     "Weekday totals and an hour-by-weekday heat map based on your listening history." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wochentagssummen und eine Heatmap nach Stunde und Wochentag auf Basis deines Hörverlaufs."
+          }
+        }
+      }
     },
     "Weekly Listening Heat Map" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wöchentliche Hör-Heatmap"
+          }
+        }
+      }
     },
     "When you usually listen" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wann du normalerweise hörst"
+          }
+        }
+      }
     },
     "Y-axis: listening time per %@." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Y-Achse: Hörzeit pro %@."
+          }
+        }
+      }
     },
     "You have not saved a bookmark yet. Tap the bookmark icon during playback to add a bookmark. Bookmarking allows you to listen to a segment of an episode later on. It also works in CarPlay or by saying 'Bookmark this in Up Next'." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast noch kein Lesezeichen gespeichert. Tippe während der Wiedergabe auf das Lesezeichen-Symbol, um eines hinzuzufügen. So kannst du später einen Abschnitt einer Episode erneut anhören. Das funktioniert auch in CarPlay oder per Sprachbefehl 'Bookmark this in Up Next'."
+          }
+        }
+      }
     },
     "You have not subscribed to any podcasts yet. Tap the + Button in the bottom right corner to subscribe to some podcasts. You can import a OPML File, search the directory or browse for trending podcasts in different languages." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast noch keine Podcasts abonniert. Tippe auf die Plus-Taste unten rechts, um Podcasts zu abonnieren. Du kannst eine OPML-Datei importieren, das Verzeichnis durchsuchen oder angesagte Podcasts in verschiedenen Sprachen entdecken."
+          }
+        }
+      }
     },
     "Your Inbox is empty" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Posteingang ist leer"
+          }
+        }
+      }
     },
     "Your Library is empty" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Mediathek ist leer"
+          }
+        }
+      }
     },
     "Your Playlist is empty" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Playlist ist leer"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

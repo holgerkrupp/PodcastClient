@@ -283,7 +283,7 @@ final class WatchPlaybackController: ObservableObject {
         flushProgressSync(force: true)
     }
 
-    private func seek(to requestedTime: Double, completion: (() -> Void)? = nil) {
+    private func seek(to requestedTime: Double, completion: (@MainActor () -> Void)? = nil) {
         let clampedTime: Double
         if let currentDuration, currentDuration > 0 {
             clampedTime = min(max(requestedTime, 0), currentDuration)
@@ -292,12 +292,17 @@ final class WatchPlaybackController: ObservableObject {
         }
 
         let target = CMTime(seconds: clampedTime, preferredTimescale: 600)
+        let completionSnapshot: (@MainActor () -> Void)? = completion
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.playPosition = clampedTime
                 self.flushProgressSync(force: true)
-                completion?()
+            }
+            if let completionSnapshot {
+                Task { @MainActor in
+                    completionSnapshot()
+                }
             }
         }
     }

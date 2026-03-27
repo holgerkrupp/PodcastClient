@@ -181,24 +181,23 @@ actor EpisodeActor {
         await setLastPlayed(episodeURL: episodeURL, to: date)
     }
     
-    func setPlayPosition(episodeURL: URL, position: TimeInterval) async {
+    func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         let previousPosition = episode.metaData?.playPosition ?? 0.0
-        if abs(previousPosition - position) > 10 {
-        if position > episode.metaData?.maxPlayposition ?? 0.0 {
-            episode.metaData?.maxPlayposition = position
-            
-        }
+        if force || abs(previousPosition - position) > 10 {
+            if position > episode.metaData?.maxPlayposition ?? 0.0 {
+                episode.metaData?.maxPlayposition = position
+            }
             episode.metaData?.playPosition = position
             modelContext.saveIfNeeded()
         }
 
     }
 
-    func setPlayPosition(episodeID: UUID, position: TimeInterval) async {
+    func setPlayPosition(episodeID: UUID, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byID: episodeID),
               let episodeURL = episode.url else { return }
-        await setPlayPosition(episodeURL: episodeURL, position: position)
+        await setPlayPosition(episodeURL: episodeURL, position: position, force: force)
     }
     
     func markasPlayed(_ episodeURL: URL) async {
