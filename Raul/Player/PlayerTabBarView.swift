@@ -166,7 +166,7 @@ struct PlayerTabBarView: View {
                 presentingModal = true
             }
         
-        .id(episode.id)
+        .id(episode.url)
         .sheet(isPresented: $presentingModal, content: {
             
                 PlayerView(fullSize: true)

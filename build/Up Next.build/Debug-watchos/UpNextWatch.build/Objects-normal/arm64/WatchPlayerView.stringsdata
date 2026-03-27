@@ -6,8 +6,8 @@
         "comment": "",
         "key": "Player",
         "location": {
-          "startingColumn": 26,
-          "startingLine": 180
+          "startingColumn": 38,
+          "startingLine": 34
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Chapters",
         "location": {
           "startingColumn": 42,
-          "startingLine": 130
+          "startingLine": 151
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Episode is no longer available here.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 172
+          "startingLine": 193
         }
       }
     ]

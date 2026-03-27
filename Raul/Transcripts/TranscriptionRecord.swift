@@ -4,7 +4,7 @@ import SwiftData
 @Model
 final class TranscriptionRecord {
     var id: UUID = UUID()
-    var episodeID: UUID = UUID()
+    var episodeURL: URL?
     var episodeTitle: String = ""
     var podcastTitle: String?
     var localeIdentifier: String = Locale.current.identifier
@@ -14,7 +14,7 @@ final class TranscriptionRecord {
     var transcriptionDuration: Double = 0
 
     init(
-        episodeID: UUID,
+        episodeURL: URL,
         episodeTitle: String,
         podcastTitle: String?,
         localeIdentifier: String,
@@ -22,7 +22,7 @@ final class TranscriptionRecord {
         finishedAt: Date,
         audioDuration: Double
     ) {
-        self.episodeID = episodeID
+        self.episodeURL = episodeURL
         self.episodeTitle = episodeTitle
         self.podcastTitle = podcastTitle
         self.localeIdentifier = localeIdentifier

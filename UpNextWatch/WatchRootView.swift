@@ -16,26 +16,66 @@ struct WatchRootView: View {
         playback.errorMessage ?? store.errorMessage
     }
 
-    var body: some View {
-        TabView(selection: $selectedPage) {
-            if let currentEpisode = playback.currentEpisode {
-                NavigationStack {
-                    WatchPlayerView(episodeID: currentEpisode.id)
-                }
-                .tag(WatchPage.nowPlaying)
-            }
-
-            NavigationStack {
-                WatchPlaylistPage(isShowingSettings: $isShowingSettings)
-            }
-            .tag(WatchPage.upNext)
-
-            NavigationStack {
-                WatchInboxPage()
-            }
-            .tag(WatchPage.inbox)
+    private var pageTitle: String {
+        switch selectedPage {
+        case .nowPlaying:
+            return "Now Playing"
+        case .upNext:
+            return "Up Next"
+        case .inbox:
+            return "Inbox"
         }
-        .tabViewStyle(.page(indexDisplayMode: .automatic))
+    }
+
+    var body: some View {
+        NavigationStack {
+            TabView(selection: $selectedPage) {
+                if let currentEpisode = playback.currentEpisode {
+                    WatchPlayerView(episodeID: currentEpisode.id, presentationStyle: .page)
+                        .tag(WatchPage.nowPlaying)
+                }
+
+                WatchPlaylistPage {
+                    selectedPage = .nowPlaying
+                }
+                    .tag(WatchPage.upNext)
+
+                WatchInboxPage()
+                    .tag(WatchPage.inbox)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            .navigationTitle(pageTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if selectedPage == .upNext {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            isShowingSettings = true
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+
+                if selectedPage == .inbox {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            store.refreshInbox()
+                        } label: {
+                            if store.isRefreshingInbox {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .disabled(store.isRefreshingInbox)
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $isShowingSettings) {
             NavigationStack {
                 WatchStorageSettingsView()
@@ -72,7 +112,7 @@ struct WatchRootView: View {
 private struct WatchPlaylistPage: View {
     @EnvironmentObject private var store: WatchSyncStore
     @EnvironmentObject private var playback: WatchPlaybackController
-    @Binding var isShowingSettings: Bool
+    let showNowPlaying: () -> Void
 
     var body: some View {
         ZStack {
@@ -81,9 +121,7 @@ private struct WatchPlaylistPage: View {
             ScrollView {
                 VStack(spacing: 12) {
                     if let currentEpisode = playback.currentEpisode {
-                        NavigationLink {
-                            WatchPlayerView(episodeID: currentEpisode.id)
-                        } label: {
+                        Button(action: showNowPlaying) {
                             WatchNowPlayingHero(episode: currentEpisode)
                         }
                         .buttonStyle(.plain)
@@ -101,7 +139,7 @@ private struct WatchPlaylistPage: View {
                         }
                     } else {
                         ForEach(store.playlist) { episode in
-                            WatchPlaylistCard(episode: episode)
+                            WatchPlaylistCard(episode: episode, showNowPlaying: showNowPlaying)
                         }
                     }
                 }
@@ -109,18 +147,6 @@ private struct WatchPlaylistPage: View {
                 .padding(.vertical, 10)
             }
             .scrollIndicators(.hidden)
-        }
-        .navigationTitle("Up Next")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .foregroundStyle(.white)
-                }
-            }
         }
     }
 }
@@ -210,57 +236,24 @@ private struct WatchPlaylistCard: View {
     @EnvironmentObject private var playback: WatchPlaybackController
 
     let episode: WatchSyncEpisode
+    let showNowPlaying: () -> Void
 
     var body: some View {
         WatchPanel {
             VStack(alignment: .leading, spacing: 10) {
-                NavigationLink {
-                    WatchPlayerView(episodeID: episode.id)
-                } label: {
-                    HStack(spacing: 10) {
-                        WatchArtworkView(
-                            url: playback.artworkURL(for: episode),
-                            title: episode.title,
-                            icon: store.isDownloaded(episode) ? "arrow.down.circle.fill" : "play.circle.fill"
-                        )
-                        .frame(width: 54, height: 54)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(alignment: .top, spacing: 6) {
-                                Text(episode.title)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(2)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                                if playback.isActivelyPlaying(episode) {
-                                    Image(systemName: "speaker.wave.2.fill")
-                                        .font(.caption2)
-                                        .foregroundStyle(.teal)
-                                }
-                            }
-
-                            if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
-                                Text(podcastTitle)
-                                    .font(.caption2)
-                                    .foregroundStyle(.white.opacity(0.65))
-                                    .lineLimit(1)
-                            }
-
-                            HStack(spacing: 6) {
-                                WatchInfoPill(
-                                    text: store.isDownloaded(episode) ? "On Watch" : (episode.phoneHasLocalFile ? "Sync Ready" : "Stream"),
-                                    accent: store.isDownloaded(episode) ? .teal : .orange
-                                )
-
-                                if let chapter = currentChapter {
-                                    WatchInfoPill(text: chapter.title, accent: .white.opacity(0.22))
-                                }
-                            }
-                        }
+                if playback.isCurrentEpisode(episode) {
+                    Button(action: showNowPlaying) {
+                        episodeHeader
                     }
+                    .buttonStyle(.plain)
+                } else {
+                    NavigationLink {
+                        WatchPlayerView(episodeID: episode.id)
+                    } label: {
+                        episodeHeader
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 if let progress = playback.displayedProgress(for: episode) {
                     VStack(spacing: 6) {
@@ -311,6 +304,51 @@ private struct WatchPlaylistCard: View {
 
         return episode.chapter(at: episode.playPosition)
     }
+
+    private var episodeHeader: some View {
+        HStack(spacing: 10) {
+            WatchArtworkView(
+                url: playback.artworkURL(for: episode),
+                title: episode.title,
+                icon: store.isDownloaded(episode) ? "arrow.down.circle.fill" : "play.circle.fill"
+            )
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .top, spacing: 6) {
+                    Text(episode.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if playback.isActivelyPlaying(episode) {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.teal)
+                    }
+                }
+
+                if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
+                    Text(podcastTitle)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.65))
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 6) {
+                    WatchInfoPill(
+                        text: store.isDownloaded(episode) ? "On Watch" : (episode.phoneHasLocalFile ? "Sync Ready" : "Stream"),
+                        accent: store.isDownloaded(episode) ? .teal : .orange
+                    )
+
+                    if let chapter = currentChapter {
+                        WatchInfoPill(text: chapter.title, accent: .white.opacity(0.22))
+                    }
+                }
+            }
+        }
+    }
 }
 
 private struct WatchInboxPage: View {
@@ -358,24 +396,6 @@ private struct WatchInboxPage: View {
                 .padding(.vertical, 10)
             }
             .scrollIndicators(.hidden)
-        }
-        .navigationTitle("Inbox")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    store.refreshInbox()
-                } label: {
-                    if store.isRefreshingInbox {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(.white)
-                    }
-                }
-                .disabled(store.isRefreshingInbox)
-            }
         }
     }
 }

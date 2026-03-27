@@ -1,4 +1,0 @@
-module BasicLogger {
-header "BasicLogger-Swift.h"
-export *
-}

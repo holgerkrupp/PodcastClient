@@ -17,7 +17,7 @@ final class TranscriptionItem: Identifiable {
     }
 
     let id = UUID()
-    let episodeID: UUID
+    let episodeURL: URL
     let sourceURL: URL
 
     var isTranscribing: Bool = false
@@ -25,8 +25,8 @@ final class TranscriptionItem: Identifiable {
     var state: State = .idle
     var statusText: String = ""
 
-    init(episodeID: UUID, sourceURL: URL) {
-        self.episodeID = episodeID
+    init(episodeURL: URL, sourceURL: URL) {
+        self.episodeURL = episodeURL
         self.sourceURL = sourceURL
     }
 

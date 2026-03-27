@@ -105,9 +105,9 @@ actor PlaySessionTrackerActor {
     private let rawSessionRetentionDays = 30
     private var currentSession: PlaySession?
 
-    private func fetchEpisode(id episodeID: UUID) -> Episode? {
+    private func fetchEpisode(url episodeURL: URL) -> Episode? {
         let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.id == episodeID }
+            predicate: #Predicate<Episode> { $0.url == episodeURL }
         )
         return try? modelContext.fetch(descriptor).first
     }
@@ -122,14 +122,14 @@ actor PlaySessionTrackerActor {
         }
     }
 
-    func startOrUpdateSession(episodeID: UUID, position: Double, rate: Float, appVersion: String) async {
-        guard let episode = fetchEpisode(id: episodeID) else { return }
+    func startOrUpdateSession(episodeURL: URL, position: Double, rate: Float, appVersion: String) async {
+        guard let episode = fetchEpisode(url: episodeURL) else { return }
 
         let now = Date()
         let deviceModel = getDeviceModel()
         let osVersion = getOSVersion()
 
-        if let session = currentSession, session.episode?.id == episode.id {
+        if let session = currentSession, session.episode?.url == episodeURL {
             // Continue existing session; maybe add new rate segment if rate changed
             if let lastSegment = session.segments?.last, lastSegment.rate != rate {
                 endCurrentRateSegment(at: now, position: position)
@@ -433,7 +433,7 @@ actor PlaySessionTrackerActor {
             // Find all sessions for this episode with startTime > this session
             let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
             let newerSessions = allSessions
-                .filter { $0.episode?.id == episode.id && $0.startTime != nil && ($0.startTime! > sessionStart) }
+                .filter { $0.episode?.url == episode.url && $0.startTime != nil && ($0.startTime! > sessionStart) }
             // Find the earliest newer session
             let nextSession = newerSessions.sorted(by: { ($0.startTime ?? .distantFuture) < ($1.startTime ?? .distantFuture) }).first
             var endPosition: Double?

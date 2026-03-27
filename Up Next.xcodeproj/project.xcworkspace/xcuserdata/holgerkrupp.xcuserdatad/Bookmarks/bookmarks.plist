@@ -100,16 +100,16 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>                await actor.deleteFile(episodeID: episodeID)
+				<string>            }
 </string>
 				<key>leading</key>
-				<string>            let _ = await Task.detached(priority: .background) { () -&gt; Void in
-                let actor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+				<string>                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
+                return downloadedFiles.contains(localFile)
 </string>
 				<key>trailing</key>
-				<string>            }.value
-
-            // Refresh the snapshot on the main actor so UI updates
+				<string>
+            switch sort {
+            case .newestFirst:
 </string>
 			</dict>
 			<key>title</key>

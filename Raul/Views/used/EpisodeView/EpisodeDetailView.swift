@@ -205,7 +205,7 @@ struct EpisodeDetailView: View {
             .sheet(isPresented: $showTranscriptSheet) {
                 NavigationStack {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
-                        TranscriptListView(transcriptLines: transcriptLines)
+                        TranscriptListView(transcriptLines: transcriptLines, episode: episode)
                             .navigationTitle("Transcript")
                             .navigationBarTitleDisplayMode(.inline)
                     } else {
@@ -213,7 +213,7 @@ struct EpisodeDetailView: View {
                     }
                 }
             }
-            .task(id: episode.id) {
+            .task(id: episode.url) {
                 liveTranscriptionItem = await currentTranscriptionItem()
             }
             .onChange(of: activeTranscriptionItem?.state) {
@@ -258,7 +258,7 @@ struct EpisodeDetailView: View {
         if let existingItem = await currentTranscriptionItem() {
             liveTranscriptionItem = existingItem
         } else {
-            let placeholder = TranscriptionItem(episodeID: episode.id, sourceURL: url)
+            let placeholder = TranscriptionItem(episodeURL: url, sourceURL: url)
             placeholder.setState(.queued, progress: 0.0, status: "Queued")
             liveTranscriptionItem = placeholder
         }
@@ -280,7 +280,8 @@ struct EpisodeDetailView: View {
     }
 
     private func currentTranscriptionItem() async -> TranscriptionItem? {
-        await TranscriptionManager.shared.item(for: episode.id)
+        guard let episodeURL = episode.url else { return nil }
+        return await TranscriptionManager.shared.item(for: episodeURL)
     }
 }
 

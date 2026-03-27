@@ -65,7 +65,7 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func isCurrentEpisode(_ episode: WatchSyncEpisode) -> Bool {
-        currentEpisodeID == episode.id
+        currentEpisodeID == episode.episodeURL
     }
 
     func isActivelyPlaying(_ episode: WatchSyncEpisode) -> Bool {
@@ -128,7 +128,7 @@ final class WatchPlaybackController: ObservableObject {
         errorMessage = nil
         configureAudioSessionIfNeeded()
 
-        let shouldReplaceItem = currentEpisodeID != episode.id || currentSourceURL != sourceURL
+        let shouldReplaceItem = currentEpisodeID != episode.episodeURL || currentSourceURL != sourceURL
         if shouldReplaceItem {
             flushProgressSync(force: true)
             replaceCurrentItem(with: sourceURL, episode: episode)
@@ -220,7 +220,7 @@ final class WatchPlaybackController: ObservableObject {
         let item = AVPlayerItem(url: sourceURL)
         player.replaceCurrentItem(with: item)
         fallbackEpisode = episode
-        currentEpisodeID = episode.id
+        currentEpisodeID = episode.episodeURL
         currentSourceURL = sourceURL
         playPosition = episode.playPosition ?? 0
         lastSyncedPosition = playPosition

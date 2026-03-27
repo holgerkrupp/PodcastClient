@@ -8,23 +8,8 @@ struct DownloadedEpisodesView: View {
     // Optional: simple sort toggle
     enum Sort: String, CaseIterable, Identifiable { case newestFirst, titleAZ; var id: String { rawValue } }
     @AppStorage("DownloadedEpisodesSort") private var sortRaw: String = Sort.newestFirst.rawValue
+    @State private var downloadedEpisodes: [Episode] = []
     private var sort: Sort { Sort(rawValue: sortRaw) ?? .newestFirst }
-
-    @Query private var allEpisodes: [Episode]
-
-    private var downloadedEpisodes: [Episode] {
-        let downloadedFiles = filesManager.downloadedFiles
-        let filtered = allEpisodes.filter { episode in
-            guard let localFile = episode.localFile?.standardizedFileURL else { return false }
-            return downloadedFiles.contains(localFile)
-        }
-        switch sort {
-        case .newestFirst:
-            return filtered.sorted { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) }
-        case .titleAZ:
-            return filtered.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        }
-    }
 
     var body: some View {
         List {
@@ -64,7 +49,10 @@ struct DownloadedEpisodesView: View {
                         Text("Newest First").tag(Sort.newestFirst.rawValue)
                         Text("Title A–Z").tag(Sort.titleAZ.rawValue)
                     }
-                    Button("Rescan") { filesManager.rescanDownloadedFiles() }
+                    Button("Rescan") {
+                        filesManager.rescanDownloadedFiles()
+                        refreshDownloadedEpisodes()
+                    }
                     Button(role: .destructive) {
                         Task { await deletePlayedEpisodes() }
                     } label: {
@@ -75,15 +63,49 @@ struct DownloadedEpisodesView: View {
                 }
             }
         }
-        .onAppear {
-            // Ensure we have the latest snapshot when opening
-            filesManager.rescanDownloadedFiles()
+        .task {
+            refreshDownloadedEpisodes()
+        }
+        .onChange(of: sortRaw) { _, _ in
+            refreshDownloadedEpisodes()
+        }
+        .onChange(of: filesManager.downloadedFiles) { _, _ in
+            refreshDownloadedEpisodes()
         }
     }
     
+    private func refreshDownloadedEpisodes() {
+        let downloadedFiles = filesManager.downloadedFiles
+        guard !downloadedFiles.isEmpty else {
+            downloadedEpisodes = []
+            return
+        }
+
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.metaData?.isAvailableLocally == true }
+        )
+
+        do {
+            var episodes = try modelContext.fetch(descriptor).filter { episode in
+                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
+                return downloadedFiles.contains(localFile)
+            }
+
+            switch sort {
+            case .newestFirst:
+                episodes.sort { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) }
+            case .titleAZ:
+                episodes.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            }
+
+            downloadedEpisodes = episodes
+        } catch {
+            downloadedEpisodes = []
+        }
+    }
 
 
-    private func deleteEpisode(_ episodeURL: URL?) async {
+    private func deleteEpisode(_ episodeURL: URL?, refreshSnapshot: Bool = true) async {
         // Attempt to remove the file for this episode using the files manager
         // Perform heavy work off the main actor to keep UI responsive
        // guard let url = episode.url else { return }
@@ -96,8 +118,10 @@ struct DownloadedEpisodesView: View {
             }.value
 
             // Refresh the snapshot on the main actor so UI updates
-            await MainActor.run {
-                filesManager.rescanDownloadedFiles()
+            if refreshSnapshot {
+                await MainActor.run {
+                    filesManager.rescanDownloadedFiles()
+                }
             }
         }, onCancel: {
             // No-op for now; could add cleanup if needed
@@ -116,7 +140,7 @@ struct DownloadedEpisodesView: View {
         await withTaskGroup(of: Void.self) { group in
             for url in playedURLs {
                 group.addTask(priority: .background) {
-                    await deleteEpisode(url)
+                    await deleteEpisode(url, refreshSnapshot: false)
                 }
             }
             await group.waitForAll()

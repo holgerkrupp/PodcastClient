@@ -15,21 +15,6 @@ import UIKit
 
 @ModelActor
 actor EpisodeActor {
-    
-    func fetchEpisode(byID episodeID: UUID) async -> Episode? {
-        let predicate = #Predicate<Episode> { episode in
-            episode.id == episodeID
-        }
-
-        do {
-            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
-            return results.first
-        } catch {
-            print("❌ Error fetching episode for episode ID: \(episodeID), Error: \(error)")
-            return nil
-        }
-    }
-    
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
         let predicate = #Predicate<Bookmark> { marker in
             marker.uuid == markerID
@@ -174,12 +159,6 @@ actor EpisodeActor {
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
     }
-
-    func setLastPlayed(_ episodeID: UUID, to date: Date = Date()) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await setLastPlayed(episodeURL: episodeURL, to: date)
-    }
     
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
@@ -193,12 +172,6 @@ actor EpisodeActor {
         }
 
     }
-
-    func setPlayPosition(episodeID: UUID, position: TimeInterval, force: Bool = false) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await setPlayPosition(episodeURL: episodeURL, position: position, force: force)
-    }
     
     func markasPlayed(_ episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
@@ -207,18 +180,6 @@ actor EpisodeActor {
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
-    }
-
-    func markasPlayed(_ episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await markasPlayed(episodeURL)
-    }
-    
-    func removeFromPlaylist(_ episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await removeFromPlaylist(episodeURL)
     }
     
     func removeFromPlaylist(_ episodeURL: URL) async {
@@ -279,12 +240,6 @@ actor EpisodeActor {
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         WatchSyncCoordinator.refreshSoon()
     }
-
-    func moveToHistory(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await moveToHistory(episodeURL: episodeURL)
-    }
     
     
     func download(episodeURL: URL) async {
@@ -298,12 +253,6 @@ actor EpisodeActor {
 
         }
         
-    }
-
-    func download(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await download(episodeURL: episodeURL)
     }
     
     func processAfterCreation(episodeURL: URL) async {
@@ -330,12 +279,6 @@ actor EpisodeActor {
         await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
         await getRemoteChapters(episodeURL: episodeURL)
     }
-
-    func processAfterCreation(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await processAfterCreation(episodeURL: episodeURL)
-    }
     
     func getRemoteChapters(episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
@@ -347,12 +290,6 @@ actor EpisodeActor {
                 await applyAutoSkipWords(episodeURL: episodeURL)
         }
     }
-
-    func getRemoteChapters(episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await getRemoteChapters(episodeURL: episodeURL)
-    }
     
     func createBookmark(for episodeURL: URL, at playPosition: Double) async{
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
@@ -361,27 +298,6 @@ actor EpisodeActor {
         let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
-    }
-
-    func createBookMarkfor(episodeID: UUID, at playPosition: Double) async{
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await createBookmark(for: episodeURL, at: playPosition)
-    }
-    
- 
-    
-    func deleteFile(episodeID: UUID) async{
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
-
-        if let file = episode.localFile{
-            try? FileManager.default.removeItem(at: file)
-        }
-        episode.metaData?.isAvailableLocally = false
-        episode.playlist?.removeAll()
-
-        modelContext.saveIfNeeded()
-        WatchSyncCoordinator.refreshSoon()
     }
     
     func deleteFile(episodeURL: URL?) async{
@@ -421,21 +337,32 @@ actor EpisodeActor {
     func transcribe(_ fileURL: URL) async throws {
         print("transcribe")
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+        guard let episodeURL = episode.url else { return }
+
+        if episode.hasLoadedTranscript {
+            return
+        }
         
         if episode.externalFiles.contains(where: { $0.category == .transcript}) {
             do {
                 try await downloadTranscript(episode.persistentModelID)
-            }catch{
+                return
+            } catch let error as TranscriptError {
+                switch error {
+                case .transcriptionExists:
+                    return
+                case .noTranscriptFileFound, .decodingFailed:
+                    print(error)
+                case .episodeNotFound:
+                    throw error
+                }
+            } catch {
                 print(error)
-                let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
-                await transcriptionManager.enqueueTranscription(episodeID: episode.id)
             }
-        }else{
-            
-            let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
-            await transcriptionManager.enqueueTranscription(episodeID: episode.id)
-            
         }
+
+        let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+        await transcriptionManager.enqueueTranscription(episodeURL: episodeURL)
     }
     
     func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
@@ -540,12 +467,6 @@ actor EpisodeActor {
             }
         }
         modelContext.saveIfNeeded()
-    }
-
-    private func applyAutoSkipWords(episodeID: UUID) async{
-        guard let episode = await fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        await applyAutoSkipWords(episodeURL: episodeURL)
     }
     
     private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
@@ -787,7 +708,16 @@ actor EpisodeActor {
     
     private func bestExternalFile(
         in files: [ExternalFile],
-        preferredTypes: [String] = ["text/vtt", "application/x-subrip", "text/plain"]
+        preferredTypes: [String] = [
+            "text/vtt",
+            "text/webvtt",
+            "application/vtt",
+            "application/x-subrip",
+            "text/srt",
+            "application/json",
+            "text/json",
+            "text/plain"
+        ]
     ) -> ExternalFile? {
         // 1) Exact fileType match (e.g. "text/vtt")
         if let vttByType = files.first(where: { file in
@@ -803,6 +733,9 @@ actor EpisodeActor {
         }
         if let srtByExt = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "srt" }) {
             return srtByExt
+        }
+        if let jsonByExt = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "json" }) {
+            return jsonByExt
         }
 
         // 3) Otherwise fall back to the first file
@@ -828,12 +761,22 @@ actor EpisodeActor {
 
         if let transcriptfile = bestExternalFile(
             in: episode.externalFiles.filter { $0.category == .transcript },
-            preferredTypes: ["text/vtt"]
+            preferredTypes: [
+                "text/vtt",
+                "text/webvtt",
+                "application/vtt",
+                "application/x-subrip",
+                "text/srt",
+                "application/json",
+                "text/json",
+                "text/plain"
+            ]
         ) {
             if let url = URL(string: transcriptfile.url) {
                 let transcription = await downloadAndParseStringFile(url: url)
                 if let transcription {
                     episode.transcriptLines = decodeTranscription(transcription)
+                    episode.refresh.toggle()
                     modelContext.saveIfNeeded()
                     return
                 }else{
@@ -850,8 +793,8 @@ actor EpisodeActor {
     }
     
     // Inside EpisodeActor
-    func setTranscript(for episodeID: UUID, lines: [TranscriptLineAndTime]) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+    func setTranscript(for episodeURL: URL, lines: [TranscriptLineAndTime]) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         episode.transcriptLines = lines
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
@@ -861,18 +804,18 @@ actor EpisodeActor {
     // EpisodeActor.swift additions
 
     // 1) Snapshot-only getter for local file URL and (optional) language string
-    func episodeLocalFileAndLanguage(for episodeID: UUID) async -> (URL, String?)? {
-        guard let episode = await fetchEpisode(byID: episodeID),
+    func episodeLocalFileAndLanguage(for episodeURL: URL) async -> (URL, String?)? {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
               let local = episode.localFile else { return nil }
         return (local, episode.podcast?.language)
     }
 
-    func transcriptionSnapshot(for episodeID: UUID) async -> TranscriptionEpisodeSnapshot? {
-        guard let episode = await fetchEpisode(byID: episodeID),
+    func transcriptionSnapshot(for episodeURL: URL) async -> TranscriptionEpisodeSnapshot? {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
               let localFile = episode.localFile else { return nil }
 
         return TranscriptionEpisodeSnapshot(
-            episodeID: episode.id,
+            episodeURL: episodeURL,
             episodeTitle: episode.title,
             podcastTitle: episode.podcast?.title,
             audioDuration: episode.duration ?? 0,
@@ -883,22 +826,22 @@ actor EpisodeActor {
 
     // 2) Attach a TranscriptionItem to the Episode safely
     @MainActor
-    func attachTranscriptionItem(_ item: TranscriptionItem, to episodeID: UUID) async {
+    func attachTranscriptionItem(_ item: TranscriptionItem, to episodeURL: URL) async {
         // Hop back into EpisodeActor isolation to fetch and mutate the model
-        await self._attachTranscriptionItem(item, to: episodeID)
+        await self._attachTranscriptionItem(item, to: episodeURL)
     }
 
     // Private actor-isolated worker
-    private func _attachTranscriptionItem(_ item: TranscriptionItem, to episodeID: UUID) async {
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+    private func _attachTranscriptionItem(_ item: TranscriptionItem, to episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         episode.transcriptionItem = item
         modelContext.saveIfNeeded()
     }
 
     // 3) Decode VTT and persist transcript lines inside EpisodeActor
-    func decodeAndSetTranscript(for episodeID: UUID, vtt: String) async {
+    func decodeAndSetTranscript(for episodeURL: URL, vtt: String) async {
         print("decoding vtt")
-        guard let episode = await fetchEpisode(byID: episodeID) else { return }
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         let lines = decodeTranscription(vtt) // existing helper returns [TranscriptLineAndTime]
         episode.transcriptLines = lines
         episode.refresh.toggle()
@@ -912,7 +855,7 @@ actor EpisodeActor {
         finishedAt: Date
     ) async {
         let record = TranscriptionRecord(
-            episodeID: snapshot.episodeID,
+            episodeURL: snapshot.episodeURL,
             episodeTitle: snapshot.episodeTitle,
             podcastTitle: snapshot.podcastTitle,
             localeIdentifier: localeIdentifier,
@@ -966,7 +909,7 @@ private struct SendableChapterData: Sendable {
 }
 
 struct TranscriptionEpisodeSnapshot: Sendable {
-    let episodeID: UUID
+    let episodeURL: URL
     let episodeTitle: String
     let podcastTitle: String?
     let audioDuration: Double

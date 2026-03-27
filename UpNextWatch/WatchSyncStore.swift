@@ -54,20 +54,20 @@ final class WatchSyncStore: NSObject, ObservableObject {
     }
 
     func episode(withID episodeID: String) -> WatchSyncEpisode? {
-        playlist.first(where: { $0.id == episodeID }) ?? inbox.first(where: { $0.id == episodeID })
+        playlist.first(where: { $0.episodeURL == episodeID }) ?? inbox.first(where: { $0.episodeURL == episodeID })
     }
 
     func isDownloaded(_ episode: WatchSyncEpisode) -> Bool {
-        guard let url = localFileURL(forEpisodeID: episode.id) else { return false }
+        guard let url = localFileURL(forEpisodeID: episode.episodeURL) else { return false }
         return fileManager.fileExists(atPath: url.path)
     }
 
     func isDownloading(_ episode: WatchSyncEpisode) -> Bool {
-        downloadingEpisodeIDs.contains(episode.id)
+        downloadingEpisodeIDs.contains(episode.episodeURL)
     }
 
     func playbackURL(for episode: WatchSyncEpisode) -> URL? {
-        localFileURL(forEpisodeID: episode.id) ?? episode.resolvedAudioURL
+        localFileURL(forEpisodeID: episode.episodeURL) ?? episode.resolvedAudioURL
     }
 
     func syncPlaybackProgress(for episodeID: String, position: Double) {
@@ -76,7 +76,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
         send(
             command: WatchCommand(
                 kind: .syncPlaybackProgress,
-                episodeID: episodeID,
+                episodeURL: episodeID,
                 playPosition: position
             ),
             preferImmediateDelivery: true,
@@ -97,7 +97,6 @@ final class WatchSyncStore: NSObject, ObservableObject {
         optimisticallyQueueEpisode(episode)
         send(command: WatchCommand(
             kind: .queueEpisodeAtFront,
-            episodeID: episode.id,
             episodeURL: episode.episodeURL
         ))
 
@@ -107,7 +106,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
     }
 
     func downloadEpisode(_ episode: WatchSyncEpisode) {
-        guard !downloadingEpisodeIDs.contains(episode.id) else { return }
+        guard !downloadingEpisodeIDs.contains(episode.episodeURL) else { return }
         guard let remoteURL = episode.resolvedAudioURL else {
             errorMessage = "This episode does not expose a download URL yet."
             return
@@ -119,7 +118,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             return
         }
 
-        downloadingEpisodeIDs.insert(episode.id)
+        downloadingEpisodeIDs.insert(episode.episodeURL)
         let allowCellularDownloads = storageSettings.allowCellularDownloads
 
         Task {
@@ -132,11 +131,11 @@ final class WatchSyncStore: NSObject, ObservableObject {
                 let (temporaryURL, _) = try await session.download(from: remoteURL)
 
                 await MainActor.run {
-                    finishDownload(from: temporaryURL, for: episode, prioritizing: episode.id)
+                    finishDownload(from: temporaryURL, for: episode, prioritizing: episode.episodeURL)
                 }
             } catch {
                 await MainActor.run {
-                    downloadingEpisodeIDs.remove(episode.id)
+                    downloadingEpisodeIDs.remove(episode.episodeURL)
                     errorMessage = error.localizedDescription
                 }
             }
@@ -144,10 +143,10 @@ final class WatchSyncStore: NSObject, ObservableObject {
     }
 
     func removeDownload(_ episode: WatchSyncEpisode) {
-        guard let url = localFileURL(forEpisodeID: episode.id) else { return }
+        guard let url = localFileURL(forEpisodeID: episode.episodeURL) else { return }
 
         try? fileManager.removeItem(at: url)
-        downloadedFiles.removeValue(forKey: episode.id)
+        downloadedFiles.removeValue(forKey: episode.episodeURL)
         persistDownloadedFiles()
         recalculateStorageUsage()
         sendStorageReport()
@@ -267,7 +266,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
         matching episodeID: String,
         playPosition: Double
     ) -> WatchSyncEpisode {
-        guard episode.id == episodeID else { return episode }
+        guard episode.episodeURL == episodeID else { return episode }
 
         let clampedPosition: Double
         if let duration = episode.duration, duration > 0 {
@@ -277,7 +276,6 @@ final class WatchSyncStore: NSObject, ObservableObject {
         }
 
         return WatchSyncEpisode(
-            id: episode.id,
             episodeURL: episode.episodeURL,
             audioURL: episode.audioURL,
             title: episode.title,
@@ -294,8 +292,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
     }
 
     private func optimisticallyQueueEpisode(_ episode: WatchSyncEpisode) {
-        let updatedPlaylist = [episode] + snapshot.playlist.filter { $0.id != episode.id }
-        let updatedInbox = snapshot.inbox.filter { $0.id != episode.id }
+        let updatedPlaylist = [episode] + snapshot.playlist.filter { $0.episodeURL != episode.episodeURL }
+        let updatedInbox = snapshot.inbox.filter { $0.episodeURL != episode.episodeURL }
         snapshot = WatchSyncSnapshot(
             generatedAt: .now,
             playlist: updatedPlaylist,
@@ -306,10 +304,10 @@ final class WatchSyncStore: NSObject, ObservableObject {
 
     private func finishDownload(from temporaryURL: URL, for episode: WatchSyncEpisode, prioritizing prioritizedEpisodeID: String?) {
         defer {
-            downloadingEpisodeIDs.remove(episode.id)
+            downloadingEpisodeIDs.remove(episode.episodeURL)
         }
 
-        let destinationURL = destinationURL(forEpisodeID: episode.id, sourceURL: episode.resolvedAudioURL ?? temporaryURL)
+        let destinationURL = destinationURL(forEpisodeID: episode.episodeURL, sourceURL: episode.resolvedAudioURL ?? temporaryURL)
 
         do {
             try fileManager.createDirectory(
@@ -318,7 +316,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
                 attributes: nil
             )
 
-            if let existingURL = localFileURL(forEpisodeID: episode.id) {
+            if let existingURL = localFileURL(forEpisodeID: episode.episodeURL) {
                 try? fileManager.removeItem(at: existingURL)
             }
 
@@ -327,7 +325,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             }
 
             try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-            downloadedFiles[episode.id] = destinationURL.lastPathComponent
+            downloadedFiles[episode.episodeURL] = destinationURL.lastPathComponent
             persistDownloadedFiles()
             recalculateStorageUsage()
 
@@ -541,7 +539,6 @@ extension WatchSyncStore: WCSessionDelegate {
             finishDownload(
                 from: temporaryCopy,
                 for: WatchSyncEpisode(
-                    id: episodeID,
                     episodeURL: episodeURLString ?? episodeID,
                     audioURL: episodeURLString ?? episodeID,
                     title: "",

@@ -50,14 +50,14 @@ final class PhoneWatchSyncController: NSObject {
         var transferCandidates: [String: TransferCandidate] = [:]
         let playlist = playlistEntries.compactMap { entry -> WatchSyncEpisode? in
             guard let episode = entry.episode else { return nil }
-            let syncEpisode = makeSyncEpisode(from: episode)
+            guard let syncEpisode = makeSyncEpisode(from: episode) else { return nil }
             if let candidate = makeTransferCandidate(from: episode) {
                 transferCandidates[syncEpisode.id] = candidate
             }
             return syncEpisode
         }
 
-        let inbox = inboxEpisodes.map(makeSyncEpisode(from:))
+        let inbox = inboxEpisodes.compactMap(makeSyncEpisode(from:))
 
         return SnapshotBundle(
             snapshot: WatchSyncSnapshot(
@@ -91,13 +91,12 @@ final class PhoneWatchSyncController: NSObject {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private func makeSyncEpisode(from episode: Episode) -> WatchSyncEpisode {
-        let audioURL = episode.url?.absoluteString ?? ""
-        let episodeURL = episode.url?.absoluteString ?? episode.id.uuidString
+    private func makeSyncEpisode(from episode: Episode) -> WatchSyncEpisode? {
+        guard let episodeURL = episode.url?.absoluteString else { return nil }
+        let audioURL = episodeURL
         let imageURL = (episode.imageURL ?? episode.podcast?.imageURL)?.absoluteString
 
         return WatchSyncEpisode(
-            id: episode.id.uuidString,
             episodeURL: episodeURL,
             audioURL: audioURL,
             title: episode.title,
@@ -207,14 +206,14 @@ final class PhoneWatchSyncController: NSObject {
         let downloadedEpisodeIDs = Set(storageReport.downloadedEpisodeIDs)
 
         for episode in bundle.snapshot.playlist {
-            guard let candidate = bundle.transferCandidates[episode.id] else { continue }
-            guard !downloadedEpisodeIDs.contains(episode.id) else { continue }
-            guard !pendingTransferEpisodeIDs.contains(episode.id) else { continue }
+            guard let candidate = bundle.transferCandidates[episode.episodeURL] else { continue }
+            guard !downloadedEpisodeIDs.contains(episode.episodeURL) else { continue }
+            guard !pendingTransferEpisodeIDs.contains(episode.episodeURL) else { continue }
             guard candidate.size <= remainingBudget else { continue }
 
-            pendingTransferEpisodeIDs.insert(episode.id)
+            pendingTransferEpisodeIDs.insert(episode.episodeURL)
             session.transferFile(candidate.fileURL, metadata: [
-                WatchSyncTransport.transferEpisodeIDKey: episode.id,
+                WatchSyncTransport.transferEpisodeIDKey: episode.episodeURL,
                 WatchSyncTransport.transferEpisodeURLKey: episode.episodeURL
             ])
             remainingBudget -= candidate.size
@@ -256,16 +255,16 @@ final class PhoneWatchSyncController: NSObject {
             await refreshSnapshotAndTransfers()
 
         case .syncPlaybackProgress:
-            guard let episodeIDString = command.episodeID,
-                  let episodeID = UUID(uuidString: episodeIDString),
+            guard let episodeURLString = command.episodeURL,
+                  let episodeURL = URL(string: episodeURLString),
                   let playPosition = command.playPosition
             else {
                 return
             }
 
             let episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
-            await episodeActor.setLastPlayed(episodeID)
-            await episodeActor.setPlayPosition(episodeID: episodeID, position: playPosition)
+            await episodeActor.setLastPlayed(episodeURL: episodeURL)
+            await episodeActor.setPlayPosition(episodeURL: episodeURL, position: playPosition)
         }
     }
 

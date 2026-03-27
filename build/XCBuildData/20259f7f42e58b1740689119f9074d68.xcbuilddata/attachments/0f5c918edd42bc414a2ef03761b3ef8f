@@ -1,4 +1,0 @@
-module mp3ChapterReader {
-header "mp3ChapterReader-Swift.h"
-export *
-}

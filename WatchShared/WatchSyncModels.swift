@@ -14,7 +14,6 @@ struct WatchSyncChapter: Codable, Hashable, Identifiable, Sendable {
 }
 
 struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
-    let id: String
     let episodeURL: String
     let audioURL: String
     let title: String
@@ -28,8 +27,9 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
     let playPosition: Double?
     let chapters: [WatchSyncChapter]
 
+    var id: String { episodeURL }
+
     init(
-        id: String,
         episodeURL: String,
         audioURL: String,
         title: String,
@@ -43,7 +43,6 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         playPosition: Double? = nil,
         chapters: [WatchSyncChapter] = []
     ) {
-        self.id = id
         self.episodeURL = episodeURL
         self.audioURL = audioURL
         self.title = title
@@ -76,8 +75,8 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        episodeURL = try container.decode(String.self, forKey: .episodeURL)
+        let legacyID = try container.decodeIfPresent(String.self, forKey: .id)
+        episodeURL = try container.decodeIfPresent(String.self, forKey: .episodeURL) ?? legacyID ?? ""
         audioURL = try container.decode(String.self, forKey: .audioURL)
         title = try container.decode(String.self, forKey: .title)
         subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
@@ -93,7 +92,7 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
+        try container.encode(episodeURL, forKey: .id)
         try container.encode(episodeURL, forKey: .episodeURL)
         try container.encode(audioURL, forKey: .audioURL)
         try container.encode(title, forKey: .title)

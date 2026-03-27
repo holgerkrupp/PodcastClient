@@ -1,4 +1,0 @@
-module GlowEffects {
-header "GlowEffects-Swift.h"
-export *
-}

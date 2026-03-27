@@ -91,7 +91,7 @@ class Player {
         
       //  super.init()
         Task {
-            // One-time migration from old UserDefaults storage of lastPlayedEpisodeID to playlist system
+            // Remove legacy UUID-based last-played storage from older builds.
             await migrateLastPlayedFromUserDefaultsIfNeeded()
             await restoreLastPlayedFromPlaylist()
         }
@@ -108,20 +108,10 @@ class Player {
         
     }
     
-    /// One-time migration from UserDefaults key "lastPlayedEpisodeID" to playlist system.
-    /// If a last played episode ID exists in UserDefaults, fetch the episode, add it to the front of the playlist,
-    /// then remove the UserDefaults entry. This prevents loss of last played info after update.
+    /// Clears the legacy UUID-based last-played key from older builds.
     private func migrateLastPlayedFromUserDefaultsIfNeeded() async {
         let key = "lastPlayedEpisodeID"
-        if let idString = UserDefaults.standard.string(forKey: key),
-           let episodeID = UUID(uuidString: idString),
-           let episode = await fetchEpisode(with: episodeID),
-           let episodeURL = episode.url {
-            do {
-                try await playlistActor?.add(episodeURL: episodeURL, to: .front)
-            } catch {
-                // handle error silently or log if needed
-            }
+        if UserDefaults.standard.object(forKey: key) != nil {
             UserDefaults.standard.removeObject(forKey: key)
         }
     }
@@ -243,15 +233,6 @@ class Player {
                 playbackRate = savedPlaybackRate
 
             }
-        }
-    }
-    
-    func fetchEpisode(with id: UUID) async -> Episode? {
-        do {
-            let descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.id == id })
-            return try  episodeActor?.modelContainer.mainContext.fetch(descriptor).first
-        } catch {
-            return nil
         }
     }
     
@@ -528,7 +509,7 @@ class Player {
 
         let rate = playbackRate
         let position = playPosition
-        let currentEpisodeID = currentEpisode?.id
+        let currentEpisodeURL = currentEpisode?.url
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         Task {
@@ -536,8 +517,8 @@ class Player {
             isPlaying = true
             
             // New session tracking integration: start or update the play session
-            if let currentEpisodeID {
-                await playSessionTracker.startOrUpdateSession(episodeID: currentEpisodeID, position: position, rate: rate, appVersion: appVersion)
+            if let currentEpisodeURL {
+                await playSessionTracker.startOrUpdateSession(episodeURL: currentEpisodeURL, position: position, rate: rate, appVersion: appVersion)
             }
         }
 

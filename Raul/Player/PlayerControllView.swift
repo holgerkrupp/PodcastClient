@@ -139,7 +139,7 @@ struct PlayerControllView: View {
                     Color.clear
                     
                     CoverImageView(episode: episode, timecode: player.currentChapter?.start)
-                        .id(episode.id)
+                        .id(episode.url)
                         .scaledToFit()
                     /*
                     Group{
@@ -149,7 +149,7 @@ struct PlayerControllView: View {
                                 .scaledToFit()
                         }else{
                             EpisodeCoverView(episode: episode)
-                                .id(episode.id)
+                                .id(episode.url)
                             
                                 .scaledToFit()
                         }
@@ -172,9 +172,10 @@ struct PlayerControllView: View {
                     }
                     .sheet(isPresented: $showFullTranscripts) {
                         if let transcriptLines = player.currentEpisode?.transcriptLines {
-                            TranscriptListView(transcriptLines: transcriptLines)
+                            TranscriptListView(transcriptLines: transcriptLines, episode: episode)
                                 .presentationDetents([.large])
                                 .presentationDragIndicator(.visible)
+                                
                         }
                     }
                     
@@ -326,4 +327,3 @@ struct PlayerControllView: View {
         }
     }
 }
-

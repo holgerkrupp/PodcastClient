@@ -115,24 +115,26 @@ struct EpisodeControlView: View {
 }
 
 #Preview {
-    // Dummy Podcast
-    let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
-    podcast.title = "Sample Podcast"
-    podcast.author = "Sample Author"
+    let podcast: Podcast = {
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        podcast.title = "Sample Podcast"
+        podcast.author = "Sample Author"
+        return podcast
+    }()
 
-    // Dummy Episode
-    let episode = Episode(
-        id: UUID(),
-        title: "Preview Test Episode",
-        publishDate: Date(),
-        url: URL(string: "https://example.com/ep.mp3")!,
-        podcast: podcast,
-        duration: 1234,
-        author: "Preview Author"
-    )
-    episode.desc = "A previewable episode for testing controls."
-    episode.metaData?.isArchived = false
+    let episode: Episode = {
+        let episode = Episode(
+            title: "Preview Test Episode",
+            publishDate: Date(),
+            url: URL(string: "https://example.com/ep.mp3")!,
+            podcast: podcast,
+            duration: 1234,
+            author: "Preview Author"
+        )
+        episode.desc = "A previewable episode for testing controls."
+        episode.metaData?.isArchived = false
+        return episode
+    }()
 
-    return EpisodeControlView(episode: episode)
+    EpisodeControlView(episode: episode)
 }
-

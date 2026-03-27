@@ -68,11 +68,6 @@ actor PlaylistModelActor {
         return try modelContext.fetch(descriptor).first
     }
 
-    private func fetchEpisode(byID episodeID: UUID) throws -> Episode? {
-        let predicate = #Predicate<Episode> { $0.id == episodeID }
-        return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
-    }
-
     private func fetchEpisode(byURL fileURL: URL) throws -> Episode? {
         let predicate = #Predicate<Episode> { $0.url == fileURL }
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
@@ -93,11 +88,6 @@ actor PlaylistModelActor {
     func orderedEpisodes() throws -> [Episode] {
         guard let playlist = try fetchPlaylist() else { return [] }
         return playlist.ordered.compactMap { $0.episode }
-    }
-
-    /// Returns the IDs of episodes in playlist order (Sendable).
-    public func orderedEpisodeIDs() throws -> [UUID] {
-        return try orderedEpisodes().map { $0.id }
     }
 
     public func orderedEpisodeURLs() throws -> [URL] {
@@ -166,7 +156,6 @@ actor PlaylistModelActor {
     func orderedEpisodeSummaries() throws -> [EpisodeSummary] {
         try orderedEpisodes().map { episode in
             EpisodeSummary(
-                id: episode.id,
                 url: episode.url,
                 title: episode.title,
                 desc: episode.subtitle ?? episode.desc ?? episode.podcast?.title,
@@ -179,15 +168,6 @@ actor PlaylistModelActor {
         }
     }
     
- 
-    /// Inserts an episode specifically after another episode (the anchor).
-    func insert(episodeID: UUID, after anchorEpisodeID: UUID?) async throws {
-        guard let episode = try fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        let anchorEpisodeURL = try anchorEpisodeID.flatMap { try fetchEpisode(byID: $0)?.url }
-        try await insert(episodeURL: episodeURL, after: anchorEpisodeURL)
-    }
-
     func insert(episodeURL: URL, after anchorEpisodeURL: URL?) async throws {
         guard let playlist = try fetchPlaylist(),
               let episode = try fetchEpisode(byURL: episodeURL) else { return }
@@ -232,13 +212,6 @@ actor PlaylistModelActor {
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()
-    }
-
-    /// Add/move an episode within the playlist.
-    func add(episodeID: UUID, to position: Playlist.Position = .end) async throws {
-        guard let episode = try fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        try await add(episodeURL: episodeURL, to: position)
     }
 
     /// Add/move an episode within the playlist.
@@ -295,13 +268,6 @@ actor PlaylistModelActor {
     }
 
     /// Add/move an episode with explicit index control within the visual order.
-    func add(episodeID: UUID, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
-        guard let episode = try fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        try await add(episodeURL: episodeURL, to: position, index: explicitIndex)
-    }
-
-    /// Add/move an episode with explicit index control within the visual order.
     func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
         guard let playlist = try fetchPlaylist(),
               let episode = try fetchEpisode(byURL: episodeURL) else { return }
@@ -351,12 +317,6 @@ actor PlaylistModelActor {
         WatchSyncCoordinator.refreshSoon()
     }
 
-    func remove(episodeID: UUID) throws {
-        guard let episode = try fetchEpisode(byID: episodeID),
-              let episodeURL = episode.url else { return }
-        try remove(episodeURL: episodeURL)
-    }
-    
     func remove(episodeURL: URL) throws {
         guard let playlist = try fetchPlaylist() else { return }
         
@@ -410,6 +370,5 @@ actor PlaylistModelActor {
 
     // MARK: - Convenience helpers callable from outside
 
-    func fetchEpisodeByID(_ id: UUID) throws -> Episode? { try fetchEpisode(byID: id) }
     func fetchEpisodeByURL(_ url: URL) throws -> Episode? { try fetchEpisode(byURL: url) }
 }

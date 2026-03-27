@@ -70,7 +70,7 @@ struct ChapterListView: View {
     }
     
     private func loadChapters() {
-        print("Loading chapters for episode \(episode.id)")
+        print("Loading chapters for episode \(episode.url?.absoluteString ?? "unknown")")
 
         sortedChapters =
         episode.preferredChapters.sorted(by: { first, second in
@@ -78,4 +78,3 @@ struct ChapterListView: View {
             })
     }
 }
-
