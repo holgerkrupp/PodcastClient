@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/DeviceInfo/Sources/DeviceInfo/DeviceDetector.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.dia",
+    "index-unit-output-path" : "/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.bc",
+    "object" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceDetector~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/DeviceInfo/Sources/DeviceInfo/DeviceInfo.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.dia",
+    "index-unit-output-path" : "/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.bc",
+    "object" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceInfo~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/DeviceInfo/Sources/DeviceInfo/DeviceStyleEnvironment.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.dia",
+    "index-unit-output-path" : "/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.bc",
+    "object" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleEnvironment~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/DeviceInfo/Sources/DeviceInfo/DeviceStyleModifier.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.dia",
+    "index-unit-output-path" : "/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.bc",
+    "object" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/DeviceInfo/build/DeviceInfo.build/Debug-iphoneos/DeviceInfo.build/Objects-normal/arm64/DeviceStyleModifier~partial.swiftmodule"
+  }
+}

@@ -105,6 +105,12 @@ actor PlaySessionTrackerActor {
     private let rawSessionRetentionDays = 30
     private var currentSession: PlaySession?
 
+    private func fetchEpisode(id episodeID: UUID) -> Episode? {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.id == episodeID }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
 
     /// Call this after initialization to kick off recovery.
     func startRecovery()  {
@@ -116,7 +122,9 @@ actor PlaySessionTrackerActor {
         }
     }
 
-    func startOrUpdateSession(episode: Episode, position: Double, rate: Float, appVersion: String) async {
+    func startOrUpdateSession(episodeID: UUID, position: Double, rate: Float, appVersion: String) async {
+        guard let episode = fetchEpisode(id: episodeID) else { return }
+
         let now = Date()
         let deviceModel = getDeviceModel()
         let osVersion = getOSVersion()

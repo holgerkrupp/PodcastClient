@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/mp3ChapterReader/Sources/mp3ChapterReader/Enums.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.dia",
+    "index-unit-output-path" : "/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.bc",
+    "object" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Enums~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/mp3ChapterReader/Sources/mp3ChapterReader/Frames.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.dia",
+    "index-unit-output-path" : "/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.bc",
+    "object" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/Frames~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/mp3ChapterReader/Sources/mp3ChapterReader/delete.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.dia",
+    "index-unit-output-path" : "/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.bc",
+    "object" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/delete~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/mp3ChapterReader/Sources/mp3ChapterReader/mp3ChapterReader.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.dia",
+    "index-unit-output-path" : "/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.bc",
+    "object" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/mp3ChapterReader/build/mp3ChapterReader.build/Debug-iphoneos/mp3ChapterReader.build/Objects-normal/arm64/mp3ChapterReader~partial.swiftmodule"
+  }
+}

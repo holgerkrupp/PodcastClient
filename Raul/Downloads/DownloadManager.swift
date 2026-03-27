@@ -2,6 +2,10 @@ import Foundation
 import SwiftData
 import UIKit
 
+struct DownloadedFilesManagerReference: @unchecked Sendable {
+    weak var manager: DownloadedFilesManager?
+}
+
 actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     static let shared = DownloadManager()
     
@@ -10,11 +14,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     private var destinations: [URL: URL] = [:]
     private var resumeData: [URL: Data] = [:]
     
-    private var downloadedFilesManager: DownloadedFilesManager?
+    private var downloadedFilesManagerReference: DownloadedFilesManagerReference?
 
     // MARK: - Inject external manager
-    func injectDownloadedFilesManager(_ manager: DownloadedFilesManager) {
-        self.downloadedFilesManager = manager
+    func injectDownloadedFilesManager(_ managerReference: DownloadedFilesManagerReference) {
+        downloadedFilesManagerReference = managerReference
     }
     
     // MARK: - Background Session
@@ -111,7 +115,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     }
 
     func refreshDownloadedFiles() {
-        downloadedFilesManager?.refreshDownloadedFiles()
+        downloadedFilesManagerReference?.manager?.refreshDownloadedFiles()
     }
 
     // MARK: - Delegate

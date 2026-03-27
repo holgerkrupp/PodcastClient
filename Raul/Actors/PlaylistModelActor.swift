@@ -139,6 +139,13 @@ actor PlaylistModelActor {
         episode.refresh.toggle()
     }
 
+    private func startDownloadIfNeeded(for episode: Episode, episodeURL: URL) async {
+        guard episode.metaData?.calculatedIsAvailableLocally != true else { return }
+
+        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+        await episodeActor.download(episodeURL: episodeURL)
+    }
+
     private func insertEntry(
         for episode: Episode,
         episodeURL: URL,
@@ -174,14 +181,14 @@ actor PlaylistModelActor {
     
  
     /// Inserts an episode specifically after another episode (the anchor).
-    func insert(episodeID: UUID, after anchorEpisodeID: UUID?) throws {
+    func insert(episodeID: UUID, after anchorEpisodeID: UUID?) async throws {
         guard let episode = try fetchEpisode(byID: episodeID),
               let episodeURL = episode.url else { return }
         let anchorEpisodeURL = try anchorEpisodeID.flatMap { try fetchEpisode(byID: $0)?.url }
-        try insert(episodeURL: episodeURL, after: anchorEpisodeURL)
+        try await insert(episodeURL: episodeURL, after: anchorEpisodeURL)
     }
 
-    func insert(episodeURL: URL, after anchorEpisodeURL: URL?) throws {
+    func insert(episodeURL: URL, after anchorEpisodeURL: URL?) async throws {
         guard let playlist = try fetchPlaylist(),
               let episode = try fetchEpisode(byURL: episodeURL) else { return }
 
@@ -222,10 +229,9 @@ actor PlaylistModelActor {
         
         updateQueuedEpisodeMetadata(episode)
         modelContext.saveIfNeeded()
-        Task {
-            await PlayNextWidgetSync.refresh(using: modelContainer)
-            WatchSyncCoordinator.refreshSoon()
-        }
+        await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        await PlayNextWidgetSync.refresh(using: modelContainer)
+        WatchSyncCoordinator.refreshSoon()
     }
 
     /// Add/move an episode within the playlist.
@@ -282,11 +288,7 @@ actor PlaylistModelActor {
 
         modelContext.saveIfNeeded()
 
-        // Trigger download if not available locally
-        if episode.metaData?.calculatedIsAvailableLocally != true {
-            let episodeActor = EpisodeActor(modelContainer: self.modelContainer)
-            await episodeActor.download(episodeURL: episodeURL)
-        }
+        await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()
@@ -343,10 +345,7 @@ actor PlaylistModelActor {
 
         modelContext.saveIfNeeded()
 
-        if episode.metaData?.calculatedIsAvailableLocally != true {
-            let episodeActor = EpisodeActor(modelContainer: self.modelContainer)
-            await episodeActor.download(episodeURL: episodeURL)
-        }
+        await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()

@@ -376,7 +376,7 @@ class Player {
         return AVPlayerItem(url: remoteURL)
     }
 
-    private func unloadEpisode(episodeURL: URL) async {
+    private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
         let episode = (currentEpisode?.url == episodeURL) ? currentEpisode : await fetchEpisode(with: episodeURL)
         guard let episode else { return }
 
@@ -391,7 +391,7 @@ class Player {
         lastArtworkURL = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
 
-        if episode.playProgress >= progressThreshold {
+        if finishedPlayback || episode.playProgress >= progressThreshold {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
             await episodeActor?.archiveEpisode(episodeURL)
         } else {
@@ -525,15 +525,19 @@ class Player {
         startPlaybackUpdates()
      //   startNowPlayingInfoUpdater()
         initRemoteCommandCenter()
+
+        let rate = playbackRate
+        let position = playPosition
+        let currentEpisodeID = currentEpisode?.id
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+
         Task {
-            
-            await engine.setRate(playbackRate)
+            await engine.setRate(rate)
             isPlaying = true
             
             // New session tracking integration: start or update the play session
-            if let currentEpisode = currentEpisode {
-                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-                await playSessionTracker.startOrUpdateSession(episode: currentEpisode, position: playPosition, rate: playbackRate, appVersion: appVersion)
+            if let currentEpisodeID {
+                await playSessionTracker.startOrUpdateSession(episodeID: currentEpisodeID, position: position, rate: rate, appVersion: appVersion)
             }
         }
 
@@ -759,26 +763,35 @@ class Player {
 
     private func handlePlaybackFinished() {
         // print("Playback finished. - handlePlaybackFinished")
-       
-        
-        updateLastPlayed()
         stopPlaybackUpdates()
-        savePlayPosition()
+        let finishedEpisodeURL = currentEpisodeURL
+        let finalPlaybackPosition = max(playPosition, currentEpisode?.duration ?? 0.0)
 
-            Task{
-                let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
-                let sleepTimerContinuePlaying = !stopAfterEpisode
-                if sleepTimerContinuePlaying == true,
-                   continuePlaying == true,
-                   let nextEpisodeURL = try? await playlistActor?.nextEpisodeURL() {
-                    BasicLogger.shared.log("Playing next episode")
-                    await playEpisode(nextEpisodeURL, playDirectly: true)
-                }else{
-                    if let currentEpisodeURL {
-                        await unloadEpisode(episodeURL: currentEpisodeURL)
-                    }
-                }
+        Task {
+            let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
+            let sleepTimerContinuePlaying = !stopAfterEpisode
+            let nextEpisodeURL: URL?
+            if sleepTimerContinuePlaying == true && continuePlaying == true {
+                nextEpisodeURL = try? await playlistActor?.nextEpisodeURL()
+            } else {
+                nextEpisodeURL = nil
             }
+
+            if let finishedEpisodeURL {
+                await episodeActor?.setLastPlayed(episodeURL: finishedEpisodeURL)
+                await episodeActor?.setPlayPosition(
+                    episodeURL: finishedEpisodeURL,
+                    position: finalPlaybackPosition,
+                    force: true
+                )
+                await unloadEpisode(episodeURL: finishedEpisodeURL, finishedPlayback: true)
+            }
+
+            if let nextEpisodeURL {
+                BasicLogger.shared.log("Playing next episode")
+                await playEpisode(nextEpisodeURL, playDirectly: true)
+            }
+        }
 
 
         

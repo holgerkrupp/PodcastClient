@@ -4,6 +4,10 @@ import Observation
 
 @Observable
  class DownloadedFilesManager {
+    private struct WeakObjectBox<Object: AnyObject>: @unchecked Sendable {
+        weak var object: Object?
+    }
+
     private let monitoredFolder: URL
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "DownloadedFilesMonitor") // serial
@@ -37,10 +41,10 @@ import Observation
      }
       
      func refreshDownloadedFiles() {
+        let monitoredFolder = monitoredFolder
+        let managerBox = WeakObjectBox(object: self)
          
-        queue.async { [weak self] in
-            guard let self = self else { return }
-
+        queue.async {
             let fileManager = FileManager.default
 
             let allFiles: [URL] = (fileManager.enumerator(
@@ -58,8 +62,7 @@ import Observation
 
             
             Task { @MainActor in
-                
-                self.downloadedFiles = updated
+                managerBox.object?.downloadedFiles = updated
             }
         }
     }
@@ -94,8 +97,9 @@ import Observation
     private var pollTimer: Timer?
 
     func startPolling() {
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.refreshDownloadedFiles()
+        let managerBox = WeakObjectBox(object: self)
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            managerBox.object?.refreshDownloadedFiles()
         }
     }
 
