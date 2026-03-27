@@ -214,13 +214,23 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     case "enclosure": enclosureArray.append(attributeDict)
                     case "itunes:image": currentValue = attributeDict["href"] ?? ""
                     case "podcast:transcript":
-                        if let url = attributeDict["url"] , let filetype = attributeDict["type"]{
-                            let newTranscript = ExternalFile(url: url, category: .transcript, source: "feed", fileType: filetype)
+                        if let url = attributeDict["url"] {
+                            let newTranscript = ExternalFile(
+                                url: url,
+                                category: .transcript,
+                                source: "feed",
+                                fileType: attributeDict["type"]
+                            )
                             externalFilesArray.append(newTranscript)
                         }
                     case "podcast:chapters":
-                        if let url = attributeDict["url"] , let filetype = attributeDict["type"]{
-                            let newFile = ExternalFile(url: url, category: .chapter, source: "feed", fileType: filetype)
+                        if let url = attributeDict["url"] {
+                            let newFile = ExternalFile(
+                                url: url,
+                                category: .chapter,
+                                source: "feed",
+                                fileType: attributeDict["type"]
+                            )
                             externalFilesArray.append(newFile)
                         }
                     default:

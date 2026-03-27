@@ -53,11 +53,13 @@ struct ContentView: View {
             
             Tab("Add", systemImage: "plus", value: RootTab.add, role: .search) {
                 AddPodcastView(search: $search)
+                    .searchable(text: $search, prompt: "URL or Search")
             }
+            
 
             
         }
-       // .searchable(text: $search, prompt: "URL or Search")
+       
         .tabBarMinimizeBehavior(.onScrollDown)
         
         .tabViewBottomAccessory {

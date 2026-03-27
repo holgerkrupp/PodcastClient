@@ -217,7 +217,7 @@ struct PodcastDetailView: View {
                     ForEach(filteredEpisodes, id: \.id) { episode in
                         ZStack {
                            EpisodeRowView(episode: episode)
-                           //     .id(episode.id)
+                           //     .id(episode.url)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
                             }.opacity(0)

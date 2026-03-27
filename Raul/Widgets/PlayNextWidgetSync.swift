@@ -46,10 +46,11 @@ enum PlayNextWidgetSync {
     private static func writeSnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?) {
         let items: [PlayNextWidgetSnapshot.Item] = episodes.prefix(12).compactMap { episode in
             let title = episode.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard title.isEmpty == false else { return nil }
+            guard title.isEmpty == false,
+                  let episodeURL = episode.url else { return nil }
 
             return PlayNextWidgetSnapshot.Item(
-                id: episode.url?.absoluteString ?? episode.id.uuidString,
+                id: episodeURL.absoluteString,
                 title: title,
                 subtitle: episode.desc?.trimmingCharacters(in: .whitespacesAndNewlines),
                 podcast: episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),

@@ -729,6 +729,12 @@
         }
       }
     },
+    "Follow" : {
+
+    },
+    "Following" : {
+
+    },
     "Following global defaults" : {
       "localizations" : {
         "de" : {
@@ -910,6 +916,9 @@
           }
         }
       }
+    },
+    "Keep the current transcript line centered" : {
+
     },
     "Keyword or phrase" : {
       "localizations" : {
@@ -1270,6 +1279,9 @@
           }
         }
       }
+    },
+    "No Matching Transcript" : {
+
     },
     "No Podcast" : {
       "localizations" : {
@@ -2071,6 +2083,9 @@
         }
       }
     },
+    "Stop following playback" : {
+
+    },
     "Subscribe" : {
       "localizations" : {
         "de" : {
@@ -2352,7 +2367,6 @@
       }
     },
     "URL or Search" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

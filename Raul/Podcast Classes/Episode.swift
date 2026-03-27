@@ -4,6 +4,7 @@
 //
 //  Created by Holger Krupp on 04.04.25.
 //
+import CryptoKit
 import SwiftData
 import Foundation
 import SwiftUI
@@ -11,7 +12,6 @@ import mp3ChapterReader
 
 /// Lightweight, sendable summary for use across actors/UI layers (e.g., CarPlay)
 struct EpisodeSummary: Sendable, Hashable {
-    let id: UUID
     let url: URL?
     let title: String?
     let desc: String?
@@ -22,7 +22,7 @@ struct EpisodeSummary: Sendable, Hashable {
     let localfile: URL?
 }
 
-struct ExternalFile:Codable{
+struct ExternalFile: Codable, Hashable {
     
     enum FileType: String, Codable{
         case transcript, chapter, image
@@ -60,13 +60,6 @@ class EpisodeDownloadStatus{
 }
 
 @Model final class Episode {
-    var id: UUID = UUID()
-    
-    
-    
-    
-    
-    
     var guid: String?
     var title: String = ""
     var author: String?
@@ -116,7 +109,7 @@ class EpisodeDownloadStatus{
     /// A lightweight, cross-actor safe snapshot of this episode
     var summary: EpisodeSummary {
         EpisodeSummary(
-            id: id, url: url,
+            url: url,
             title: title.isEmpty ? nil : title,
             desc: desc,
             podcast: podcast?.title,
@@ -150,15 +143,26 @@ class EpisodeDownloadStatus{
         
         return  progress > 1 ? 1 : progress
     }
+
+    var hasLoadedTranscript: Bool {
+        transcriptLines?.isEmpty == false
+    }
     
     //MARK: calculated properties that will be generated out of existing properties.
+    private var urlIdentityComponent: String? {
+        guard let url else { return nil }
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
     var localFile: URL? {
        
          let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
         
-        guard let fileName = url?.lastPathComponent else { return nil }
+        guard let fileName = url?.lastPathComponent,
+              let urlIdentityComponent else { return nil }
         let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
-        let uniqueURL = baseURL?.appendingPathComponent("\(id.uuidString)_\(sanitizedFileName)")
+        let uniqueURL = baseURL?.appendingPathComponent("\(urlIdentityComponent)_\(sanitizedFileName)")
         return uniqueURL
     }
     
@@ -178,8 +182,7 @@ class EpisodeDownloadStatus{
         }
     }
 
-    init(id: UUID, guid:String? = nil, title: String, publishDate: Date? = nil, url: URL, podcast: Podcast, duration:Double? = nil, author: String? = nil) {
-        self.id = id
+    init(guid:String? = nil, title: String, publishDate: Date? = nil, url: URL, podcast: Podcast, duration:Double? = nil, author: String? = nil) {
         self.guid = guid
         self.title = title
         self.author = author
@@ -227,9 +230,7 @@ class EpisodeDownloadStatus{
  
         }
         
-        for transcript in episodeData["transcripts"] as? [ExternalFile] ?? []{
-            externalFiles.append(transcript)
-        }
+        replaceExternalFiles(with: feedExternalFiles(from: episodeData))
         if let chaptersData = episodeData["psc:chapters"] as? [[String: Any]] {
             for chapterData in chaptersData {
                 let chapter = Marker(details: chapterData)
@@ -303,6 +304,24 @@ class EpisodeDownloadStatus{
         }
         
     }
+
+    private func feedExternalFiles(from episodeData: [String: Any]) -> [ExternalFile] {
+        (episodeData["externalFiles"] as? [ExternalFile])
+        ?? (episodeData["transcripts"] as? [ExternalFile])
+        ?? []
+    }
+
+    private func replaceExternalFiles(with files: [ExternalFile]) {
+        var seen = Set<ExternalFile>()
+        externalFiles = files.filter { seen.insert($0).inserted }
+    }
+
+    func refreshFeedExternalFiles(from episodeData: [String: Any]) {
+        let updatedFiles = feedExternalFiles(from: episodeData)
+        guard updatedFiles != externalFiles else { return }
+        replaceExternalFiles(with: updatedFiles)
+        refresh.toggle()
+    }
     
 
     
@@ -315,12 +334,8 @@ class EpisodeDownloadStatus{
               else {
             return nil
         }
-
-        
-        let uuid = UUID()
-        
         // Initialize with the convenience initializer
-        self.init(id: uuid, title: title, url: url, podcast: podcast)
+        self.init(title: title, url: url, podcast: podcast)
 
         // additional Optional Values
         updateEpisodeData(from: episodeData)
@@ -383,4 +398,3 @@ enum EpisodeStatus: String, Codable{
                
     }
 }
-

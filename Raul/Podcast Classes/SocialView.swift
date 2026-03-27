@@ -72,7 +72,7 @@ struct SocialView: View {
         SocialInfo(url: URL(string: "https://example.com/user/123")!, socialprotocol: "mastodon", accountId: "@user", accountURL: URL(string: "https://example.com/@user"), priority: 2),
         SocialInfo(url: URL(string: "https://threads.net/@someone")!, socialprotocol: "threads", accountId: "@someone", accountURL: nil, priority: nil)
     ]
-    return SocialView(socials: sampleSocials)
+    SocialView(socials: sampleSocials)
         .padding()
 }
 
@@ -82,6 +82,6 @@ struct SocialView: View {
         SocialInfo(url: URL(string: "https://facebook.com/episodepage")!, socialprotocol: "facebook", accountId: "episodepage", accountURL: URL(string: "https://facebook.com/episodepage"), priority: 3),
         SocialInfo(url: URL(string: "https://instagram.com/episodephotos")!, socialprotocol: "instagram", accountId: "@episodephotos", accountURL: nil, priority: 2)
     ]
-    return SocialView(socials: episodeSocials)
+    SocialView(socials: episodeSocials)
         .padding()
 }

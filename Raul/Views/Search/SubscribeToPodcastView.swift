@@ -76,73 +76,14 @@ struct SubscribeToPodcastView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .background(hiddenNavigationLink)
         .overlay {
             statusOverlay
         }
-    }
-
-    private var previewCard: some View {
-        ZStack {
-            CoverImageView(imageURL: newPodcastFeed.artworkURL)
-                .scaledToFill()
-                .frame(height: 200)
-                .clipped()
-
-            VStack(alignment: .leading) {
-                HStack {
-                    CoverImageView(imageURL: newPodcastFeed.artworkURL)
-                        .frame(width: 150, height: 150)
-                        .cornerRadius(8)
-
-                    VStack(alignment: .leading) {
-                        Text(newPodcastFeed.title ?? "Untitled Podcast")
-                            .font(.headline)
-
-                        Spacer()
-
-                        if let author = newPodcastFeed.artist {
-                            Text(author)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-
-                        if let desc = newPodcastFeed.description {
-                            Text(desc)
-                                .font(.caption)
-                                .lineLimit(5)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-
-                        if newPodcastFeed.url == nil {
-                            Text("This feed can be previewed, but it does not expose a reusable subscribe URL.")
-                                .font(.caption)
-                                .multilineTextAlignment(.leading)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .padding()
-            .background(
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-            )
-        }
-        .frame(height: 200)
-    }
-
-    @ViewBuilder
-    private var hiddenNavigationLink: some View {
-        NavigationLink(
-            isActive: Binding(
+        .navigationDestination(
+            isPresented: Binding(
                 get: { selectedPodcastID != nil },
-                set: { isActive in
-                    if !isActive {
+                set: { isPresented in
+                    if isPresented == false {
                         selectedPodcastID = nil
                     }
                 }
@@ -153,10 +94,7 @@ struct SubscribeToPodcastView: View {
             } else {
                 ContentUnavailableView("Podcast Not Found", systemImage: "dot.radiowaves.left.and.right")
             }
-        } label: {
-            EmptyView()
         }
-        .hidden()
     }
 
     @ViewBuilder
@@ -244,6 +182,60 @@ struct SubscribeToPodcastView: View {
                 }
             }
         }
+    }
+
+    private var previewCard: some View {
+        ZStack {
+            CoverImageView(imageURL: newPodcastFeed.artworkURL)
+                .scaledToFill()
+                .frame(height: 200)
+                .clipped()
+
+            VStack(alignment: .leading) {
+                HStack {
+                    CoverImageView(imageURL: newPodcastFeed.artworkURL)
+                        .frame(width: 150, height: 150)
+                        .cornerRadius(8)
+
+                    VStack(alignment: .leading) {
+                        Text(newPodcastFeed.title ?? "Untitled Podcast")
+                            .font(.headline)
+
+                        Spacer()
+
+                        if let author = newPodcastFeed.artist {
+                            Text(author)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+
+                        if let desc = newPodcastFeed.description {
+                            Text(desc)
+                                .font(.caption)
+                                .lineLimit(5)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+
+                        if newPodcastFeed.url == nil {
+                            Text("This feed can be previewed, but it does not expose a reusable subscribe URL.")
+                                .font(.caption)
+                                .multilineTextAlignment(.leading)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding()
+            .background(
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+            )
+        }
+        .frame(height: 200)
     }
 
     private func subscribe() {

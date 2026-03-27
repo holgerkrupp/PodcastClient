@@ -1,10 +1,16 @@
 import SwiftUI
 
+enum WatchPlayerPresentationStyle {
+    case page
+    case pushed
+}
+
 struct WatchPlayerView: View {
     @EnvironmentObject private var store: WatchSyncStore
     @EnvironmentObject private var playback: WatchPlaybackController
 
     let episodeID: String
+    var presentationStyle: WatchPlayerPresentationStyle = .pushed
 
     private var episode: WatchSyncEpisode? {
         store.episode(withID: episodeID)
@@ -22,6 +28,21 @@ struct WatchPlayerView: View {
     }
 
     var body: some View {
+        Group {
+            if presentationStyle == .pushed {
+                playerBody
+                    .navigationTitle("Player")
+                    .navigationBarTitleDisplayMode(.inline)
+            } else {
+                playerBody
+            }
+        }
+        .onDisappear {
+            playback.flushProgress()
+        }
+    }
+
+    private var playerBody: some View {
         ZStack {
             WatchAppBackground()
 
@@ -176,11 +197,6 @@ struct WatchPlayerView: View {
                 .foregroundStyle(.white.opacity(0.82))
                 .padding()
             }
-        }
-        .navigationTitle("Player")
-        .navigationBarTitleDisplayMode(.inline)
-        .onDisappear {
-            playback.flushProgress()
         }
     }
 }

@@ -88,20 +88,24 @@ struct PodcastRowView: View {
 }
 
 #Preview {
-    // Create a dummy PodcastMetaData for preview
-    let metaData = PodcastMetaData()
-    metaData.feedUpdateCheckDate = Date().addingTimeInterval(-3600) // 1 hour ago
-    metaData.isUpdating = false
+    let metaData: PodcastMetaData = {
+        let metaData = PodcastMetaData()
+        metaData.feedUpdateCheckDate = Date().addingTimeInterval(-3600) // 1 hour ago
+        metaData.isUpdating = false
+        return metaData
+    }()
 
-    // Create a dummy Podcast
-    let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
-    podcast.title = "Swift Over Coffee"
-    podcast.author = "Paul Hudson & Sean Allen"
-    podcast.desc = "A show about Swift, iOS development, and general Apple nerdery."
-    podcast.lastBuildDate = Date().addingTimeInterval(-7200) // 2 hours ago
-    podcast.imageURL = nil // Or provide a sample image URL if your PodcastCoverView handles it
-    podcast.metaData = metaData
+    let podcast: Podcast = {
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        podcast.title = "Swift Over Coffee"
+        podcast.author = "Paul Hudson & Sean Allen"
+        podcast.desc = "A show about Swift, iOS development, and general Apple nerdery."
+        podcast.lastBuildDate = Date().addingTimeInterval(-7200) // 2 hours ago
+        podcast.imageURL = nil // Or provide a sample image URL if your PodcastCoverView handles it
+        podcast.metaData = metaData
+        return podcast
+    }()
 
-    return PodcastRowView(podcast: podcast)
+    PodcastRowView(podcast: podcast)
         .padding()
 }

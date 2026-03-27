@@ -10,9 +10,9 @@ actor TranscriptionManager {
         }
     }()
 
-    // Track jobs by episodeID
-    private var items: [UUID: TranscriptionItem] = [:]
-    private var tasks: [UUID: Task<Void, Never>] = [:]
+    // Track jobs by episode URL
+    private var items: [URL: TranscriptionItem] = [:]
+    private var tasks: [URL: Task<Void, Never>] = [:]
 
     // Dependency
     private let container: ModelContainer
@@ -21,32 +21,32 @@ actor TranscriptionManager {
         self.container = container
     }
 
-    func item(for episodeID: UUID) -> TranscriptionItem? {
-        items[episodeID]
+    func item(for episodeURL: URL) -> TranscriptionItem? {
+        items[episodeURL]
     }
 
-    func enqueueTranscription(episodeID: UUID) async -> TranscriptionItem? {
+    func enqueueTranscription(episodeURL: URL) async -> TranscriptionItem? {
         print("enqueueTranscription")
-        if let existingItem = items[episodeID] {
+        if let existingItem = items[episodeURL] {
             return existingItem
         }
 
         let episodeActor = EpisodeActor(modelContainer: container)
-        guard let snapshot = await episodeActor.transcriptionSnapshot(for: episodeID) else {
-            await finish(episodeID: episodeID, error: "Missing local file.")
+        guard let snapshot = await episodeActor.transcriptionSnapshot(for: episodeURL) else {
+            await finish(episodeURL: episodeURL, error: "Missing local file.")
             return nil
         }
 
         let uiItem = await MainActor.run { () -> TranscriptionItem in
-            let item = TranscriptionItem(episodeID: episodeID, sourceURL: snapshot.localFile)
+            let item = TranscriptionItem(episodeURL: episodeURL, sourceURL: snapshot.localFile)
             item.setState(.queued, progress: 0.0, status: "Queued")
             return item
         }
 
-        store(item: uiItem, for: episodeID)
-        await episodeActor.attachTranscriptionItem(uiItem, to: episodeID)
+        store(item: uiItem, for: episodeURL)
+        await episodeActor.attachTranscriptionItem(uiItem, to: episodeURL)
 
-        if tasks[episodeID] != nil {
+        if tasks[episodeURL] != nil {
             return uiItem
         }
 
@@ -116,7 +116,7 @@ actor TranscriptionManager {
                 }
 
                 // Decode inside EpisodeActor to produce model instances and save there
-                await episodeActor.decodeAndSetTranscript(for: episodeID, vtt: vtt)
+                await episodeActor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
                 let finishedAt = Date()
                 await episodeActor.saveTranscriptionRecord(
                     for: snapshot,
@@ -128,45 +128,45 @@ actor TranscriptionManager {
                 await MainActor.run {
                     uiItem.setState(.finished, progress: 1.0, status: "Finished")
                 }
-                await self.cleanUp(episodeID: episodeID)
+                await self.cleanUp(episodeURL: episodeURL)
             } catch is CancellationError {
                 await MainActor.run {
                     uiItem.setState(.cancelled, status: "Cancelled")
                 }
-                await self.cleanUp(episodeID: episodeID)
+                await self.cleanUp(episodeURL: episodeURL)
             } catch {
-                await self.finish(episodeID: episodeID, error: error.localizedDescription)
+                await self.finish(episodeURL: episodeURL, error: error.localizedDescription)
             }
         }
 
         // Register the task in actor state
-        tasks[episodeID] = job
+        tasks[episodeURL] = job
         return uiItem
     }
 
-    func cancel(episodeID: UUID) {
-        tasks[episodeID]?.cancel()
-        tasks[episodeID] = nil
+    func cancel(episodeURL: URL) {
+        tasks[episodeURL]?.cancel()
+        tasks[episodeURL] = nil
     }
 
-    private func finish(episodeID: UUID, error: String) async {
-        if let item = items[episodeID] {
+    private func finish(episodeURL: URL, error: String) async {
+        if let item = items[episodeURL] {
             await MainActor.run {
                 item.setState(.failed(error: error), status: "Failed: \(error)")
             }
         }
-        await cleanUp(episodeID: episodeID)
+        await cleanUp(episodeURL: episodeURL)
     }
 
-    private func cleanUp(episodeID: UUID) async {
-        tasks[episodeID]?.cancel()
-        tasks[episodeID] = nil
+    private func cleanUp(episodeURL: URL) async {
+        tasks[episodeURL]?.cancel()
+        tasks[episodeURL] = nil
         // keep item around for UI to show finished/failed state
     }
 
     // MARK: - Actor-isolated helpers
 
-    private func store(item: TranscriptionItem, for episodeID: UUID) {
-        items[episodeID] = item
+    private func store(item: TranscriptionItem, for episodeURL: URL) {
+        items[episodeURL] = item
     }
 }

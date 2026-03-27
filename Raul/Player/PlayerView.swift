@@ -149,7 +149,7 @@ struct PlayerView: View {
 
 #Preview {
     @Previewable @State var fullSize: Bool = false
-    let episode = Episode(id: UUID(), title: "Test Episode", url: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!, podcast: Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!))
+    let episode = Episode(title: "Test Episode", url: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!, podcast: Podcast(feed: URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!))
     //episode.imageURL = URL(string: "https://compendion.net/dirtyminutesleft/wp-content/uploads/sites/3/2020/04/Logo-compendion-DML2-3k.jpg")!
     let _: () = Player.shared.currentEpisode = episode
     Toggle("Full Size", isOn: $fullSize)
