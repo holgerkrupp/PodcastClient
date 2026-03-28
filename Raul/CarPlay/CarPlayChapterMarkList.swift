@@ -63,7 +63,7 @@ class CarPlayChapterMarkList {
     
     private func loadImage(chapter: Marker) async -> UIImage?{
         if let imageData = chapter.imageData,
-           let uiImage = UIImage(data: imageData) {
+           let uiImage = ImageLoaderAndCache.makeUIImage(from: imageData, maxPixelSize: 240) {
             
             return uiImage
         }else if let chapterImageURL = chapter.image{
@@ -76,4 +76,3 @@ class CarPlayChapterMarkList {
     }
     
 }
-

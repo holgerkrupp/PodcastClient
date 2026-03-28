@@ -150,6 +150,11 @@ struct StorageCleanupResult: Sendable {
     let keptUpNextFileCount: Int
 }
 
+struct StorageReportProgress: Sendable {
+    let fractionCompleted: Double
+    let message: String
+}
+
 actor StorageManagementService {
     private let modelContainer: ModelContainer
 
@@ -157,7 +162,20 @@ actor StorageManagementService {
         self.modelContainer = modelContainer
     }
 
-    func makeReport() async throws -> StorageUsageReport {
+    func makeReport(
+        onProgress: (@Sendable (StorageReportProgress) async -> Void)? = nil
+    ) async throws -> StorageUsageReport {
+        @Sendable func reportProgress(_ fractionCompleted: Double, _ message: String) async {
+            guard let onProgress else { return }
+            await onProgress(
+                StorageReportProgress(
+                    fractionCompleted: min(max(fractionCompleted, 0), 1),
+                    message: message
+                )
+            )
+        }
+
+        await reportProgress(0.02, "Loading database records…")
         let context = ModelContext(modelContainer)
 
         let podcasts = try context.fetch(FetchDescriptor<Podcast>())
@@ -195,6 +213,17 @@ actor StorageManagementService {
             podcastTitleIndex[title] = id
         }
 
+        let totalPodcastCount = max(podcasts.count, 1)
+        let totalEpisodeCount = max(
+            podcasts.reduce(into: 0) { partialResult, podcast in
+                partialResult += podcast.episodes?.count ?? 0
+            },
+            1
+        )
+        var processedPodcastCount = 0
+        var processedEpisodeCount = 0
+
+        await reportProgress(0.10, "Analyzing podcasts and episodes…")
         for podcast in podcasts {
             let key = podcastKey(for: podcast)
             ensurePodcastBucket(id: key.id, title: key.title)
@@ -239,9 +268,44 @@ actor StorageManagementService {
                     addGlobalUsage(.bookmarks, bytes: bytes)
                     podcastBuckets[key.id]?.add(.bookmarks, bytes: bytes)
                 }
+
+                processedEpisodeCount += 1
+                if processedEpisodeCount == totalEpisodeCount
+                    || processedEpisodeCount.isMultiple(of: 25) {
+                    let fraction = 0.10
+                        + (Double(processedPodcastCount) / Double(totalPodcastCount) * 0.08)
+                        + (Double(processedEpisodeCount) / Double(totalEpisodeCount) * 0.46)
+                    await reportProgress(
+                        fraction,
+                        "Analyzing \(min(processedEpisodeCount, totalEpisodeCount)) of \(totalEpisodeCount) episodes…"
+                    )
+                }
+            }
+
+            processedPodcastCount += 1
+            if processedPodcastCount == totalPodcastCount
+                || processedPodcastCount.isMultiple(of: 5) {
+                let fraction = 0.10
+                    + (Double(processedPodcastCount) / Double(totalPodcastCount) * 0.08)
+                    + (Double(processedEpisodeCount) / Double(totalEpisodeCount) * 0.46)
+                await reportProgress(
+                    fraction,
+                    "Analyzing \(min(processedPodcastCount, totalPodcastCount)) of \(totalPodcastCount) podcasts…"
+                )
             }
         }
 
+        let totalSecondaryRecordCount = max(
+            transcriptionRecords.count
+                + playlistEntries.count
+                + playSessions.count
+                + listeningStats.count
+                + summaries.count,
+            1
+        )
+        var processedSecondaryRecordCount = 0
+
+        await reportProgress(0.66, "Processing listening history and playlists…")
         for record in transcriptionRecords {
             let bytes = Self.estimate(transcriptionRecord: record)
             addGlobalUsage(.transcriptionRecords, bytes: bytes)
@@ -252,6 +316,16 @@ actor StorageManagementService {
             } else if let title = record.podcastTitle.flatMap(Self.cleanOptionalString),
                       let podcastID = podcastTitleIndex[title] {
                 podcastBuckets[podcastID]?.add(.transcriptionRecords, bytes: bytes)
+            }
+
+            processedSecondaryRecordCount += 1
+            if processedSecondaryRecordCount == totalSecondaryRecordCount
+                || processedSecondaryRecordCount.isMultiple(of: 25) {
+                let fraction = 0.66 + (Double(processedSecondaryRecordCount) / Double(totalSecondaryRecordCount) * 0.12)
+                await reportProgress(
+                    fraction,
+                    "Processing \(min(processedSecondaryRecordCount, totalSecondaryRecordCount)) of \(totalSecondaryRecordCount) secondary records…"
+                )
             }
         }
 
@@ -269,6 +343,16 @@ actor StorageManagementService {
                 ensurePodcastBucket(id: key.id, title: key.title)
                 podcastBuckets[key.id]?.add(.playlists, bytes: bytes)
             }
+
+            processedSecondaryRecordCount += 1
+            if processedSecondaryRecordCount == totalSecondaryRecordCount
+                || processedSecondaryRecordCount.isMultiple(of: 25) {
+                let fraction = 0.66 + (Double(processedSecondaryRecordCount) / Double(totalSecondaryRecordCount) * 0.12)
+                await reportProgress(
+                    fraction,
+                    "Processing \(min(processedSecondaryRecordCount, totalSecondaryRecordCount)) of \(totalSecondaryRecordCount) secondary records…"
+                )
+            }
         }
 
         for session in playSessions {
@@ -284,6 +368,16 @@ actor StorageManagementService {
                       let podcastID = podcastTitleIndex[title] {
                 podcastBuckets[podcastID]?.add(.listeningHistory, count: 1 + segmentCount, bytes: bytes)
             }
+
+            processedSecondaryRecordCount += 1
+            if processedSecondaryRecordCount == totalSecondaryRecordCount
+                || processedSecondaryRecordCount.isMultiple(of: 25) {
+                let fraction = 0.66 + (Double(processedSecondaryRecordCount) / Double(totalSecondaryRecordCount) * 0.12)
+                await reportProgress(
+                    fraction,
+                    "Processing \(min(processedSecondaryRecordCount, totalSecondaryRecordCount)) of \(totalSecondaryRecordCount) secondary records…"
+                )
+            }
         }
 
         for stat in listeningStats {
@@ -292,6 +386,16 @@ actor StorageManagementService {
 
             if let podcastID = stat.podcastFeed?.absoluteString ?? stat.podcastName.flatMap({ podcastTitleIndex[Self.cleanedTitle($0)] }) {
                 podcastBuckets[podcastID]?.add(.listeningHistory, bytes: bytes)
+            }
+
+            processedSecondaryRecordCount += 1
+            if processedSecondaryRecordCount == totalSecondaryRecordCount
+                || processedSecondaryRecordCount.isMultiple(of: 25) {
+                let fraction = 0.66 + (Double(processedSecondaryRecordCount) / Double(totalSecondaryRecordCount) * 0.12)
+                await reportProgress(
+                    fraction,
+                    "Processing \(min(processedSecondaryRecordCount, totalSecondaryRecordCount)) of \(totalSecondaryRecordCount) secondary records…"
+                )
             }
         }
 
@@ -302,8 +406,19 @@ actor StorageManagementService {
             if let podcastID = summary.podcastFeed?.absoluteString ?? summary.podcastName.flatMap({ podcastTitleIndex[Self.cleanedTitle($0)] }) {
                 podcastBuckets[podcastID]?.add(.listeningHistory, bytes: bytes)
             }
+
+            processedSecondaryRecordCount += 1
+            if processedSecondaryRecordCount == totalSecondaryRecordCount
+                || processedSecondaryRecordCount.isMultiple(of: 25) {
+                let fraction = 0.66 + (Double(processedSecondaryRecordCount) / Double(totalSecondaryRecordCount) * 0.12)
+                await reportProgress(
+                    fraction,
+                    "Processing \(min(processedSecondaryRecordCount, totalSecondaryRecordCount)) of \(totalSecondaryRecordCount) secondary records…"
+                )
+            }
         }
 
+        await reportProgress(0.80, "Inspecting database files…")
         let databaseArtifacts = Self.databaseArtifacts()
         let databaseBytes = databaseArtifacts.reduce(into: Int64(0)) { partialResult, artifact in
             partialResult += artifact.size
@@ -311,10 +426,16 @@ actor StorageManagementService {
 
         let upNextEpisodeURLStrings = await currentUpNextEpisodeURLStrings()
         let databasePaths = Set(databaseArtifacts.map { $0.url.standardizedFileURL.path })
-        let files = Self.enumerateFiles(
+        await reportProgress(0.86, "Scanning stored files…")
+        let files = await Self.enumerateFiles(
             excludingPaths: databasePaths,
             associationsByFileURL: episodeAssociationsByFileURL
-        )
+        ) { fractionCompleted in
+            await reportProgress(
+                0.86 + (fractionCompleted * 0.10),
+                "Scanning stored files…"
+            )
+        }
         let fileBytes = files.reduce(into: Int64(0)) { partialResult, file in
             partialResult += file.size
         }
@@ -383,6 +504,7 @@ actor StorageManagementService {
             partialResult += podcast.fileCount
         }
 
+        await reportProgress(0.98, "Finalizing storage report…")
         return StorageUsageReport(
             generatedAt: Date(),
             databaseBytes: databaseBytes,
@@ -554,8 +676,9 @@ private extension StorageManagementService {
 
     static func enumerateFiles(
         excludingPaths: Set<String>,
-        associationsByFileURL: [URL: FileAssociation]
-    ) -> [StorageFileEntry] {
+        associationsByFileURL: [URL: FileAssociation],
+        onProgress: (@Sendable (Double) async -> Void)? = nil
+    ) async -> [StorageFileEntry] {
         let resourceKeys: Set<URLResourceKey> = [
             .isRegularFileKey,
             .totalFileAllocatedSizeKey,
@@ -563,8 +686,14 @@ private extension StorageManagementService {
             .fileSizeKey
         ]
 
-        let files = StorageFileRoot.allCases.flatMap { root -> [StorageFileEntry] in
-            guard let baseURL = root.baseURL else { return [] }
+        let rootCount = max(StorageFileRoot.allCases.count, 1)
+        var files: [StorageFileEntry] = []
+
+        for (rootIndex, root) in StorageFileRoot.allCases.enumerated() {
+            guard let baseURL = root.baseURL else {
+                await onProgress?(Double(rootIndex + 1) / Double(rootCount))
+                continue
+            }
 
             let enumerator = FileManager.default.enumerator(
                 at: baseURL,
@@ -573,6 +702,7 @@ private extension StorageManagementService {
             )
 
             var entries: [StorageFileEntry] = []
+            var enumeratedCount = 0
             while let url = enumerator?.nextObject() as? URL {
                 let standardizedURL = url.standardizedFileURL
                 if excludingPaths.contains(standardizedURL.path) {
@@ -597,9 +727,16 @@ private extension StorageManagementService {
                         podcastTitle: association?.podcastTitle
                     )
                 )
+
+                enumeratedCount += 1
+                if enumeratedCount.isMultiple(of: 50) {
+                    let partialRootFraction = (Double(rootIndex) + 0.75) / Double(rootCount)
+                    await onProgress?(partialRootFraction)
+                }
             }
 
-            return entries
+            files.append(contentsOf: entries)
+            await onProgress?(Double(rootIndex + 1) / Double(rootCount))
         }
 
         return files.sorted { lhs, rhs in

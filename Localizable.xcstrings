@@ -130,6 +130,9 @@
         }
       }
     },
+    "%lld%% complete" : {
+
+    },
     "Add" : {
       "localizations" : {
         "de" : {
@@ -361,9 +364,6 @@
       }
     },
     "By Podcast" : {
-
-    },
-    "Calculating Storage…" : {
 
     },
     "Cancel" : {
@@ -1983,6 +1983,9 @@
           }
         }
       }
+    },
+    "Scanning the database and stored files." : {
+
     },
     "Scope" : {
       "localizations" : {

@@ -8,7 +8,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-enum MarkerType: String, Codable, Comparable{
+enum MarkerType: String, Codable, Comparable, Sendable{
     static func < (lhs: MarkerType, rhs: MarkerType) -> Bool {
         lhs.desc < rhs.desc
     }
@@ -174,4 +174,3 @@ class Marker: Identifiable, Equatable, Hashable{
         hasher.combine(id)
     }
 }
-

@@ -8,6 +8,8 @@ struct StorageManagementView: View {
 
     @State private var report: StorageUsageReport?
     @State private var isLoading = false
+    @State private var loadingProgress = 0.0
+    @State private var loadingMessage = "Preparing storage scan…"
     @State private var isDeleting = false
     @State private var presentedAlert: StorageAlert?
 
@@ -29,11 +31,23 @@ struct StorageManagementView: View {
                 fileSections(report)
             } else if isLoading {
                 Section {
-                    HStack {
-                        Spacer()
-                        ProgressView("Calculating Storage…")
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(loadingMessage)
+                            .font(.headline)
+
+                        ProgressView(value: loadingProgress, total: 1)
+                            .progressViewStyle(.linear)
+
+                        Text("\(Int((loadingProgress * 100).rounded()))% complete")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+
+                        Text("Scanning the database and stored files.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
                 }
             } else {
                 ContentUnavailableView(
@@ -296,10 +310,20 @@ struct StorageManagementView: View {
 
     private func reload() async {
         isLoading = true
-        defer { isLoading = false }
+        loadingProgress = 0.03
+        loadingMessage = "Preparing storage scan…"
+        defer {
+            isLoading = false
+            loadingProgress = 0
+        }
 
         do {
-            report = try await StorageManagementService(modelContainer: modelContainer).makeReport()
+            report = try await StorageManagementService(modelContainer: modelContainer).makeReport { progress in
+                await MainActor.run {
+                    loadingProgress = progress.fractionCompleted
+                    loadingMessage = progress.message
+                }
+            }
         } catch {
             presentedAlert = .error(error.localizedDescription)
         }
