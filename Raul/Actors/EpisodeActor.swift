@@ -308,7 +308,6 @@ actor EpisodeActor {
             try? FileManager.default.removeItem(at: file)
         }
         episode.metaData?.isAvailableLocally = false
-        episode.playlist?.removeAll()
         
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()

@@ -6,6 +6,7 @@
 	<array>
 		<string>feedRefresh</string>
 		<string>checkFeedUpdates</string>
+		<string>storageCleanup</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -23,7 +24,6 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>feed</string>
-				<string>pcast</string>
 				<string>itpc</string>
 				<string>rss</string>
 			</array>

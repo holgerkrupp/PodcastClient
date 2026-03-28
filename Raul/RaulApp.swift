@@ -4,6 +4,15 @@ import BackgroundTasks
 import DeviceInfo
 import BasicLogger
 
+private enum BackgroundTaskConfiguration {
+    static let feedRefreshIdentifier = "checkFeedUpdates"
+    static let storageCleanupIdentifier = "storageCleanup"
+    static let feedRefreshInterval: TimeInterval = 60 * 30
+    static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
+    static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
+    static let lastStorageCleanupKey = "LastStorageCleanup"
+}
+
 @main
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
@@ -41,25 +50,43 @@ struct RaulApp: App {
         .onChange(of: phase, {
             switch phase {
             case .background:
-                bgNewAppRefresh()
+                scheduleFeedRefresh()
+                scheduleStorageCleanup()
              
                 
             case .active:
                 cleanUp()
                 refreshOnActive()
+                Task {
+                    await runScheduledStorageCleanupIfNeeded(
+                        minimumInterval: BackgroundTaskConfiguration.weeklyStorageCleanupFallbackInterval,
+                        reason: "active fallback"
+                    )
+                }
           
                 
             default: break
             }
         })
 
-        .backgroundTask(.appRefresh("checkFeedUpdates")) { task in
+        .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
            //  await BasicLogger.shared.log("started checkFeedUpdates in Background")
-            await bgNewAppRefresh()
+            await scheduleFeedRefresh()
+            await runScheduledStorageCleanupIfNeeded(
+                minimumInterval: BackgroundTaskConfiguration.nightlyStorageCleanupInterval,
+                reason: "feed refresh task"
+            )
        
             await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
 
             
+        }
+        .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
+            await scheduleStorageCleanup()
+            await runScheduledStorageCleanupIfNeeded(
+                minimumInterval: BackgroundTaskConfiguration.nightlyStorageCleanupInterval,
+                reason: "storage cleanup task"
+            )
         }
     }
 
@@ -111,12 +138,12 @@ struct RaulApp: App {
         UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundProcess")
     }
     
-    func bgNewAppRefresh() {
+    func scheduleFeedRefresh() {
         
         // this should replace scheduleAppRefresh
         BasicLogger.shared.log("schedule checkFeedUpdates")
-        let request = BGAppRefreshTaskRequest(identifier: "checkFeedUpdates")
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 60*30)
+        let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.feedRefreshIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
         
         do{
             try BGTaskScheduler.shared.submit(request)
@@ -126,6 +153,47 @@ struct RaulApp: App {
             BasicLogger.shared.log(error.localizedDescription)
         }
        
+    }
+
+    func scheduleStorageCleanup() {
+        BasicLogger.shared.log("schedule storageCleanup")
+        let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.storageCleanupIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.nightlyStorageCleanupInterval)
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            BasicLogger.shared.log(error.localizedDescription)
+        }
+    }
+
+    func setLastStorageCleanupDate(_ date: Date = Date()) {
+        UserDefaults.standard.setValue(date.timeIntervalSince1970, forKey: BackgroundTaskConfiguration.lastStorageCleanupKey)
+    }
+
+    func getLastStorageCleanupDate() -> Date? {
+        let timestamp = UserDefaults.standard.double(forKey: BackgroundTaskConfiguration.lastStorageCleanupKey)
+        guard timestamp > 0 else { return nil }
+        return Date(timeIntervalSince1970: timestamp)
+    }
+
+    func runScheduledStorageCleanupIfNeeded(minimumInterval: TimeInterval, reason: String) async {
+        if let lastCleanup = getLastStorageCleanupDate(),
+           Date().timeIntervalSince(lastCleanup) < minimumInterval {
+            return
+        }
+
+        do {
+            let result = try await StorageManagementService(modelContainer: modelContainerManager.container)
+                .deleteFilesOutsideUpNext()
+            setLastStorageCleanupDate()
+            downloadedFilesManager.rescanDownloadedFiles()
+            BasicLogger.shared.log(
+                "storage cleanup (\(reason)) deleted \(result.deletedFileCount) files and kept \(result.keptUpNextFileCount) Up Next files"
+            )
+        } catch {
+            BasicLogger.shared.log("storage cleanup failed (\(reason)): \(error.localizedDescription)")
+        }
     }
     
 }
