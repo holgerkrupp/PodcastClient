@@ -57,6 +57,9 @@
         }
       }
     },
+    "%@ is shared metadata or SQLite overhead that can’t be tied to a single podcast." : {
+
+    },
     "%@:" : {
       "localizations" : {
         "de" : {
@@ -73,6 +76,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld"
+          }
+        }
+      }
+    },
+    "%lld file%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld file%2$@"
+          }
+        }
+      }
+    },
+    "%lld file%@ (%@) are currently protected because their episodes are in Up Next." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld file%2$@ (%3$@) are currently protected because their episodes are in Up Next."
+          }
+        }
+      }
+    },
+    "%lld file%@ (%@) can be removed without deleting downloads needed for the current Up Next queue." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld file%2$@ (%3$@) can be removed without deleting downloads needed for the current Up Next queue."
+          }
+        }
+      }
+    },
+    "%lld item%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld item%2$@"
           }
         }
       }
@@ -317,6 +360,12 @@
         }
       }
     },
+    "By Podcast" : {
+
+    },
+    "Calculating Storage…" : {
+
+    },
     "Cancel" : {
       "localizations" : {
         "de" : {
@@ -377,6 +426,9 @@
         }
       }
     },
+    "Counts" : {
+
+    },
     "Create a bookmark at the current playback position." : {
       "localizations" : {
         "de" : {
@@ -416,6 +468,21 @@
           }
         }
       }
+    },
+    "Database" : {
+
+    },
+    "Database Breakdown" : {
+
+    },
+    "Database Estimate" : {
+
+    },
+    "Database Estimate by Type" : {
+
+    },
+    "Database Files" : {
+
     },
     "Debug" : {
       "localizations" : {
@@ -458,6 +525,9 @@
         }
       }
     },
+    "Delete All Stored Files" : {
+
+    },
     "Delete all your subscriptions" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -480,6 +550,7 @@
       }
     },
     "Delete Cache Files" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -490,6 +561,7 @@
       }
     },
     "Delete Documents Files" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -508,6 +580,9 @@
           }
         }
       }
+    },
+    "Delete Files Not in Up Next" : {
+
     },
     "Delete Played" : {
       "localizations" : {
@@ -548,6 +623,9 @@
           }
         }
       }
+    },
+    "Downloaded audio and cache files will appear here when they exist." : {
+
     },
     "Downloaded Episodes" : {
       "localizations" : {
@@ -728,6 +806,18 @@
           }
         }
       }
+    },
+    "File Cleanup" : {
+
+    },
+    "File Count" : {
+
+    },
+    "Files" : {
+
+    },
+    "Files %@" : {
+
     },
     "Follow" : {
 
@@ -1260,6 +1350,9 @@
         }
       }
     },
+    "No Files for This Podcast" : {
+
+    },
     "No listening data yet." : {
       "localizations" : {
         "de" : {
@@ -1292,6 +1385,9 @@
           }
         }
       }
+    },
+    "No Podcast Storage Yet" : {
+
     },
     "No Podcasts" : {
       "localizations" : {
@@ -1362,6 +1458,12 @@
           }
         }
       }
+    },
+    "No Storage Report" : {
+
+    },
+    "No Stored Files" : {
+
     },
     "No Transcriptions Yet" : {
       "localizations" : {
@@ -1492,6 +1594,9 @@
           }
         }
       }
+    },
+    "Overview" : {
+
     },
     "Password" : {
       "localizations" : {
@@ -1673,6 +1778,9 @@
         }
       }
     },
+    "Podcast-attributed storage will appear here once content is stored locally." : {
+
+    },
     "Podcasts kept in the database but excluded from refresh will appear here." : {
       "localizations" : {
         "de" : {
@@ -1732,6 +1840,9 @@
           }
         }
       }
+    },
+    "Pull to refresh to calculate the app's current storage usage." : {
+
     },
     "Queue" : {
       "localizations" : {
@@ -2086,6 +2197,18 @@
     "Stop following playback" : {
 
     },
+    "Storage" : {
+
+    },
+    "Storage Error" : {
+
+    },
+    "Storage Management" : {
+
+    },
+    "Stored Files" : {
+
+    },
     "Subscribe" : {
       "localizations" : {
         "de" : {
@@ -2146,6 +2269,9 @@
         }
       }
     },
+    "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size." : {
+
+    },
     "These settings are global only. They affect every podcast and cannot be customized per show." : {
       "localizations" : {
         "de" : {
@@ -2176,6 +2302,9 @@
         }
       }
     },
+    "This podcast currently has no standalone files stored outside the database." : {
+
+    },
     "This podcast is already stored without a subscription. Open it to download or queue individual episodes, or subscribe to keep it refreshed." : {
       "localizations" : {
         "de" : {
@@ -2196,7 +2325,11 @@
         }
       }
     },
+    "This removes downloaded media and cache files, but keeps your SwiftData database, subscriptions, and playback history." : {
+
+    },
     "This removes files from the selected app folder but keeps the database and subscriptions." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2256,6 +2389,9 @@
         }
       }
     },
+    "Total" : {
+
+    },
     "Total Listening Time per Podcast" : {
       "localizations" : {
         "de" : {
@@ -2265,6 +2401,9 @@
           }
         }
       }
+    },
+    "Total Used" : {
+
     },
     "Transcribe" : {
       "localizations" : {
@@ -2296,6 +2435,9 @@
         }
       }
     },
+    "Transcript Lines" : {
+
+    },
     "Transcript Unavailable" : {
       "localizations" : {
         "de" : {
@@ -2316,6 +2458,9 @@
         }
       }
     },
+    "Transcription Records" : {
+
+    },
     "Transcriptions" : {
       "localizations" : {
         "de" : {
@@ -2335,6 +2480,9 @@
           }
         }
       }
+    },
+    "Unattributed Files" : {
+
     },
     "Unsubscribe" : {
       "localizations" : {

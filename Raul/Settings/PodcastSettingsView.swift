@@ -87,7 +87,7 @@ struct PodcastSettingsView: View {
                 }
 
                 integrationsSection
-
+                maintenanceSection
 #if DEBUG
                 debugSection
 #endif
@@ -398,6 +398,16 @@ struct PodcastSettingsView: View {
                 Task {
                     await SubscriptionActor(modelContainer: context.container).cleanupDuplicates()
                 }
+            }
+        }
+    }
+    
+    private var maintenanceSection: some View {
+        Section("Maintenance") {
+            NavigationLink {
+                StorageManagementView(modelContainer: context.container)
+            } label: {
+                Text("Storage Management")
             }
         }
     }

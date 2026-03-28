@@ -3,15 +3,24 @@ import SwiftUI
 
 @MainActor
 class ModelContainerManager: ObservableObject {
+    nonisolated static let appGroupID = "group.de.holgerkrupp.PodcastClient"
+
     let container: ModelContainer
     
     static let shared = ModelContainerManager()
 
+    nonisolated static var sharedContainerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
+    }
+
+    nonisolated static var sharedStoreURL: URL? {
+        sharedContainerURL?.appendingPathComponent("SharedDatabase.sqlite")
+    }
+
     
     init() {
         do {
-            if let sharedContainerURL = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient") {
+            if let sharedContainerURL = Self.sharedContainerURL {
                 
                 let configuration = ModelConfiguration(
                     url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
