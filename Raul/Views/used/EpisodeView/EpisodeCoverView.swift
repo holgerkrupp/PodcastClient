@@ -99,7 +99,7 @@ struct CoverImageView: View {
         if let chapter = activeChapter {
             // Data first
             if let data = chapter.imageData, !data.isEmpty {
-                if let uiImage = UIImage(data: data) {
+                if let uiImage = ImageLoaderAndCache.makeUIImage(from: data) {
                     // Only set state if the key is still current
                     if currentKey == imageKey {
                         loadedImage = Image(uiImage: uiImage)

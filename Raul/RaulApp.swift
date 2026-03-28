@@ -27,7 +27,7 @@ struct RaulApp: App {
 
     var body: some Scene {
         WindowGroup {
-           
+            
                 ContentView()
                     .modelContainer(modelContainerManager.container)
                     .environment(downloadedFilesManager)
@@ -44,7 +44,6 @@ struct RaulApp: App {
                             WatchSyncCoordinator.refreshSoon()
                         }
                     }
-             
             
         }
         .onChange(of: phase, {
@@ -186,10 +185,12 @@ struct RaulApp: App {
         do {
             let result = try await StorageManagementService(modelContainer: modelContainerManager.container)
                 .deleteFilesOutsideUpNext()
+            let chapterImageResult = await EpisodeActor(modelContainer: modelContainerManager.container)
+                .maintainChapterImageStorage()
             setLastStorageCleanupDate()
             downloadedFilesManager.rescanDownloadedFiles()
             BasicLogger.shared.log(
-                "storage cleanup (\(reason)) deleted \(result.deletedFileCount) files and kept \(result.keptUpNextFileCount) Up Next files"
+                "storage cleanup (\(reason)) deleted \(result.deletedFileCount) files, kept \(result.keptUpNextFileCount) Up Next files, optimized \(chapterImageResult.optimizedImageCount) chapter images saving \(chapterImageResult.optimizedBytesSaved) bytes, restored \(chapterImageResult.restoredImageCount) Up Next chapter images"
             )
         } catch {
             BasicLogger.shared.log("storage cleanup failed (\(reason)): \(error.localizedDescription)")
@@ -208,10 +209,13 @@ extension DeviceUIStyle {
         case .iphoneDynamicIsland: return "iphone.gen3"
         case .ipadHomeButton: return "ipad.gen1"
         case .ipadNoHomeButton: return "ipad.gen2"
+        case .appleWatch: return "applewatch"
+        case .visionPro: return "visionpro"
         case .macLaptop: return "macbook"
         case .macMini: return "macmini"
         case .macPro: return "macpro.gen3"
         case .macDesktop: return "desktopcomputer"
+        @unknown default: return "questionmark.square.dashed"
         }
     }
     

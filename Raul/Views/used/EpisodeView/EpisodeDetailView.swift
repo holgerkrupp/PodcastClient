@@ -184,7 +184,7 @@ struct EpisodeDetailView: View {
                 }
             }
             .background{
-                if let image = UIImage(data: backgroundImageLoader.imageData) {
+                if let image = backgroundImageLoader.image {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()

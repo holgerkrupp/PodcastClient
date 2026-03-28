@@ -11,6 +11,7 @@ import AVFoundation
 import BasicLogger
 import SwiftUI
 import UIKit
+import ImageIO
 
 
 @ModelActor
@@ -437,6 +438,68 @@ actor EpisodeActor {
             await applyAutoSkipWords(episodeURL: url)
         }
     }
+
+    func maintainChapterImageStorage() async -> ChapterImageMaintenanceResult {
+        let upNextEpisodeURLs = await currentUpNextEpisodeURLs()
+        guard let episodes = try? modelContext.fetch(FetchDescriptor<Episode>()) else {
+            return ChapterImageMaintenanceResult()
+        }
+
+        var result = ChapterImageMaintenanceResult()
+
+        for episode in episodes {
+            guard let episodeURL = episode.url else { continue }
+
+            if upNextEpisodeURLs.contains(episodeURL) {
+                result.restoredImageCount += await restoreFullSizeChapterImages(for: episodeURL)
+            } else {
+                let optimized = optimizeStoredChapterImages(for: episode)
+                result.optimizedImageCount += optimized.count
+                result.optimizedBytesSaved += optimized.bytesSaved
+            }
+        }
+
+        modelContext.saveIfNeeded()
+        return result
+    }
+
+    @discardableResult
+    func restoreFullSizeChapterImages(for episodeURL: URL) async -> Int {
+        let sourceDataByKey = await bestChapterSourceData(for: episodeURL)
+        guard !sourceDataByKey.isEmpty,
+              let episode = await fetchEpisode(byURL: episodeURL),
+              let chapters = episode.chapters,
+              !chapters.isEmpty else {
+            return 0
+        }
+
+        var restoredImageCount = 0
+        var didChange = false
+
+        for chapter in chapters {
+            let key = chapterKey(for: chapter.title, start: chapter.start ?? 0, type: chapter.type)
+            guard let source = sourceDataByKey[key] else { continue }
+
+            if chapter.image == nil, let imageURL = source.imageURL {
+                chapter.image = imageURL
+                didChange = true
+            }
+
+            guard let sourceImageData = source.imageData else { continue }
+            if shouldReplaceChapterImage(currentData: chapter.imageData, sourceData: sourceImageData) {
+                chapter.imageData = sourceImageData
+                restoredImageCount += 1
+                didChange = true
+            }
+        }
+
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+
+        return restoredImageCount
+    }
     
     private func applyAutoSkipWords(episodeURL: URL) async{
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
@@ -467,6 +530,333 @@ actor EpisodeActor {
         }
         modelContext.saveIfNeeded()
     }
+
+    private func currentUpNextEpisodeURLs() async -> Set<URL> {
+        guard let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer) else {
+            return []
+        }
+
+        let upNextURLs = (try? await playlistActor.orderedEpisodeURLs()) ?? []
+        return Set(upNextURLs)
+    }
+
+    private func bestChapterSourceData(for episodeURL: URL) async -> [String: SendableChapterSourceData] {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return [:] }
+
+        let snapshot = EpisodeChapterSourceSnapshot(
+            remoteURL: episode.url,
+            localFile: episode.localFile,
+            chapterFiles: episode.externalFiles
+                .filter { $0.category == .chapter }
+                .map { ChapterExternalFileSnapshot(urlString: $0.url, fileType: $0.fileType) },
+            chapterImages: (episode.chapters ?? []).map {
+                StoredChapterImageSnapshot(
+                    title: $0.title,
+                    start: $0.start ?? 0,
+                    type: $0.type,
+                    imageURL: $0.image
+                )
+            }
+        )
+
+        var sourceDataByKey: [String: SendableChapterSourceData] = [:]
+
+        for source in await chapterSourceData(for: snapshot) {
+            let key = chapterKey(for: source.title, start: source.start, type: source.type)
+            if let existing = sourceDataByKey[key] {
+                sourceDataByKey[key] = mergedChapterSource(existing, with: source)
+            } else {
+                sourceDataByKey[key] = source
+            }
+        }
+
+        return sourceDataByKey
+    }
+
+    private func chapterSourceData(for snapshot: EpisodeChapterSourceSnapshot) async -> [SendableChapterSourceData] {
+        var sources: [SendableChapterSourceData] = []
+
+        sources.append(contentsOf: await existingChapterImageSourceData(for: snapshot.chapterImages))
+        sources.append(contentsOf: await jsonChapterSourceData(for: snapshot.chapterFiles))
+
+        if let localFile = snapshot.localFile {
+            let lowercasedExtension = localFile.pathExtension.lowercased()
+            if lowercasedExtension == "mp3" {
+                sources.append(contentsOf: mp3ChapterSourceData(from: localFile))
+            } else if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
+                sources.append(contentsOf: await m4aChapterSourceData(from: localFile))
+            } else if let formatInfo = try? await MetadataLoader.getAudioFormat(from: localFile) {
+                switch formatInfo.formatID {
+                case kAudioFormatMPEGLayer3:
+                    sources.append(contentsOf: mp3ChapterSourceData(from: localFile))
+                case kAudioFormatMPEG4AAC:
+                    sources.append(contentsOf: await m4aChapterSourceData(from: localFile))
+                default:
+                    break
+                }
+            }
+        } else if let remoteURL = snapshot.remoteURL {
+            let lowercasedExtension = remoteURL.pathExtension.lowercased()
+            if lowercasedExtension == "mp3" {
+                sources.append(contentsOf: await remoteMP3ChapterSourceData(from: remoteURL))
+            } else if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
+                sources.append(contentsOf: await m4aChapterSourceData(from: remoteURL))
+            }
+        }
+
+        return sources
+    }
+
+    private func existingChapterImageSourceData(for chapters: [StoredChapterImageSnapshot]) async -> [SendableChapterSourceData] {
+        var sources: [SendableChapterSourceData] = []
+
+        for chapter in chapters {
+            guard let imageURL = chapter.imageURL else { continue }
+            let imageData = await downloadBinaryFile(url: imageURL)
+            sources.append(
+                SendableChapterSourceData(
+                    title: chapter.title,
+                    start: chapter.start,
+                    type: chapter.type,
+                    imageURL: imageURL,
+                    imageData: imageData
+                )
+            )
+        }
+
+        return sources
+    }
+
+    private func mp3ChapterSourceData(from url: URL) -> [SendableChapterSourceData] {
+        guard let mp3Reader = mp3ChapterReader(with: url),
+              let chapters = parse(chapters: mp3Reader.getID3Dict()) else {
+            return []
+        }
+
+        return chapters.map {
+            SendableChapterSourceData(
+                title: $0.title,
+                start: $0.start ?? 0,
+                type: .mp3,
+                imageURL: nil,
+                imageData: $0.imageData
+            )
+        }
+    }
+
+    private func remoteMP3ChapterSourceData(from url: URL) async -> [SendableChapterSourceData] {
+        guard let mp3Reader = await mp3ChapterReader.fromRemoteURL(url),
+              let chapters = parse(chapters: mp3Reader.getID3Dict()) else {
+            return []
+        }
+
+        return chapters.map {
+            SendableChapterSourceData(
+                title: $0.title,
+                start: $0.start ?? 0,
+                type: .mp3,
+                imageURL: nil,
+                imageData: $0.imageData
+            )
+        }
+    }
+
+    private func m4aChapterSourceData(from url: URL) async -> [SendableChapterSourceData] {
+        guard let chapterData = try? await MetadataLoader.loadChapters(from: url) else {
+            return []
+        }
+
+        return chapterData.map {
+            SendableChapterSourceData(
+                title: $0.title,
+                start: $0.start,
+                type: .mp4,
+                imageURL: nil,
+                imageData: $0.imageData
+            )
+        }
+    }
+
+    private func jsonChapterSourceData(for chapterFiles: [ChapterExternalFileSnapshot]) async -> [SendableChapterSourceData] {
+        var sources: [SendableChapterSourceData] = []
+
+        for chapterFile in chapterFiles {
+            guard let url = URL(string: chapterFile.urlString) else { continue }
+
+            let isJSON = url.pathExtension.lowercased() == "json"
+                || (chapterFile.fileType?.lowercased().contains("json") == true)
+            guard isJSON,
+                  let jsonString = await downloadAndParseStringFile(url: url),
+                  let jsonData = jsonString.data(using: .utf8),
+                  let chapterSources = await parseJSONChapterData(jsonData: jsonData) else {
+                continue
+            }
+
+            sources.append(contentsOf: chapterSources)
+        }
+
+        return sources
+    }
+
+    private func parseJSONChapterData(jsonData: Data) async -> [SendableChapterSourceData]? {
+        do {
+            let decoder = JSONDecoder()
+            let chapterList = try decoder.decode(JSONChapterList.self, from: jsonData)
+            var chapters: [SendableChapterSourceData] = []
+
+            for chapter in chapterList.chapters {
+                let imageURL = chapter.img.flatMap(URL.init(string:))
+                let imageData: Data?
+                if let imageURL {
+                    imageData = await downloadBinaryFile(url: imageURL)
+                } else {
+                    imageData = nil
+                }
+
+                chapters.append(
+                    SendableChapterSourceData(
+                        title: chapter.title,
+                        start: chapter.startTime,
+                        type: .extracted,
+                        imageURL: imageURL,
+                        imageData: imageData
+                    )
+                )
+            }
+
+            return chapters
+        } catch {
+            return nil
+        }
+    }
+
+    private func mergedChapterSource(
+        _ current: SendableChapterSourceData,
+        with candidate: SendableChapterSourceData
+    ) -> SendableChapterSourceData {
+        let imageData = preferredImageData(current.imageData, candidate.imageData)
+
+        return SendableChapterSourceData(
+            title: current.title,
+            start: current.start,
+            type: current.type,
+            imageURL: current.imageURL ?? candidate.imageURL,
+            imageData: imageData
+        )
+    }
+
+    private func preferredImageData(_ lhs: Data?, _ rhs: Data?) -> Data? {
+        switch (lhs, rhs) {
+        case let (left?, right?):
+            let leftDimension = imageMaxDimension(for: left)
+            let rightDimension = imageMaxDimension(for: right)
+
+            if rightDimension > leftDimension + 1 {
+                return right
+            }
+            if leftDimension > rightDimension + 1 {
+                return left
+            }
+
+            return right.count > left.count ? right : left
+        case (nil, let right?):
+            return right
+        case (let left?, nil):
+            return left
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    private func optimizeStoredChapterImages(for episode: Episode) -> (count: Int, bytesSaved: Int64) {
+        guard let chapters = episode.chapters, !chapters.isEmpty else {
+            return (0, 0)
+        }
+
+        var optimizedImageCount = 0
+        var optimizedBytesSaved: Int64 = 0
+
+        for chapter in chapters {
+            guard let currentData = chapter.imageData,
+                  let downscaledData = downscaledChapterImageData(from: currentData),
+                  downscaledData.count < currentData.count else {
+                continue
+            }
+
+            chapter.imageData = downscaledData
+            optimizedImageCount += 1
+            optimizedBytesSaved += Int64(currentData.count - downscaledData.count)
+        }
+
+        if optimizedImageCount > 0 {
+            episode.refresh.toggle()
+        }
+
+        return (optimizedImageCount, optimizedBytesSaved)
+    }
+
+    private func downscaledChapterImageData(from data: Data) -> Data? {
+        let maxDimension = imageMaxDimension(for: data)
+        guard maxDimension > ChapterImageStorageConfiguration.compactMaxPixelSize
+                || data.count > ChapterImageStorageConfiguration.minimumCandidateBytes else {
+            return nil
+        }
+
+        guard let image = ImageLoaderAndCache.makeUIImage(
+            from: data,
+            maxPixelSize: ChapterImageStorageConfiguration.compactMaxPixelSize
+        ) else {
+            return nil
+        }
+
+        if let jpegData = image.jpegData(compressionQuality: ChapterImageStorageConfiguration.jpegQuality),
+           jpegData.count < data.count {
+            return jpegData
+        }
+
+        if let pngData = image.pngData(), pngData.count < data.count {
+            return pngData
+        }
+
+        return nil
+    }
+
+    private func shouldReplaceChapterImage(currentData: Data?, sourceData: Data) -> Bool {
+        guard !sourceData.isEmpty else { return false }
+        guard let currentData, !currentData.isEmpty else { return true }
+
+        let currentDimension = imageMaxDimension(for: currentData)
+        let sourceDimension = imageMaxDimension(for: sourceData)
+
+        if sourceDimension > currentDimension + ChapterImageStorageConfiguration.minimumRestorePixelGain {
+            return true
+        }
+
+        return sourceData.count > currentData.count + ChapterImageStorageConfiguration.minimumRestoreByteGain
+    }
+
+    private func chapterKey(for title: String, start: Double, type: MarkerType) -> String {
+        let normalizedTitle = title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedStart = Int((start * 100).rounded())
+        return "\(type.rawValue)|\(normalizedStart)|\(normalizedTitle)"
+    }
+
+    private func imageMaxDimension(for data: Data) -> CGFloat {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+            return 0
+        }
+
+        let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0
+        let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
+        return CGFloat(max(width, height))
+    }
+
+    private func downloadBinaryFile(url: URL) async -> Data? {
+        await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil)
+    }
     
     private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
@@ -478,8 +868,12 @@ actor EpisodeActor {
         }
         
         do {
-            let data = try Data(contentsOf: url)
-            guard data.count >= 3, let id3Identifier = String(data: data[0..<3], encoding: .utf8), id3Identifier == "ID3" else {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let headerData = try handle.read(upToCount: 10) ?? Data()
+            guard headerData.count >= 3,
+                  let id3Identifier = String(data: headerData.prefix(3), encoding: .utf8),
+                  id3Identifier == "ID3" else {
                 return
             }
             if let mp3Reader = mp3ChapterReader(with: url){
@@ -538,7 +932,8 @@ actor EpisodeActor {
                 chapter.start = ch.startTime
                 chapter.type = .extracted
                 if let imgUrlStr = ch.img, let imgUrl = URL(string: imgUrlStr) {
-                    chapter.imageData = try? Data(contentsOf: imgUrl)
+                    chapter.image = imgUrl
+                    chapter.imageData = await downloadBinaryFile(url: imgUrl)
                 }
                 chapters.append(chapter)
             }
@@ -907,6 +1302,16 @@ private struct SendableChapterData: Sendable {
     let imageData: Data?
 }
 
+struct ChapterImageMaintenanceResult: Sendable {
+    var optimizedImageCount: Int = 0
+    var optimizedBytesSaved: Int64 = 0
+    var restoredImageCount: Int = 0
+
+    var hasChanges: Bool {
+        optimizedImageCount > 0 || optimizedBytesSaved > 0 || restoredImageCount > 0
+    }
+}
+
 struct TranscriptionEpisodeSnapshot: Sendable {
     let episodeURL: URL
     let episodeTitle: String
@@ -918,6 +1323,42 @@ struct TranscriptionEpisodeSnapshot: Sendable {
 
 private struct AudioFormatInfo: Sendable {
     let formatID: AudioFormatID
+}
+
+private struct SendableChapterSourceData: Sendable {
+    let title: String
+    let start: Double
+    let type: MarkerType
+    let imageURL: URL?
+    let imageData: Data?
+}
+
+private struct ChapterExternalFileSnapshot: Sendable {
+    let urlString: String
+    let fileType: String?
+}
+
+private struct StoredChapterImageSnapshot: Sendable {
+    let title: String
+    let start: Double
+    let type: MarkerType
+    let imageURL: URL?
+}
+
+private struct EpisodeChapterSourceSnapshot: Sendable {
+    let remoteURL: URL?
+    let localFile: URL?
+    let chapterFiles: [ChapterExternalFileSnapshot]
+    let chapterImages: [StoredChapterImageSnapshot]
+}
+
+private enum ChapterImageStorageConfiguration {
+    static let compactMaxPixelSize: CGFloat = 240
+    static let jpegQuality: CGFloat = 0.62
+    static let minimumCandidateBytes = 30 * 1024
+    static let minimumRestoreByteGain = 4 * 1024
+    static let minimumRestorePixelGain: CGFloat = 24
+    static let mpeg4Extensions: Set<String> = ["m4a", "m4b", "mp4"]
 }
 
 private struct MetadataLoader {

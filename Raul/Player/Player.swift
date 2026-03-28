@@ -851,15 +851,16 @@ class Player {
                 return
             }
             lastArtworkURL = imageURL
+            let targetSize = CGSize(width: 600, height: 600)
             
-            if let chapterImageData = chapterImageData, let image = UIImage(data: chapterImageData) {
+            if let chapterImageData = chapterImageData,
+               let image = ImageLoaderAndCache.makeUIImage(from: chapterImageData, maxPixelSize: max(targetSize.width, targetSize.height)) {
                 // print("using chapter image data")
 
                 nowPlayingInfoActor.setArtwork(image)
                 
             }else if let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
                 // print("using URL image Data \(imageURL.absoluteString)")
-                let targetSize = CGSize(width: 600, height: 600)
                 if let resizedImage = downscale(image: originalImage, to: targetSize) {
                 
                     nowPlayingInfoActor.setArtwork(resizedImage)

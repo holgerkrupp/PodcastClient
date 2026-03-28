@@ -136,6 +136,11 @@ actor PlaylistModelActor {
         await episodeActor.download(episodeURL: episodeURL)
     }
 
+    private func restoreQueuedChapterImages(for episodeURL: URL) async {
+        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+        await episodeActor.restoreFullSizeChapterImages(for: episodeURL)
+    }
+
     private func insertEntry(
         for episode: Episode,
         episodeURL: URL,
@@ -210,6 +215,7 @@ actor PlaylistModelActor {
         updateQueuedEpisodeMetadata(episode)
         modelContext.saveIfNeeded()
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        await restoreQueuedChapterImages(for: episodeURL)
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()
     }
@@ -262,6 +268,7 @@ actor PlaylistModelActor {
         modelContext.saveIfNeeded()
 
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        await restoreQueuedChapterImages(for: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()
@@ -312,6 +319,7 @@ actor PlaylistModelActor {
         modelContext.saveIfNeeded()
 
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        await restoreQueuedChapterImages(for: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()
