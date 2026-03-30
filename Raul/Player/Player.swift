@@ -8,6 +8,10 @@ import BasicLogger
 @Observable
 @MainActor
 class Player {
+    private enum PlaybackSource {
+        case local
+        case remote
+    }
     
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
@@ -40,6 +44,8 @@ class Player {
     private let nowPlayingInfoActor = NowPlayingInfoActor()
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
+    private var downloadCompletionObserver: NSObjectProtocol?
+    private var currentPlaybackSource: PlaybackSource?
 
     var playbackRate: Float = 1.0 {
         didSet {
@@ -102,6 +108,7 @@ class Player {
         }
         pause()
         addChangeSettingsObserver()
+        addDownloadObserver()
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
         }
@@ -180,6 +187,23 @@ class Player {
                 
             }
         })
+    }
+
+    private func addDownloadObserver() {
+        downloadCompletionObserver = NotificationCenter.default.addObserver(
+            forName: .episodeDownloadFinished,
+            object: nil,
+            queue: nil
+        ) { [weak self] notification in
+            let episodeURL = notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL] as? URL
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let episodeURL else {
+                    return
+                }
+                await self.handleDownloadFinished(for: episodeURL)
+            }
+        }
     }
     
     private func setPlayBackSpeed(to playbackRate: Float){
@@ -346,15 +370,15 @@ class Player {
     }
 
     
-    private func playbackItem(for episode: Episode) -> AVPlayerItem? {
+    private func playbackItem(for episode: Episode) -> (item: AVPlayerItem, source: PlaybackSource)? {
         if episode.metaData?.calculatedIsAvailableLocally == true,
            let localFile = episode.localFile,
            FileManager.default.fileExists(atPath: localFile.path) {
-            return AVPlayerItem(url: localFile)
+            return (AVPlayerItem(url: localFile), .local)
         }
 
         guard let remoteURL = episode.url else { return nil }
-        return AVPlayerItem(url: remoteURL)
+        return (AVPlayerItem(url: remoteURL), .remote)
     }
 
     private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
@@ -368,6 +392,7 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        currentPlaybackSource = nil
         progressUpdateCounter = 0
         lastArtworkURL = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
@@ -402,7 +427,9 @@ class Player {
         try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
 
-        guard let item = playbackItem(for: episode) else { return }
+        guard let playback = playbackItem(for: episode) else { return }
+        currentPlaybackSource = playback.source
+        let item = playback.item
 
         let duration = item.duration.seconds
         if duration.isNormal && currentEpisode?.duration != duration {
@@ -513,6 +540,8 @@ class Player {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         Task {
+            await switchCurrentEpisodeToDownloadedCopyIfNeeded()
+            await ensureDownloadForCurrentEpisodeIfNeeded()
             await engine.setRate(rate)
             isPlaying = true
             
@@ -777,6 +806,59 @@ class Player {
 
         
 
+    }
+
+    private func ensureDownloadForCurrentEpisodeIfNeeded() async {
+        guard currentPlaybackSource == .remote,
+              let episode = currentEpisode,
+              episode.metaData?.calculatedIsAvailableLocally != true,
+              let remoteURL = episode.url else {
+            return
+        }
+
+        _ = await DownloadManager.shared.download(from: remoteURL, saveTo: episode.localFile)
+    }
+
+    private func handleDownloadFinished(for episodeURL: URL) async {
+        guard currentEpisodeURL == episodeURL else { return }
+        await switchCurrentEpisodeToDownloadedCopyIfNeeded()
+    }
+
+    private func switchCurrentEpisodeToDownloadedCopyIfNeeded() async {
+        guard currentPlaybackSource == .remote,
+              let episode = currentEpisode,
+              let localFile = episode.localFile,
+              FileManager.default.fileExists(atPath: localFile.path) else {
+            return
+        }
+
+        let replacementItem = AVPlayerItem(url: localFile)
+        let replacementDuration = replacementItem.duration.seconds
+        if replacementDuration.isNormal && currentEpisode?.duration != replacementDuration {
+            currentEpisode?.duration = replacementDuration
+        }
+
+        let preservedPosition = max(0, playPosition)
+        let wasPlaying = isPlaying
+        let preservedRate = playbackRate
+        let hadPlaybackUpdates = playbackTask != nil
+
+        await engine.replaceCurrentItem(with: replacementItem)
+        currentPlaybackSource = .local
+        await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
+
+        playPosition = preservedPosition
+        updateNowPlayingInfo()
+        _ = updateCurrentChapter()
+        updateChapterProgress()
+
+        if hadPlaybackUpdates {
+            startPlaybackUpdates()
+        }
+
+        if wasPlaying {
+            await engine.setRate(preservedRate)
+        }
     }
     
 

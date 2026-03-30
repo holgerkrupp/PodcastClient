@@ -45,6 +45,25 @@ actor EpisodeActor {
             return nil
         }
     }
+
+    func fetchEpisodes(byURL fileURL: URL) async -> [Episode] {
+        let predicate = #Predicate<Episode> { episode in
+            episode.url == fileURL
+        }
+
+        do {
+            return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+        } catch {
+            return []
+        }
+    }
+
+    private func ensureMetadata(for episode: Episode) {
+        guard episode.metaData == nil else { return }
+        let metadata = EpisodeMetaData()
+        metadata.episode = episode
+        episode.metaData = metadata
+    }
     
     func getLastPlayedEpisode() async -> Episode? {
         guard let episodeURL = await getLastPlayedEpisodeURL() else { return nil }
@@ -191,18 +210,19 @@ actor EpisodeActor {
     
     func archiveEpisode(_ episodeURL: URL?) async {
         guard let episodeURL else { return }
-        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else {
             print("could not find episode with URL \(episodeURL) to archive")
             return }
         
         await removeFromPlaylist(episodeURL)
 
-        if episode.metaData == nil {
-            episode.metaData = EpisodeMetaData()
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.isArchived = true
+            episode.metaData?.isInbox = false
+            episode.metaData?.status = .archived
         }
-        episode.metaData?.isArchived = true
-        episode.metaData?.isInbox = false
-        episode.metaData?.status = .archived
 
         await deleteFile(episodeURL: episodeURL)
          modelContext.saveIfNeeded()
@@ -214,28 +234,34 @@ actor EpisodeActor {
     
     func unarchiveEpisode(_ episodeURL: URL?) async  {
         guard let episodeURL else { return }
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
-        
-        episode.metaData?.isArchived = false
-        episode.metaData?.isInbox = true
-        episode.metaData?.status = .inbox
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.isArchived = false
+            episode.metaData?.isInbox = true
+            episode.metaData?.status = .inbox
+        }
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
     }
     
     func moveToHistory(episodeURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
         await removeFromPlaylist(episodeURL)
-        if episode.metaData == nil {
-            episode.metaData = EpisodeMetaData()
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            if episode.metaData?.lastPlayed == nil {
+                episode.metaData?.lastPlayed = Date()
+            }
+
+            episode.metaData?.isHistory = true
+            episode.metaData?.isInbox = false
+            episode.metaData?.status = .history
         }
-        if episode.metaData?.lastPlayed == nil {
-            episode.metaData?.lastPlayed = Date()
-        }
-        
-        episode.metaData?.isHistory = true
-        episode.metaData?.isInbox = false
-        episode.metaData?.status = .history
         
         modelContext.saveIfNeeded()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
@@ -303,12 +329,17 @@ actor EpisodeActor {
     
     func deleteFile(episodeURL: URL?) async{
         guard let episodeURL else { return }
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard let firstEpisode = episodes.first else { return }
 
-        if let file = episode.localFile{
+        if let file = firstEpisode.localFile{
             try? FileManager.default.removeItem(at: file)
         }
-        episode.metaData?.isAvailableLocally = false
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.isAvailableLocally = false
+        }
         
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
@@ -328,13 +359,23 @@ actor EpisodeActor {
         await updateDuration(fileURL: url)
 
         await createChapters(url)
-        try? await transcribe(url) // delegates now
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let automaticOnDeviceTranscriptionsEnabled = await settingsActor
+            .getAutomaticOnDeviceTranscriptionsEnabled()
+        let automaticOnDeviceTranscriptionsRequireCharging = await settingsActor
+            .getAutomaticOnDeviceTranscriptionsRequiresCharging()
+        let isConnectedToPower = automaticOnDeviceTranscriptionsRequireCharging
+            ? await isDeviceConnectedToPower()
+            : true
+        let allowAutomaticOnDeviceFallback = automaticOnDeviceTranscriptionsEnabled
+            && isConnectedToPower
+        try? await transcribe(url, allowOnDeviceFallback: allowAutomaticOnDeviceFallback)
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
     }
     
     // NEW: Delegate to TranscriptionManager
-    func transcribe(_ fileURL: URL) async throws {
+    func transcribe(_ fileURL: URL, allowOnDeviceFallback: Bool = true) async throws {
         print("transcribe")
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
         guard let episodeURL = episode.url else { return }
@@ -361,8 +402,45 @@ actor EpisodeActor {
             }
         }
 
+        guard allowOnDeviceFallback else {
+            return
+        }
+
         let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
-        await transcriptionManager.enqueueTranscription(episodeURL: episodeURL)
+        _ = await transcriptionManager.enqueueTranscription(episodeURL: episodeURL)
+    }
+
+    private func isDeviceConnectedToPower() async -> Bool {
+        await MainActor.run {
+            let device = UIDevice.current
+            let wasBatteryMonitoringEnabled = device.isBatteryMonitoringEnabled
+            if wasBatteryMonitoringEnabled == false {
+                device.isBatteryMonitoringEnabled = true
+            }
+
+            let isConnectedToPower: Bool
+            switch device.batteryState {
+            case .charging, .full:
+                isConnectedToPower = true
+            case .unknown, .unplugged:
+                isConnectedToPower = false
+            @unknown default:
+                isConnectedToPower = false
+            }
+
+            if wasBatteryMonitoringEnabled == false {
+                device.isBatteryMonitoringEnabled = false
+            }
+
+            return isConnectedToPower
+        }
+    }
+
+    func isReadyForAutomaticTranscription(episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        guard episode.url != nil else { return false }
+        guard episode.hasLoadedTranscript == false else { return false }
+        return episode.metaData?.calculatedIsAvailableLocally == true
     }
     
     func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
@@ -1206,6 +1284,7 @@ actor EpisodeActor {
 
     func transcriptionSnapshot(for episodeURL: URL) async -> TranscriptionEpisodeSnapshot? {
         guard let episode = await fetchEpisode(byURL: episodeURL),
+              episode.metaData?.calculatedIsAvailableLocally == true,
               let localFile = episode.localFile else { return nil }
 
         return TranscriptionEpisodeSnapshot(

@@ -149,6 +149,67 @@ actor TranscriptionManager {
         tasks[episodeURL] = nil
     }
 
+    func processNextAutomaticTranscriptionFromUpNext() async -> URL? {
+        guard tasks.isEmpty else { return nil }
+
+        let settingsActor = PodcastSettingsModelActor(modelContainer: container)
+        guard await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled() else {
+            return nil
+        }
+
+        let requiresCharging = await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
+        let isConnectedToPower = requiresCharging ? await isDeviceConnectedToPower() : true
+        if isConnectedToPower == false {
+            return nil
+        }
+
+        let playlistActor: PlaylistModelActor
+        do {
+            playlistActor = try PlaylistModelActor(modelContainer: container)
+        } catch {
+            return nil
+        }
+
+        let upNextEpisodeURLs: [URL]
+        do {
+            upNextEpisodeURLs = try await playlistActor.orderedEpisodeURLs()
+        } catch {
+            return nil
+        }
+
+        let episodeActor = EpisodeActor(modelContainer: container)
+
+        for episodeURL in upNextEpisodeURLs {
+            guard items[episodeURL] == nil else { continue }
+            guard await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL) else { continue }
+
+            try? await episodeActor.transcribe(episodeURL, allowOnDeviceFallback: true)
+
+            if tasks.isEmpty {
+                if await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL) {
+                    return episodeURL
+                }
+                continue
+            }
+
+            return episodeURL
+        }
+
+        return nil
+    }
+
+    func runAutomaticTranscriptionsFromUpNextUntilIdle() async -> Bool {
+        guard await processNextAutomaticTranscriptionFromUpNext() != nil else {
+            return false
+        }
+
+        while let runningTask = tasks.values.first {
+            await runningTask.value
+        }
+
+        return true
+    }
+
     private func finish(episodeURL: URL, error: String) async {
         if let item = items[episodeURL] {
             await MainActor.run {
@@ -162,11 +223,40 @@ actor TranscriptionManager {
         tasks[episodeURL]?.cancel()
         tasks[episodeURL] = nil
         // keep item around for UI to show finished/failed state
+
+        guard tasks.isEmpty else { return }
+        _ = await processNextAutomaticTranscriptionFromUpNext()
     }
 
     // MARK: - Actor-isolated helpers
 
     private func store(item: TranscriptionItem, for episodeURL: URL) {
         items[episodeURL] = item
+    }
+
+    private func isDeviceConnectedToPower() async -> Bool {
+        await MainActor.run {
+            let device = UIDevice.current
+            let wasBatteryMonitoringEnabled = device.isBatteryMonitoringEnabled
+            if wasBatteryMonitoringEnabled == false {
+                device.isBatteryMonitoringEnabled = true
+            }
+
+            let isConnectedToPower: Bool
+            switch device.batteryState {
+            case .charging, .full:
+                isConnectedToPower = true
+            case .unknown, .unplugged:
+                isConnectedToPower = false
+            @unknown default:
+                isConnectedToPower = false
+            }
+
+            if wasBatteryMonitoringEnabled == false {
+                device.isBatteryMonitoringEnabled = false
+            }
+
+            return isConnectedToPower
+        }
     }
 }

@@ -7,9 +7,11 @@
 
 import SwiftUI
 import Foundation
+import UIKit
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
@@ -23,7 +25,13 @@ struct SettingsView: View {
                 }
 
                 Section("Integrations") {
-                    NotificationSettingsView()
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Notifications", systemImage: "bell.badge")
+                    }
 
                     NavigationLink {
                         TranscriptionSettingsView()

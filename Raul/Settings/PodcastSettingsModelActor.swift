@@ -234,4 +234,12 @@ actor PodcastSettingsModelActor {
         return await standardSettings().enableLockscreenSlider
 
     }
+
+    func getAutomaticOnDeviceTranscriptionsEnabled() async -> Bool {
+        await standardSettings().enableAutomaticOnDeviceTranscriptions
+    }
+
+    func getAutomaticOnDeviceTranscriptionsRequiresCharging() async -> Bool {
+        await standardSettings().limitAutomaticOnDeviceTranscriptionsToCharging
+    }
 }

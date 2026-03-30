@@ -7,6 +7,7 @@
 		<string>feedRefresh</string>
 		<string>checkFeedUpdates</string>
 		<string>storageCleanup</string>
+		<string>automaticTranscriptionProcessing</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

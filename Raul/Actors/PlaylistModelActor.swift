@@ -73,6 +73,11 @@ actor PlaylistModelActor {
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).first
     }
 
+    private func fetchEpisodes(byURL fileURL: URL) throws -> [Episode] {
+        let predicate = #Predicate<Episode> { $0.url == fileURL }
+        return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+    }
+
     // MARK: - Public API (safe)
 
     /// Re-fetches and returns the up-to-date playlist. Useful if callers want to verify presence.
@@ -118,15 +123,25 @@ actor PlaylistModelActor {
         return min(1, sortedEntries.count)
     }
 
-    private func existingEntry(for episodeURL: URL, in playlist: Playlist) -> PlaylistEntry? {
-        playlist.items?.first(where: { $0.episode?.url == episodeURL })
+    private func existingEntries(for episodeURL: URL, in playlist: Playlist) -> [PlaylistEntry] {
+        playlist.items?.filter { $0.episode?.url == episodeURL } ?? []
     }
 
-    private func updateQueuedEpisodeMetadata(_ episode: Episode) {
-        episode.metaData?.isInbox = false
-        episode.metaData?.isArchived = false
-        episode.metaData?.status = .none
-        episode.refresh.toggle()
+    private func ensureMetadata(for episode: Episode) {
+        guard episode.metaData == nil else { return }
+        let metadata = EpisodeMetaData()
+        metadata.episode = episode
+        episode.metaData = metadata
+    }
+
+    private func updateQueuedEpisodeMetadata(_ episodes: [Episode]) {
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.isInbox = false
+            episode.metaData?.isArchived = false
+            episode.metaData?.status = .none
+            episode.refresh.toggle()
+        }
     }
 
     private func startDownloadIfNeeded(for episode: Episode, episodeURL: URL) async {
@@ -143,18 +158,42 @@ actor PlaylistModelActor {
 
     private func insertEntry(
         for episode: Episode,
-        episodeURL: URL,
+        existingEntry: PlaylistEntry?,
         into playlist: Playlist,
         sortedEntries: inout [PlaylistEntry],
         at targetIndex: Int
     ) {
-        if let existingEntry = existingEntry(for: episodeURL, in: playlist) {
+        if let existingEntry {
+            existingEntry.episode = episode
+            existingEntry.playlist = playlist
             sortedEntries.insert(existingEntry, at: targetIndex)
         } else {
             let newEntry = PlaylistEntry(episode: episode, order: 0)
             modelContext.insert(newEntry)
             newEntry.playlist = playlist
             sortedEntries.insert(newEntry, at: targetIndex)
+        }
+    }
+
+    private func detachExistingEntries(
+        for episodeURL: URL,
+        in playlist: Playlist,
+        sortedEntries: inout [PlaylistEntry]
+    ) -> PlaylistEntry? {
+        let matchingEntries = existingEntries(for: episodeURL, in: playlist)
+        let reusableEntry = matchingEntries.first
+
+        for duplicateEntry in matchingEntries.dropFirst() {
+            modelContext.delete(duplicateEntry)
+        }
+
+        sortedEntries.removeAll { $0.episode?.url == episodeURL }
+        return reusableEntry
+    }
+
+    private func notifyInboxDidChange() async {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
     }
 
@@ -174,15 +213,16 @@ actor PlaylistModelActor {
     }
     
     func insert(episodeURL: URL, after anchorEpisodeURL: URL?) async throws {
-        guard let playlist = try fetchPlaylist(),
-              let episode = try fetchEpisode(byURL: episodeURL) else { return }
+        guard let playlist = try fetchPlaylist() else { return }
+        let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
+        guard let episode = matchingEpisodes.first else { return }
 
         var sortedEntries = playlist.ordered
-        
-        // 1. Remove the item if it's already there (to prevent duplicates/shifts)
-        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.url == episodeURL }) {
-            sortedEntries.remove(at: existingIndex)
-        }
+        let reusableEntry = detachExistingEntries(
+            for: episodeURL,
+            in: playlist,
+            sortedEntries: &sortedEntries
+        )
         
         // 2. Find the anchor's new position after the removal
         if let anchorEpisodeURL,
@@ -191,7 +231,7 @@ actor PlaylistModelActor {
             let targetIndex = anchorIndex + 1
             insertEntry(
                 for: episode,
-                episodeURL: episodeURL,
+                existingEntry: reusableEntry,
                 into: playlist,
                 sortedEntries: &sortedEntries,
                 at: targetIndex
@@ -200,7 +240,7 @@ actor PlaylistModelActor {
             // Fallback: If no anchor is found, put it at the front (index 0)
             insertEntry(
                 for: episode,
-                episodeURL: episodeURL,
+                existingEntry: reusableEntry,
                 into: playlist,
                 sortedEntries: &sortedEntries,
                 at: 0
@@ -212,8 +252,9 @@ actor PlaylistModelActor {
             entry.order = i
         }
         
-        updateQueuedEpisodeMetadata(episode)
+        updateQueuedEpisodeMetadata(matchingEpisodes)
         modelContext.saveIfNeeded()
+        await notifyInboxDidChange()
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
         await restoreQueuedChapterImages(for: episodeURL)
         await PlayNextWidgetSync.refresh(using: modelContainer)
@@ -222,17 +263,19 @@ actor PlaylistModelActor {
 
     /// Add/move an episode within the playlist.
     func add(episodeURL: URL, to position: Playlist.Position = .end) async throws {
-        guard let playlist = try fetchPlaylist(),
-              let episode = try fetchEpisode(byURL: episodeURL) else { return }
+        guard let playlist = try fetchPlaylist() else { return }
+        let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
+        guard let episode = matchingEpisodes.first else { return }
 
         // Create a working copy of the ordered entries
         var sortedEntries = playlist.ordered
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
-        // Remove existing entry if present to avoid duplicates and position drift
-        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.url == episodeURL }) {
-            sortedEntries.remove(at: existingIndex)
-        }
+        let reusableEntry = detachExistingEntries(
+            for: episodeURL,
+            in: playlist,
+            sortedEntries: &sortedEntries
+        )
 
         // Determine target insertion index similar to PlaylistViewModel.addEpisode logic
         let targetIndex: Int
@@ -251,7 +294,7 @@ actor PlaylistModelActor {
 
         insertEntry(
             for: episode,
-            episodeURL: episodeURL,
+            existingEntry: reusableEntry,
             into: playlist,
             sortedEntries: &sortedEntries,
             at: targetIndex
@@ -263,9 +306,10 @@ actor PlaylistModelActor {
         }
 
         // Update episode metadata
-        updateQueuedEpisodeMetadata(episode)
+        updateQueuedEpisodeMetadata(matchingEpisodes)
 
         modelContext.saveIfNeeded()
+        await notifyInboxDidChange()
 
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
         await restoreQueuedChapterImages(for: episodeURL)
@@ -276,15 +320,18 @@ actor PlaylistModelActor {
 
     /// Add/move an episode with explicit index control within the visual order.
     func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
-        guard let playlist = try fetchPlaylist(),
-              let episode = try fetchEpisode(byURL: episodeURL) else { return }
+        guard let playlist = try fetchPlaylist() else { return }
+        let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
+        guard let episode = matchingEpisodes.first else { return }
 
         var sortedEntries = playlist.ordered
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
-        if let existingIndex = sortedEntries.firstIndex(where: { $0.episode?.url == episodeURL }) {
-            sortedEntries.remove(at: existingIndex)
-        }
+        let reusableEntry = detachExistingEntries(
+            for: episodeURL,
+            in: playlist,
+            sortedEntries: &sortedEntries
+        )
 
         let defaultIndex: Int
         switch position {
@@ -304,7 +351,7 @@ actor PlaylistModelActor {
 
         insertEntry(
             for: episode,
-            episodeURL: episodeURL,
+            existingEntry: reusableEntry,
             into: playlist,
             sortedEntries: &sortedEntries,
             at: targetIndex
@@ -314,9 +361,10 @@ actor PlaylistModelActor {
             entry.order = i
         }
 
-        updateQueuedEpisodeMetadata(episode)
+        updateQueuedEpisodeMetadata(matchingEpisodes)
 
         modelContext.saveIfNeeded()
+        await notifyInboxDidChange()
 
         await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
         await restoreQueuedChapterImages(for: episodeURL)
@@ -327,12 +375,15 @@ actor PlaylistModelActor {
 
     func remove(episodeURL: URL) throws {
         guard let playlist = try fetchPlaylist() else { return }
-        
-        if let entry = playlist.items?.first(where: { $0.episode?.url == episodeURL }){
-            
-            modelContext.delete(entry)
+
+        let matchingEntries = existingEntries(for: episodeURL, in: playlist)
+
+        if matchingEntries.isEmpty == false {
+            for entry in matchingEntries {
+                modelContext.delete(entry)
+                entry.episode?.refresh.toggle()
+            }
             normalizeOrder()
-            entry.episode?.refresh.toggle()
             modelContext.saveIfNeeded()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer)

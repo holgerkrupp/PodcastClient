@@ -4,12 +4,14 @@ import BackgroundTasks
 import DeviceInfo
 import BasicLogger
 
-private enum BackgroundTaskConfiguration {
+enum BackgroundTaskConfiguration {
     static let feedRefreshIdentifier = "checkFeedUpdates"
     static let storageCleanupIdentifier = "storageCleanup"
+    static let automaticTranscriptionIdentifier = "automaticTranscriptionProcessing"
     static let feedRefreshInterval: TimeInterval = 60 * 30
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
+    static let automaticTranscriptionInterval: TimeInterval = 60 * 15
     static let lastStorageCleanupKey = "LastStorageCleanup"
 }
 
@@ -27,13 +29,13 @@ struct RaulApp: App {
 
     var body: some Scene {
         WindowGroup {
-            
+            AppLaunchContainerView{
                 ContentView()
                     .modelContainer(modelContainerManager.container)
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
-
+                
                     .onAppear {
                         let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
                         Task {
@@ -43,14 +45,26 @@ struct RaulApp: App {
                             await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
                             WatchSyncCoordinator.refreshSoon()
                         }
+                        UIDevice.current.isBatteryMonitoringEnabled = true
+                        Task {
+                            await runAutomaticTranscriptionSweep(reason: "launch")
+                        }
                     }
-            
+                    .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
+                        Task {
+                            await runAutomaticTranscriptionSweep(reason: "power state changed")
+                        }
+                    }
+            }
         }
         .onChange(of: phase, {
             switch phase {
             case .background:
                 scheduleFeedRefresh()
                 scheduleStorageCleanup()
+                Task {
+                    await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
+                }
              
                 
             case .active:
@@ -61,6 +75,9 @@ struct RaulApp: App {
                         minimumInterval: BackgroundTaskConfiguration.weeklyStorageCleanupFallbackInterval,
                         reason: "active fallback"
                     )
+                }
+                Task {
+                    await runAutomaticTranscriptionSweep(reason: "active")
                 }
           
                 
@@ -163,6 +180,13 @@ struct RaulApp: App {
             try BGTaskScheduler.shared.submit(request)
         } catch {
             BasicLogger.shared.log(error.localizedDescription)
+        }
+    }
+
+    func runAutomaticTranscriptionSweep(reason: String) async {
+        let startedEpisodeURL = await TranscriptionManager.shared.processNextAutomaticTranscriptionFromUpNext()
+        if let startedEpisodeURL {
+            BasicLogger.shared.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.absoluteString)")
         }
     }
 

@@ -213,7 +213,11 @@
         }
       }
     },
+    "App Controls" : {
+
+    },
     "App-Wide Controls" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -303,6 +307,9 @@
         }
       }
     },
+    "Automatic on-device transcriptions" : {
+
+    },
     "Bookmark" : {
       "localizations" : {
         "de" : {
@@ -375,6 +382,9 @@
           }
         }
       }
+    },
+    "Chapter Rules" : {
+
     },
     "Chapter Skip Rules" : {
       "localizations" : {
@@ -450,6 +460,7 @@
       }
     },
     "Custom" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -468,6 +479,9 @@
           }
         }
       }
+    },
+    "Custom Settings" : {
+
     },
     "Database" : {
 
@@ -648,6 +662,7 @@
       }
     },
     "Enable Custom Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -658,6 +673,7 @@
       }
     },
     "Enable Custom to give this podcast its own queue placement, playback speed, and chapter rules." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -835,6 +851,9 @@
         }
       }
     },
+    "Following Global Defaults" : {
+
+    },
     "From %@ to %@" : {
       "localizations" : {
         "de" : {
@@ -862,6 +881,7 @@
       }
     },
     "Global" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -900,6 +920,9 @@
           }
         }
       }
+    },
+    "Global Settings" : {
+
     },
     "Heat Map (%@ – %@)" : {
       "localizations" : {
@@ -1320,6 +1343,9 @@
         }
       }
     },
+    "No chapter rules are currently applied." : {
+
+    },
     "No chapter rules yet. Add a rule to automatically skip matching chapter titles." : {
       "localizations" : {
         "de" : {
@@ -1565,6 +1591,9 @@
         }
       }
     },
+    "Only while charging" : {
+
+    },
     "Open in Browser" : {
       "localizations" : {
         "de" : {
@@ -1698,6 +1727,9 @@
         }
       }
     },
+    "Playback Continuation" : {
+
+    },
     "Playback Settings" : {
       "localizations" : {
         "de" : {
@@ -1717,6 +1749,9 @@
           }
         }
       }
+    },
+    "Player Controls" : {
+
     },
     "PlayerIntentsExtension" : {
       "localizations" : {
@@ -1768,6 +1803,9 @@
         }
       }
     },
+    "Podcast Sections" : {
+
+    },
     "Podcast Settings" : {
       "localizations" : {
         "de" : {
@@ -1781,6 +1819,9 @@
     "Podcast-attributed storage will appear here once content is stored locally." : {
 
     },
+    "Podcasts" : {
+
+    },
     "Podcasts kept in the database but excluded from refresh will appear here." : {
       "localizations" : {
         "de" : {
@@ -1792,6 +1833,7 @@
       }
     },
     "Podcasts With Custom Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1853,6 +1895,9 @@
           }
         }
       }
+    },
+    "Queue & Playback" : {
+
     },
     "Rebuild Listening Analytics" : {
       "localizations" : {
@@ -1974,6 +2019,9 @@
         }
       }
     },
+    "Rule %lld" : {
+
+    },
     "Rules compare against chapter titles and mark matching chapters to be skipped." : {
       "localizations" : {
         "de" : {
@@ -2068,6 +2116,7 @@
       }
     },
     "Settings Mode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2206,9 +2255,6 @@
     "Storage Error" : {
 
     },
-    "Storage Management" : {
-
-    },
     "Stored Files" : {
 
     },
@@ -2275,7 +2321,11 @@
     "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size." : {
 
     },
+    "These control whether playback scrubbing is available inside the app and through system playback controls." : {
+
+    },
     "These settings are global only. They affect every podcast and cannot be customized per show." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2342,7 +2392,11 @@
         }
       }
     },
+    "This screen focuses on what is unique to this podcast. App-wide controls stay grouped under Global Settings." : {
+
+    },
     "This screen shows which settings currently affect this podcast, and which controls stay global for the whole app." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2517,6 +2571,9 @@
         }
       }
     },
+    "Updating podcast settings…" : {
+
+    },
     "URL or Search" : {
       "localizations" : {
         "de" : {
@@ -2527,6 +2584,9 @@
         }
       }
     },
+    "Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available. Manual transcription is still unaffected." : {
+
+    },
     "Use Custom" : {
       "localizations" : {
         "de" : {
@@ -2536,6 +2596,9 @@
           }
         }
       }
+    },
+    "Use podcast-specific settings" : {
+
     },
     "Username" : {
       "localizations" : {
@@ -2556,6 +2619,9 @@
           }
         }
       }
+    },
+    "Using Podcast Defaults" : {
+
     },
     "Using podcast-specific settings" : {
       "localizations" : {
@@ -2606,6 +2672,12 @@
           }
         }
       }
+    },
+    "When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available, and the manual Transcribe button remains available even when this is off." : {
+
+    },
+    "When enabled, the next queue item starts automatically after an episode finishes." : {
+
     },
     "When you usually listen" : {
       "localizations" : {
