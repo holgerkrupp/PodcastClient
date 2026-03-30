@@ -6,7 +6,6 @@ struct AppLaunchContainerView<Content: View>: View {
     private let content: Content
 
     @State private var didStartSequence = false
-    @State private var isContentVisible = false
     @State private var isLaunchVisible = true
     @State private var isLaunchFinishing = false
 
@@ -17,10 +16,7 @@ struct AppLaunchContainerView<Content: View>: View {
     var body: some View {
         ZStack {
             content
-                .opacity(isContentVisible ? 1 : 0.001)
-                .scaleEffect(isContentVisible || reduceMotion ? 1 : 1.01)
-                .blur(radius: isContentVisible || reduceMotion ? 0 : 6)
-                .animation(.easeOut(duration: 0.35), value: isContentVisible)
+                .allowsHitTesting(!isLaunchVisible)
 
             if isLaunchVisible {
                 AnimatedLaunchView(isFinishing: isLaunchFinishing)
@@ -38,39 +34,29 @@ struct AppLaunchContainerView<Content: View>: View {
     @MainActor
     private func runLaunchSequence() async {
         if reduceMotion {
-            isContentVisible = true
-            try? await Task.sleep(for: .milliseconds(350))
+            try? await Task.sleep(for: .milliseconds(220))
             withAnimation(.easeOut(duration: 0.18)) {
                 isLaunchVisible = false
             }
             return
         }
 
-        try? await Task.sleep(for: .milliseconds(1280))
+        try? await Task.sleep(for: .milliseconds(360))
 
-        withAnimation(.easeOut(duration: 0.25)) {
-            isContentVisible = true
-        }
-
-        withAnimation(.spring(duration: 0.7, bounce: 0.08)) {
+        withAnimation(.easeInOut(duration: 0.95)) {
             isLaunchFinishing = true
         }
 
-        try? await Task.sleep(for: .milliseconds(360))
+        try? await Task.sleep(for: .milliseconds(980))
 
-        withAnimation(.easeOut(duration: 0.22)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             isLaunchVisible = false
         }
     }
 }
 
 struct AnimatedLaunchView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     let isFinishing: Bool
-
-    @State private var hasAppeared = false
-    @State private var pulsePlayButton = false
 
     private let stripeColors: [Color] = [
         Color(.displayP3, red: 0.4685, green: 0.7231, blue: 0.3381, opacity: 1),
@@ -83,77 +69,43 @@ struct AnimatedLaunchView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let layout = LaunchLayout(
-                size: geometry.size,
-                safeTop: geometry.safeAreaInsets.top
-            )
+            let layout = LaunchLayout(size: geometry.size)
 
             ZStack {
-                Color("backgroundColor")
-                    .ignoresSafeArea()
-
-                FlowingLaunchBarsView(
+                LaunchBarsCurtainView(
                     layout: layout,
                     colors: stripeColors,
-                    hasAppeared: hasAppeared,
-                    animate: !reduceMotion
+                    isFinishing: isFinishing
                 )
-                .opacity(isFinishing ? 0 : 1)
-                .offset(y: isFinishing ? -28 : 0)
 
-                CenteredPlayButton(
-                    size: layout.playButtonSize,
-                    shouldPulse: pulsePlayButton && !reduceMotion
-                )
-                .position(x: geometry.size.width / 2, y: geometry.size.height * 0.5)
-                .scaleEffect(isFinishing ? 1.08 : (pulsePlayButton && !reduceMotion ? 1.03 : 1))
-                .opacity(isFinishing ? 0 : 1)
-                .offset(y: isFinishing ? -20 : 0)
+                Image("LaunchMark")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: layout.launchMarkWidth)
+                    .shadow(color: Color.white.opacity(0.18), radius: 8, x: 0, y: 0)
+                    .shadow(color: Color.black.opacity(0.22), radius: 22, x: 0, y: 12)
+                    .opacity(isFinishing ? 0 : 1)
+                    .scaleEffect(isFinishing ? 0.96 : 1)
+                    .animation(.easeOut(duration: 0.24), value: isFinishing)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .ignoresSafeArea()
-        .onAppear {
-            hasAppeared = true
-            guard !reduceMotion else { return }
-
-            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                pulsePlayButton = true
-            }
-        }
     }
 }
 
 private struct LaunchLayout {
     let size: CGSize
-    let safeTop: CGFloat
 
-    var barHeight: CGFloat {
-        size.height / 6
-    }
-
-    var barGap: CGFloat {
-        0
-    }
-
-    var topInset: CGFloat {
-        safeTop + 0
-    }
-
-    var playButtonSize: CGSize {
-        let width = min(size.width * 0.24, 132)
-        return CGSize(width: width, height: width * 1.04)
+    var launchMarkWidth: CGFloat {
+        min(size.width * 0.28, 140)
     }
 }
 
-private struct FlowingLaunchBarsView: View {
+private struct LaunchBarsCurtainView: View {
     let layout: LaunchLayout
     let colors: [Color]
-    let hasAppeared: Bool
-    let animate: Bool
-
-    private let horizontalInsets: [CGFloat] = [0, 0, 0, 0, 0, 0]
-    private let horizontalOffsets: [CGFloat] = [0, 0, 0, 0, 0, 0]
+    let isFinishing: Bool
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -161,106 +113,41 @@ private struct FlowingLaunchBarsView: View {
                 Rectangle()
                     .fill(
                         LinearGradient(
-                            colors: [color.opacity(0.98), color.opacity(0.84)],
-                            startPoint: .leading,
-                            endPoint: .trailing
+                            colors: [color.opacity(0.96), color],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
                     )
-                    .overlay {
+                /*
+                    .overlay(alignment: .top) {
                         Rectangle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.white.opacity(0.18), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                    }
-                    .frame(height: layout.barHeight)
-                    .padding(.horizontal, horizontalInsets[index])
-                    .shadow(color: color.opacity(0.18), radius: 18, x: 0, y: 10)
-                    .offset(
-                        x: horizontalOffsets[index],
-                        y: hasAppeared ? settledY(for: index) : startY(for: index)
-                    )
+                            .fill(Color.white.opacity(0.14))
+                            .frame(height: max(1, bandHeight(for: index) * 0.08))
+                    }*/
+                    .frame(width: layout.size.width, height: bandHeight(for: index))
+                    .offset(y: bandOrigin(for: index) + travelOffset(for: index))
+                    .shadow(color: color.opacity(0.14), radius: 12, x: 0, y: 6)
                     .animation(
-                        animate
-                            ? .spring(duration: 0.82, bounce: 0.16)
-                                .delay(Double(index) * 0.08)
-                            : nil,
-                        value: hasAppeared
+                        .easeInOut(duration: 0.72).delay(Double(index) * 0.06),
+                        value: isFinishing
                     )
-                    .opacity(hasAppeared || !animate ? 1 : 0.96)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .clipped()
     }
 
-    private func settledY(for index: Int) -> CGFloat {
-        layout.topInset + CGFloat(index) * (layout.barHeight + layout.barGap)
+    private func bandHeight(for index: Int) -> CGFloat {
+        bandOrigin(for: index + 1) - bandOrigin(for: index)
     }
 
-    private func startY(for index: Int) -> CGFloat {
-        layout.size.height + CGFloat(index) * (layout.barHeight * 0.78)
+    private func bandOrigin(for index: Int) -> CGFloat {
+        floor(CGFloat(index) * layout.size.height / CGFloat(colors.count))
     }
-}
 
-private struct CenteredPlayButton: View {
-    let size: CGSize
-    let shouldPulse: Bool
-
-    var body: some View {
-        PlayTriangleShape()
-            .fill(Color.white.opacity(0.96))
-            .overlay {
-                PlayTriangleShape()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.94), Color.white.opacity(0.74)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-            .frame(width: size.width, height: size.height)
-            .shadow(color: Color.white.opacity(0.2), radius: 6, x: -2, y: -2)
-            .shadow(color: Color.black.opacity(0.22), radius: 20, x: 0, y: 12)
-            .scaleEffect(shouldPulse ? 1.02 : 0.98)
-    }
-}
-
-private struct PlayTriangleShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-
-        let insetX = rect.width * 0.14
-        let insetY = rect.height * 0.08
-
-        let start = CGPoint(x: insetX, y: insetY)
-        let tip = CGPoint(x: rect.maxX - insetX * 0.6, y: rect.midY)
-        let end = CGPoint(x: insetX, y: rect.maxY - insetY)
-
-        path.move(to: start)
-        path.addLine(to: tip)
-        path.addLine(to: end)
-        path.addLine(to: start)
-        /*
-        path.addQuadCurve(
-            to: tip,
-            control: CGPoint(x: rect.maxX * 0.78, y: rect.minY + rect.height * 0.08)
-        )
-        path.addQuadCurve(
-            to: end,
-            control: CGPoint(x: rect.maxX * 0.80, y: rect.maxY - rect.height * 0.08)
-        )
-        path.addQuadCurve(
-            to: start,
-            control: CGPoint(x: rect.minX + rect.width * 0.06, y: rect.midY)
-        )
-        */
-        path.closeSubpath()
-
-        return path
+    private func travelOffset(for index: Int) -> CGFloat {
+        guard isFinishing else { return 0 }
+        return -layout.size.height - CGFloat(index) * 18
     }
 }
 

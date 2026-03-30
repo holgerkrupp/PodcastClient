@@ -1,14 +1,17 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct PodcastSettingsView: View {
     static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
 
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
 
     let podcast: Podcast?
 
     @State private var useCustomSettings: Bool
+    @State private var isUpdatingCustomSettings: Bool = false
     @State private var actor: PodcastSettingsModelActor
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
@@ -29,22 +32,19 @@ struct PodcastSettingsView: View {
         return podcast.settings
     }
 
-    private var editableSettings: PodcastSettings? {
-        if podcast == nil {
-            return globalSettings
-        }
-        return activeCustomSettings
-    }
-
     private var effectiveSettings: PodcastSettings? {
         activeCustomSettings ?? globalSettings
     }
 
-    private var editableSettingsSource: SettingsSource {
+    private var resolvedSettingsSource: SettingsSource {
         if podcast == nil {
             return .global
         }
-        return useCustomSettings ? .podcast : .global
+        return activeCustomSettings == nil ? .global : .podcast
+    }
+
+    private var isPodcastCustomSettingsActive: Bool {
+        podcast != nil && activeCustomSettings != nil
     }
 
     private var podcastsUsingCustomSettings: [Podcast] {
@@ -65,34 +65,32 @@ struct PodcastSettingsView: View {
                 }
 
                 if let effectiveSettings, let globalSettings {
+                    /*
                     appliedBehaviorSection(effectiveSettings: effectiveSettings, globalSettings: globalSettings)
+                    */
+
+                    if podcast == nil {
+                        globalDefaultsSection(settings: effectiveSettings)
+                        appControlsSection(settings: globalSettings)
+                        transcriptionSection(settings: globalSettings)
+                        podcastManagementSection
+                        integrationsSection
+                        maintenanceSection
+#if DEBUG
+                        debugSection
+#endif
+                        aboutSection
+                    } else {
+                        if isPodcastCustomSettingsActive {
+                            podcastCustomizationSection(settings: effectiveSettings)
+                        }
+                        globalSettingsShortcutSection
+                    }
                 } else {
                     Section {
                         ProgressView("Loading settings…")
                     }
                 }
-
-                if let editableSettings {
-                    editableSections(settings: editableSettings)
-                } else if podcast != nil {
-                    inheritanceSection
-                }
-
-                if let globalSettings {
-                    appWideSection(settings: globalSettings)
-                }
-
-                if podcast == nil {
-                    globalPodcastSections
-                }
-
-                integrationsSection
-                maintenanceSection
-#if DEBUG
-                debugSection
-#endif
-
-                aboutSection
             }
             .listStyle(.insetGrouped)
             .navigationTitle(podcast == nil ? "Settings" : "Podcast Settings")
@@ -120,16 +118,16 @@ struct PodcastSettingsView: View {
                             .font(.headline)
                             .lineLimit(2)
 
-                        Text(useCustomSettings ? "Using podcast-specific settings" : "Following global defaults")
+                        Text(isPodcastCustomSettingsActive ? "Using podcast-specific settings" : "Following global defaults")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
 
                     Spacer()
-                    SettingsSourceBadge(source: editableSettingsSource)
+                    SettingsSourceBadge(source: resolvedSettingsSource)
                 }
 
-                Text("This screen shows which settings currently affect this podcast, and which controls stay global for the whole app.")
+                Text("This screen focuses on what is unique to this podcast. App-wide controls stay grouped under Global Settings.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -148,21 +146,32 @@ struct PodcastSettingsView: View {
 
     private var scopeSection: some View {
         Section("Scope") {
-            Picker("Settings Mode", selection: $useCustomSettings) {
-                Text("Global").tag(false)
-                Text("Custom").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .disabled(podcast?.feed == nil)
-            .onChange(of: useCustomSettings) { _, newValue in
-                handleCustomSettingsToggle(newValue)
-            }
+            Toggle(
+                "Use podcast-specific settings",
+                isOn: Binding(
+                    get: { useCustomSettings },
+                    set: { newValue in
+                        handleCustomSettingsToggle(newValue)
+                    }
+                )
+            )
+            .disabled(podcast?.feed == nil || isUpdatingCustomSettings)
 
             Text(useCustomSettings
                  ? "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global."
                  : "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if isUpdatingCustomSettings {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Updating podcast settings…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -173,21 +182,21 @@ struct PodcastSettingsView: View {
                 title: "Queue placement for new episodes",
                 value: effectiveSettings.playnextPosition.settingsLabel,
                 detail: "Used when new episodes are processed after refresh.",
-                source: editableSettingsSource
+                source: resolvedSettingsSource
             )
 
             SettingsBehaviorRow(
                 title: "Playback speed",
                 value: effectiveSettings.playbackSpeed.formattedPlaybackSpeed,
                 detail: "Loaded when playback starts. Changing speed in the player saves back to this active scope.",
-                source: editableSettingsSource
+                source: resolvedSettingsSource
             )
 
             SettingsBehaviorRow(
                 title: "Chapter skip rules",
                 value: effectiveSettings.autoSkipKeywords.settingsSummary,
                 detail: "Applied when chapter data is loaded for an episode. Existing manual chapter choices are not reset automatically.",
-                source: editableSettingsSource
+                source: resolvedSettingsSource
             )
 
             SettingsBehaviorRow(
@@ -214,179 +223,180 @@ struct PodcastSettingsView: View {
     }
 
     @ViewBuilder
-    private func editableSections(settings: PodcastSettings) -> some View {
-        Section("Queue") {
-            Picker("New episodes go to", selection: binding(for: \.playnextPosition, in: settings)) {
-                ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
-                    Text(position.settingsLabel).tag(position)
-                }
-            }
-
-            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-
-        Section("Playback") {
-            Stepper(
-                value: Binding(
-                    get: { settings.playbackSpeed ?? 1.0 },
-                    set: {
-                        settings.playbackSpeed = $0
-                        saveAndNotify()
-                    }
-                ),
-                in: 0.5...3.0,
-                step: 0.1
-            ) {
-                LabeledContent("Default speed") {
-                    Text(settings.playbackSpeed.formattedPlaybackSpeed)
-                        .monospacedDigit()
-                }
-            }
-
-            Text("This speed is used when playback starts. The player speed control also writes back here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-
-        Section("Chapter Skip Rules") {
-            if settings.autoSkipKeywords.isEmpty {
-                Text("No chapter rules yet. Add a rule to automatically skip matching chapter titles.")
-                    .foregroundStyle(.secondary)
-            }
-
-            ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \.offset) { index, rule in
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField(
-                        "Keyword or phrase",
-                        text: Binding(
-                            get: { rule.keyWord ?? "" },
-                            set: {
-                                settings.autoSkipKeywords[index].keyWord = $0
-                                saveAndNotify()
-                            }
-                        )
-                    )
-
-                    HStack {
-                        Picker(
-                            "Match",
-                            selection: Binding(
-                                get: { rule.keyOperator },
-                                set: {
-                                    settings.autoSkipKeywords[index].keyOperator = $0
-                                    saveAndNotify()
-                                }
-                            )
-                        ) {
-                            ForEach(Operator.allCases, id: \.self) { op in
-                                Text(op.settingsLabel).tag(op)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
-                        Spacer()
-
-                        Button("Remove", role: .destructive) {
-                            settings.autoSkipKeywords.remove(at: index)
-                            saveAndNotify()
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-
-            Button {
-                settings.autoSkipKeywords.append(skipKey())
-                saveAndNotify()
+    private func globalDefaultsSection(settings: PodcastSettings) -> some View {
+        Section("Playback & Queue") {
+            NavigationLink {
+                QueuePlaybackSettingsDetailView(
+                    settings: settings,
+                    isEditable: true,
+                    source: .global,
+                    readOnlyMessage: nil,
+                    onChange: saveAndNotify
+                )
             } label: {
-                Label("Add Rule", systemImage: "plus")
+                SettingsNavigationRow(
+                    title: "Queue & Playback",
+                    summary: settings.queueAndPlaybackSummary,
+                    detail: "Choose where new episodes go and the default playback speed.",
+                    systemImage: "speedometer"
+                )
             }
 
-            Text("Rules compare against chapter titles and mark matching chapters to be skipped.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var inheritanceSection: some View {
-        Section("Podcast Overrides") {
-            ContentUnavailableView(
-                "Using Global Defaults",
-                systemImage: "arrow.triangle.branch",
-                description: Text("Enable Custom to give this podcast its own queue placement, playback speed, and chapter rules.")
-            )
+            NavigationLink {
+                ChapterRuleSettingsDetailView(
+                    settings: settings,
+                    isEditable: true,
+                    source: .global,
+                    readOnlyMessage: nil,
+                    onChange: saveAndNotify
+                )
+            } label: {
+                SettingsNavigationRow(
+                    title: "Chapter Skip Rules",
+                    summary: settings.autoSkipKeywords.settingsSummary,
+                    detail: "Manage the app-wide rules that automatically skip matching chapters.",
+                    systemImage: "text.line.first.and.arrowtriangle.forward"
+                )
+            }
         }
     }
 
     @ViewBuilder
-    private func appWideSection(settings: PodcastSettings) -> some View {
-        Section("App-Wide Controls") {
-            Toggle("Continuous playback", isOn: binding(for: \.getContinuousPlay, in: settings))
-            Toggle("Now Playing slider", isOn: binding(for: \.enableInAppSlider, in: settings))
-            Toggle("Lock screen slider", isOn: binding(for: \.enableLockscreenSlider, in: settings))
+    private func appControlsSection(settings: PodcastSettings) -> some View {
+        Section("App Controls") {
+            NavigationLink {
+                AppControlsSettingsDetailView(settings: settings, onChange: saveAndNotify)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Player Controls",
+                    summary: settings.appControlsSummary,
+                    detail: "Continuous playback and scrubbing controls.",
+                    systemImage: "switch.2"
+                )
+            }
+        }
+    }
 
+    @ViewBuilder
+    private func transcriptionSection(settings: PodcastSettings) -> some View {
+        Section("Transcriptions") {
             NavigationLink {
                 TranscriptionSettingsView()
             } label: {
-                Label("Transcriptions", systemImage: "waveform.and.mic")
+                SettingsNavigationRow(
+                    title: "On-Device Transcriptions",
+                    summary: settings.transcriptionSummary,
+                    detail: "Manage automatic on-device transcription, installed speech models, and recent transcription history.",
+                    systemImage: "waveform.and.mic"
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func podcastCustomizationSection(settings: PodcastSettings) -> some View {
+        Section("Podcast Sections") {
+            NavigationLink {
+                QueuePlaybackSettingsDetailView(
+                    settings: settings,
+                    isEditable: isPodcastCustomSettingsActive,
+                    source: resolvedSettingsSource,
+                    readOnlyMessage: isPodcastCustomSettingsActive ? nil : "These values currently come from the global defaults. Switch this podcast to Custom to edit them just for this show.",
+                    onChange: saveAndNotify
+                )
+            } label: {
+                SettingsNavigationRow(
+                    title: "Queue & Playback",
+                    summary: settings.queueAndPlaybackSummary,
+                    detail: isPodcastCustomSettingsActive
+                        ? "Podcast-specific placement and default speed."
+                        : "Showing the global defaults currently applied to this podcast.",
+                    systemImage: "speedometer",
+                    source: resolvedSettingsSource
+                )
             }
 
-            Text("These settings are global only. They affect every podcast and cannot be customized per show.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            NavigationLink {
+                ChapterRuleSettingsDetailView(
+                    settings: settings,
+                    isEditable: isPodcastCustomSettingsActive,
+                    source: resolvedSettingsSource,
+                    readOnlyMessage: isPodcastCustomSettingsActive ? nil : "These chapter rules currently come from the global defaults. Switch this podcast to Custom to edit them just for this show.",
+                    onChange: saveAndNotify
+                )
+            } label: {
+                SettingsNavigationRow(
+                    title: "Chapter Skip Rules",
+                    summary: settings.autoSkipKeywords.settingsSummary,
+                    detail: isPodcastCustomSettingsActive
+                        ? "Manage the chapter rules for this podcast."
+                        : "Showing the global chapter rules currently applied to this podcast.",
+                    systemImage: "text.line.first.and.arrowtriangle.forward",
+                    source: resolvedSettingsSource
+                )
+            }
+        }
+    }
+
+    private var globalSettingsShortcutSection: some View {
+        Section("Global Settings") {
+            NavigationLink {
+                PodcastSettingsView(podcast: nil, modelContainer: context.container)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Open Global Settings",
+                    summary: "App controls, transcriptions, notifications, storage, and podcast override management.",
+                    detail: "Use the global settings screen for anything that should affect the whole app instead of just this one podcast.",
+                    systemImage: "globe"
+                )
+            }
+        }
+    }
+
+    private var podcastManagementSection: some View {
+        Section("Podcasts") {
+            NavigationLink {
+                PodcastOverridesManagementView(modelContainer: context.container)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Podcast Overrides",
+                    summary: "\(podcastsUsingCustomSettings.count) custom, \(podcastsUsingGlobalSettings.count) following global defaults",
+                    detail: "See which podcasts have their own settings and enable custom settings for more shows.",
+                    systemImage: "music.note.list"
+                )
+            }
         }
     }
 
     private var integrationsSection: some View {
-        Section("Notifications") {
-            NotificationSettingsView()
+        Section("Integrations") {
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
+                SettingsNavigationRow(
+                    title: "Notifications",
+                    summary: "Open iOS Settings",
+                    detail: "Jump straight to the system Settings app to manage notification permissions and delivery.",
+                    systemImage: "bell.badge"
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    @ViewBuilder
-    private var globalPodcastSections: some View {
-        Section("Podcasts With Custom Settings") {
-            if podcastsUsingCustomSettings.isEmpty {
-                Text("No podcasts are using custom settings yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(podcastsUsingCustomSettings) { podcast in
-                    NavigationLink {
-                        PodcastSettingsView(podcast: podcast, modelContainer: context.container)
-                    } label: {
-                        PodcastSettingsPodcastRow(
-                            podcast: podcast,
-                            detail: "Open podcast-specific settings"
-                        )
-                    }
-                }
-            }
-        }
-
-        Section("Enable Custom Settings") {
-            if podcastsUsingGlobalSettings.isEmpty {
-                Text("All podcasts already use custom settings.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(podcastsUsingGlobalSettings) { podcast in
-                    HStack(spacing: 12) {
-                        PodcastSettingsPodcastRow(
-                            podcast: podcast,
-                            detail: "Currently following global defaults"
-                        )
-
-                        Spacer()
-
-                        Button("Use Custom") {
-                            enableCustomSettings(for: podcast)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(podcast.feed == nil)
-                    }
-                }
+    private var maintenanceSection: some View {
+        Section("Maintenance") {
+            NavigationLink {
+                StorageManagementView(modelContainer: context.container)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Storage Management",
+                    summary: "Downloaded files and local cache",
+                    detail: "Review what is stored on device and clean up space when needed.",
+                    systemImage: "externaldrive"
+                )
             }
         }
     }
@@ -401,16 +411,6 @@ struct PodcastSettingsView: View {
             }
         }
     }
-    
-    private var maintenanceSection: some View {
-        Section("Maintenance") {
-            NavigationLink {
-                StorageManagementView(modelContainer: context.container)
-            } label: {
-                Text("Storage Management")
-            }
-        }
-    }
 
     private var aboutSection: some View {
         Section {
@@ -421,6 +421,8 @@ struct PodcastSettingsView: View {
 
     private func handleCustomSettingsToggle(_ newValue: Bool) {
         guard let feed = podcast?.feed else { return }
+        useCustomSettings = newValue
+        isUpdatingCustomSettings = true
 
         Task {
             if newValue {
@@ -431,31 +433,10 @@ struct PodcastSettingsView: View {
 
             await MainActor.run {
                 useCustomSettings = podcast?.settings?.isEnabled == true
+                isUpdatingCustomSettings = false
                 postSettingsDidChange()
             }
         }
-    }
-
-    private func enableCustomSettings(for podcast: Podcast) {
-        guard let feed = podcast.feed else { return }
-
-        Task {
-            await actor.enableCustomSettings(for: feed)
-
-            await MainActor.run {
-                postSettingsDidChange()
-            }
-        }
-    }
-
-    private func binding<Value>(for keyPath: ReferenceWritableKeyPath<PodcastSettings, Value>, in settings: PodcastSettings) -> Binding<Value> {
-        Binding(
-            get: { settings[keyPath: keyPath] },
-            set: {
-                settings[keyPath: keyPath] = $0
-                saveAndNotify()
-            }
-        )
     }
 
     private func saveAndNotify() {
@@ -505,6 +486,45 @@ private struct SettingsSourceBadge: View {
     }
 }
 
+private struct SettingsNavigationRow: View {
+    let title: String
+    let summary: String
+    let detail: String
+    let systemImage: String
+    var source: SettingsSource? = nil
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.accent)
+                .frame(width: 24, height: 24)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+
+                    if let source {
+                        SettingsSourceBadge(source: source)
+                    }
+                }
+
+                Text(summary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 private struct SettingsBehaviorRow: View {
     let title: String
     let value: String
@@ -534,6 +554,351 @@ private struct SettingsBehaviorRow: View {
     }
 }
 
+private struct SettingsReadOnlyNotice: View {
+    let message: String
+    let source: SettingsSource
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.branch")
+                    .foregroundStyle(source.tint)
+                Text(source == .global ? "Following Global Defaults" : "Using Podcast Defaults")
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct QueuePlaybackSettingsDetailView: View {
+    @Bindable var settings: PodcastSettings
+
+    let isEditable: Bool
+    let source: SettingsSource
+    let readOnlyMessage: String?
+    let onChange: () -> Void
+
+    var body: some View {
+        List {
+            if let readOnlyMessage, isEditable == false {
+                Section {
+                    SettingsReadOnlyNotice(message: readOnlyMessage, source: source)
+                }
+            }
+
+            Section("Queue") {
+                if isEditable {
+                    Picker(
+                        "New episodes go to",
+                        selection: Binding(
+                            get: { settings.playnextPosition },
+                            set: {
+                                settings.playnextPosition = $0
+                                onChange()
+                            }
+                        )
+                    ) {
+                        ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
+                            Text(position.settingsLabel).tag(position)
+                        }
+                    }
+                } else {
+                    LabeledContent("New episodes go to") {
+                        Text(settings.playnextPosition.settingsLabel)
+                    }
+                }
+
+                Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Playback") {
+                if isEditable {
+                    Stepper(
+                        value: Binding(
+                            get: { settings.playbackSpeed ?? 1.0 },
+                            set: {
+                                settings.playbackSpeed = $0
+                                onChange()
+                            }
+                        ),
+                        in: 0.5...3.0,
+                        step: 0.1
+                    ) {
+                        LabeledContent("Default speed") {
+                            Text(settings.playbackSpeed.formattedPlaybackSpeed)
+                                .monospacedDigit()
+                        }
+                    }
+                } else {
+                    LabeledContent("Default speed") {
+                        Text(settings.playbackSpeed.formattedPlaybackSpeed)
+                            .monospacedDigit()
+                    }
+                }
+
+                Text("This speed is used when playback starts. The player speed control also writes back here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Queue & Playback")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct ChapterRuleSettingsDetailView: View {
+    @Bindable var settings: PodcastSettings
+
+    let isEditable: Bool
+    let source: SettingsSource
+    let readOnlyMessage: String?
+    let onChange: () -> Void
+
+    var body: some View {
+        List {
+            if let readOnlyMessage, isEditable == false {
+                Section {
+                    SettingsReadOnlyNotice(message: readOnlyMessage, source: source)
+                }
+            }
+
+            Section("Chapter Skip Rules") {
+                if settings.autoSkipKeywords.isEmpty {
+                    Text(isEditable
+                         ? "No chapter rules yet. Add a rule to automatically skip matching chapter titles."
+                         : "No chapter rules are currently applied.")
+                        .foregroundStyle(.secondary)
+                } else if isEditable {
+                    editableRuleList
+                } else {
+                    readOnlyRuleList
+                }
+
+                if isEditable {
+                    Button {
+                        settings.autoSkipKeywords.append(skipKey())
+                        onChange()
+                    } label: {
+                        Label("Add Rule", systemImage: "plus")
+                    }
+                }
+
+                Text("Rules compare against chapter titles and mark matching chapters to be skipped.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Chapter Rules")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var editableRuleList: some View {
+        ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \.offset) { index, rule in
+            VStack(alignment: .leading, spacing: 12) {
+                TextField(
+                    "Keyword or phrase",
+                    text: Binding(
+                        get: { rule.keyWord ?? "" },
+                        set: {
+                            settings.autoSkipKeywords[index].keyWord = $0
+                            onChange()
+                        }
+                    )
+                )
+
+                HStack {
+                    Picker(
+                        "Match",
+                        selection: Binding(
+                            get: { rule.keyOperator },
+                            set: {
+                                settings.autoSkipKeywords[index].keyOperator = $0
+                                onChange()
+                            }
+                        )
+                    ) {
+                        ForEach(Operator.allCases, id: \.self) { op in
+                            Text(op.settingsLabel).tag(op)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Spacer()
+
+                    Button("Remove", role: .destructive) {
+                        settings.autoSkipKeywords.remove(at: index)
+                        onChange()
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var readOnlyRuleList: some View {
+        ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \.offset) { index, rule in
+            VStack(alignment: .leading, spacing: 4) {
+                Text(rule.ruleDescription)
+                    .foregroundStyle(.primary)
+
+                Text("Rule \(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct AppControlsSettingsDetailView: View {
+    @Bindable var settings: PodcastSettings
+
+    let onChange: () -> Void
+
+    var body: some View {
+        List {
+            Section("Playback Continuation") {
+                Toggle(
+                    "Continuous playback",
+                    isOn: Binding(
+                        get: { settings.getContinuousPlay },
+                        set: {
+                            settings.getContinuousPlay = $0
+                            onChange()
+                        }
+                    )
+                )
+
+                Text("When enabled, the next queue item starts automatically after an episode finishes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Player Controls") {
+                Toggle(
+                    "Now Playing slider",
+                    isOn: Binding(
+                        get: { settings.enableInAppSlider },
+                        set: {
+                            settings.enableInAppSlider = $0
+                            onChange()
+                        }
+                    )
+                )
+
+                Toggle(
+                    "Lock screen slider",
+                    isOn: Binding(
+                        get: { settings.enableLockscreenSlider },
+                        set: {
+                            settings.enableLockscreenSlider = $0
+                            onChange()
+                        }
+                    )
+                )
+
+                Text("These control whether playback scrubbing is available inside the app and through system playback controls.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("App Controls")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct PodcastOverridesManagementView: View {
+    @Environment(\.modelContext) private var context
+
+    @State private var actor: PodcastSettingsModelActor
+    @Query(sort: \Podcast.title) private var podcasts: [Podcast]
+
+    init(modelContainer: ModelContainer) {
+        self._actor = State(initialValue: PodcastSettingsModelActor(modelContainer: modelContainer))
+    }
+
+    private var podcastsUsingCustomSettings: [Podcast] {
+        podcasts.filter { $0.settings?.isEnabled == true }
+    }
+
+    private var podcastsUsingGlobalSettings: [Podcast] {
+        podcasts.filter { $0.settings?.isEnabled != true }
+    }
+
+    var body: some View {
+        List {
+            Section("Custom Settings") {
+                if podcastsUsingCustomSettings.isEmpty {
+                    Text("No podcasts are using custom settings yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(podcastsUsingCustomSettings) { podcast in
+                        NavigationLink {
+                            PodcastSettingsView(podcast: podcast, modelContainer: context.container)
+                        } label: {
+                            PodcastSettingsPodcastRow(
+                                podcast: podcast,
+                                detail: "Open podcast-specific settings"
+                            )
+                        }
+                    }
+                }
+            }
+
+            Section("Using Global Defaults") {
+                if podcastsUsingGlobalSettings.isEmpty {
+                    Text("All podcasts already use custom settings.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(podcastsUsingGlobalSettings) { podcast in
+                        HStack(spacing: 12) {
+                            PodcastSettingsPodcastRow(
+                                podcast: podcast,
+                                detail: "Currently following global defaults"
+                            )
+
+                            Spacer()
+
+                            Button("Use Custom") {
+                                enableCustomSettings(for: podcast)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(podcast.feed == nil)
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Podcast Overrides")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func enableCustomSettings(for podcast: Podcast) {
+        guard let feed = podcast.feed else { return }
+
+        Task {
+            await actor.enableCustomSettings(for: feed)
+            await MainActor.run {
+                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+            }
+        }
+    }
+}
+
 private struct PodcastSettingsPodcastRow: View {
     let podcast: Podcast
     let detail: String
@@ -555,6 +920,30 @@ private struct PodcastSettingsPodcastRow: View {
                     .lineLimit(2)
             }
         }
+    }
+}
+
+private extension PodcastSettings {
+    var queueAndPlaybackSummary: String {
+        "\(playnextPosition.settingsLabel) • \(playbackSpeed.formattedPlaybackSpeed)"
+    }
+
+    var appControlsSummary: String {
+        let playback = getContinuousPlay ? "Continuous play on" : "Continuous play off"
+        let sliders = enableInAppSlider || enableLockscreenSlider ? "scrubbing available" : "scrubbing off"
+        return "\(playback) • \(sliders)"
+    }
+
+    var transcriptionSummary: String {
+        guard enableAutomaticOnDeviceTranscriptions else {
+            return "Automatic local fallback off"
+        }
+
+        if limitAutomaticOnDeviceTranscriptionsToCharging {
+            return "Automatic fallback only while charging"
+        }
+
+        return "Automatic local fallback on"
     }
 }
 
@@ -585,6 +974,14 @@ private extension Operator {
         case .EndsWith:
             "Ends with"
         }
+    }
+}
+
+private extension skipKey {
+    var ruleDescription: String {
+        let keyword = keyWord?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let visibleKeyword = keyword.isEmpty ? "Empty keyword" : keyword
+        return "\(keyOperator.settingsLabel): \(visibleKeyword)"
     }
 }
 

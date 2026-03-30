@@ -97,6 +97,30 @@ actor PodcastModelActor {
         return nil
     }
 
+    private func episodeURL(from episodeData: [String: Any]) -> URL? {
+        guard let enclosure = (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String,
+              enclosure.isEmpty == false else {
+            return nil
+        }
+
+        return URL(string: enclosure)
+    }
+
+    private func existingEpisodeURL(identifier: String?, episodeURL: URL?) -> URL? {
+        if let identifier {
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.guid == identifier }
+            )
+
+            if let existingURL = (try? modelContext.fetch(descriptor))?.first?.url {
+                return existingURL
+            }
+        }
+
+        guard let episodeURL else { return nil }
+        return fetchEpisode(byURL: episodeURL)?.url
+    }
+
     private func fetchEpisode(byURL episodeURL: URL) -> Episode? {
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.url == episodeURL }
@@ -422,9 +446,11 @@ actor PodcastModelActor {
                 )
 
                 let episodeIdentifier = episodeIdentifier(from: episodeData)
+                let candidateEpisodeURL = episodeURL(from: episodeData)
 
-                if let episodeIdentifier,
-                   let existingEpisode = podcast.episodes?.first(where: { $0.guid == episodeIdentifier }) {
+                if let existingEpisode = podcast.episodes?.first(where: {
+                    ($0.guid != nil && $0.guid == episodeIdentifier) || ($0.url != nil && $0.url == candidateEpisodeURL)
+                }) {
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
                     modelContext.saveIfNeeded()
                     continue
@@ -432,8 +458,7 @@ actor PodcastModelActor {
 
                 print("new episode: \(episodeData["title"] as? String ?? "")")
 
-                if let episodeIdentifier,
-                   let episodeURL = checkIfEpisodeExists(episodeIdentifier),
+                if let episodeURL = existingEpisodeURL(identifier: episodeIdentifier, episodeURL: candidateEpisodeURL),
                    let feed = podcast.feed {
                     print("already existing")
                     await linkEpisodeToPodcast(episodeURL, feed)
@@ -469,18 +494,6 @@ actor PodcastModelActor {
 
             await reportProgress(SubscriptionProgressUpdate(0.96, "Finalizing library updates"), using: progress)
         }
-    }
-    
-
-
-    private func checkIfEpisodeExists(_ guid: String) -> URL? {
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.guid == guid  }
-        )
-        
-        let episodes = try? modelContext.fetch(descriptor)
- //       // print("checking if episode exists \(guid) - count: \(episodes?.count.description ?? "nil")")
-        return episodes?.first?.url
     }
     
     func createPodcast(

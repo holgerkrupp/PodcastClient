@@ -177,6 +177,14 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 }
                 await markDownloaded(for: destination)
             }
+
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .episodeDownloadFinished,
+                    object: nil,
+                    userInfo: [EpisodeDownloadNotificationKey.episodeURL: url]
+                )
+            }
             await DownloadManager.shared.cleanUp(url: url)
         }
     }

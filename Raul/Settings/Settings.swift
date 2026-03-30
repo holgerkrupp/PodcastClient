@@ -41,6 +41,8 @@ class PodcastSettings {
     var enableLockscreenSlider:Bool = true
     var enableInAppSlider:Bool = true
     var getContinuousPlay:Bool = true
+    var enableAutomaticOnDeviceTranscriptions: Bool = true
+    var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
 
     var sleepTimerAddMinutes: Double = 10 // 10 minutes
     var sleepTimerDurationToReactivate: Double = 300 // 5 minutes * 60 seconds
