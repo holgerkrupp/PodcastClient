@@ -46,6 +46,7 @@ class Player {
     private var playbackTask: Task<Void, Never>?
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
+    private var hasStartedRecovery = false
 
     var playbackRate: Float = 1.0 {
         didSet {
@@ -103,9 +104,6 @@ class Player {
         }
         loadPlayBackSpeed()
         listenToEvent()
-        Task{
-            await playSessionTracker.startRecovery()
-        }
         pause()
         addChangeSettingsObserver()
         addDownloadObserver()
@@ -113,6 +111,15 @@ class Player {
             allowScrubbing = await settingsActor?.getAppSliderEnable()
         }
         
+    }
+
+    func startRecoveryIfNeeded() {
+        guard !hasStartedRecovery else { return }
+        hasStartedRecovery = true
+
+        Task.detached(priority: .utility) { [playSessionTracker] in
+            await playSessionTracker.startRecovery()
+        }
     }
     
     /// Clears the legacy UUID-based last-played key from older builds.

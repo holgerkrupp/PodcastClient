@@ -1376,6 +1376,9 @@
         }
       }
     },
+    "No episodes matched \"%@\"." : {
+
+    },
     "No Files for This Podcast" : {
 
     },
@@ -1686,6 +1689,9 @@
           }
         }
       }
+    },
+    "Play from %@" : {
+
     },
     "Play Last" : {
       "localizations" : {
@@ -2570,9 +2576,6 @@
           }
         }
       }
-    },
-    "Updating podcast settings…" : {
-
     },
     "URL or Search" : {
       "localizations" : {
