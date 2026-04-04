@@ -385,6 +385,17 @@ struct PodcastSettingsView: View {
                     systemImage: "externaldrive"
                 )
             }
+
+            NavigationLink {
+                CloudSyncDiagnosticsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Cloud Sync Diagnostics",
+                    summary: "Check CloudKit account and local sync state",
+                    detail: "Shows iCloud account availability, local database counts, and sync markers.",
+                    systemImage: "icloud.and.arrow.trianglehead.2.clockwise.rotate.90"
+                )
+            }
         }
     }
 

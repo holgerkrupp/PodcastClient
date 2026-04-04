@@ -47,6 +47,12 @@ struct SettingsView: View {
                             await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
                         }
                     }
+
+                    NavigationLink {
+                        CloudSyncDiagnosticsView()
+                    } label: {
+                        Label("Cloud Sync Diagnostics", systemImage: "icloud.and.arrow.trianglehead.2.clockwise.rotate.90")
+                    }
                 }
 
                 Section {

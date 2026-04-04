@@ -22,6 +22,7 @@
 		48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */ = {isa = PBXBuildFile; productRef = 48C7E5E62E10816D007D1CD3 /* SwipeActions */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; };
+		C0D1E2F330ABC00100AA0001 /* CloudKitSyncMonitor in Frameworks */ = {isa = PBXBuildFile; productRef = C0D1E2F530ABC00100AA0001 /* CloudKitSyncMonitor */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -181,6 +182,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0D1E2F330ABC00100AA0001 /* CloudKitSyncMonitor in Frameworks */,
 				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
@@ -273,6 +275,7 @@
 			);
 			name = Raul;
 			packageProductDependencies = (
+				C0D1E2F530ABC00100AA0001 /* CloudKitSyncMonitor */,
 				48B3BA072DA06825005B40B8 /* fyyd_swift */,
 				48C078062DB410D000D6DD9C /* DeviceInfo */,
 				48C078082DB4111500D6DD9C /* DeviceInfo */,
@@ -370,6 +373,7 @@
 				48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */,
 				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
 				4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */,
+				C0D1E2F430ABC00100AA0001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -616,7 +620,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,6";
+				TARGETED_DEVICE_FAMILY = "1,2,6";
 			};
 			name = Debug;
 		};
@@ -660,7 +664,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,6";
+				TARGETED_DEVICE_FAMILY = "1,2,6";
 			};
 			name = Release;
 		};
@@ -859,6 +863,14 @@
 				minimumVersion = 0.4.1;
 			};
 		};
+		C0D1E2F430ABC00100AA0001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ggruen/CloudKitSyncMonitor.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -895,6 +907,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 48C7E5E52E10816D007D1CD3 /* XCRemoteSwiftPackageReference "SwipeActions" */;
 			productName = SwipeActions;
+		};
+		C0D1E2F530ABC00100AA0001 /* CloudKitSyncMonitor */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0D1E2F430ABC00100AA0001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */;
+			productName = CloudKitSyncMonitor;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

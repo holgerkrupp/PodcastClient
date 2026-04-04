@@ -15,24 +15,20 @@ struct SubscribeToPodcastView: View {
     @State private var isWorking = false
     @State private var progressValue = 0.0
     @State private var progressMessage = "Preparing subscription"
-    @State private var selectedPodcastID: PersistentIdentifier?
 
     @Query private var allPodcasts: [Podcast]
     @Bindable var newPodcastFeed: PodcastFeed
+    let onOpenPodcast: (PersistentIdentifier) -> Void
 
-    init(newPodcastFeed: PodcastFeed) {
+    init(newPodcastFeed: PodcastFeed, onOpenPodcast: @escaping (PersistentIdentifier) -> Void = { _ in }) {
         self.newPodcastFeed = newPodcastFeed
+        self.onOpenPodcast = onOpenPodcast
         _allPodcasts = Query()
     }
 
     private var existingPodcast: Podcast? {
         guard let url = newPodcastFeed.url else { return nil }
         return allPodcasts.first(where: { $0.feed == url })
-    }
-
-    private var selectedPodcast: Podcast? {
-        guard let selectedPodcastID else { return nil }
-        return modelContext.model(for: selectedPodcastID) as? Podcast
     }
 
     var body: some View {
@@ -78,22 +74,6 @@ struct SubscribeToPodcastView: View {
         }
         .overlay {
             statusOverlay
-        }
-        .navigationDestination(
-            isPresented: Binding(
-                get: { selectedPodcastID != nil },
-                set: { isPresented in
-                    if isPresented == false {
-                        selectedPodcastID = nil
-                    }
-                }
-            )
-        ) {
-            if let selectedPodcast {
-                PodcastDetailView(podcast: selectedPodcast)
-            } else {
-                ContentUnavailableView("Podcast Not Found", systemImage: "dot.radiowaves.left.and.right")
-            }
         }
     }
 
@@ -141,7 +121,7 @@ struct SubscribeToPodcastView: View {
 
     private func browseEpisodes() {
         if let existingPodcast {
-            selectedPodcastID = existingPodcast.persistentModelID
+            onOpenPodcast(existingPodcast.persistentModelID)
             return
         }
 
@@ -173,7 +153,7 @@ struct SubscribeToPodcastView: View {
 
                 await MainActor.run {
                     isWorking = false
-                    selectedPodcastID = podcastID
+                    onOpenPodcast(podcastID)
                 }
             } catch {
                 await MainActor.run {

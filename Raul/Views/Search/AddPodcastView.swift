@@ -6,15 +6,23 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct AddPodcastView: View {
     @Environment(\.modelContext) private var context
     
     @Binding var search: String
+    @State private var selectedPodcastID: PersistentIdentifier?
     enum Selection {
         case search, hot, importexport
     }
     @State private var listSelection:Selection = .search
+
+    private var selectedPodcast: Podcast? {
+        guard let selectedPodcastID else { return nil }
+        return context.model(for: selectedPodcastID) as? Podcast
+    }
+
     var body: some View {
         NavigationStack{
             List{
@@ -45,7 +53,9 @@ struct AddPodcastView: View {
                 }
                 
              
-                    PodcastSearchView(search: $search)
+                    PodcastSearchView(search: $search, onOpenPodcast: { podcastID in
+                        selectedPodcastID = podcastID
+                    })
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(.init(top: 0,
@@ -55,10 +65,22 @@ struct AddPodcastView: View {
 
             }
             .listStyle(.plain)
-
-
-            
-            
+        }
+        .navigationDestination(
+            isPresented: Binding(
+                get: { selectedPodcastID != nil },
+                set: { isPresented in
+                    if isPresented == false {
+                        selectedPodcastID = nil
+                    }
+                }
+            )
+        ) {
+            if let selectedPodcast {
+                PodcastDetailView(podcast: selectedPodcast)
+            } else {
+                ContentUnavailableView("Podcast Not Found", systemImage: "dot.radiowaves.left.and.right")
+            }
         }
        
     }
