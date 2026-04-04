@@ -29,6 +29,11 @@ class CarPlayPlayNext {
     private func setupTemplate() async {
         // Fetch ordered episodes from the playlist
         await self.refreshEpisodeList()
+        let currentEpisodeURL = Player.shared.currentEpisodeURL
+        let queueEpisodes = episodes.filter { episode in
+            guard let currentEpisodeURL else { return true }
+            return episode.url != currentEpisodeURL
+        }
 
         // Prepare an array of sections we will show in the template
         var sections: [CPListSection] = []
@@ -61,10 +66,10 @@ class CarPlayPlayNext {
 
         // Load images asynchronously for all episodes in Up Next
         let images: [UIImage?]? = try? await withThrowingTaskGroup(of: (Int, UIImage?).self) { group in
-            for (index, episode) in episodes.enumerated() {
+            for (index, episode) in queueEpisodes.enumerated() {
                 group.addTask { (index, await self.loadImage(episode: episode)) }
             }
-            var results = Array<UIImage?>(repeating: nil, count: episodes.count)
+            var results = Array<UIImage?>(repeating: nil, count: queueEpisodes.count)
             for try await (index, image) in group {
                 results[index] = image
             }
@@ -72,7 +77,7 @@ class CarPlayPlayNext {
         }
 
         // Build Up Next items
-        let items = episodes.enumerated().map { index, episode in
+        let items = queueEpisodes.enumerated().map { index, episode in
             let cover = images?[index] ?? UIImage()
             let item = CPListItem(
                 text: episode.title ?? "",

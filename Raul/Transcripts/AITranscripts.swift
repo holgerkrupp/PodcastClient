@@ -28,7 +28,6 @@ class AITranscripts {
     ) async {
         self.url = url
         self.progressHandler = progressHandler
-        print("language set to: \(language ?? "nil") ")
         if let language{
             self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
         }else{
@@ -265,7 +264,7 @@ class AITranscripts {
     ) async throws -> [(range: CMTimeRange, text: String)] {
         var results: [(range: CMTimeRange, text: String)] = []
         for try await result in transcriber.results {
-            print(result.range.start.value.formatted(), result.range.end.value.formatted(), result.text)
+           //  print(result.range.start.value.formatted(), result.range.end.value.formatted(), result.text)
             results.append((range: result.range, text: result.text.description))
             let update = Self.progressUpdate(resultEnd: result.range.end, audioDuration: audioDuration)
             await progressHandler?(update.progress, update.status)

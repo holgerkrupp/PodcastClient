@@ -33,6 +33,11 @@ struct PodcastListView: View {
     @State private var searchInDescription = true
     @State private var searchInEpisodes = true
     @State private var searchTask: Task<Void, Never>?
+    @State private var searchGeneration: Int = 0
+    @State private var isSearchInProgress = false
+    @State private var searchProgress: Double = 0.0
+    @State private var expandedEpisodePodcastGroupIDs: Set<String> = []
+    private let minimumCharactersForTranscriptSearch = 3
 
     init(modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
@@ -50,18 +55,32 @@ struct PodcastListView: View {
         Group {
             if isSearchingEpisodes {
                 if episodeSearchResults.isEmpty {
-                    ContentUnavailableView(
-                        "No Results",
-                        systemImage: "magnifyingglass",
-                        description: Text("No episodes matched \"\(trimmedSearchText)\".")
-                    )
+                    if isSearchInProgress {
+                        Color.clear
+                    } else {
+                        ContentUnavailableView(
+                            "No Results",
+                            systemImage: "magnifyingglass",
+                            description: Text("No episodes matched \"\(trimmedSearchText)\".")
+                        )
+                    }
                 } else {
                     List {
-                        ForEach(episodeSearchResults) { result in
-                            episodeResultRow(result)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(.init(top: 4, leading: 0, bottom: 4, trailing: 0))
-                                .listRowBackground(Color.clear)
+                        ForEach(groupedEpisodeSearchResults) { group in
+                            DisclosureGroup(
+                                isExpanded: expandedBinding(for: group.id),
+                                content: {
+                                    ForEach(group.results) { result in
+                                        episodeResultRow(result)
+                                    }
+                                },
+                                label: {
+                                    episodeResultGroupHeader(group)
+                                }
+                            )
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowBackground(Color.clear)
                         }
                     }
                     .listStyle(.plain)
@@ -161,9 +180,25 @@ struct PodcastListView: View {
             }
         }
         .navigationTitle("Library")
+        .overlay(alignment: .top) {
+            if isSearchInProgress {
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: min(max(searchProgress, 0), 1), total: 1)
+                        .progressViewStyle(.linear)
+                    Text("Searching… \(Int(min(max(searchProgress, 0), 1) * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 8)
+                .padding(.horizontal, 12)
+            }
+        }
         .searchable(text: $searchText, prompt: "Search podcasts")
         .task {
-            applyFilters()
+            scheduleSearchUpdate(immediate: true)
         }
         .onChange(of: searchText) { _, _ in
             scheduleSearchUpdate()
@@ -232,17 +267,38 @@ struct PodcastListView: View {
         }
     }
 
-    private func scheduleSearchUpdate() {
+    private func scheduleSearchUpdate(immediate: Bool = false) {
         searchTask?.cancel()
-        searchTask = Task { @MainActor in
-            // Keep typing responsive while coalescing rapid keystrokes.
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            guard Task.isCancelled == false else { return }
-            applyFilters()
+        searchGeneration += 1
+        let generation = searchGeneration
+        let hasQuery = trimmedSearchText.isEmpty == false
+        isSearchInProgress = hasQuery
+        searchProgress = hasQuery ? 0.0 : 1.0
+        let delayNanos: UInt64 = immediate ? 0 : 180_000_000
+        searchTask = Task {
+            // Coalesce rapid keystrokes and keep only newest query work.
+            if delayNanos > 0 {
+                try? await Task.sleep(nanoseconds: delayNanos)
+            }
+            guard Task.isCancelled == false else {
+                await MainActor.run {
+                    if searchGeneration == generation {
+                        isSearchInProgress = false
+                    }
+                }
+                return
+            }
+            await applyFiltersAsync()
+            await MainActor.run {
+                if searchGeneration == generation {
+                    isSearchInProgress = false
+                }
+            }
         }
     }
 
-    private func applyFilters() {
+    @MainActor
+    private func applyFiltersAsync() async {
         let currentPodcasts = podcasts.filter { podcast in
             switch selectedScope {
             case .subscribed:
@@ -258,24 +314,39 @@ struct PodcastListView: View {
         guard query.isEmpty == false else {
             filteredPodcasts = currentPodcasts
             episodeSearchResults = []
+            expandedEpisodePodcastGroupIDs = []
+            searchProgress = 1.0
             return
         }
 
         if searchInEpisodes {
             var results: [EpisodeSearchResult] = []
+            var processedEpisodes = 0
+            let totalEpisodes = max(1, currentPodcasts.reduce(0) { partialResult, podcast in
+                partialResult + (podcast.episodes?.count ?? 0)
+            })
 
             for podcast in currentPodcasts {
-                let sortedEpisodes = (podcast.episodes ?? [])
-                    .sorted(by: { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) })
-                for episode in sortedEpisodes {
+                for episode in (podcast.episodes ?? []) {
+                    guard Task.isCancelled == false else { return }
                     if let match = episodeSearchMatch(for: episode, query: query) {
                         results.append(match)
+                    }
+                    processedEpisodes += 1
+                    if processedEpisodes.isMultiple(of: 25) {
+                        searchProgress = min(1.0, Double(processedEpisodes) / Double(totalEpisodes))
+                        await Task.yield()
                     }
                 }
             }
 
+            results.sort {
+                ($0.episode.publishDate ?? .distantPast) > ($1.episode.publishDate ?? .distantPast)
+            }
             episodeSearchResults = results
+            expandedEpisodePodcastGroupIDs = expandedEpisodePodcastGroupIDs.intersection(Set(groupedEpisodeSearchResults.map(\.id)))
             filteredPodcasts = []
+            searchProgress = 1.0
             return
         }
 
@@ -302,6 +373,8 @@ struct PodcastListView: View {
             return false
         }
         episodeSearchResults = []
+        expandedEpisodePodcastGroupIDs = []
+        searchProgress = 1.0
     }
 
     private func episodeSearchMatch(for episode: Episode, query: String) -> EpisodeSearchResult? {
@@ -339,7 +412,22 @@ struct PodcastListView: View {
             )
         }
 
-        if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
+        let chapterMatches = episode.preferredChapters
+            .sorted(by: { ($0.start ?? 0) < ($1.start ?? 0) })
+        for chapter in chapterMatches {
+            guard chapter.title.isEmpty == false else { continue }
+            if chapter.title.lowercased().contains(normalizedQuery) {
+                return EpisodeSearchResult(
+                    episode: episode,
+                    kind: .chapter(startTime: chapter.start ?? 0),
+                    snippet: snippet(from: chapter.title, query: query)
+                )
+            }
+        }
+
+        if query.count >= minimumCharactersForTranscriptSearch,
+           let transcriptLines = episode.transcriptLines,
+           transcriptLines.isEmpty == false {
             for line in transcriptLines {
                 if line.text.lowercased().contains(normalizedQuery) {
                     return EpisodeSearchResult(
@@ -372,6 +460,59 @@ struct PodcastListView: View {
         return String(cleanedText.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var groupedEpisodeSearchResults: [EpisodeSearchResultGroup] {
+        let grouped = Dictionary(grouping: episodeSearchResults) { result in
+            result.episode.podcast.map { "\($0.persistentModelID)" } ?? "unknown-podcast"
+        }
+
+        return grouped
+            .map { _, results in
+                EpisodeSearchResultGroup(results: results)
+            }
+            .sorted { lhs, rhs in
+                let leftTitle = lhs.podcast?.title ?? ""
+                let rightTitle = rhs.podcast?.title ?? ""
+                return leftTitle.localizedCaseInsensitiveCompare(rightTitle) == .orderedAscending
+            }
+    }
+
+    private func expandedBinding(for groupID: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedEpisodePodcastGroupIDs.contains(groupID) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedEpisodePodcastGroupIDs.insert(groupID)
+                } else {
+                    expandedEpisodePodcastGroupIDs.remove(groupID)
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func episodeResultGroupHeader(_ group: EpisodeSearchResultGroup) -> some View {
+        HStack(spacing: 12) {
+            CoverImageView(podcast: group.podcast)
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.podcastTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+
+                Text(group.resultCountLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
     @ViewBuilder
     private func episodeResultRow(_ result: EpisodeSearchResult) -> some View {
         let episode = result.episode
@@ -379,7 +520,7 @@ struct PodcastListView: View {
             CoverImageView(podcast: episode.podcast)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124)
-                .blur(radius: 8)
+                .blur(radius: 4)
                 .clipped()
 
             HStack(alignment: .top, spacing: 12) {
@@ -415,7 +556,7 @@ struct PodcastListView: View {
 
                 Spacer(minLength: 0)
 
-                if case .transcript(let startTime) = result.kind, let episodeURL = episode.url {
+                if let startTime = result.kind.playbackStartTime, let episodeURL = episode.url {
                     Button {
                         Task {
                             await Player.shared.playEpisode(episodeURL, playDirectly: true, startingAt: startTime)
@@ -424,14 +565,43 @@ struct PodcastListView: View {
                         Label("Play", systemImage: "play.fill")
                             .labelStyle(.iconOnly)
                     }
-                    .buttonStyle(.glass(.clear))
+                    .buttonStyle(.plain)
+                    .padding(8)
+                    .background(.thinMaterial, in: Circle())
                     .accessibilityLabel("Play from \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))")
                 }
             }
             .padding(8)
+            .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124, alignment: .topLeading)
             .background(Rectangle().fill(.thinMaterial))
         }
         .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
+    }
+}
+
+private struct EpisodeSearchResultGroup: Identifiable {
+    let id: String
+    let podcast: Podcast?
+    let results: [EpisodeSearchResult]
+
+    init(results: [EpisodeSearchResult]) {
+        self.podcast = results.first?.episode.podcast
+        self.id = self.podcast.map { "\($0.persistentModelID)" } ?? "unknown-podcast"
+        self.results = results.sorted {
+            ($0.episode.publishDate ?? .distantPast) > ($1.episode.publishDate ?? .distantPast)
+        }
+    }
+
+    var podcastTitle: String {
+        if let title = podcast?.title, title.isEmpty == false {
+            return title
+        }
+        return "Unknown Podcast"
+    }
+
+    var resultCountLabel: String {
+        let count = results.count
+        return count == 1 ? "1 result" : "\(count) results"
     }
 }
 
@@ -439,6 +609,7 @@ private struct EpisodeSearchResult: Identifiable {
     enum MatchKind {
         case title
         case showNotes
+        case chapter(startTime: Double)
         case transcript(startTime: Double)
 
         var label: String {
@@ -447,6 +618,8 @@ private struct EpisodeSearchResult: Identifiable {
                 return "Matched in title"
             case .showNotes:
                 return "Matched in show notes"
+            case .chapter(let startTime):
+                return "Matched in chapter at \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))"
             case .transcript(let startTime):
                 return "Matched in transcript at \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))"
             }
@@ -467,12 +640,25 @@ private struct EpisodeSearchResult: Identifiable {
 }
 
 private extension EpisodeSearchResult.MatchKind {
+    var playbackStartTime: Double? {
+        switch self {
+        case .chapter(let startTime):
+            return startTime
+        case .transcript(let startTime):
+            return startTime
+        case .title, .showNotes:
+            return nil
+        }
+    }
+
     var idSuffix: String {
         switch self {
         case .title:
             return "title"
         case .showNotes:
             return "shownotes"
+        case .chapter(let startTime):
+            return "chapter-\(Int(startTime * 10))"
         case .transcript(let startTime):
             return "transcript-\(Int(startTime * 10))"
         }

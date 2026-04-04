@@ -540,6 +540,8 @@ class Player {
         startPlaybackUpdates()
      //   startNowPlayingInfoUpdater()
         initRemoteCommandCenter()
+        isPlaying = true
+        updateNowPlayingInfo()
 
         let rate = playbackRate
         let position = playPosition
@@ -550,7 +552,6 @@ class Player {
             await switchCurrentEpisodeToDownloadedCopyIfNeeded()
             await ensureDownloadForCurrentEpisodeIfNeeded()
             await engine.setRate(rate)
-            isPlaying = true
             
             // New session tracking integration: start or update the play session
             if let currentEpisodeURL {
@@ -570,9 +571,9 @@ class Player {
     
 
     func pause() {
+        isPlaying = false
         Task { 
             await engine.pause()
-            isPlaying = false
             
             // New session tracking integration: pause the play session
             if let currentEpisode = currentEpisode {
@@ -620,10 +621,13 @@ class Player {
     
     func setRate(_ rate: Float){
         Task { await engine.setRate(rate) }
+        isPlaying = rate > 0
         playbackRate = rate
         updateNowPlayingInfo()
-        if rate > 0 {
+        if isPlaying {
             startPlaybackUpdates()
+        } else {
+            stopPlaybackUpdates()
         }
 
     }
@@ -672,7 +676,9 @@ class Player {
 
 
     private var progressUpdateCounter = 0
+    private var nowPlayingUpdateCounter = 0
     private let progressSaveInterval = 40  // 0.5 seconds * 20 = 10 seconds
+    private let nowPlayingUpdateInterval = 2 // 0.5 seconds * 2 = 1 second
     
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
@@ -688,11 +694,16 @@ class Player {
         }
 
         progressUpdateCounter += 1
+        nowPlayingUpdateCounter += 1
+        if nowPlayingUpdateCounter >= nowPlayingUpdateInterval {
+            updateNowPlayingInfo()
+            nowPlayingUpdateCounter = 0
+        }
+
         if progressUpdateCounter >= progressSaveInterval {
             if currentEpisode?.chapters?.isEmpty == false {
                 updateChapters()
             }
-            updateNowPlayingInfo()
             savePlayPosition()
             progressUpdateCounter = 0
         }
@@ -873,13 +884,14 @@ class Player {
     // Always call this function to update nowPlayingInfo—when artwork or position/rate changes.
     private func updateNowPlayingInfo(artwork: MPMediaItemArtwork? = nil) {
         guard let episode = currentEpisode else { return }
+        let effectivePlaybackRate: Float = isPlaying ? playbackRate : 0.0
     
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist:  episode.podcast?.title ?? episode.podcast?.author ?? episode.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
-            MPNowPlayingInfoPropertyPlaybackRate: playbackRate,
+            MPNowPlayingInfoPropertyPlaybackRate: effectivePlaybackRate,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
         ]
         if let artwork {

@@ -1070,7 +1070,7 @@ actor EpisodeActor {
         let extractedData = await generateAIChapters(from: transcriptLines)
         if !extractedData.isEmpty {
             var newchapters:[Marker] = []
-            for extractedChapter in extractedData{
+            for extractedChapter in extractedData.sorted(by: { ($0.key.durationAsSeconds ?? 0) < ($1.key.durationAsSeconds ?? 0) }) {
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
                     let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
@@ -1094,7 +1094,7 @@ actor EpisodeActor {
        
         if let extractedData {
             var newchapters:[Marker] = []
-            for extractedChapter in extractedData{
+            for extractedChapter in extractedData.sorted(by: { ($0.key.durationAsSeconds ?? 0) < ($1.key.durationAsSeconds ?? 0) }) {
                 if let startingTime =  extractedChapter.key.durationAsSeconds{
                     let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
                     newchapters.append(newChapter)
@@ -1107,26 +1107,109 @@ actor EpisodeActor {
     }
     
     func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
-        let pattern = #"(?m)^(\d{2}:\d{2}(?::\d{2})?)\s+(.+)$"#
-        let nsText = htmlEncodedText as NSString
+        let normalizedText = normalizedShownotesTextForChapterParsing(from: htmlEncodedText)
+        let nsText = normalizedText as NSString
 
-        guard let regex = try? NSRegularExpression(
-            pattern: pattern,
-            options: [.allowCommentsAndWhitespace, .caseInsensitive]
+        guard let timeRegex = try? NSRegularExpression(
+            pattern: #"(?<!\d)((?:\d{1,2}:)?[0-5]?\d:[0-5]\d)(?!\d)"#
         ) else { return nil }
 
-        let matches = regex.matches(in: htmlEncodedText, options: [], range: NSRange(location: 0, length: nsText.length))
+        let matches = timeRegex.matches(in: normalizedText, range: NSRange(location: 0, length: nsText.length))
+        guard matches.isEmpty == false else { return nil }
 
-        var result: [String: String] = [:]
+        var parsedEntries: [(time: String, title: String)] = []
 
-        for match in matches {
-            guard match.numberOfRanges >= 3 else { continue }
-            let timeCode = nsText.substring(with: match.range(at: 1))
-            let title = nsText.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
-            result[timeCode] = title
+        for (index, match) in matches.enumerated() {
+            guard match.numberOfRanges >= 2 else { continue }
+            let rawTimeCode = nsText.substring(with: match.range(at: 1))
+            guard let canonicalTimeCode = canonicalChapterTimeCode(from: rawTimeCode) else { continue }
+
+            let titleStart = match.range.upperBound
+            let titleEnd = index + 1 < matches.count ? matches[index + 1].range.lowerBound : nsText.length
+            guard titleStart <= titleEnd else { continue }
+
+            let rawTitleSegment = nsText.substring(with: NSRange(location: titleStart, length: titleEnd - titleStart))
+            guard let title = extractChapterTitle(from: rawTitleSegment) else { continue }
+            parsedEntries.append((canonicalTimeCode, title))
         }
 
-        return result
+        guard parsedEntries.count >= 2 else { return nil }
+
+        var result: [String: String] = [:]
+        for entry in parsedEntries {
+            result[entry.time] = entry.title
+        }
+        return result.isEmpty ? nil : result
+    }
+
+    private func normalizedShownotesTextForChapterParsing(from htmlEncodedText: String) -> String {
+        var text = htmlEncodedText.decodeHTML() ?? htmlEncodedText
+
+        let replacements: [String: String] = [
+            "\r\n": "\n",
+            "\r": "\n",
+            "\u{2028}": "\n",
+            "\u{2029}": "\n",
+            "\u{0085}": "\n",
+            "\u{00A0}": " "
+        ]
+        for (needle, replacement) in replacements {
+            text = text.replacingOccurrences(of: needle, with: replacement)
+        }
+
+        text = text.replacingOccurrences(
+            of: #"(?<=\S)(?=(?:\d{1,2}:)?[0-5]?\d:[0-5]\d)"#,
+            with: "\n",
+            options: .regularExpression
+        )
+        text = text.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        return text
+    }
+
+    private func canonicalChapterTimeCode(from rawValue: String) -> String? {
+        let parts = rawValue.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 || parts.count == 3 else { return nil }
+
+        let hours: Int
+        let minutes: Int
+        let seconds: Int
+
+        if parts.count == 2 {
+            hours = 0
+            minutes = parts[0]
+            seconds = parts[1]
+        } else {
+            hours = parts[0]
+            minutes = parts[1]
+            seconds = parts[2]
+        }
+
+        guard (0..<60).contains(minutes), (0..<60).contains(seconds) else { return nil }
+        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
+    private func extractChapterTitle(from rawSegment: String) -> String? {
+        let lines = rawSegment
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+
+        for line in lines {
+            var candidate = line
+            candidate = candidate.replacingOccurrences(
+                of: #"^[\-\–\—:\|•·*>\)\]\.]+\s*"#,
+                with: "",
+                options: .regularExpression
+            )
+            candidate = candidate.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if candidate.isEmpty == false {
+                return candidate
+            }
+        }
+
+        return nil
     }
     
     func generateAIChapters(from htmlEncodedText: String) async -> [String: String] {

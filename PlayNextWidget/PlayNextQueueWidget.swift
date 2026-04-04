@@ -100,12 +100,14 @@ private struct PlayNextQueueWidgetView: View {
         switch family {
         case .systemSmall:
             smallView
+        case .systemMedium:
+            listView(limit: 3, showsCurrent: true)
         case .systemLarge:
-            listView(limit: 7, showsCurrent: true)
+            listView(limit: 6, showsCurrent: true)
         case .accessoryRectangular:
             accessoryView
         default:
-            listView(limit: 4, showsCurrent: true)
+            listView(limit: 3, showsCurrent: true)
         }
     }
 
@@ -136,7 +138,7 @@ private struct PlayNextQueueWidgetView: View {
     }
 
     private func listView(limit: Int, showsCurrent: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             widgetHeader
 
             if entry.snapshot.items.isEmpty {
@@ -151,6 +153,7 @@ private struct PlayNextQueueWidgetView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .widgetURL(URL(string: "upnext://playlist"))
     }
 
@@ -236,7 +239,7 @@ private struct QueueLine: View {
                     Text(supportingText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(style == .current ? 2 : 1)
+                        .lineLimit(1)
                 }
             }
         }
