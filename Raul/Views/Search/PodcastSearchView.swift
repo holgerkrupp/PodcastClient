@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import SwiftData
 import fyyd_swift
 
 struct PodcastSearchView: View {
     @StateObject private var viewModel = PodcastSearchViewModel()
     @Environment(\.modelContext) private var context
     @Binding var search: String
+    let onOpenPodcast: (PersistentIdentifier) -> Void
 
     // Local state for basic auth prompt
     @State private var authUsername: String = ""
@@ -30,7 +32,7 @@ struct PodcastSearchView: View {
                 ProgressView()
             }
             else if let singlePodcast = viewModel.singlePodcast{
-                SubscribeToPodcastView(newPodcastFeed: singlePodcast)
+                SubscribeToPodcastView(newPodcastFeed: singlePodcast, onOpenPodcast: onOpenPodcast)
                     .modelContext(context)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -40,7 +42,7 @@ struct PodcastSearchView: View {
                                          trailing: 0))
             } else if !viewModel.searchResults.isEmpty{
                 ForEach(viewModel.searchResults, id: \.self) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                    SubscribeToPodcastView(newPodcastFeed: podcast, onOpenPodcast: onOpenPodcast)
                         .modelContext(context)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -52,7 +54,7 @@ struct PodcastSearchView: View {
                 .navigationTitle("Subscribe")
             } else if !viewModel.results.isEmpty{
                 ForEach(viewModel.results, id: \.self) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                    SubscribeToPodcastView(newPodcastFeed: podcast, onOpenPodcast: onOpenPodcast)
                         .modelContext(context)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -171,5 +173,5 @@ struct PodcastSearchView: View {
 
 #Preview {
     @Previewable @State var search: String = ""
-    PodcastSearchView(search: $search)
+    PodcastSearchView(search: $search, onOpenPodcast: { _ in })
 }

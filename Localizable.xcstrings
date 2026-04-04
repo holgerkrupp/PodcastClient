@@ -80,6 +80,16 @@
         }
       }
     },
+    "%lld / %lld (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld (%3$@)"
+          }
+        }
+      }
+    },
     "%lld file%@" : {
       "localizations" : {
         "en" : {
@@ -131,6 +141,9 @@
       }
     },
     "%lld%% complete" : {
+
+    },
+    "Actions" : {
 
     },
     "Add" : {
@@ -406,6 +419,15 @@
         }
       }
     },
+    "Cloud Sync Diagnostics" : {
+
+    },
+    "CloudKit Account" : {
+
+    },
+    "CloudKitSyncMonitor" : {
+
+    },
     "Continue" : {
       "localizations" : {
         "de" : {
@@ -481,6 +503,9 @@
       }
     },
     "Custom Settings" : {
+
+    },
+    "Data Sync Progress" : {
 
     },
     "Database" : {
@@ -618,6 +643,9 @@
         }
       }
     },
+    "Discover" : {
+
+    },
     "Done" : {
       "localizations" : {
         "de" : {
@@ -713,6 +741,9 @@
         }
       }
     },
+    "Ended: %@" : {
+
+    },
     "Engine" : {
       "localizations" : {
         "de" : {
@@ -752,6 +783,12 @@
           }
         }
       }
+    },
+    "Error: %@" : {
+
+    },
+    "Expected Snapshot" : {
+
     },
     "Export" : {
       "localizations" : {
@@ -970,6 +1007,9 @@
         }
       }
     },
+    "If this Apple ID already has podcast data, episodes and podcasts will appear here shortly." : {
+
+    },
     "Import" : {
       "localizations" : {
         "de" : {
@@ -1053,6 +1093,9 @@
         }
       }
     },
+    "Last Refresh" : {
+
+    },
     "Last refresh: %@" : {
       "localizations" : {
         "de" : {
@@ -1092,6 +1135,9 @@
           }
         }
       }
+    },
+    "Listen" : {
+
     },
     "Listening" : {
       "localizations" : {
@@ -1889,6 +1935,9 @@
         }
       }
     },
+    "Publish Expected Snapshot to iCloud" : {
+
+    },
     "Pull to refresh to calculate the app's current storage usage." : {
 
     },
@@ -1964,6 +2013,9 @@
           }
         }
       }
+    },
+    "Refresh Diagnostics" : {
+
     },
     "Remove" : {
       "localizations" : {
@@ -2081,7 +2133,7 @@
         }
       }
     },
-    "Searching…" : {
+    "Searching… %lld%%" : {
 
     },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
@@ -2093,6 +2145,9 @@
           }
         }
       }
+    },
+    "Select a Section" : {
+
     },
     "Select file to import" : {
       "localizations" : {
@@ -2245,6 +2300,9 @@
         }
       }
     },
+    "Started: %@" : {
+
+    },
     "Stop after this episode" : {
       "localizations" : {
         "de" : {
@@ -2326,6 +2384,12 @@
           }
         }
       }
+    },
+    "Sync Signals" : {
+
+    },
+    "Syncing from iCloud" : {
+
     },
     "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size." : {
 
@@ -2734,6 +2798,9 @@
           }
         }
       }
+    },
+    "Your library exists on another device. Podcasts should appear here shortly." : {
+
     },
     "Your Library is empty" : {
       "localizations" : {
