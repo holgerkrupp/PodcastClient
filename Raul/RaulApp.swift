@@ -49,6 +49,9 @@ struct RaulApp: App {
                         Task {
                             await runAutomaticTranscriptionSweep(reason: "launch")
                         }
+                        Task { @MainActor in
+                            Player.shared.startRecoveryIfNeeded()
+                        }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
                         Task {

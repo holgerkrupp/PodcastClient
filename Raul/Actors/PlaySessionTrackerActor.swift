@@ -113,13 +113,11 @@ actor PlaySessionTrackerActor {
     }
 
     /// Call this after initialization to kick off recovery.
-    func startRecovery()  {
-        Task {
-            recoverIncompleteSessionIfNeeded()
-            backfillListeningStatsIfNeeded()
-            backfillSummariesIfNeeded()
-            pruneOldSessionsIfNeeded()
-        }
+    func startRecovery() async {
+        recoverIncompleteSessionIfNeeded()
+        backfillListeningStatsIfNeeded()
+        backfillSummariesIfNeeded()
+        pruneOldSessionsIfNeeded()
     }
 
     func startOrUpdateSession(episodeURL: URL, position: Double, rate: Float, appVersion: String) async {
@@ -424,18 +422,31 @@ actor PlaySessionTrackerActor {
 
     // Recovery logic: On launch, check if a session was left open, and finalize it
     private func recoverIncompleteSessionIfNeeded()  {
-        // Fetch all incomplete sessions (where endTime == nil)
-        let descriptor = FetchDescriptor<PlaySession>(predicate: #Predicate { $0.endTime == nil })
-        guard let incompleteSessions = try? modelContext.fetch(descriptor), !incompleteSessions.isEmpty else { return }
-        
-        for session in incompleteSessions {
-            guard let episode = session.episode, let sessionStart = session.startTime, let sessionStartPosition = session.startPosition else { continue }
-            // Find all sessions for this episode with startTime > this session
-            let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
-            let newerSessions = allSessions
-                .filter { $0.episode?.url == episode.url && $0.startTime != nil && ($0.startTime! > sessionStart) }
-            // Find the earliest newer session
-            let nextSession = newerSessions.sorted(by: { ($0.startTime ?? .distantFuture) < ($1.startTime ?? .distantFuture) }).first
+        let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
+        guard !allSessions.isEmpty else { return }
+
+        var sessionsByEpisode: [PersistentIdentifier: [PlaySession]] = [:]
+        for session in allSessions {
+            guard let episode = session.episode else { continue }
+            sessionsByEpisode[episode.persistentModelID, default: []].append(session)
+        }
+
+        for sessionsForEpisode in sessionsByEpisode.values {
+            let sortedByStart = sessionsForEpisode.sorted {
+                ($0.startTime ?? .distantPast) < ($1.startTime ?? .distantPast)
+            }
+
+            for (index, session) in sortedByStart.enumerated() {
+                guard session.endTime == nil,
+                      let episode = session.episode,
+                      let sessionStartPosition = session.startPosition else { continue }
+
+                let nextSession: PlaySession?
+                if index + 1 < sortedByStart.count {
+                    nextSession = sortedByStart[(index + 1)...].first(where: { $0.startTime != nil })
+                } else {
+                    nextSession = nil
+                }
             var endPosition: Double?
             if let next = nextSession, let nextStartPosition = next.startPosition {
                 // Use the next session's startPosition
@@ -475,6 +486,7 @@ actor PlaySessionTrackerActor {
                 // Save the session
                 modelContext.saveIfNeeded()
             }
+        }
         }
     }
 

@@ -6,21 +6,18 @@ struct PodcastSettingsView: View {
     static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
 
     @Environment(\.modelContext) private var context
-    @Environment(\.openURL) private var openURL
 
     let podcast: Podcast?
 
     @State private var useCustomSettings: Bool
-    @State private var isUpdatingCustomSettings: Bool = false
-    @State private var actor: PodcastSettingsModelActor
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
     init(podcast: Podcast?, modelContainer: ModelContainer) {
         self.podcast = podcast
+        _ = modelContainer
         self._useCustomSettings = State(initialValue: podcast?.settings?.isEnabled == true)
-        self._actor = State(initialValue: PodcastSettingsModelActor(modelContainer: modelContainer))
     }
 
     private var globalSettings: PodcastSettings? {
@@ -99,7 +96,7 @@ struct PodcastSettingsView: View {
             .background(Color.clear)
             .tint(.accent)
             .task {
-                await actor.ensureStandardSettingsExists()
+                _ = ensureStandardSettings(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
             }
         }
@@ -155,23 +152,13 @@ struct PodcastSettingsView: View {
                     }
                 )
             )
-            .disabled(podcast?.feed == nil || isUpdatingCustomSettings)
+            .disabled(podcast?.feed == nil)
 
             Text(useCustomSettings
                  ? "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global."
                  : "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
-            if isUpdatingCustomSettings {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Updating podcast settings…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
         }
     }
 
@@ -420,22 +407,13 @@ struct PodcastSettingsView: View {
     }
 
     private func handleCustomSettingsToggle(_ newValue: Bool) {
-        guard let feed = podcast?.feed else { return }
+        guard let podcast else { return }
         useCustomSettings = newValue
-        isUpdatingCustomSettings = true
 
-        Task {
-            if newValue {
-                await actor.enableCustomSettings(for: feed)
-            } else {
-                await actor.disableCustomSettings(for: feed)
-            }
-
-            await MainActor.run {
-                useCustomSettings = podcast?.settings?.isEnabled == true
-                isUpdatingCustomSettings = false
-                postSettingsDidChange()
-            }
+        if newValue {
+            enableCustomSettings(for: podcast, in: context)
+        } else {
+            disableCustomSettings(for: podcast, in: context)
         }
     }
 
@@ -822,11 +800,10 @@ private struct AppControlsSettingsDetailView: View {
 private struct PodcastOverridesManagementView: View {
     @Environment(\.modelContext) private var context
 
-    @State private var actor: PodcastSettingsModelActor
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
     init(modelContainer: ModelContainer) {
-        self._actor = State(initialValue: PodcastSettingsModelActor(modelContainer: modelContainer))
+        _ = modelContainer
     }
 
     private var podcastsUsingCustomSettings: [Podcast] {
@@ -872,7 +849,7 @@ private struct PodcastOverridesManagementView: View {
                             Spacer()
 
                             Button("Use Custom") {
-                                enableCustomSettings(for: podcast)
+                                enableCustomSettingsFromList(for: podcast)
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.small)
@@ -887,16 +864,56 @@ private struct PodcastOverridesManagementView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func enableCustomSettings(for podcast: Podcast) {
-        guard let feed = podcast.feed else { return }
-
-        Task {
-            await actor.enableCustomSettings(for: feed)
-            await MainActor.run {
-                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-            }
-        }
+    private func enableCustomSettingsFromList(for podcast: Podcast) {
+        enableCustomSettings(for: podcast, in: context)
     }
+}
+
+@MainActor
+private func ensureStandardSettings(in context: ModelContext) -> PodcastSettings {
+    let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
+    var descriptor = FetchDescriptor<PodcastSettings>(
+        predicate: #Predicate { $0.title == defaultSettingsTitle }
+    )
+    descriptor.fetchLimit = 1
+
+    if let result = try? context.fetch(descriptor).first {
+        return result
+    }
+
+    let settings = PodcastSettings()
+    settings.title = defaultSettingsTitle
+    context.insert(settings)
+    context.saveIfNeeded()
+    return settings
+}
+
+@MainActor
+private func enableCustomSettings(for podcast: Podcast, in context: ModelContext) {
+    let globalSettings = ensureStandardSettings(in: context)
+
+    if let settings = podcast.settings {
+        settings.isEnabled = true
+        settings.podcast = podcast
+    } else {
+        let settings = PodcastSettings(podcast: podcast)
+        settings.isEnabled = true
+        settings.playbackSpeed = globalSettings.playbackSpeed
+        settings.playnextPosition = globalSettings.playnextPosition
+        settings.autoSkipKeywords = globalSettings.autoSkipKeywords
+        context.insert(settings)
+        podcast.settings = settings
+    }
+
+    context.saveIfNeeded()
+    NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+}
+
+@MainActor
+private func disableCustomSettings(for podcast: Podcast, in context: ModelContext) {
+    podcast.settings?.isEnabled = false
+    context.saveIfNeeded()
+    NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
 }
 
 private struct PodcastSettingsPodcastRow: View {

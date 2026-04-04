@@ -20,7 +20,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier,
-            using: nil
+            using: DispatchQueue.main
         ) { task in
             guard let processingTask = task as? BGProcessingTask else {
                 task.setTaskCompleted(success: false)

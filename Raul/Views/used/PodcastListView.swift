@@ -25,23 +25,52 @@ struct PodcastListView: View {
     @StateObject private var viewModel: PodcastListViewModel
     
     @State private var filteredPodcasts: [Podcast] = []
+    @State private var episodeSearchResults: [EpisodeSearchResult] = []
     @State private var selectedScope: LibraryScope = .subscribed
     @State private var searchText = ""
     @State private var searchInTitle = true
     @State private var searchInAuthor = false
     @State private var searchInDescription = true
     @State private var searchInEpisodes = true
+    @State private var searchTask: Task<Void, Never>?
 
     init(modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
     }
 
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearchingEpisodes: Bool {
+        trimmedSearchText.isEmpty == false && searchInEpisodes
+    }
+
     var body: some View {
         Group {
-            if filteredPodcasts.isEmpty {
-                if searchText.isEmpty, selectedScope == .subscribed {
+            if isSearchingEpisodes {
+                if episodeSearchResults.isEmpty {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("No episodes matched \"\(trimmedSearchText)\".")
+                    )
+                } else {
+                    List {
+                        ForEach(episodeSearchResults) { result in
+                            episodeResultRow(result)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(.init(top: 4, leading: 0, bottom: 4, trailing: 0))
+                                .listRowBackground(Color.clear)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .listRowSpacing(0)
+                }
+            } else if filteredPodcasts.isEmpty {
+                if trimmedSearchText.isEmpty, selectedScope == .subscribed {
                     PodcastsEmptyView()
-                } else if searchText.isEmpty {
+                } else if trimmedSearchText.isEmpty {
                     ContentUnavailableView(
                         selectedScope == .unsubscribed ? "No Unsubscribed Podcasts" : "No Podcasts",
                         systemImage: selectedScope == .unsubscribed ? "pause.circle" : "dot.radiowaves.left.and.right",
@@ -137,25 +166,25 @@ struct PodcastListView: View {
             applyFilters()
         }
         .onChange(of: searchText) { _, _ in
-            debounceFilters()
+            scheduleSearchUpdate()
         }
         .onChange(of: searchInTitle) { _, _ in
-            applyFilters()
+            scheduleSearchUpdate()
         }
         .onChange(of: searchInAuthor) { _, _ in
-            applyFilters()
+            scheduleSearchUpdate()
         }
         .onChange(of: searchInDescription) { _, _ in
-            applyFilters()
+            scheduleSearchUpdate()
         }
         .onChange(of: searchInEpisodes) { _, _ in
-            applyFilters()
+            scheduleSearchUpdate()
         }
         .onChange(of: podcasts.map { "\($0.persistentModelID)-\($0.isSubscribed)" }) { _, _ in
-            applyFilters()
+            scheduleSearchUpdate()
         }
         .onChange(of: selectedScope) { _, _ in
-            applyFilters()
+            scheduleSearchUpdate()
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -203,8 +232,12 @@ struct PodcastListView: View {
         }
     }
 
-    private func debounceFilters() {
-        Debounce.shared.perform {
+    private func scheduleSearchUpdate() {
+        searchTask?.cancel()
+        searchTask = Task { @MainActor in
+            // Keep typing responsive while coalescing rapid keystrokes.
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard Task.isCancelled == false else { return }
             applyFilters()
         }
     }
@@ -220,10 +253,29 @@ struct PodcastListView: View {
                 return true
             }
         }
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = trimmedSearchText
 
         guard query.isEmpty == false else {
             filteredPodcasts = currentPodcasts
+            episodeSearchResults = []
+            return
+        }
+
+        if searchInEpisodes {
+            var results: [EpisodeSearchResult] = []
+
+            for podcast in currentPodcasts {
+                let sortedEpisodes = (podcast.episodes ?? [])
+                    .sorted(by: { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) })
+                for episode in sortedEpisodes {
+                    if let match = episodeSearchMatch(for: episode, query: query) {
+                        results.append(match)
+                    }
+                }
+            }
+
+            episodeSearchResults = results
+            filteredPodcasts = []
             return
         }
 
@@ -248,6 +300,181 @@ struct PodcastListView: View {
             }
 
             return false
+        }
+        episodeSearchResults = []
+    }
+
+    private func episodeSearchMatch(for episode: Episode, query: String) -> EpisodeSearchResult? {
+        let normalizedQuery = query.lowercased()
+
+        if searchInDescription {
+            if let desc = episode.desc, desc.lowercased().contains(normalizedQuery) {
+                return EpisodeSearchResult(
+                    episode: episode,
+                    kind: .showNotes,
+                    snippet: snippet(from: desc, query: query)
+                )
+            }
+            if let subtitle = episode.subtitle, subtitle.lowercased().contains(normalizedQuery) {
+                return EpisodeSearchResult(
+                    episode: episode,
+                    kind: .showNotes,
+                    snippet: snippet(from: subtitle, query: query)
+                )
+            }
+            if let content = episode.content, content.lowercased().contains(normalizedQuery) {
+                return EpisodeSearchResult(
+                    episode: episode,
+                    kind: .showNotes,
+                    snippet: snippet(from: content, query: query)
+                )
+            }
+        }
+
+        if episode.title.lowercased().contains(normalizedQuery) {
+            return EpisodeSearchResult(
+                episode: episode,
+                kind: .title,
+                snippet: snippet(from: episode.title, query: query)
+            )
+        }
+
+        if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
+            for line in transcriptLines {
+                if line.text.lowercased().contains(normalizedQuery) {
+                    return EpisodeSearchResult(
+                        episode: episode,
+                        kind: .transcript(startTime: line.startTime),
+                        snippet: line.text
+                    )
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func snippet(from text: String, query: String, maxLength: Int = 140) -> String {
+        let cleanedText = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanedText.count > maxLength else { return cleanedText }
+
+        let lowercaseText = cleanedText.lowercased()
+        let lowercaseQuery = query.lowercased()
+        if let range = lowercaseText.range(of: lowercaseQuery) {
+            let lowerBound = cleanedText.distance(from: cleanedText.startIndex, to: range.lowerBound)
+            let startOffset = max(0, lowerBound - (maxLength / 2))
+            let startIndex = cleanedText.index(cleanedText.startIndex, offsetBy: startOffset)
+            let endIndex = cleanedText.index(startIndex, offsetBy: min(maxLength, cleanedText.distance(from: startIndex, to: cleanedText.endIndex)))
+            let clipped = String(cleanedText[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return startOffset == 0 ? clipped : "…\(clipped)"
+        }
+
+        return String(cleanedText.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder
+    private func episodeResultRow(_ result: EpisodeSearchResult) -> some View {
+        let episode = result.episode
+        ZStack {
+            CoverImageView(podcast: episode.podcast)
+                .scaledToFill()
+                .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124)
+                .blur(radius: 8)
+                .clipped()
+
+            HStack(alignment: .top, spacing: 12) {
+                CoverImageView(episode: episode)
+                    .frame(width: 88, height: 88)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let podcastTitle = episode.podcast?.title, podcastTitle.isEmpty == false {
+                            Text(podcastTitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Text(episode.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+
+                        Text(result.kind.label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Text(result.snippet)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                if case .transcript(let startTime) = result.kind, let episodeURL = episode.url {
+                    Button {
+                        Task {
+                            await Player.shared.playEpisode(episodeURL, playDirectly: true, startingAt: startTime)
+                        }
+                    } label: {
+                        Label("Play", systemImage: "play.fill")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .accessibilityLabel("Play from \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))")
+                }
+            }
+            .padding(8)
+            .background(Rectangle().fill(.thinMaterial))
+        }
+        .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
+    }
+}
+
+private struct EpisodeSearchResult: Identifiable {
+    enum MatchKind {
+        case title
+        case showNotes
+        case transcript(startTime: Double)
+
+        var label: String {
+            switch self {
+            case .title:
+                return "Matched in title"
+            case .showNotes:
+                return "Matched in show notes"
+            case .transcript(let startTime):
+                return "Matched in transcript at \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))"
+            }
+        }
+    }
+
+    let id: String
+    let episode: Episode
+    let kind: MatchKind
+    let snippet: String
+
+    init(episode: Episode, kind: MatchKind, snippet: String) {
+        self.episode = episode
+        self.kind = kind
+        self.snippet = snippet
+        self.id = "\(episode.persistentModelID)-\(kind.idSuffix)"
+    }
+}
+
+private extension EpisodeSearchResult.MatchKind {
+    var idSuffix: String {
+        switch self {
+        case .title:
+            return "title"
+        case .showNotes:
+            return "shownotes"
+        case .transcript(let startTime):
+            return "transcript-\(Int(startTime * 10))"
         }
     }
 }
