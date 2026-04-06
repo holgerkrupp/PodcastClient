@@ -78,11 +78,14 @@ struct ListeningTimeByPodcastChart: View {
                 }) {
                     Image(systemName: "chevron.left")
                 }
+                .accessibilityLabel("Previous week")
+                .accessibilityHint("Shows listening stats for the previous week")
                 Button("Summary") {
                     weekStartDate = nil
                 }
                 .font(.caption)
                 .foregroundStyle(weekStartDate == nil ? .primary : .secondary)
+                .accessibilityHint("Shows listening stats aggregated across all weeks")
                 Button(action: {
                     if let start = weekStartDate {
                         weekStartDate = Calendar.current.date(byAdding: .day, value: 7, to: start)
@@ -90,6 +93,8 @@ struct ListeningTimeByPodcastChart: View {
                 }) {
                     Image(systemName: "chevron.right")
                 }
+                .accessibilityLabel("Next week")
+                .accessibilityHint("Shows listening stats for the following week")
 
             }
             if let weekStart = weekStartDate {

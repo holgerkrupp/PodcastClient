@@ -97,6 +97,14 @@ struct SkipChapter: ToggleStyle {
                     
                 ).cornerRadius(20)
                 .onTapGesture { configuration.isOn.toggle() }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Play chapter")
+                .accessibilityValue(configuration.isOn ? "On" : "Off")
+                .accessibilityHint("Turn off to skip this chapter")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction {
+                    configuration.isOn.toggle()
+                }
         }
     }
     

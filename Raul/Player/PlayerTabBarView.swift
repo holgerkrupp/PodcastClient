@@ -62,6 +62,7 @@ struct PlayerTabBarView: View {
                                 .scaledToFit()
                                 .clipShape(Circle())
                                 .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 0))
+                                .accessibilityHidden(true)
                             
                             
                             
@@ -96,6 +97,8 @@ struct PlayerTabBarView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
+                                .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+                                .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playback of the current episode")
                                 
                                 
                                 
@@ -113,6 +116,7 @@ struct PlayerTabBarView: View {
                                 .scaledToFit()
                                 .clipShape(Circle())
                                 .padding(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 0))
+                                .accessibilityHidden(true)
                             
                             
                             
@@ -147,6 +151,8 @@ struct PlayerTabBarView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .padding(EdgeInsets(top: 8, leading: 2, bottom: 8, trailing: 20))
+                                .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+                                .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playback of the current episode")
                                 
                                 
                                 
@@ -161,6 +167,12 @@ struct PlayerTabBarView: View {
             }
             
             .tint(dynamicPrimaryColor)
+            .accessibilityLabel("Mini player, \(episode.title)")
+            .accessibilityHint("Double tap anywhere on the mini player to open full player controls")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: Text("Open full player")) {
+                presentingModal = true
+            }
             
             .onTapGesture {
                 presentingModal = true

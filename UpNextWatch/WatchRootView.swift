@@ -55,6 +55,8 @@ struct WatchRootView: View {
                             Image(systemName: "gearshape.fill")
                                 .foregroundStyle(.white)
                         }
+                        .accessibilityLabel("Settings")
+                        .accessibilityHint("Open watch storage and download settings")
                     }
                 }
 
@@ -72,6 +74,8 @@ struct WatchRootView: View {
                             }
                         }
                         .disabled(store.isRefreshingInbox)
+                        .accessibilityLabel(store.isRefreshingInbox ? "Refreshing inbox" : "Refresh inbox")
+                        .accessibilityHint("Loads the latest inbox episodes from your phone")
                     }
                 }
             }
@@ -125,6 +129,8 @@ private struct WatchPlaylistPage: View {
                             WatchNowPlayingHero(episode: currentEpisode)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Now playing \(currentEpisode.title)")
+                        .accessibilityHint("Opens the full now playing screen")
                     }
 
                     WatchStorageStatusCard()
@@ -196,6 +202,7 @@ private struct WatchNowPlayingHero: View {
                         icon: "waveform"
                     )
                     .frame(width: 56, height: 56)
+                    .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Now Playing")
@@ -246,6 +253,8 @@ private struct WatchPlaylistCard: View {
                         episodeHeader
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Now playing \(episode.title)")
+                    .accessibilityHint("Opens full playback controls")
                 } else {
                     NavigationLink {
                         WatchPlayerView(episodeID: episode.id)
@@ -313,6 +322,7 @@ private struct WatchPlaylistCard: View {
                 icon: store.isDownloaded(episode) ? "arrow.down.circle.fill" : "play.circle.fill"
             )
             .frame(width: 54, height: 54)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .top, spacing: 6) {
@@ -326,6 +336,7 @@ private struct WatchPlaylistCard: View {
                         Image(systemName: "speaker.wave.2.fill")
                             .font(.caption2)
                             .foregroundStyle(.teal)
+                            .accessibilityHidden(true)
                     }
                 }
 
@@ -414,6 +425,7 @@ private struct WatchInboxCard: View {
                         icon: "tray.and.arrow.down.fill"
                     )
                     .frame(width: 52, height: 52)
+                    .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(episode.title)
@@ -452,6 +464,7 @@ private struct WatchEmptyState: View {
                 Image(systemName: systemName)
                     .font(.title3)
                     .foregroundStyle(.white.opacity(0.82))
+                    .accessibilityHidden(true)
 
                 Text(title)
                     .font(.headline)

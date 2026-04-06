@@ -40,6 +40,7 @@ struct ChapterRowView: View {
                                     .foregroundColor(.blue)
                             }
                             .padding(.trailing, 8)
+                            .accessibilityLabel("Open chapter link")
                         }
                     }
                     HStack {
@@ -61,11 +62,20 @@ struct ChapterRowView: View {
                     }
                 ))
                 .toggleStyle(SkipChapter())
+                .accessibilityLabel("Play chapter")
+                .accessibilityHint("Turn off to skip this chapter automatically")
                 
             }
             .padding(.horizontal)
             .onTapGesture {
                 Task{
+                    await player.skipTo(chapter: chapter)
+                }
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Double tap to jump playback to this chapter")
+            .accessibilityAction {
+                Task {
                     await player.skipTo(chapter: chapter)
                 }
             }
@@ -75,4 +85,3 @@ struct ChapterRowView: View {
         
     }
 }
-

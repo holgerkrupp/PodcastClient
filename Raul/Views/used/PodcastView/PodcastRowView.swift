@@ -18,10 +18,12 @@ struct PodcastRowView: View {
                 .blur(radius: 8)
                 .opacity(0.45)
                 .clipped()
+                .accessibilityHidden(true)
 
             HStack(spacing: 14) {
                 CoverImageView(podcast: podcast)
                     .frame(width: 112, height: 112)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(podcast.title)

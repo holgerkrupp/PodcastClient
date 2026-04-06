@@ -46,18 +46,21 @@ struct EpisodeRowView: View {
                 .blur(radius: 8)
                 //.opacity(0.45)
                 .clipped()
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack(alignment: .topTrailing) {
                         CoverImageView(episode: episode)
                             .frame(width: 120, height: 120)
+                            .accessibilityHidden(true)
 
                         if hasBookmarks {
                             Image(systemName: "bookmark.fill")
                                 .font(.title2)
                                 .foregroundStyle(.accent)
                                 .padding(8)
+                                .accessibilityLabel("Has bookmarks")
                         }
                     }
 
@@ -88,17 +91,22 @@ struct EpisodeRowView: View {
                         HStack(spacing: 10) {
                             if completionDate != nil {
                                 Image("custom.play.circle.badge.checkmark")
+                                    .accessibilityLabel("Played")
                             } else if isDownloaded {
                                 Image(systemName: style.sfSymbolName)
+                                    .accessibilityLabel("Downloaded")
                             } else {
                                 Image(systemName: "cloud")
+                                    .accessibilityLabel("Not downloaded")
                             }
 
                             if hasChapters {
                                 Image(systemName: "list.bullet")
+                                    .accessibilityLabel("Has chapters")
                             }
                             if hasTranscript {
                                 Image(systemName: "quote.bubble")
+                                    .accessibilityLabel("Has transcript")
                             }
 
                             Spacer()

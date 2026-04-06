@@ -61,6 +61,8 @@ struct DownloadedEpisodesView: View {
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
                 }
+                .accessibilityLabel("Download actions and sort")
+                .accessibilityHint("Sort downloads, rescan files, or delete played episodes")
             }
         }
         .task {

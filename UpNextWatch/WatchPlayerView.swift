@@ -55,6 +55,7 @@ struct WatchPlayerView: View {
                             icon: playback.isActivelyPlaying(episode) ? "waveform" : "play.circle.fill"
                         )
                         .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
 
                         VStack(spacing: 4) {
                             Text(episode.title)
@@ -98,7 +99,11 @@ struct WatchPlayerView: View {
 
                         VStack(spacing: 8) {
                             HStack(spacing: 8) {
-                                WatchSmallControlButton(systemName: "backward.end.fill") {
+                                WatchSmallControlButton(
+                                    systemName: "backward.end.fill",
+                                    accessibilityLabel: "Previous chapter",
+                                    accessibilityHint: "Jumps to the start of the previous chapter"
+                                ) {
                                     if playback.isCurrentEpisode(episode) {
                                         playback.skipToChapterStart()
                                     } else {
@@ -107,12 +112,18 @@ struct WatchPlayerView: View {
                                 }
 
                                 WatchPrimaryControlButton(
-                                    systemName: playback.isActivelyPlaying(episode) ? "pause.fill" : "play.fill"
+                                    systemName: playback.isActivelyPlaying(episode) ? "pause.fill" : "play.fill",
+                                    accessibilityLabel: playback.isActivelyPlaying(episode) ? "Pause playback" : "Start playback",
+                                    accessibilityHint: playback.isActivelyPlaying(episode) ? "Pauses the current episode" : "Starts the current episode"
                                 ) {
                                     playback.togglePlayback(for: episode)
                                 }
 
-                                WatchSmallControlButton(systemName: "forward.end.fill") {
+                                WatchSmallControlButton(
+                                    systemName: "forward.end.fill",
+                                    accessibilityLabel: "Next chapter",
+                                    accessibilityHint: "Skips to the next chapter"
+                                ) {
                                     if playback.isCurrentEpisode(episode) {
                                         playback.skipToNextChapter()
                                     } else if let nextChapter = episode.chapters.first(where: { $0.start > activePosition }) {
@@ -122,7 +133,11 @@ struct WatchPlayerView: View {
                             }
 
                             HStack(spacing: 8) {
-                                WatchSmallControlButton(systemName: "gobackward.15") {
+                                WatchSmallControlButton(
+                                    systemName: "gobackward.15",
+                                    accessibilityLabel: "Skip back 15 seconds",
+                                    accessibilityHint: "Moves playback backward by 15 seconds"
+                                ) {
                                     if playback.isCurrentEpisode(episode) {
                                         playback.skipBackward()
                                     } else {
@@ -130,7 +145,11 @@ struct WatchPlayerView: View {
                                     }
                                 }
 
-                                WatchSmallControlButton(systemName: "goforward.30") {
+                                WatchSmallControlButton(
+                                    systemName: "goforward.30",
+                                    accessibilityLabel: "Skip forward 30 seconds",
+                                    accessibilityHint: "Moves playback forward by 30 seconds"
+                                ) {
                                     if playback.isCurrentEpisode(episode) {
                                         playback.skipForward()
                                     } else {
@@ -142,6 +161,9 @@ struct WatchPlayerView: View {
                                     playback.cyclePlaybackRate()
                                 }
                                 .buttonStyle(WatchCapsuleButtonStyle(accent: .teal))
+                                .accessibilityLabel("Playback speed")
+                                .accessibilityValue(playback.formattedPlaybackRate)
+                                .accessibilityHint("Double tap to cycle playback speed")
                             }
                         }
 
@@ -173,11 +195,14 @@ struct WatchPlayerView: View {
                                                     Image(systemName: "dot.radiowaves.left.and.right")
                                                         .font(.caption2)
                                                         .foregroundStyle(.teal)
+                                                        .accessibilityHidden(true)
                                                 }
                                             }
                                             .padding(.vertical, 2)
                                         }
                                         .buttonStyle(.plain)
+                                        .accessibilityLabel("Play chapter \(chapter.title)")
+                                        .accessibilityHint("Starts playback at \(watchPlaybackTime(chapter.start))")
                                     }
                                 }
                             }
@@ -190,6 +215,7 @@ struct WatchPlayerView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "waveform.slash")
                         .font(.title3)
+                        .accessibilityHidden(true)
                     Text("Episode is no longer available here.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
@@ -355,7 +381,21 @@ struct WatchProgressBar: View {
 
 private struct WatchPrimaryControlButton: View {
     let systemName: String
+    let accessibilityLabelText: String
+    let accessibilityHintText: String?
     let action: () -> Void
+
+    init(
+        systemName: String,
+        accessibilityLabel: String,
+        accessibilityHint: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.systemName = systemName
+        self.accessibilityLabelText = accessibilityLabel
+        self.accessibilityHintText = accessibilityHint
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -375,12 +415,28 @@ private struct WatchPrimaryControlButton: View {
                 .foregroundStyle(.white)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityHint(accessibilityHintText ?? "")
     }
 }
 
 private struct WatchSmallControlButton: View {
     let systemName: String
+    let accessibilityLabelText: String
+    let accessibilityHintText: String?
     let action: () -> Void
+
+    init(
+        systemName: String,
+        accessibilityLabel: String,
+        accessibilityHint: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.systemName = systemName
+        self.accessibilityLabelText = accessibilityLabel
+        self.accessibilityHintText = accessibilityHint
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -395,6 +451,8 @@ private struct WatchSmallControlButton: View {
                 .foregroundStyle(.white)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityHint(accessibilityHintText ?? "")
     }
 }
 

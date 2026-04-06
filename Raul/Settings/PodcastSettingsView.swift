@@ -901,6 +901,8 @@ private struct ChapterRuleEditorCard: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Remove rule \(ruleNumber)")
+                .accessibilityHint("Deletes this chapter skip rule")
             }
 
             VStack(alignment: .leading, spacing: 6) {

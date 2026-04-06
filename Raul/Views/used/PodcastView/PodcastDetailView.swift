@@ -322,6 +322,8 @@ struct PodcastDetailView: View {
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
                     }
+                    .accessibilityLabel("Episode sort and visibility")
+                    .accessibilityHint("Choose episode sort order and hide played episodes")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
@@ -329,6 +331,8 @@ struct PodcastDetailView: View {
                     }) {
                         Image(systemName: "gear")
                     }
+                    .accessibilityLabel("Podcast settings")
+                    .accessibilityHint("Open settings for this podcast")
                     
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -347,6 +351,8 @@ struct PodcastDetailView: View {
                         }
                     }
                     .disabled(podcast.isSubscribed == false || isLoading)
+                    .accessibilityLabel(isLoading ? "Refreshing podcast" : "Refresh podcast")
+                    .accessibilityHint("Downloads the latest episodes from this podcast feed")
                     
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -357,6 +363,8 @@ struct PodcastDetailView: View {
                     }) {
                         Image(systemName: "archivebox")
                     }
+                    .accessibilityLabel("Archive all episodes")
+                    .accessibilityHint("Marks all episodes in this podcast as archived")
                 }
                 
                 

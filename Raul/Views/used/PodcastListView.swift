@@ -232,6 +232,8 @@ struct PodcastListView: View {
                 } label: {
                     Image(systemName: selectedScope == .unsubscribed ? "pause.circle" : "line.3.horizontal.decrease.circle")
                 }
+                .accessibilityLabel("Podcast scope")
+                .accessibilityHint("Filter library by subscribed, not subscribed, or all podcasts")
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -243,6 +245,8 @@ struct PodcastListView: View {
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease.circle")
                 }
+                .accessibilityLabel("Search filters")
+                .accessibilityHint("Choose whether search matches titles, authors, descriptions, or episodes")
             }
 
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -263,6 +267,8 @@ struct PodcastListView: View {
                     }
                 }
                 .disabled(viewModel.isLoading)
+                .accessibilityLabel(viewModel.isLoading ? "Refreshing podcasts" : "Refresh podcasts")
+                .accessibilityHint("Updates all podcast feeds in your library")
             }
         }
     }

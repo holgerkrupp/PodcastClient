@@ -52,12 +52,13 @@ struct TranscriptView: View {
                 Text(line.text)
                     .font(.body)
                     .transition(.opacity)
-                    .minimumScaleFactor(0.5)
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial)
             .animation(.easeInOut(duration: 0.3), value: currentLine?.id)
             .onAppear {
                 self.speakerColorMap = computeSpeakerColorMap()
@@ -66,13 +67,14 @@ struct TranscriptView: View {
                 self.speakerColorMap = computeSpeakerColorMap()
             }
         } else {
-            EmptyView()
-                .onAppear {
-                    self.speakerColorMap = computeSpeakerColorMap()
-                }
-                .onChange(of: transcriptLines) {
-                    self.speakerColorMap = computeSpeakerColorMap()
-                }
+            Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .onAppear {
+                self.speakerColorMap = computeSpeakerColorMap()
+            }
+            .onChange(of: transcriptLines) {
+                self.speakerColorMap = computeSpeakerColorMap()
+            }
         }
     }
     /*

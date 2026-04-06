@@ -16,18 +16,24 @@ struct TranscriptListView: View {
 
     @Bindable private var player = Player.shared
     @State private var searchText: String
-    @State private var followPlayback = false
+    @State private var followPlayback: Bool
     @State private var displayRows: [TranscriptDisplayRow]
     @State private var speakerColorMap: [String: Color]
     @State private var lineToDisplayRowID: [UUID: UUID]
 
-    init(transcriptLines: [TranscriptLineAndTime], episode: Episode? = nil, searchText: String = "") {
+    init(
+        transcriptLines: [TranscriptLineAndTime],
+        episode: Episode? = nil,
+        searchText: String = "",
+        startFollowingPlayback: Bool = false
+    ) {
         let sortedLines = transcriptLines.sorted { $0.startTime < $1.startTime }
         let initialRows = Self.makeDisplayRows(from: sortedLines, matching: searchText)
 
         self.transcriptLines = sortedLines
         self.episode = episode
         _searchText = State(initialValue: searchText)
+        _followPlayback = State(initialValue: startFollowingPlayback)
         _displayRows = State(initialValue: initialRows)
         _speakerColorMap = State(initialValue: Self.makeSpeakerColorMap(from: initialRows))
         _lineToDisplayRowID = State(initialValue: Self.makeLineToDisplayRowID(from: initialRows))
@@ -109,6 +115,13 @@ struct TranscriptListView: View {
                         .padding(.bottom)
                     }
                 }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { _ in
+                            guard followPlayback else { return }
+                            followPlayback = false
+                        }
+                )
                 .onAppear {
                     scrollToActiveRow(with: proxy, animated: false)
                 }
@@ -231,7 +244,8 @@ struct TranscriptListView: View {
             }
         }
 
-        return nil
+        let fallbackIndex = max(0, min(low - 1, transcriptLines.count - 1))
+        return transcriptLines[fallbackIndex].id
     }
 
     private func effectiveEndTime(for index: Int) -> TimeInterval {

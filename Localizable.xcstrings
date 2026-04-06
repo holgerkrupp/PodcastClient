@@ -124,6 +124,9 @@
         }
       }
     },
+    "%lld percent" : {
+
+    },
     "%lld%%" : {
       "localizations" : {
         "de" : {
@@ -153,6 +156,9 @@
     "Add a rule to skip recurring chapters like ads, intros, or credits." : {
 
     },
+    "Add bookmark" : {
+
+    },
     "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list." : {
       "localizations" : {
         "de" : {
@@ -172,6 +178,18 @@
           }
         }
       }
+    },
+    "Add to end of queue" : {
+
+    },
+    "Add to Up Next" : {
+
+    },
+    "Adjusts the current playback position" : {
+
+    },
+    "AirPlay" : {
+
     },
     "All Bookmarks" : {
       "localizations" : {
@@ -281,6 +299,15 @@
         }
       }
     },
+    "Archive all episodes" : {
+
+    },
+    "Archive all inbox episodes" : {
+
+    },
+    "Archive episode" : {
+
+    },
     "Archive Episode" : {
       "localizations" : {
         "de" : {
@@ -290,6 +317,9 @@
           }
         }
       }
+    },
+    "Archiving inbox episodes" : {
+
     },
     "at %@" : {
       "localizations" : {
@@ -436,6 +466,15 @@
         }
       }
     },
+    "Choose an audio output device" : {
+
+    },
+    "Choose episode sort order and hide played episodes" : {
+
+    },
+    "Choose whether search matches titles, authors, descriptions, or episodes" : {
+
+    },
     "Continue" : {
       "localizations" : {
         "de" : {
@@ -445,6 +484,9 @@
           }
         }
       }
+    },
+    "Continues the paused download" : {
+
     },
     "Continuous playback" : {
       "localizations" : {
@@ -478,6 +520,9 @@
           }
         }
       }
+    },
+    "Create audio clip" : {
+
     },
     "Created in Buxtehude by" : {
       "localizations" : {
@@ -638,6 +683,12 @@
         }
       }
     },
+    "Deletes the local file from this device" : {
+
+    },
+    "Deletes this chapter skip rule" : {
+
+    },
     "Descriptions" : {
       "localizations" : {
         "de" : {
@@ -658,6 +709,12 @@
         }
       }
     },
+    "Double tap anywhere on the mini player to open full player controls" : {
+
+    },
+    "Double tap to jump playback to this chapter" : {
+
+    },
     "Download" : {
       "localizations" : {
         "de" : {
@@ -667,6 +724,12 @@
           }
         }
       }
+    },
+    "Download actions and sort" : {
+
+    },
+    "Downloaded" : {
+
     },
     "Downloaded audio and cache files will appear here when they exist." : {
 
@@ -690,6 +753,12 @@
           }
         }
       }
+    },
+    "Downloads the latest episodes from this podcast feed" : {
+
+    },
+    "Downloads this episode for offline playback" : {
+
     },
     "e.g. ad break, intro, credits" : {
 
@@ -755,6 +824,9 @@
           }
         }
       }
+    },
+    "Episode sort and visibility" : {
+
     },
     "Episodes" : {
       "localizations" : {
@@ -858,6 +930,9 @@
         }
       }
     },
+    "Fetches new episodes and reloads your inbox" : {
+
+    },
     "File Cleanup" : {
 
     },
@@ -868,6 +943,9 @@
 
     },
     "Files %@" : {
+
+    },
+    "Filter library by subscribed, not subscribed, or all podcasts" : {
 
     },
     "Follow" : {
@@ -965,6 +1043,15 @@
     "Global Settings" : {
 
     },
+    "Has bookmarks" : {
+
+    },
+    "Has chapters" : {
+
+    },
+    "Has transcript" : {
+
+    },
     "Heat Map (%@ – %@)" : {
       "localizations" : {
         "de" : {
@@ -982,6 +1069,9 @@
       }
     },
     "Help" : {
+
+    },
+    "Hide inline transcript" : {
 
     },
     "Hide played Episodes" : {
@@ -1092,6 +1182,12 @@
           }
         }
       }
+    },
+    "Jump to max play position" : {
+
+    },
+    "Jumps to the furthest point you have listened to in this episode" : {
+
     },
     "Keep the current transcript line centered" : {
 
@@ -1306,6 +1402,9 @@
         }
       }
     },
+    "Marks all episodes in this podcast as archived" : {
+
+    },
     "Match" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1332,6 +1431,9 @@
           }
         }
       }
+    },
+    "Mini player, %@" : {
+
     },
     "Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale." : {
       "localizations" : {
@@ -1373,6 +1475,18 @@
 
     },
     "Move To End" : {
+
+    },
+    "Moves every inbox episode to archive" : {
+
+    },
+    "Moves playback backward by 15 seconds" : {
+
+    },
+    "Moves playback forward by 30 seconds" : {
+
+    },
+    "Moves this episode in or out of the archive" : {
 
     },
     "Needs keyword" : {
@@ -1423,6 +1537,9 @@
       }
     },
     "Next" : {
+
+    },
+    "Next week" : {
 
     },
     "No Bookmarks saved for this podcast." : {
@@ -1626,6 +1743,9 @@
         }
       }
     },
+    "Not downloaded" : {
+
+    },
     "Not Subscribed" : {
       "localizations" : {
         "de" : {
@@ -1686,6 +1806,9 @@
         }
       }
     },
+    "On" : {
+
+    },
     "On-Device Transcription" : {
       "localizations" : {
         "de" : {
@@ -1697,6 +1820,15 @@
       }
     },
     "Only while charging" : {
+
+    },
+    "Open chapter link" : {
+
+    },
+    "Open full player" : {
+
+    },
+    "Open full transcript" : {
 
     },
     "Open in Browser" : {
@@ -1719,6 +1851,9 @@
         }
       }
     },
+    "Open playback and queue settings" : {
+
+    },
     "Open Podcast" : {
       "localizations" : {
         "de" : {
@@ -1728,6 +1863,27 @@
           }
         }
       }
+    },
+    "Open settings for this podcast" : {
+
+    },
+    "Opens clip export for the current episode" : {
+
+    },
+    "Opens playback speed, sleep timer, and queue settings" : {
+
+    },
+    "Opens the full transcript in a sheet" : {
+
+    },
+    "Opens the share sheet for this episode" : {
+
+    },
+    "Opens the share sheet with the current playback timestamp" : {
+
+    },
+    "Opens the transcript list and jumps to the current playback line" : {
+
     },
     "Overview" : {
 
@@ -1752,10 +1908,19 @@
         }
       }
     },
+    "Pause playback" : {
+
+    },
     "Pause Playback" : {
 
     },
     "Pause the current episode." : {
+
+    },
+    "Pauses the active download" : {
+
+    },
+    "Pauses the current episode" : {
 
     },
     "People" : {
@@ -1778,6 +1943,12 @@
         }
       }
     },
+    "Places this episode at the end of Up Next" : {
+
+    },
+    "Places this episode at the front of the queue" : {
+
+    },
     "Play" : {
       "localizations" : {
         "de" : {
@@ -1788,6 +1959,9 @@
         }
       }
     },
+    "Play chapter" : {
+
+    },
     "Play Chapter" : {
       "localizations" : {
         "de" : {
@@ -1797,6 +1971,9 @@
           }
         }
       }
+    },
+    "Play episode" : {
+
     },
     "Play from %@" : {
 
@@ -1853,6 +2030,15 @@
     "Playback Continuation" : {
 
     },
+    "Playback position" : {
+
+    },
+    "Playback scrubbing is disabled" : {
+
+    },
+    "Playback settings" : {
+
+    },
     "Playback Settings" : {
       "localizations" : {
         "de" : {
@@ -1872,6 +2058,9 @@
           }
         }
       }
+    },
+    "Played" : {
+
     },
     "Player Controls" : {
 
@@ -1916,6 +2105,9 @@
         }
       }
     },
+    "Podcast scope" : {
+
+    },
     "Podcast Scope" : {
       "localizations" : {
         "de" : {
@@ -1927,6 +2119,9 @@
       }
     },
     "Podcast Sections" : {
+
+    },
+    "Podcast settings" : {
 
     },
     "Podcast Settings" : {
@@ -2012,6 +2207,9 @@
     "Previous" : {
 
     },
+    "Previous week" : {
+
+    },
     "Pull to refresh to calculate the app's current storage usage." : {
 
     },
@@ -2029,6 +2227,9 @@
 
     },
     "Queue Behavior" : {
+
+    },
+    "Queue settings" : {
 
     },
     "Ready to Subscribe (%lld)" : {
@@ -2104,6 +2305,30 @@
         }
       }
     },
+    "Refresh inbox" : {
+
+    },
+    "Refresh podcast" : {
+
+    },
+    "Refresh podcasts" : {
+
+    },
+    "Refresh storage report" : {
+
+    },
+    "Refreshing inbox" : {
+
+    },
+    "Refreshing podcast" : {
+
+    },
+    "Refreshing podcasts" : {
+
+    },
+    "Refreshing storage report" : {
+
+    },
     "Remove" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2141,7 +2366,13 @@
         }
       }
     },
+    "Remove rule %lld" : {
+
+    },
     "Remove the current episode from your Up Next queue." : {
+
+    },
+    "Removes the transcript panel below the artwork" : {
 
     },
     "Rescan" : {
@@ -2193,7 +2424,13 @@
         }
       }
     },
+    "Saves the current playback position as a bookmark" : {
+
+    },
     "Scanning the database and stored files." : {
+
+    },
+    "Scans database and files to update storage usage" : {
 
     },
     "Scope" : {
@@ -2205,6 +2442,9 @@
           }
         }
       }
+    },
+    "Search filters" : {
+
     },
     "Search is powered by fyyd" : {
       "localizations" : {
@@ -2312,6 +2552,9 @@
         }
       }
     },
+    "Share episode" : {
+
+    },
     "Share Episode" : {
       "localizations" : {
         "de" : {
@@ -2322,6 +2565,9 @@
         }
       }
     },
+    "Share episode link at current time" : {
+
+    },
     "Show all Settings" : {
       "localizations" : {
         "de" : {
@@ -2331,6 +2577,30 @@
           }
         }
       }
+    },
+    "Show inline transcript" : {
+
+    },
+    "Shows listening activity aggregated across all weeks" : {
+
+    },
+    "Shows listening activity for the following week" : {
+
+    },
+    "Shows listening activity for the week before" : {
+
+    },
+    "Shows listening stats aggregated across all weeks" : {
+
+    },
+    "Shows listening stats for the following week" : {
+
+    },
+    "Shows listening stats for the previous week" : {
+
+    },
+    "Shows the transcript panel below the artwork" : {
+
     },
     "Siri & Shortcuts Intents" : {
 
@@ -2345,6 +2615,9 @@
         }
       }
     },
+    "Skip back 15 seconds" : {
+
+    },
     "Skip Backward" : {
 
     },
@@ -2352,6 +2625,9 @@
 
     },
     "Skip Forward" : {
+
+    },
+    "Skip forward 30 seconds" : {
 
     },
     "Skip forward by 30 seconds." : {
@@ -2397,6 +2673,9 @@
         }
       }
     },
+    "Sort downloads, rescan files, or delete played episodes" : {
+
+    },
     "Start listening to see your summarized playback history here." : {
       "localizations" : {
         "de" : {
@@ -2406,6 +2685,9 @@
           }
         }
       }
+    },
+    "Start playback" : {
+
     },
     "Start playback with the first episode in your Up Next queue." : {
 
@@ -2420,6 +2702,15 @@
         }
       }
     },
+    "Starts playback of the current episode" : {
+
+    },
+    "Starts playing the current episode" : {
+
+    },
+    "Starts this episode immediately" : {
+
+    },
     "Stop after this episode" : {
       "localizations" : {
         "de" : {
@@ -2431,6 +2722,9 @@
       }
     },
     "Stop following playback" : {
+
+    },
+    "Stops and removes this download" : {
 
     },
     "Storage" : {
@@ -2725,6 +3019,12 @@
         }
       }
     },
+    "Turn off to skip this chapter" : {
+
+    },
+    "Turn off to skip this chapter automatically" : {
+
+    },
     "Unarchive" : {
       "localizations" : {
         "de" : {
@@ -2734,6 +3034,9 @@
           }
         }
       }
+    },
+    "Unarchive episode" : {
+
     },
     "Unattributed Files" : {
 
@@ -2772,6 +3075,9 @@
 
     },
     "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"" : {
+
+    },
+    "Updates all podcast feeds in your library" : {
 
     },
     "URL or Search" : {

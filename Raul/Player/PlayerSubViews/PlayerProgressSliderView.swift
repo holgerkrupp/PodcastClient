@@ -82,6 +82,22 @@ struct PlayerProgressSliderView: View {
                             }
                         }
                 )
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Playback position")
+                .accessibilityValue("\(Int((max(min((self.value - lower) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0)) * 100)) percent")
+                .accessibilityHint(allowTouch ? "Adjusts the current playback position" : "Playback scrubbing is disabled")
+                .accessibilityAdjustableAction { direction in
+                    guard allowTouch else { return }
+                    let step = max((sliderRange.upperBound - sliderRange.lowerBound) / 20, 0.01)
+                    switch direction {
+                    case .increment:
+                        self.value = min(sliderRange.upperBound, self.value + step)
+                    case .decrement:
+                        self.value = max(sliderRange.lowerBound, self.value - step)
+                    @unknown default:
+                        break
+                    }
+                }
             }
         }
     }
@@ -93,4 +109,3 @@ struct PlayerProgressSliderView: View {
     PlayerProgressSliderView(value: $progress, sliderRange: 0...1)
         .frame(height: 30)
 }
-

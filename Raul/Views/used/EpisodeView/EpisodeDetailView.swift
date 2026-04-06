@@ -164,6 +164,8 @@ struct EpisodeDetailView: View {
                                     .labelStyle(.iconOnly)
                             }
                             .buttonStyle(.glass(.clear))
+                            .accessibilityLabel("Share episode")
+                            .accessibilityHint("Opens the share sheet for this episode")
                         }
                     }
                     .padding()

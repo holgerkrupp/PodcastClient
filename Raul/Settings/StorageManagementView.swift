@@ -75,6 +75,8 @@ struct StorageManagementView: View {
                     }
                 }
                 .disabled(isLoading || isDeleting)
+                .accessibilityLabel(isLoading ? "Refreshing storage report" : "Refresh storage report")
+                .accessibilityHint("Scans database and files to update storage usage")
             }
         }
         .task {

@@ -52,6 +52,8 @@ struct InboxView: View {
                             }
                         }
                         .disabled(refreshViewModel.isLoading)
+                        .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
+                        .accessibilityHint("Fetches new episodes and reloads your inbox")
                     }
                 }
             }
@@ -118,6 +120,8 @@ struct InboxView: View {
                             }
                         }
                         .disabled(refreshViewModel.isLoading)
+                        .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
+                        .accessibilityHint("Fetches new episodes and reloads your inbox")
                     }
                     
                     ToolbarItem(placement: .topBarTrailing) {
@@ -134,6 +138,8 @@ struct InboxView: View {
                             }
                         }
                         .disabled(isArchiving)
+                        .accessibilityLabel(isArchiving ? "Archiving inbox episodes" : "Archive all inbox episodes")
+                        .accessibilityHint("Moves every inbox episode to archive")
                     }
                 }
             }

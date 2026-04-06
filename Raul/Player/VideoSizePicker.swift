@@ -38,9 +38,10 @@ struct VideoSizePicker: View {
     var body: some View {
         Picker("Video Size", selection: $selectedOption) {
             ForEach(VideoSizeOption.allCases) { option in
-               
+                
                     Label(option.rawValue, systemImage: option.symbolName)
                         .labelStyle(.iconOnly)
+                        .accessibilityLabel(option.rawValue)
                     
                 .tag(option)
                
@@ -58,4 +59,3 @@ struct VideoSizePicker: View {
     @Previewable @State var videoSize = CGSize(width: 720, height: 720)
         VideoSizePicker(videoSize: $videoSize)
     }
-

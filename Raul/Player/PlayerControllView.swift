@@ -14,8 +14,12 @@ struct PlayerControllView: View {
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
+    @State private var openFullTranscriptFollowingPlayback: Bool = false
     @State var showSpeedSetting:Bool = false
     @State var showSettings: Bool = false
+    private let mediaSectionHeight: CGFloat = 360
+    private let transcriptCardHeight: CGFloat = 120
+    private let mediaSectionSpacing: CGFloat = 12
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
@@ -28,6 +32,8 @@ struct PlayerControllView: View {
                         .tint(.primary)
                         .foregroundColor(.primary)
                         .frame(width: 44, height: 44)
+                        .accessibilityLabel("AirPlay")
+                        .accessibilityHint("Choose an audio output device")
                         
                    Spacer()
                
@@ -50,6 +56,8 @@ struct PlayerControllView: View {
                         
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Playback settings")
+                    .accessibilityHint("Opens playback speed, sleep timer, and queue settings")
                
                     
                     
@@ -135,70 +143,86 @@ struct PlayerControllView: View {
                     
                 })
                 
-                ZStack() {
-                    Color.clear
-                    
+                VStack(spacing: mediaSectionSpacing) {
                     CoverImageView(episode: episode, timecode: player.currentChapter?.start)
                         .id(episode.url)
                         .scaledToFit()
-                    /*
-                    Group{
-                        if let chapterImage = player.currentChapter?.imageData {
-                            ImageWithData(chapterImage)
-                                .id(player.currentChapter?.id ?? UUID())
-                                .scaledToFit()
-                        }else{
-                            EpisodeCoverView(episode: episode)
-                                .id(episode.url)
-                            
-                                .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .frame(
+                            height: showTranscripts
+                                ? mediaSectionHeight - transcriptCardHeight - mediaSectionSpacing
+                                : mediaSectionHeight,
+                            alignment: .top
+                        )
+
+                    if let transcriptLines = player.currentEpisode?.transcriptLines,
+                       showTranscripts {
+                        Button {
+                            openFullTranscriptFollowingPlayback = true
+                            showFullTranscripts = true
+                        } label: {
+                            TranscriptView(
+                                transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
+                                currentTime: $player.playPosition
+                            )
+                            .frame(maxWidth: .infinity, minHeight: transcriptCardHeight, maxHeight: transcriptCardHeight, alignment: .topLeading)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
+                        .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .accessibilityLabel("Open full transcript")
+                        .accessibilityHint("Opens the transcript list and jumps to the current playback line")
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                     */
-                    .frame(maxWidth: .infinity)
-                    
-                    .overlay(alignment: .bottom) {
-                        if let transcriptLines = player.currentEpisode?.transcriptLines,
-                           player.playPosition.isNormal, showTranscripts {
-                            
-                           // let decoder = TranscriptDecoder(transcriptFileContent)
-                            
-                            TranscriptView(transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }), currentTime: $player.playPosition)
-                            
-                            
-                                .background(.ultraThinMaterial)
-                            
-                        }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: mediaSectionHeight, alignment: .top)
+                .animation(.spring(response: 0.32, dampingFraction: 0.85), value: showTranscripts)
+                .sheet(isPresented: $showFullTranscripts, onDismiss: {
+                    openFullTranscriptFollowingPlayback = false
+                }) {
+                    if let transcriptLines = player.currentEpisode?.transcriptLines {
+                        TranscriptListView(
+                            transcriptLines: transcriptLines,
+                            episode: episode,
+                            startFollowingPlayback: openFullTranscriptFollowingPlayback
+                        )
+                            .presentationDetents([.large])
+                            .presentationDragIndicator(.visible)
                     }
-                    .sheet(isPresented: $showFullTranscripts) {
-                        if let transcriptLines = player.currentEpisode?.transcriptLines {
-                            TranscriptListView(transcriptLines: transcriptLines, episode: episode)
-                                .presentationDetents([.large])
-                                .presentationDragIndicator(.visible)
-                                
-                        }
-                    }
-                    
                 }
                 
                 if let transcripts = player.currentEpisode?.transcriptLines, transcripts.count > 0 {
                     HStack {
                         if showTranscripts{
-                            Image("custom.quote.bubble.slash")
-                                .onTapGesture(perform: {
+                            Button {
                                     showTranscripts.toggle()
-                                })
+                                } label: {
+                                    Image("custom.quote.bubble.slash")
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Hide inline transcript")
+                                .accessibilityHint("Removes the transcript panel below the artwork")
                         }else{
-                            Image(systemName: "quote.bubble")
-                                .onTapGesture(perform: {
+                            Button {
                                     showTranscripts.toggle()
-                                })
+                                } label: {
+                                    Image(systemName: "quote.bubble")
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Show inline transcript")
+                                .accessibilityHint("Shows the transcript panel below the artwork")
                         }
                         Spacer()
-                        Image("custom.quote.bubble.rectangle.portrait")
-                            .onTapGesture(perform: {
-                                showFullTranscripts.toggle()
-                            })
+                        Button {
+                                openFullTranscriptFollowingPlayback = false
+                                showFullTranscripts = true
+                            } label: {
+                                Image("custom.quote.bubble.rectangle.portrait")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open full transcript")
+                            .accessibilityHint("Opens the full transcript in a sheet")
                     }
                 }
                 
@@ -240,6 +264,8 @@ struct PlayerControllView: View {
                                 
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Jump to max play position")
+                            .accessibilityHint("Jumps to the furthest point you have listened to in this episode")
                         }
                         Spacer()
                         Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
@@ -268,6 +294,8 @@ struct PlayerControllView: View {
                     }
                     .buttonStyle(.borderless)
                     .frame(width: 30)
+                    .accessibilityLabel("Skip back 15 seconds")
+                    .accessibilityHint("Moves playback backward by 15 seconds")
                     
                     Spacer()
                     Button(action: {
@@ -283,12 +311,14 @@ struct PlayerControllView: View {
                     }
                     .buttonStyle(.borderless)
                     .frame(width: 30)
+                    .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+                    .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
                     
                     
                     Spacer()
                     Button(action:player.skipforward){
                         Label {
-                            Text("Skip Back")
+                            Text("Skip Forward")
                         } icon: {
                             Image(systemName: "30.arrow.trianglehead.clockwise")
                                 .resizable()
@@ -300,6 +330,8 @@ struct PlayerControllView: View {
                     }
                     .buttonStyle(.borderless)
                     .frame(width: 30)
+                    .accessibilityLabel("Skip forward 30 seconds")
+                    .accessibilityHint("Moves playback forward by 30 seconds")
 
                     Spacer()
                     Button(action:player.createBookmark){
@@ -316,6 +348,8 @@ struct PlayerControllView: View {
                     }
                     .buttonStyle(.borderless)
                     .frame(height: 30)
+                    .accessibilityLabel("Add bookmark")
+                    .accessibilityHint("Saves the current playback position as a bookmark")
                     
                 }
                 .frame(height: 40)
