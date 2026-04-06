@@ -45,11 +45,13 @@ struct CloudSyncDiagnosticsView: View {
                     value: accountStatusText,
                     tint: accountAvailable ? .green : .secondary
                 )
+                /*
                 compactRow(
                     symbol: "externaldrive.badge.icloud",
                     title: "Container",
                     value: Constants.containerID
                 )
+                 */
                 if let accountError {
                     compactRow(symbol: "exclamationmark.triangle", title: "Error", value: accountError, tint: .red)
                 }
@@ -88,8 +90,10 @@ struct CloudSyncDiagnosticsView: View {
 
             Section("Sync Signals") {
                 compactRow(symbol: "checkmark.icloud", title: "KVS Marker", value: kvsLibraryMarker ? "true" : "false")
+                /*
                 compactRow(symbol: "internaldrive", title: "Shared Store Exists", value: sharedStoreExists ? "Yes" : "No")
                 compactRow(symbol: "folder", title: "Shared Store Path", value: sharedStorePath)
+                 */
             }
 
             Section("CloudKitSyncMonitor") {
