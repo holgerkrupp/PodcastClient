@@ -643,9 +643,6 @@
         }
       }
     },
-    "Discover" : {
-
-    },
     "Done" : {
       "localizations" : {
         "de" : {
@@ -987,6 +984,9 @@
         }
       }
     },
+    "History" : {
+
+    },
     "Hot Podcasts" : {
       "localizations" : {
         "de" : {
@@ -1135,9 +1135,6 @@
           }
         }
       }
-    },
-    "Listen" : {
-
     },
     "Listening" : {
       "localizations" : {
@@ -2103,6 +2100,9 @@
         }
       }
     },
+    "Search" : {
+
+    },
     "Search is powered by fyyd" : {
       "localizations" : {
         "de" : {
@@ -2145,9 +2145,6 @@
           }
         }
       }
-    },
-    "Select a Section" : {
-
     },
     "Select file to import" : {
       "localizations" : {

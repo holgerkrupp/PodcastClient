@@ -11,10 +11,9 @@ import SwiftUI
 struct PlayerTabBarView: View {
     
     @Environment(\.tabViewBottomAccessoryPlacement) var placement
- 
-    @State private var presentingModal : Bool = false
 
     @Bindable private var player = Player.shared
+    let onOpenPlayer: () -> Void
     
     private var fakeProgress : Double?
     
@@ -27,8 +26,9 @@ struct PlayerTabBarView: View {
         colorScheme == .dark ? Color(white: 0.7) : Color(white: 0.3)
     }
     
-    init(fakeProgress : Double? = nil){
+    init(fakeProgress : Double? = nil, onOpenPlayer: @escaping () -> Void = {}){
         self.fakeProgress = fakeProgress
+        self.onOpenPlayer = onOpenPlayer
     }
     
     var body: some View {
@@ -161,20 +161,12 @@ struct PlayerTabBarView: View {
             }
             
             .tint(dynamicPrimaryColor)
+            .contentShape(Rectangle())
             
             .onTapGesture {
-                presentingModal = true
+                onOpenPlayer()
             }
-        
-        .id(episode.url)
-        .sheet(isPresented: $presentingModal, content: {
-            
-                PlayerView(fullSize: true)
-                .presentationDragIndicator(.visible)
-                .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-
-            
-        })
+            .id(episode.url)
         }
            
             

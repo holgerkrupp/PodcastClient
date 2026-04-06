@@ -71,6 +71,7 @@ struct ContentView: View {
     @State private var selectedSidebarDestination: SidebarDestination? = .queue
     @State private var expectedRemoteLibraryData = false
     @State private var cloudAccountAvailable = false
+    @State private var isPlayerPresented = false
     
     @State private var search:String = ""
     @StateObject private var incomingPodcastSubscription = IncomingPodcastSubscriptionController()
@@ -166,6 +167,12 @@ struct ContentView: View {
             IncomingPodcastSubscriptionView(controller: incomingPodcastSubscription)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $isPlayerPresented) {
+            PlayerView(fullSize: true)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationSizing(.page)
+        }
         /*
         .safeAreaInset(edge: .top) {
             if shouldShowCloudSyncHint {
@@ -226,97 +233,59 @@ struct ContentView: View {
 
     @ViewBuilder
     private var iPadSidebarLayout: some View {
-        NavigationSplitView {
-            List(selection: $selectedSidebarDestination) {
-                Section("Listen") {
-                    sidebarRow(for: .queue)
-                    sidebarRow(for: .inbox, badge: inboxCount)
-                }
-
-                Section("Library") {
-                    sidebarRow(for: .library)
-                    sidebarRow(for: .downloads)
-                    sidebarRow(for: .bookmarks)
-                    sidebarRow(for: .history)
-                }
-
-                Section("Discover") {
-                    sidebarRow(for: .search)
-                }
-
-                Section {
-                    sidebarRow(for: .settings)
-                }
+        TabView(selection: Binding(
+            get: { selectedSidebarDestination ?? .queue },
+            set: { selectedSidebarDestination = $0 }
+        )) {
+            Tab("Queue", systemImage: "calendar.day.timeline.leading", value: SidebarDestination.queue) {
+                PlaylistView()
             }
-            .navigationTitle("Podcasts")
-            .listStyle(.sidebar)
-        } detail: {
-            Group {
-                if let selectedSidebarDestination {
-                    sidebarDestinationView(for: selectedSidebarDestination)
-                } else {
-                    ContentUnavailableView("Select a Section", systemImage: "sidebar.left")
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if Player.shared.currentEpisode != nil {
-                    playerBar
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                }
-            }
-        }
-    }
 
-    @ViewBuilder
-    private func sidebarRow(for destination: SidebarDestination, badge: Int? = nil) -> some View {
-        NavigationLink(value: destination) {
-            HStack(spacing: 10) {
-                Label(destination.title, systemImage: destination.symbol)
-                Spacer()
-                if let badge, badge > 0 {
-                    Text("\(badge)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.red, in: Capsule())
+            Tab("Inbox", systemImage: "tray.fill", value: SidebarDestination.inbox) {
+                InboxView()
+            }
+            .badge(inboxCount)
+
+            Tab("Library", systemImage: "books.vertical", value: SidebarDestination.library) {
+                LibraryView()
+            }
+
+            Tab("Search", systemImage: "magnifyingglass", value: SidebarDestination.search, role: .search) {
+                AddPodcastView(search: $search)
+                    .searchable(text: $search, prompt: "URL or Search")
+            }
+
+            Tab("Downloads", systemImage: "arrow.down.circle", value: SidebarDestination.downloads) {
+                NavigationStack { DownloadedEpisodesView() }
+            }
+
+            Tab("Bookmarks", systemImage: "bookmark", value: SidebarDestination.bookmarks) {
+                NavigationStack { BookmarkListView() }
+            }
+
+            Tab("History", systemImage: "clock.arrow.circlepath", value: SidebarDestination.history) {
+                NavigationStack { PlaySessionDebugView() }
+            }
+
+            Tab("Settings", systemImage: "gearshape", value: SidebarDestination.settings) {
+                NavigationStack {
+                    PodcastSettingsView(podcast: nil, modelContainer: modelContext.container)
                 }
             }
         }
-    }
-
-    @ViewBuilder
-    private func sidebarDestinationView(for destination: SidebarDestination) -> some View {
-        switch destination {
-        case .queue:
-            PlaylistView()
-        case .inbox:
-            InboxView()
-        case .library:
-            LibraryView()
-        case .search:
-            AddPodcastView(search: $search)
-                .searchable(text: $search, prompt: "URL or Search")
-        case .downloads:
-            NavigationStack { DownloadedEpisodesView() }
-        case .bookmarks:
-            NavigationStack { BookmarkListView() }
-        case .history:
-            NavigationStack { PlaySessionDebugView() }
-        case .settings:
-            NavigationStack {
-                PodcastSettingsView(podcast: nil, modelContainer: modelContext.container)
-            }
+        .tabViewStyle(.sidebarAdaptable)
+        .tabViewBottomAccessory {
+            playerBar
         }
     }
 
     @ViewBuilder
     private var playerBar: some View {
-        PlayerTabBarView()
-            .opacity(Player.shared.currentEpisode == nil ? 0 : 1)
-            .allowsHitTesting(Player.shared.currentEpisode != nil)
+        if Player.shared.currentEpisode != nil {
+            PlayerTabBarView {
+                isPlayerPresented = true
+            }
+        }
     }
     
     func setGoingToBackgroundDate() {
