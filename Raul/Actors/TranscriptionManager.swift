@@ -179,7 +179,8 @@ actor TranscriptionManager {
 
         let episodeActor = EpisodeActor(modelContainer: container)
 
-        for episodeURL in upNextEpisodeURLs {
+        // Bound the scan to avoid excessive SwiftData/CoreData work on very large queues.
+        for episodeURL in upNextEpisodeURLs.prefix(50) {
             guard items[episodeURL] == nil else { continue }
             guard await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL) else { continue }
 
@@ -199,11 +200,12 @@ actor TranscriptionManager {
     }
 
     func runAutomaticTranscriptionsFromUpNextUntilIdle() async -> Bool {
-        guard await processNextAutomaticTranscriptionFromUpNext() != nil else {
+        guard let startedEpisodeURL = await processNextAutomaticTranscriptionFromUpNext() else {
             return false
         }
 
-        while let runningTask = tasks.values.first {
+        // Process at most one automatic job per invocation to keep background CPU bounded.
+        if let runningTask = tasks[startedEpisodeURL] {
             await runningTask.value
         }
 
@@ -223,9 +225,6 @@ actor TranscriptionManager {
         tasks[episodeURL]?.cancel()
         tasks[episodeURL] = nil
         // keep item around for UI to show finished/failed state
-
-        guard tasks.isEmpty else { return }
-        _ = await processNextAutomaticTranscriptionFromUpNext()
     }
 
     // MARK: - Actor-isolated helpers

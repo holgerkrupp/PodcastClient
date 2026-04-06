@@ -93,7 +93,7 @@ struct PlaylistView: View {
             .sheet(isPresented: $showSettings) {
                 
                 
-                PodcastSettingsView(podcast: nil, modelContainer: modelContext.container)
+                PodcastSettingsView(podcast: nil, modelContainer: modelContext.container, embedInNavigationStack: true)
                     .presentationBackground(.ultraThinMaterial)
                 
             }

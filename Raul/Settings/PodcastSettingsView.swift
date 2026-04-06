@@ -8,14 +8,16 @@ struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
 
     let podcast: Podcast?
+    let embedInNavigationStack: Bool
 
     @State private var useCustomSettings: Bool
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
-    init(podcast: Podcast?, modelContainer: ModelContainer) {
+    init(podcast: Podcast?, modelContainer: ModelContainer, embedInNavigationStack: Bool = false) {
         self.podcast = podcast
+        self.embedInNavigationStack = embedInNavigationStack
         _ = modelContainer
         self._useCustomSettings = State(initialValue: podcast?.settings?.isEnabled == true)
     }
@@ -53,7 +55,16 @@ struct PodcastSettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        if embedInNavigationStack {
+            NavigationStack {
+                settingsList
+            }
+        } else {
+            settingsList
+        }
+    }
+
+    private var settingsList: some View {
             List {
                 contextSection
 
@@ -73,6 +84,7 @@ struct PodcastSettingsView: View {
                         podcastManagementSection
                         integrationsSection
                         maintenanceSection
+                        helpSection
 #if DEBUG
                         debugSection
 #endif
@@ -99,7 +111,6 @@ struct PodcastSettingsView: View {
                 _ = ensureStandardSettings(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
             }
-        }
     }
 
     private var contextSection: some View {
@@ -212,22 +223,45 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private func globalDefaultsSection(settings: PodcastSettings) -> some View {
         Section("Playback & Queue") {
-            NavigationLink {
-                QueuePlaybackSettingsDetailView(
-                    settings: settings,
-                    isEditable: true,
-                    source: .global,
-                    readOnlyMessage: nil,
-                    onChange: saveAndNotify
+            Picker(
+                "New episodes go to",
+                selection: Binding(
+                    get: { settings.playnextPosition },
+                    set: {
+                        settings.playnextPosition = $0
+                        saveAndNotify()
+                    }
                 )
-            } label: {
-                SettingsNavigationRow(
-                    title: "Queue & Playback",
-                    summary: settings.queueAndPlaybackSummary,
-                    detail: "Choose where new episodes go and the default playback speed.",
-                    systemImage: "speedometer"
-                )
+            ) {
+                ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
+                    Text(position.settingsLabel).tag(position)
+                }
             }
+
+            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Stepper(
+                value: Binding(
+                    get: { settings.playbackSpeed ?? 1.0 },
+                    set: {
+                        settings.playbackSpeed = $0
+                        saveAndNotify()
+                    }
+                ),
+                in: 0.5...3.0,
+                step: 0.1
+            ) {
+                LabeledContent("Default speed") {
+                    Text(settings.playbackSpeed.formattedPlaybackSpeed)
+                        .monospacedDigit()
+                }
+            }
+
+            Text("This speed is used when playback starts. The player speed control also writes back here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             NavigationLink {
                 ChapterRuleSettingsDetailView(
@@ -250,17 +284,47 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func appControlsSection(settings: PodcastSettings) -> some View {
-        Section("App Controls") {
-            NavigationLink {
-                AppControlsSettingsDetailView(settings: settings, onChange: saveAndNotify)
-            } label: {
-                SettingsNavigationRow(
-                    title: "Player Controls",
-                    summary: settings.appControlsSummary,
-                    detail: "Continuous playback and scrubbing controls.",
-                    systemImage: "switch.2"
+        Section("Player Controls") {
+            Toggle(
+                "Continuous playback",
+                isOn: Binding(
+                    get: { settings.getContinuousPlay },
+                    set: {
+                        settings.getContinuousPlay = $0
+                        saveAndNotify()
+                    }
                 )
-            }
+            )
+
+            Text("When enabled, the next queue item starts automatically after an episode finishes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Toggle(
+                "Now Playing slider",
+                isOn: Binding(
+                    get: { settings.enableInAppSlider },
+                    set: {
+                        settings.enableInAppSlider = $0
+                        saveAndNotify()
+                    }
+                )
+            )
+
+            Toggle(
+                "Lock screen slider",
+                isOn: Binding(
+                    get: { settings.enableLockscreenSlider },
+                    set: {
+                        settings.enableLockscreenSlider = $0
+                        saveAndNotify()
+                    }
+                )
+            )
+
+            Text("These control whether playback scrubbing is available inside the app and through system playback controls.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -268,7 +332,9 @@ struct PodcastSettingsView: View {
     private func transcriptionSection(settings: PodcastSettings) -> some View {
         Section("Transcriptions") {
             NavigationLink {
-                TranscriptionSettingsView()
+                DeferredView {
+                    TranscriptionSettingsView()
+                }
             } label: {
                 SettingsNavigationRow(
                     title: "On-Device Transcriptions",
@@ -383,6 +449,21 @@ struct PodcastSettingsView: View {
                     summary: "Downloaded files and local cache",
                     detail: "Review what is stored on device and clean up space when needed.",
                     systemImage: "externaldrive"
+                )
+            }
+        }
+    }
+
+    private var helpSection: some View {
+        Section("Help") {
+            NavigationLink {
+                SettingsHelpView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Using Up Next",
+                    summary: "Queue model, inbox workflow, chapter skip keywords, and Siri/Shortcuts intents",
+                    detail: "Open a complete guide for how playback flow works and how to automate it.",
+                    systemImage: "questionmark.circle"
                 )
             }
         }
@@ -648,30 +729,46 @@ private struct ChapterRuleSettingsDetailView: View {
                 }
             }
 
-            Section("Chapter Skip Rules") {
-                if settings.autoSkipKeywords.isEmpty {
-                    Text(isEditable
-                         ? "No chapter rules yet. Add a rule to automatically skip matching chapter titles."
-                         : "No chapter rules are currently applied.")
-                        .foregroundStyle(.secondary)
-                } else if isEditable {
-                    editableRuleList
-                } else {
-                    readOnlyRuleList
-                }
+            Section("How It Works") {
+                ChapterRuleOverview(source: source)
+            }
 
-                if isEditable {
+            Section {
+                if settings.autoSkipKeywords.isEmpty {
+                    ChapterRuleEmptyState(isEditable: isEditable)
+                        .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } else if isEditable {
+                    editableRuleCards
+                } else {
+                    readOnlyRuleCards
+                }
+            } header: {
+                HStack {
+                    Text("Rules")
+                    Spacer()
+                    Text(settings.autoSkipKeywords.settingsSummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial)
+                        .clipShape(Capsule())
+                }
+            } footer: {
+                Text("Rules compare against chapter titles and mark matching chapters to be skipped.")
+            }
+
+            if isEditable {
+                Section {
                     Button {
                         settings.autoSkipKeywords.append(skipKey())
                         onChange()
                     } label: {
-                        Label("Add Rule", systemImage: "plus")
+                        Label("Add Rule", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
-
-                Text("Rules compare against chapter titles and mark matching chapters to be skipped.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .listStyle(.insetGrouped)
@@ -680,62 +777,205 @@ private struct ChapterRuleSettingsDetailView: View {
     }
 
     @ViewBuilder
-    private var editableRuleList: some View {
+    private var editableRuleCards: some View {
         ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \.offset) { index, rule in
-            VStack(alignment: .leading, spacing: 12) {
-                TextField(
-                    "Keyword or phrase",
-                    text: Binding(
-                        get: { rule.keyWord ?? "" },
-                        set: {
-                            settings.autoSkipKeywords[index].keyWord = $0
-                            onChange()
-                        }
-                    )
-                )
-
-                HStack {
-                    Picker(
-                        "Match",
-                        selection: Binding(
-                            get: { rule.keyOperator },
-                            set: {
-                                settings.autoSkipKeywords[index].keyOperator = $0
-                                onChange()
-                            }
-                        )
-                    ) {
-                        ForEach(Operator.allCases, id: \.self) { op in
-                            Text(op.settingsLabel).tag(op)
-                        }
-                    }
-                    .pickerStyle(.menu)
-
-                    Spacer()
-
-                    Button("Remove", role: .destructive) {
-                        settings.autoSkipKeywords.remove(at: index)
+            ChapterRuleEditorCard(
+                ruleNumber: index + 1,
+                rule: rule,
+                keyword: Binding(
+                    get: { rule.keyWord ?? "" },
+                    set: {
+                        settings.autoSkipKeywords[index].keyWord = $0
                         onChange()
                     }
+                ),
+                keyOperator: Binding(
+                    get: { rule.keyOperator },
+                    set: {
+                        settings.autoSkipKeywords[index].keyOperator = $0
+                        onChange()
+                    }
+                ),
+                onRemove: {
+                    settings.autoSkipKeywords.remove(at: index)
+                    onChange()
                 }
-            }
-            .padding(.vertical, 4)
+            )
+            .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
         }
     }
 
     @ViewBuilder
-    private var readOnlyRuleList: some View {
+    private var readOnlyRuleCards: some View {
         ForEach(Array(settings.autoSkipKeywords.enumerated()), id: \.offset) { index, rule in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(rule.ruleDescription)
-                    .foregroundStyle(.primary)
+            ChapterRuleReadOnlyCard(ruleNumber: index + 1, rule: rule, source: source)
+                .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+        }
+    }
+}
 
-                Text("Rule \(index + 1)")
+private struct ChapterRuleOverview: View {
+    let source: SettingsSource
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                    .foregroundStyle(source.tint)
+                    .font(.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Automatic Chapter Filtering")
+                        .font(.subheadline.weight(.semibold))
+
+                    Text("Matching chapter titles will be marked to skip as soon as chapter data is loaded.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Use rules for repeated segments like ads, intros, and credits. Each rule checks the chapter title with a match style such as contains or starts with.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct ChapterRuleEmptyState: View {
+    let isEditable: Bool
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 4) {
+                Text(isEditable ? "No rules yet" : "No rules applied")
+                    .font(.subheadline.weight(.semibold))
+
+                Text(
+                    isEditable
+                    ? "Add a rule to skip recurring chapters like ads, intros, or credits."
+                    : "This settings scope does not currently skip any chapters automatically."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+    }
+}
+
+private struct ChapterRuleEditorCard: View {
+    let ruleNumber: Int
+    let rule: skipKey
+    let keyword: Binding<String>
+    let keyOperator: Binding<Operator>
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Label("Rule \(ruleNumber)", systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.subheadline.weight(.semibold))
+
+                Spacer()
+
+                if rule.hasKeyword == false {
+                    Text("Needs keyword")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange.opacity(0.14))
+                        .clipShape(Capsule())
+                }
+
+                Button(role: .destructive, action: onRemove) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Match style")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("Match style", selection: keyOperator) {
+                    ForEach(Operator.allCases, id: \.self) { op in
+                        Text(op.settingsLabel).tag(op)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Keyword or phrase")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                TextField("e.g. ad break, intro, credits", text: keyword, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Text(rule.previewDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        )
+    }
+}
+
+private struct ChapterRuleReadOnlyCard: View {
+    let ruleNumber: Int
+    let rule: skipKey
+    let source: SettingsSource
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Rule \(ruleNumber)", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(source.tint)
+
+                Spacer()
+                SettingsSourceBadge(source: source)
+            }
+
+            Text(rule.previewDescription)
+                .font(.body)
+                .foregroundStyle(.primary)
+
+            if rule.hasKeyword == false {
+                Text("This rule has no keyword yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
         }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 }
 
@@ -940,6 +1180,14 @@ private struct PodcastSettingsPodcastRow: View {
     }
 }
 
+private struct DeferredView<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+    }
+}
+
 private extension PodcastSettings {
     var queueAndPlaybackSummary: String {
         "\(playnextPosition.settingsLabel) • \(playbackSpeed.formattedPlaybackSpeed)"
@@ -992,12 +1240,37 @@ private extension Operator {
             "Ends with"
         }
     }
+
+    var matchPreviewLabel: String {
+        switch self {
+        case .Is:
+            "is exactly"
+        case .Contains:
+            "contains"
+        case .StartsWith:
+            "starts with"
+        case .EndsWith:
+            "ends with"
+        }
+    }
 }
 
 private extension skipKey {
+    var trimmedKeyword: String {
+        keyWord?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    var hasKeyword: Bool {
+        trimmedKeyword.isEmpty == false
+    }
+
+    var previewDescription: String {
+        let visibleKeyword = hasKeyword ? "\"\(trimmedKeyword)\"" : "a keyword"
+        return "Skip chapters when the title \(keyOperator.matchPreviewLabel) \(visibleKeyword)."
+    }
+
     var ruleDescription: String {
-        let keyword = keyWord?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let visibleKeyword = keyword.isEmpty ? "Empty keyword" : keyword
+        let visibleKeyword = hasKeyword ? trimmedKeyword : "Empty keyword"
         return "\(keyOperator.settingsLabel): \(visibleKeyword)"
     }
 }

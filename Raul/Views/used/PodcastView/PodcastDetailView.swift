@@ -364,7 +364,7 @@ struct PodcastDetailView: View {
             .sheet(isPresented: $showSettings) {
                
   
-                PodcastSettingsView(podcast: podcast, modelContainer: modelContext.container)
+                PodcastSettingsView(podcast: podcast, modelContainer: modelContext.container, embedInNavigationStack: true)
                         .presentationBackground(.ultraThinMaterial)
             
         }

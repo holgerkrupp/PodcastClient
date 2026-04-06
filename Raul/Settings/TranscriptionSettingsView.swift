@@ -4,19 +4,11 @@ import Speech
 
 struct TranscriptionSettingsView: View {
     @Environment(\.modelContext) private var context
-
-    @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" })
-    private var defaultSettings: [PodcastSettings]
-
-    @Query(sort: [SortDescriptor(\TranscriptionRecord.finishedAt, order: .reverse)])
-    private var recentRecords: [TranscriptionRecord]
+    @State private var globalSettings: PodcastSettings?
+    @State private var recentRecords: [TranscriptionRecord] = []
 
     @State private var supportedLocales: [Locale] = []
     @State private var installedLocales: [Locale] = []
-
-    private var globalSettings: PodcastSettings? {
-        defaultSettings.first
-    }
 
     var body: some View {
         List {
@@ -130,6 +122,7 @@ struct TranscriptionSettingsView: View {
         .navigationTitle("Transcriptions")
         .task {
             await PodcastSettingsModelActor(modelContainer: context.container).ensureStandardSettingsExists()
+            reloadData()
             supportedLocales = await SpeechTranscriber.supportedLocales.sorted {
                 $0.identifier(.bcp47) < $1.identifier(.bcp47)
             }
@@ -137,6 +130,20 @@ struct TranscriptionSettingsView: View {
                 $0.identifier(.bcp47) < $1.identifier(.bcp47)
             }
         }
+    }
+
+    private func reloadData() {
+        var settingsDescriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
+        )
+        settingsDescriptor.fetchLimit = 1
+        globalSettings = try? context.fetch(settingsDescriptor).first
+
+        var recordsDescriptor = FetchDescriptor<TranscriptionRecord>(
+            sortBy: [SortDescriptor(\TranscriptionRecord.finishedAt, order: .reverse)]
+        )
+        recordsDescriptor.fetchLimit = 20
+        recentRecords = (try? context.fetch(recordsDescriptor)) ?? []
     }
 }
 

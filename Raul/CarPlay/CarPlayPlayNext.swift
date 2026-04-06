@@ -8,12 +8,25 @@ class CarPlayPlayNext {
     let interfaceController: CPInterfaceController
     var template: CPListTemplate
     private var episodes: [EpisodeSummary] = []
+    private var notificationToken: NSObjectProtocol?
 
     init(playlistActor: PlaylistModelActor, interfaceController: CPInterfaceController) {
         self.playlistActor = playlistActor
         self.interfaceController = interfaceController
         self.template = CPListTemplate(title: "Up Next", sections: [])
+        observeChanges()
         Task { await self.setupTemplate() }
+    }
+
+    private func observeChanges() {
+        notificationToken = NotificationCenter.default.addObserver(
+            forName: .inboxDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.setupTemplate() }
+        }
     }
     
     private func loadImage(episode: EpisodeSummary) async -> UIImage?{
@@ -107,19 +120,27 @@ class CarPlayPlayNext {
         }
 
         // Add Up Next section
-        let upNextSection = CPListSection(items: items)
-        sections.append(upNextSection)
+        if items.isEmpty == false {
+            let upNextSection = CPListSection(items: items)
+            sections.append(upNextSection)
+        }
 
         // Update the template with all sections
         template.updateSections(sections)
 
-        // Add a back button to return to now playing
         let nowButton = CPBarButton(title: "Now Playing") { [weak self] _ in
             guard let self else { return }
             self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { _, _ in })
-
         }
-     //   template.trailingNavigationBarButtons = [nowButton]
+
+        let inboxButton = CPBarButton(title: "Inbox") { [weak self] _ in
+            guard let self else { return }
+            let inbox = CarPlayInbox(playlistActor: self.playlistActor, interfaceController: self.interfaceController)
+            self.interfaceController.pushTemplate(inbox.template, animated: true, completion: nil)
+        }
+
+        template.leadingNavigationBarButtons = [inboxButton]
+        template.trailingNavigationBarButtons = [nowButton]
     }
     
     private func refreshEpisodeList() async{

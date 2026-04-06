@@ -758,11 +758,16 @@ class Player {
     
     
     func skipTo(chapter: Marker) async{
-        // print("skip to chapter \(chapter.title)")
-            if let newEpisode = chapter.episode, let start = chapter.start{
-                await playEpisode(newEpisode.url, playDirectly: true, startingAt: start)
-            }
-        
+        guard let start = chapter.start else { return }
+
+        if chapter.episode?.url == currentEpisodeURL {
+            await jumpTo(time: start)
+            return
+        }
+
+        if let newEpisode = chapter.episode {
+            await playEpisode(newEpisode.url, playDirectly: true, startingAt: start)
+        }
     }
     
     func skipToNextChapter() async{

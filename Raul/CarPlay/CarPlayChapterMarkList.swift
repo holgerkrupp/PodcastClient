@@ -5,8 +5,6 @@ import CarPlay
 class CarPlayChapterMarkList {
     let interfaceController: CPInterfaceController
     var template: CPListTemplate
-    private var chapters: [Marker] = []
-    private var images: [UIImage?] = []
     
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
@@ -17,32 +15,29 @@ class CarPlayChapterMarkList {
     }
 
     private func setupTemplate()  async{
-        // Get chapters from the current player
-        guard let loadedChapters = Player.shared.currentEpisode?.preferredChapters.sorted(by: { first, second in
-            first.start ?? 0.0 < second.start ?? 0
-        }) else {
+        let loadedChapters = Player.shared.chapters ?? []
+        guard loadedChapters.isEmpty == false else {
             template.updateSections([])
             return
         }
-        self.chapters = loadedChapters
-        self.images = []
-            for chapter in loadedChapters {
-                await images.append(loadImage(chapter: chapter))
-            }
-        
 
-        // Map chapters to CPListItems
-        let items = self.chapters.enumerated().map { (idx, chapter) in
+        var images: [UIImage?] = []
+        images.reserveCapacity(loadedChapters.count)
+        for chapter in loadedChapters {
+            images.append(await loadImage(chapter: chapter))
+        }
+        
+        let items = loadedChapters.enumerated().map { idx, chapter in
             let item = CPListItem(
                 text: chapter.title,
                 detailText: chapter.start != nil ? formattedTime(chapter.start!) : nil,
-                image: nil
+                image: images[idx] ?? UIImage()
             )
             item.userInfo = chapter
+            item.isPlaying = (chapter.id == Player.shared.currentChapter?.id)
             item.handler = { [weak self] _, _ in
                
                 guard let self else { return }
-                let chapter = self.chapters[idx]
                 Task {
                     await Player.shared.skipTo(chapter: chapter)
                 }
@@ -56,8 +51,12 @@ class CarPlayChapterMarkList {
     }
 
     private func formattedTime(_ seconds: Double) -> String {
+        let hours = Int(seconds) / 3600
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
+        if hours > 0 {
+            return String(format: "%01d:%02d:%02d", hours, mins % 60, secs)
+        }
         return String(format: "%02d:%02d", mins, secs)
     }
     
