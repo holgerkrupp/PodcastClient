@@ -65,11 +65,12 @@ private struct ListeningHistorySnapshot {
         selectedPodcastTitle: "All Podcasts",
         groupedTotals: [],
         chartPoints: [],
+        selectedPeriodTotalSeconds: 0,
         totalListeningSeconds: 0,
         averagePeriodSeconds: 0,
         bestPeriod: nil,
         podcastBreakdown: [],
-        recentSessions: [],
+        selectedPeriodSessions: [],
         weekdayTotals: [],
         heatMap: .empty,
         isUsingSummaryTotals: false
@@ -78,11 +79,12 @@ private struct ListeningHistorySnapshot {
     let selectedPodcastTitle: String
     let groupedTotals: [PeriodListeningTotal]
     let chartPoints: [ListeningOverviewPoint]
+    let selectedPeriodTotalSeconds: Double
     let totalListeningSeconds: Double
     let averagePeriodSeconds: Double
     let bestPeriod: PeriodListeningTotal?
     let podcastBreakdown: [PodcastRollup]
-    let recentSessions: [RecentListeningSession]
+    let selectedPeriodSessions: [RecentListeningSession]
     let weekdayTotals: [WeekdayListeningTotal]
     let heatMap: ListeningHeatMapSnapshot
     let isUsingSummaryTotals: Bool
@@ -90,15 +92,14 @@ private struct ListeningHistorySnapshot {
 
 struct PlaySessionDebugView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \PlaySessionSummary.periodStart, order: .reverse) private var summaries: [PlaySessionSummary]
-    @Query(sort: \PlaySession.startTime, order: .reverse) private var sessions: [PlaySession]
-    @Query(sort: \ListeningStat.startOfHour, order: .reverse) private var listeningStats: [ListeningStat]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
-    @State private var selectedPeriod: PlaySessionSummaryPeriod = .week
+    @State private var selectedPeriod: PlaySessionSummaryPeriod = .day
+    @State private var selectedPeriodStart = Calendar.current.startOfDay(for: Date())
     @State private var selectedPodcastFeedString: String? = nil
-    @State private var hasTriggeredRebuild = false
     @State private var snapshot = ListeningHistorySnapshot.empty
+    @State private var isRebuildingAnalytics = false
+    @State private var rebuildStatusMessage: String?
 
     private let summaryGrid = [
         GridItem(.flexible(), spacing: 12),
@@ -122,21 +123,17 @@ struct PlaySessionDebugView: View {
         String(selectedPeriod.title.dropLast())
     }
 
-    private var shouldRebuildAnalytics: Bool {
-        !hasTriggeredRebuild && summaries.isEmpty && !sessions.isEmpty
+    private var selectedPeriodLabel: String {
+        periodLabel(for: selectedPeriodStart, period: selectedPeriod)
     }
 
-    private var statisticsSignature: String {
-        let firstSummary = summaries.first
-        let firstSession = sessions.first
-        let firstStat = listeningStats.first
-        let firstPodcast = podcasts.first
-        let summarySignature = "\(signatureValue(firstSummary?.id))|\(signatureValue(firstSummary?.periodStart))|\(signatureValue(firstSummary?.totalSeconds))"
-        let sessionSignature = "\(signatureValue(firstSession?.id))|\(signatureValue(firstSession?.startTime))|\(signatureValue(firstSession?.endTime))"
-        let statSignature = "\(signatureValue(firstStat?.id))|\(signatureValue(firstStat?.startOfHour))|\(signatureValue(firstStat?.totalSeconds))"
-        let podcastSignature = "\(signatureValue(firstPodcast?.id))|\(firstPodcast?.title ?? "")"
+    private var canMoveToNextPeriod: Bool {
+        selectedPeriodStart < periodStart(for: Date(), period: selectedPeriod)
+    }
 
-        return "\(selectedPeriod.rawValue)|\(selectedPodcastFeedString ?? "all")|\(summaries.count)|\(summarySignature)|\(sessions.count)|\(sessionSignature)|\(listeningStats.count)|\(statSignature)|\(podcasts.count)|\(podcastSignature)"
+    private var refreshSignature: String {
+        let podcastSignature = podcasts.prefix(3).map(\.title).joined(separator: "|")
+        return "\(selectedPeriod.rawValue)|\(selectedPeriodStart.timeIntervalSinceReferenceDate)|\(selectedPodcastFeedString ?? "all")|\(podcasts.count)|\(podcastSignature)"
     }
 
     var body: some View {
@@ -156,6 +153,62 @@ struct PlaySessionDebugView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                HStack(spacing: 12) {
+                    Button {
+                        moveSelectedPeriod(by: -1)
+                    } label: {
+                        Label("Previous", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer(minLength: 8)
+
+                    VStack(spacing: 2) {
+                        Text(selectedPeriodLabel)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text(snapshot.selectedPodcastTitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        moveSelectedPeriod(by: 1)
+                    } label: {
+                        Label("Next", systemImage: "chevron.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canMoveToNextPeriod)
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        rebuildAnalytics()
+                    } label: {
+                        Label(
+                            isRebuildingAnalytics ? "Rebuilding…" : "Rebuild Analytics",
+                            systemImage: "arrow.clockwise.circle"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRebuildingAnalytics)
+
+                    if isRebuildingAnalytics {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                if let rebuildStatusMessage {
+                    Text(rebuildStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section {
@@ -176,9 +229,9 @@ struct PlaySessionDebugView: View {
                         detail: snapshot.bestPeriod.map { periodLabel(for: $0.start, period: selectedPeriod) } ?? "No data yet"
                     )
                     summaryCard(
-                        title: "Recent Sessions",
-                        value: "\(snapshot.recentSessions.count)",
-                        detail: snapshot.isUsingSummaryTotals ? "Detailed history kept for the newest sessions" : "Showing live data from raw sessions"
+                        title: selectedPeriodLabel,
+                        value: formatDuration(snapshot.selectedPeriodTotalSeconds),
+                        detail: "\(selectedPeriodSingular) total"
                     )
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
@@ -278,15 +331,58 @@ struct PlaySessionDebugView: View {
                 }
             }
 
-            Section("\(selectedPeriod.title) History") {
+            Section("\(selectedPeriodSingular) Sessions") {
                 if snapshot.groupedTotals.isEmpty {
                     ContentUnavailableView(
                         "No Listening History",
                         systemImage: "chart.bar.xaxis",
                         description: Text("Start listening to see your summarized playback history here.")
                     )
+                } else if snapshot.selectedPeriodSessions.isEmpty {
+                    ContentUnavailableView(
+                        "No Sessions",
+                        systemImage: "calendar.badge.minus",
+                        description: Text("No listening sessions in this \(selectedPeriodSingular.lowercased()).")
+                    )
                 } else {
-                    ForEach(snapshot.groupedTotals) { item in
+                    ForEach(snapshot.selectedPeriodSessions) { session in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(session.episodeTitle)
+                                        .font(.headline)
+                                    Text(session.podcastName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(formatDuration(session.listenedSeconds))
+                                    .font(.subheadline.weight(.semibold))
+                                    .monospacedDigit()
+                            }
+
+                            HStack {
+                                Text(session.startTime, format: .dateTime.month().day().hour().minute())
+                                Spacer()
+                                Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                            if let startPosition = session.startPosition, let endPosition = session.endPosition {
+                                Text("From \(formatTimestamp(startPosition)) to \(formatTimestamp(endPosition))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            if !snapshot.groupedTotals.isEmpty {
+                Section("Recent \(selectedPeriod.title)") {
+                    ForEach(snapshot.groupedTotals.prefix(24)) { item in
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(periodLabel(for: item.start, period: selectedPeriod))
@@ -304,41 +400,6 @@ struct PlaySessionDebugView: View {
                 }
             }
 
-            Section("Recent Session History") {
-                ForEach(snapshot.recentSessions) { session in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(session.episodeTitle)
-                                    .font(.headline)
-                                Text(session.podcastName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(formatDuration(session.listenedSeconds))
-                                .font(.subheadline.weight(.semibold))
-                                .monospacedDigit()
-                        }
-
-                        HStack {
-                            Text(session.startTime, format: .dateTime.month().day().hour().minute())
-                            Spacer()
-                            Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                        if let startPosition = session.startPosition, let endPosition = session.endPosition {
-                            Text("From \(formatTimestamp(startPosition)) to \(formatTimestamp(endPosition))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-
             Section("More Views") {
                 NavigationLink(destination: ListeningTimeByPodcastChart()) {
                     Label("Listening Time by Podcast", systemImage: "chart.pie")
@@ -350,13 +411,35 @@ struct PlaySessionDebugView: View {
         }
         .navigationTitle("Listening History")
         .listStyle(.insetGrouped)
-        .task(id: statisticsSignature) {
+        .task(id: refreshSignature) {
             refreshSnapshot()
-            rebuildAnalyticsIfNeeded()
         }
+        .onChange(of: selectedPeriod) { _, newValue in
+            selectedPeriodStart = periodStart(for: Date(), period: newValue)
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let horizontal = value.translation.width
+                    let vertical = value.translation.height
+                    guard abs(horizontal) > abs(vertical) * 1.25, abs(horizontal) > 50 else { return }
+
+                    if horizontal < 0 {
+                        if canMoveToNextPeriod {
+                            moveSelectedPeriod(by: 1)
+                        }
+                    } else {
+                        moveSelectedPeriod(by: -1)
+                    }
+                }
+        )
     }
 
     private func refreshSnapshot() {
+        let selectedPeriodEnd = nextPeriodStart(from: selectedPeriodStart, period: selectedPeriod)
+        let lookbackPeriods = overviewPeriodCount(for: selectedPeriod)
+        let overviewStart = periodStartByAdding(-lookbackPeriods, to: selectedPeriodStart, period: selectedPeriod)
+        let selectedPodcastURL = selectedPodcastFeedString.flatMap(URL.init(string:))
         let selectedPodcastTitle: String
         if let selectedPodcastFeedString {
             selectedPodcastTitle = podcasts.first(where: { $0.feed?.absoluteString == selectedPodcastFeedString })?.title ?? "Selected Podcast"
@@ -364,18 +447,22 @@ struct PlaySessionDebugView: View {
             selectedPodcastTitle = "All Podcasts"
         }
 
-        let filteredSummaries = summaries.filter { summary in
-            summary.periodKind == selectedPeriod.rawValue
-            && (selectedPodcastFeedString == nil || summary.podcastFeed?.absoluteString == selectedPodcastFeedString)
-        }
-        let filteredSessions = sessions.filter { session in
-            selectedPodcastFeedString == nil || session.episode?.podcast?.feed?.absoluteString == selectedPodcastFeedString
-        }
-        let filteredListeningStats = listeningStats.filter { stat in
-            selectedPodcastFeedString == nil || stat.podcastFeed?.absoluteString == selectedPodcastFeedString
-        }
+        let fetchedSummaries = fetchSummariesInWindow(
+            period: selectedPeriod,
+            overviewStart: overviewStart,
+            selectedPeriodEnd: selectedPeriodEnd,
+            selectedPodcastFeedString: selectedPodcastFeedString,
+            selectedPodcastURL: selectedPodcastURL,
+            lookbackPeriods: lookbackPeriods
+        )
 
-        let summaryTotals = Dictionary(grouping: filteredSummaries.compactMap { summary -> (Date, Double)? in
+        let sessionsInWindow = fetchSessionsInWindow(
+            overviewStart: overviewStart,
+            selectedPeriodEnd: selectedPeriodEnd,
+            selectedPodcastFeedString: selectedPodcastFeedString
+        )
+
+        let summaryTotals = Dictionary(grouping: fetchedSummaries.compactMap { summary -> (Date, Double)? in
             guard let periodStart = summary.periodStart else { return nil }
             return (periodStart, summary.totalSeconds ?? 0)
         }, by: \.0)
@@ -384,7 +471,7 @@ struct PlaySessionDebugView: View {
         }
         .sorted { $0.start > $1.start }
 
-        let rawSessionTotals = Dictionary(grouping: filteredSessions.compactMap { session -> (Date, Double)? in
+        let rawSessionTotals = Dictionary(grouping: sessionsInWindow.compactMap { session -> (Date, Double)? in
             guard let startTime = session.startTime else { return nil }
             let listened = listenedSeconds(for: session)
             guard listened > 0 else { return nil }
@@ -405,21 +492,30 @@ struct PlaySessionDebugView: View {
                 .reversed()
         )
 
-        let podcastBreakdown: [PodcastRollup]
-        if !filteredSummaries.isEmpty {
-            podcastBreakdown = Dictionary(grouping: filteredSummaries.compactMap { summary -> (String, Double)? in
-                guard let name = summary.podcastName, let seconds = summary.totalSeconds, seconds > 0 else { return nil }
-                return (name, seconds)
-            }, by: \.0)
-            .map { name, values in
-                PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
+        let selectedPeriodSessions = sessionsInWindow
+            .filter { session in
+                guard let startTime = session.startTime else { return false }
+                return startTime >= selectedPeriodStart && startTime < selectedPeriodEnd
             }
-            .sorted { $0.totalSeconds > $1.totalSeconds }
-        } else if selectedPodcastFeedString == nil {
-            podcastBreakdown = Dictionary(grouping: filteredSessions.compactMap { session -> (String, Double)? in
-                let listened = listenedSeconds(for: session)
-                guard listened > 0 else { return nil }
-                return (session.podcastName ?? "Unknown Podcast", listened)
+            .prefix(250)
+            .map { session in
+                RecentListeningSession(
+                    id: session.id?.uuidString ?? "\(session.startTime?.timeIntervalSinceReferenceDate ?? 0)-\(session.podcastName ?? "unknown")",
+                    episodeTitle: session.episode?.title ?? "Unknown Episode",
+                    podcastName: session.podcastName ?? "Unknown Podcast",
+                    listenedSeconds: listenedSeconds(for: session),
+                    startTime: session.startTime ?? Date(),
+                    endedCleanly: session.endedCleanly ?? false,
+                    startPosition: session.startPosition,
+                    endPosition: session.endPosition
+                )
+            }
+
+        let podcastBreakdown: [PodcastRollup]
+        if selectedPodcastFeedString == nil {
+            podcastBreakdown = Dictionary(grouping: selectedPeriodSessions.compactMap { session -> (String, Double)? in
+                guard session.listenedSeconds > 0 else { return nil }
+                return (session.podcastName, session.listenedSeconds)
             }, by: \.0)
             .map { name, values in
                 PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
@@ -429,25 +525,23 @@ struct PlaySessionDebugView: View {
             podcastBreakdown = []
         }
 
-        let recentSessions = Array(filteredSessions.prefix(20)).map { session in
-            RecentListeningSession(
-                id: session.id?.uuidString ?? "\(session.startTime?.timeIntervalSinceReferenceDate ?? 0)-\(session.podcastName ?? "unknown")",
-                episodeTitle: session.episode?.title ?? "Unknown Episode",
-                podcastName: session.podcastName ?? "Unknown Podcast",
-                listenedSeconds: listenedSeconds(for: session),
-                startTime: session.startTime ?? Date(),
-                endedCleanly: session.endedCleanly ?? false,
-                startPosition: session.startPosition,
-                endPosition: session.endPosition
-            )
-        }
+        let selectedPeriodTotalSeconds = groupedTotals.first(where: {
+            isSamePeriodStart($0.start, as: selectedPeriodStart, period: selectedPeriod)
+        })?.totalSeconds ?? selectedPeriodSessions.reduce(0) { $0 + $1.listenedSeconds }
 
         var weekdaySeconds: [Int: Double] = [:]
         var secondsByWeekday = Dictionary(uniqueKeysWithValues: weekdayOrder.map { ($0, Array(repeating: 0.0, count: 24)) })
         let calendar = Calendar.current
 
-        if !filteredListeningStats.isEmpty {
-            for stat in filteredListeningStats {
+        let listeningStatsInPeriod = fetchListeningStatsInPeriod(
+            selectedPeriodStart: selectedPeriodStart,
+            selectedPeriodEnd: selectedPeriodEnd,
+            selectedPodcastFeedString: selectedPodcastFeedString,
+            selectedPodcastURL: selectedPodcastURL
+        )
+
+        if !listeningStatsInPeriod.isEmpty {
+            for stat in listeningStatsInPeriod {
                 guard let startOfHour = stat.startOfHour, let totalSeconds = stat.totalSeconds, totalSeconds > 0 else { continue }
                 accumulateListening(
                     seconds: totalSeconds,
@@ -458,13 +552,11 @@ struct PlaySessionDebugView: View {
                 )
             }
         } else {
-            for session in filteredSessions {
-                guard let startTime = session.startTime else { continue }
-                let totalSeconds = listenedSeconds(for: session)
-                guard totalSeconds > 0 else { continue }
+            for session in selectedPeriodSessions {
+                guard session.listenedSeconds > 0 else { continue }
                 accumulateListening(
-                    seconds: totalSeconds,
-                    on: startTime,
+                    seconds: session.listenedSeconds,
+                    on: session.startTime,
                     calendar: calendar,
                     weekdaySeconds: &weekdaySeconds,
                     secondsByWeekday: &secondsByWeekday
@@ -488,28 +580,32 @@ struct PlaySessionDebugView: View {
             selectedPodcastTitle: selectedPodcastTitle,
             groupedTotals: groupedTotals,
             chartPoints: chartPoints,
+            selectedPeriodTotalSeconds: selectedPeriodTotalSeconds,
             totalListeningSeconds: totalListeningSeconds,
             averagePeriodSeconds: averagePeriodSeconds,
             bestPeriod: groupedTotals.max { $0.totalSeconds < $1.totalSeconds },
             podcastBreakdown: podcastBreakdown,
-            recentSessions: recentSessions,
+            selectedPeriodSessions: Array(selectedPeriodSessions),
             weekdayTotals: weekdayTotals,
             heatMap: heatMap,
             isUsingSummaryTotals: !summaryTotals.isEmpty
         )
     }
 
-    private func rebuildAnalyticsIfNeeded() {
-        guard shouldRebuildAnalytics else { return }
-        hasTriggeredRebuild = true
-        let container = modelContext.container
-        Task {
-            await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
-        }
-    }
+    private func rebuildAnalytics() {
+        guard !isRebuildingAnalytics else { return }
+        isRebuildingAnalytics = true
+        rebuildStatusMessage = nil
 
-    private func signatureValue<T>(_ value: T?) -> String {
-        value.map { String(describing: $0) } ?? ""
+        let container = modelContext.container
+        Task.detached(priority: .utility) {
+            await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
+            await MainActor.run {
+                isRebuildingAnalytics = false
+                rebuildStatusMessage = "Analytics rebuilt."
+                refreshSnapshot()
+            }
+        }
     }
 
     private func accumulateListening(
@@ -666,6 +762,248 @@ struct PlaySessionDebugView: View {
         case .year:
             let components = calendar.dateComponents([.year], from: date)
             return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+        }
+    }
+
+    private func nextPeriodStart(from date: Date, period: PlaySessionSummaryPeriod) -> Date {
+        let calendar = Calendar.current
+        let unit: Calendar.Component
+        switch period {
+        case .day:
+            unit = .day
+        case .week:
+            unit = .weekOfYear
+        case .month:
+            unit = .month
+        case .year:
+            unit = .year
+        }
+
+        let next = calendar.date(byAdding: unit, value: 1, to: date) ?? date
+        return periodStart(for: next, period: period)
+    }
+
+    private func moveSelectedPeriod(by amount: Int) {
+        let calendar = Calendar.current
+        let unit: Calendar.Component
+        switch selectedPeriod {
+        case .day:
+            unit = .day
+        case .week:
+            unit = .weekOfYear
+        case .month:
+            unit = .month
+        case .year:
+            unit = .year
+        }
+
+        guard let updated = calendar.date(byAdding: unit, value: amount, to: selectedPeriodStart) else { return }
+        selectedPeriodStart = periodStart(for: updated, period: selectedPeriod)
+    }
+
+    private func periodStartByAdding(_ value: Int, to date: Date, period: PlaySessionSummaryPeriod) -> Date {
+        let calendar = Calendar.current
+        let unit: Calendar.Component
+        switch period {
+        case .day:
+            unit = .day
+        case .week:
+            unit = .weekOfYear
+        case .month:
+            unit = .month
+        case .year:
+            unit = .year
+        }
+
+        let shifted = calendar.date(byAdding: unit, value: value, to: date) ?? date
+        return periodStart(for: shifted, period: period)
+    }
+
+    private func overviewPeriodCount(for period: PlaySessionSummaryPeriod) -> Int {
+        switch period {
+        case .day:
+            return 120
+        case .week:
+            return 104
+        case .month:
+            return 60
+        case .year:
+            return 20
+        }
+    }
+
+    private func hasAnySummary() -> Bool {
+        var descriptor = FetchDescriptor<PlaySessionSummary>()
+        descriptor.fetchLimit = 1
+        return ((try? modelContext.fetch(descriptor)) ?? []).isEmpty == false
+    }
+
+    private func hasAnySession() -> Bool {
+        var descriptor = FetchDescriptor<PlaySession>()
+        descriptor.fetchLimit = 1
+        return ((try? modelContext.fetch(descriptor)) ?? []).isEmpty == false
+    }
+
+    private func fetchSummariesInWindow(
+        period: PlaySessionSummaryPeriod,
+        overviewStart: Date,
+        selectedPeriodEnd: Date,
+        selectedPodcastFeedString: String?,
+        selectedPodcastURL: URL?,
+        lookbackPeriods: Int
+    ) -> [PlaySessionSummary] {
+        let periodRawValue = period.rawValue
+        let fetchLimit = max(lookbackPeriods + 24, 48)
+
+        let primary: [PlaySessionSummary] = {
+            let predicate: Predicate<PlaySessionSummary>
+            if let selectedPodcastURL {
+                predicate = #Predicate<PlaySessionSummary> { summary in
+                    summary.periodKind == periodRawValue
+                    && summary.periodStart != nil
+                    && summary.periodStart! >= overviewStart
+                    && summary.periodStart! < selectedPeriodEnd
+                    && summary.podcastFeed == selectedPodcastURL
+                }
+            } else {
+                predicate = #Predicate<PlaySessionSummary> { summary in
+                    summary.periodKind == periodRawValue
+                    && summary.periodStart != nil
+                    && summary.periodStart! >= overviewStart
+                    && summary.periodStart! < selectedPeriodEnd
+                }
+            }
+            var descriptor = FetchDescriptor<PlaySessionSummary>(
+                predicate: predicate,
+                sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
+            )
+            descriptor.fetchLimit = fetchLimit
+            return (try? modelContext.fetch(descriptor)) ?? []
+        }()
+
+        if !primary.isEmpty {
+            return primary
+        }
+
+        var fallbackDescriptor = FetchDescriptor<PlaySessionSummary>(
+            sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
+        )
+        fallbackDescriptor.fetchLimit = fetchLimit * 3
+        let fallback = (try? modelContext.fetch(fallbackDescriptor)) ?? []
+        return fallback.filter { summary in
+            guard
+                summary.periodKind == periodRawValue,
+                let start = summary.periodStart,
+                start >= overviewStart,
+                start < selectedPeriodEnd
+            else { return false }
+
+            if let selectedPodcastFeedString {
+                return summary.podcastFeed?.absoluteString == selectedPodcastFeedString
+            }
+            return true
+        }
+    }
+
+    private func fetchSessionsInWindow(
+        overviewStart: Date,
+        selectedPeriodEnd: Date,
+        selectedPodcastFeedString: String?
+    ) -> [PlaySession] {
+        let primary: [PlaySession] = {
+            let predicate = #Predicate<PlaySession> { session in
+                session.startTime != nil
+                && session.startTime! >= overviewStart
+                && session.startTime! < selectedPeriodEnd
+            }
+            var descriptor = FetchDescriptor<PlaySession>(
+                predicate: predicate,
+                sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+            )
+            descriptor.fetchLimit = 2500
+            return (try? modelContext.fetch(descriptor)) ?? []
+        }()
+
+        let applyPodcastFilter: ([PlaySession]) -> [PlaySession] = { sessions in
+            sessions.filter { session in
+                selectedPodcastFeedString == nil || session.episode?.podcast?.feed?.absoluteString == selectedPodcastFeedString
+            }
+        }
+
+        if !primary.isEmpty {
+            return applyPodcastFilter(primary)
+        }
+
+        var fallbackDescriptor = FetchDescriptor<PlaySession>(
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+        )
+        fallbackDescriptor.fetchLimit = 5000
+        let fallback = (try? modelContext.fetch(fallbackDescriptor)) ?? []
+        return applyPodcastFilter(
+            fallback.filter { session in
+                guard let start = session.startTime else { return false }
+                return start >= overviewStart && start < selectedPeriodEnd
+            }
+        )
+    }
+
+    private func fetchListeningStatsInPeriod(
+        selectedPeriodStart: Date,
+        selectedPeriodEnd: Date,
+        selectedPodcastFeedString: String?,
+        selectedPodcastURL: URL?
+    ) -> [ListeningStat] {
+        let primary: [ListeningStat] = {
+            let predicate: Predicate<ListeningStat>
+            if let selectedPodcastURL {
+                predicate = #Predicate<ListeningStat> { stat in
+                    stat.startOfHour != nil
+                    && stat.startOfHour! >= selectedPeriodStart
+                    && stat.startOfHour! < selectedPeriodEnd
+                    && stat.podcastFeed == selectedPodcastURL
+                }
+            } else {
+                predicate = #Predicate<ListeningStat> { stat in
+                    stat.startOfHour != nil
+                    && stat.startOfHour! >= selectedPeriodStart
+                    && stat.startOfHour! < selectedPeriodEnd
+                }
+            }
+            let descriptor = FetchDescriptor<ListeningStat>(predicate: predicate)
+            return (try? modelContext.fetch(descriptor)) ?? []
+        }()
+
+        if !primary.isEmpty {
+            return primary
+        }
+
+        var fallbackDescriptor = FetchDescriptor<ListeningStat>(
+            sortBy: [SortDescriptor(\.startOfHour, order: .reverse)]
+        )
+        fallbackDescriptor.fetchLimit = 24 * 90
+        let fallback = (try? modelContext.fetch(fallbackDescriptor)) ?? []
+        return fallback.filter { stat in
+            guard let hour = stat.startOfHour, hour >= selectedPeriodStart, hour < selectedPeriodEnd else {
+                return false
+            }
+            if let selectedPodcastFeedString {
+                return stat.podcastFeed?.absoluteString == selectedPodcastFeedString
+            }
+            return true
+        }
+    }
+
+    private func isSamePeriodStart(_ lhs: Date, as rhs: Date, period: PlaySessionSummaryPeriod) -> Bool {
+        let calendar = Calendar.current
+        switch period {
+        case .day:
+            return calendar.isDate(lhs, inSameDayAs: rhs)
+        case .week:
+            return calendar.isDate(lhs, equalTo: rhs, toGranularity: .weekOfYear)
+        case .month:
+            return calendar.isDate(lhs, equalTo: rhs, toGranularity: .month)
+        case .year:
+            return calendar.isDate(lhs, equalTo: rhs, toGranularity: .year)
         }
     }
 

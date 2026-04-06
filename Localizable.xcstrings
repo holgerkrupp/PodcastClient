@@ -48,6 +48,7 @@
       }
     },
     "%@ History" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -58,6 +59,9 @@
       }
     },
     "%@ is shared metadata or SQLite overhead that can’t be tied to a single podcast." : {
+
+    },
+    "%@ Sessions" : {
 
     },
     "%@:" : {
@@ -142,6 +146,9 @@
           }
         }
       }
+    },
+    "Add a rule to skip recurring chapters like ads, intros, or credits." : {
+
     },
     "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list." : {
       "localizations" : {
@@ -307,7 +314,16 @@
         }
       }
     },
+    "Automatic Chapter Filtering" : {
+
+    },
     "Automatic on-device transcriptions" : {
+
+    },
+    "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, and Remove Current From Up Next." : {
+
+    },
+    "Back" : {
 
     },
     "Bookmark" : {
@@ -386,7 +402,14 @@
     "Chapter Rules" : {
 
     },
+    "Chapter rules let you skip recurring segments like intro, ads, or outro." : {
+
+    },
+    "Chapter Skip Keywords" : {
+
+    },
     "Chapter Skip Rules" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -661,6 +684,9 @@
         }
       }
     },
+    "e.g. ad break, intro, credits" : {
+
+    },
     "Enable Custom Settings" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -854,6 +880,12 @@
     "Following Global Defaults" : {
 
     },
+    "For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"" : {
+
+    },
+    "Forward" : {
+
+    },
     "From %@ to %@" : {
       "localizations" : {
         "de" : {
@@ -940,6 +972,9 @@
         }
       }
     },
+    "Help" : {
+
+    },
     "Hide played Episodes" : {
       "localizations" : {
         "de" : {
@@ -970,6 +1005,9 @@
         }
       }
     },
+    "How It Works" : {
+
+    },
     "Import" : {
       "localizations" : {
         "de" : {
@@ -990,6 +1028,9 @@
         }
       }
     },
+    "In Apple Shortcuts, search for Up Next to add these actions to personal automations." : {
+
+    },
     "Inbox" : {
       "localizations" : {
         "de" : {
@@ -999,6 +1040,9 @@
           }
         }
       }
+    },
+    "Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible." : {
+
     },
     "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue." : {
       "localizations" : {
@@ -1244,6 +1288,7 @@
       }
     },
     "Match" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1252,6 +1297,12 @@
           }
         }
       }
+    },
+    "Match style" : {
+
+    },
+    "Matching chapter titles will be marked to skip as soon as chapter data is loaded." : {
+
     },
     "max play position" : {
       "localizations" : {
@@ -1293,6 +1344,21 @@
         }
       }
     },
+    "Move Current To End" : {
+
+    },
+    "Move the current episode to the end of your Up Next queue." : {
+
+    },
+    "Move To End" : {
+
+    },
+    "Needs keyword" : {
+
+    },
+    "New episodes can be placed at the front, end, or not added automatically, depending on your settings." : {
+
+    },
     "New episodes go to" : {
       "localizations" : {
         "de" : {
@@ -1333,6 +1399,9 @@
         }
       }
     },
+    "Next" : {
+
+    },
     "No Bookmarks saved for this podcast." : {
       "localizations" : {
         "de" : {
@@ -1343,10 +1412,8 @@
         }
       }
     },
-    "No chapter rules are currently applied." : {
-
-    },
     "No chapter rules yet. Add a rule to automatically skip matching chapter titles." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1401,6 +1468,9 @@
           }
         }
       }
+    },
+    "No listening sessions in this %@." : {
+
     },
     "No Matching Transcript" : {
 
@@ -1487,6 +1557,15 @@
           }
         }
       }
+    },
+    "No rules applied" : {
+
+    },
+    "No rules yet" : {
+
+    },
+    "No Sessions" : {
+
     },
     "No Storage Report" : {
 
@@ -1650,6 +1729,12 @@
         }
       }
     },
+    "Pause Playback" : {
+
+    },
+    "Pause the current episode." : {
+
+    },
     "People" : {
       "localizations" : {
         "de" : {
@@ -1712,6 +1797,15 @@
           }
         }
       }
+    },
+    "Play Next Up Next Episode" : {
+
+    },
+    "Play the next episode from your Up Next queue." : {
+
+    },
+    "Play Up Next" : {
+
     },
     "Playback" : {
       "localizations" : {
@@ -1889,6 +1983,9 @@
         }
       }
     },
+    "Previous" : {
+
+    },
     "Pull to refresh to calculate the app's current storage usage." : {
 
     },
@@ -1905,6 +2002,12 @@
     "Queue & Playback" : {
 
     },
+    "Queue Behavior" : {
+
+    },
+    "Rebuild Analytics" : {
+
+    },
     "Rebuild Listening Analytics" : {
       "localizations" : {
         "de" : {
@@ -1914,6 +2017,12 @@
           }
         }
       }
+    },
+    "Rebuilding…" : {
+
+    },
+    "Recent %@" : {
+
     },
     "Recent on-device transcriptions will appear here once you create one." : {
       "localizations" : {
@@ -1926,6 +2035,7 @@
       }
     },
     "Recent Session History" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1966,6 +2076,7 @@
       }
     },
     "Remove" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1974,6 +2085,12 @@
           }
         }
       }
+    },
+    "Remove Current" : {
+
+    },
+    "Remove Current From Up Next" : {
+
     },
     "Remove Download" : {
       "localizations" : {
@@ -1994,6 +2111,9 @@
           }
         }
       }
+    },
+    "Remove the current episode from your Up Next queue." : {
+
     },
     "Rescan" : {
       "localizations" : {
@@ -2026,6 +2146,12 @@
       }
     },
     "Rule %lld" : {
+
+    },
+    "Rules" : {
+
+    },
+    "Rules are checked against chapter titles and can use operators like contains, starts with, or ends with." : {
 
     },
     "Rules compare against chapter titles and mark matching chapters to be skipped." : {
@@ -2081,7 +2207,7 @@
         }
       }
     },
-    "Searching…" : {
+    "Searching… %lld%%" : {
 
     },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
@@ -2175,6 +2301,9 @@
         }
       }
     },
+    "Siri & Shortcuts Intents" : {
+
+    },
     "Skip Back" : {
       "localizations" : {
         "de" : {
@@ -2184,6 +2313,18 @@
           }
         }
       }
+    },
+    "Skip Backward" : {
+
+    },
+    "Skip backward by 15 seconds." : {
+
+    },
+    "Skip Forward" : {
+
+    },
+    "Skip forward by 30 seconds." : {
+
     },
     "Sleep Timer" : {
       "localizations" : {
@@ -2234,6 +2375,9 @@
           }
         }
       }
+    },
+    "Start playback with the first episode in your Up Next queue." : {
+
     },
     "Start: %@" : {
       "localizations" : {
@@ -2327,6 +2471,9 @@
         }
       }
     },
+    "The currently playing episode is kept pinned at the top while playback is active." : {
+
+    },
     "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size." : {
 
     },
@@ -2401,6 +2548,9 @@
         }
       }
     },
+    "This rule has no keyword yet." : {
+
+    },
     "This screen focuses on what is unique to this podcast. App-wide controls stay grouped under Global Settings." : {
 
     },
@@ -2414,6 +2564,9 @@
           }
         }
       }
+    },
+    "This settings scope does not currently skip any chapters automatically." : {
+
     },
     "This speed is used when playback starts. The player speed control also writes back here." : {
       "localizations" : {
@@ -2580,6 +2733,12 @@
         }
       }
     },
+    "Up Next Basics" : {
+
+    },
+    "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"" : {
+
+    },
     "URL or Search" : {
       "localizations" : {
         "de" : {
@@ -2603,7 +2762,13 @@
         }
       }
     },
+    "Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior." : {
+
+    },
     "Use podcast-specific settings" : {
+
+    },
+    "Use rules for repeated segments like ads, intros, and credits. Each rule checks the chapter title with a match style such as contains or starts with." : {
 
     },
     "Username" : {
@@ -2638,6 +2803,9 @@
           }
         }
       }
+    },
+    "Using Up Next" : {
+
     },
     "Video Size" : {
       "localizations" : {
@@ -2679,6 +2847,9 @@
         }
       }
     },
+    "When an episode finishes, continuous playback can automatically start the next item from Up Next." : {
+
+    },
     "When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available, and the manual Transcribe button remains available even when this is off." : {
 
     },
@@ -2704,6 +2875,9 @@
           }
         }
       }
+    },
+    "You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue." : {
+
     },
     "You have not saved a bookmark yet. Tap the bookmark icon during playback to add a bookmark. Bookmarking allows you to listen to a segment of an episode later on. It also works in CarPlay or by saying 'Bookmark this in Up Next'." : {
       "localizations" : {

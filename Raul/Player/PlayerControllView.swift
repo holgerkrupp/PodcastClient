@@ -123,10 +123,10 @@ struct PlayerControllView: View {
                         .sheet(isPresented: $showSettings) {
                            
                             if let podcast = player.currentEpisode?.podcast {
-                                PodcastSettingsView(podcast: podcast, modelContainer: context.container)
+                                PodcastSettingsView(podcast: podcast, modelContainer: context.container, embedInNavigationStack: true)
                                         .presentationBackground(.ultraThinMaterial)
                             }else{
-                                PodcastSettingsView(podcast: nil, modelContainer: context.container)
+                                PodcastSettingsView(podcast: nil, modelContainer: context.container, embedInNavigationStack: true)
                                         .presentationBackground(.ultraThinMaterial)
                             }
                             

@@ -48,6 +48,7 @@
 	<key>IntentsSupported</key>
 	<array>
 		<string>ResumePlaybackIntent</string>
+		<string>BookmarkCurrentPlaybackIntent</string>
 	</array>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
