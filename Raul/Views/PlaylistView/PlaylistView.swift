@@ -87,6 +87,8 @@ struct PlaylistView: View {
                     }) {
                         Image(systemName: "gear")
                     }
+                    .accessibilityLabel("Queue settings")
+                    .accessibilityHint("Open playback and queue settings")
                     
                 }
                }

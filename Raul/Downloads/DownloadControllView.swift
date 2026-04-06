@@ -57,6 +57,7 @@ struct DownloadControllView: View {
                     } label: {
                         Label("Download", systemImage: "arrow.down.circle")
                     }
+                    .accessibilityHint("Downloads this episode for offline playback")
                 }
                 
                 
@@ -73,6 +74,7 @@ struct DownloadControllView: View {
                     } label: {
                         Label("Remove Download", systemImage: "trash")
                     }
+                    .accessibilityHint("Deletes the local file from this device")
                 }
             }
         }
@@ -109,11 +111,13 @@ struct DownloadProgressView: View {
                                 Label("Resume", systemImage: "play.circle")
                             }
                             .buttonStyle(.plain)
+                            .accessibilityHint("Continues the paused download")
                         }else{
                             Button(action: { viewModel.pauseDownload() }) {
                                 Label("Pause", systemImage: "pause.circle")
                             }
                             .buttonStyle(.plain)
+                            .accessibilityHint("Pauses the active download")
                         }
                         
                         
@@ -124,6 +128,7 @@ struct DownloadProgressView: View {
                                 .foregroundColor(.red)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityHint("Stops and removes this download")
                     }
                     
                   
@@ -132,4 +137,3 @@ struct DownloadProgressView: View {
         }
     }
 }
-

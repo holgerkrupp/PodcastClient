@@ -37,6 +37,8 @@ struct EpisodeControlView: View {
                     .frame(width: 50)
             }
             .buttonStyle(.glass(.clear))
+            .accessibilityLabel("Play episode")
+            .accessibilityHint("Starts this episode immediately")
             
             Spacer()
             
@@ -62,6 +64,8 @@ struct EpisodeControlView: View {
                     }
                     .buttonStyle(.glass(.clear))
                     .clipShape(Circle())
+                    .accessibilityLabel("Add to Up Next")
+                    .accessibilityHint("Places this episode at the front of the queue")
                     
                  
                     Button {
@@ -79,6 +83,8 @@ struct EpisodeControlView: View {
                     }
                     .buttonStyle(.glass(.clear))
                     .clipShape(Circle())
+                    .accessibilityLabel("Add to end of queue")
+                    .accessibilityHint("Places this episode at the end of Up Next")
                     
                 }
             }
@@ -103,6 +109,8 @@ struct EpisodeControlView: View {
                     .frame(width: 50)
             }
             .buttonStyle(.glass(.clear))
+            .accessibilityLabel(episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
+            .accessibilityHint("Moves this episode in or out of the archive")
 
             
             

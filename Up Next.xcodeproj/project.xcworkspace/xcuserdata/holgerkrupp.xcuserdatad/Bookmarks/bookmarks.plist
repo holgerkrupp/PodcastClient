@@ -100,16 +100,16 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>            }
+				<string>                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
 </string>
 				<key>leading</key>
-				<string>                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
-                return downloadedFiles.contains(localFile)
+				<string>        do {
+            var episodes = try modelContext.fetch(descriptor).filter { episode in
 </string>
 				<key>trailing</key>
-				<string>
-            switch sort {
-            case .newestFirst:
+				<string>                return downloadedFiles.contains(localFile)
+            }
+
 </string>
 			</dict>
 			<key>title</key>

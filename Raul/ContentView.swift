@@ -123,22 +123,16 @@ struct ContentView: View {
     }
     
     // MARK: - Manual count loader
+    @MainActor
     private func loadInboxCount() async {
         let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
-        // We only need the count. SwiftData doesn’t have COUNT(*) yet,
-        // so fetch IDs only and count them to keep memory small.
-        var descriptor = FetchDescriptor<Episode>(predicate: predicate)
-        descriptor.propertiesToFetch = [\.id]
+        let descriptor = FetchDescriptor<Episode>(predicate: predicate)
+
         do {
-            let results = try modelContext.fetch(descriptor)
-            await MainActor.run {
-                inboxCount = results.count
-            }
+            inboxCount = try modelContext.fetch(descriptor).count
         } catch {
-            // If fetch fails, keep current badge (or set to 0)
-            await MainActor.run {
-                inboxCount = 0
-            }
+            BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription)")
+            inboxCount = 0
         }
     }
         

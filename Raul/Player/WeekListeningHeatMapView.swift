@@ -69,12 +69,15 @@ struct WeekListeningHeatMapView: View {
                 }) {
                     Image(systemName: "chevron.left")
                 }
+                .accessibilityLabel("Previous week")
+                .accessibilityHint("Shows listening activity for the week before")
 
                 Button("Summary") {
                     weekStartDate = nil
                 }
                 .font(.caption)
                 .foregroundStyle(weekStartDate == nil ? .primary : .secondary)
+                .accessibilityHint("Shows listening activity aggregated across all weeks")
 
                 Button(action: {
                     if let start = weekStartDate {
@@ -84,6 +87,8 @@ struct WeekListeningHeatMapView: View {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(weekStartDate == nil)
+                .accessibilityLabel("Next week")
+                .accessibilityHint("Shows listening activity for the following week")
             }
 
             if let weekStart = weekStartDate {

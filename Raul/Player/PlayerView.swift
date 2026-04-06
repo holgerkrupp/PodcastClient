@@ -55,6 +55,8 @@ struct PlayerView: View {
                                             .buttonStyle(.glass(.clear))
                                             .frame(height: 30)
                                             .help("Share audio clip")
+                                            .accessibilityLabel("Create audio clip")
+                                            .accessibilityHint("Opens clip export for the current episode")
                                             .sheet(isPresented: $showClipExport) {
                                                 // TODO: coverImage loading should ideally not be async in the sheet
                                                 
@@ -89,6 +91,8 @@ struct PlayerView: View {
                                                 ShareLink(item: positionedURL) { Label("Share", systemImage: "square.and.arrow.up")
                                                     .labelStyle(.iconOnly) }
                                                 .buttonStyle(.glass(.clear))
+                                                .accessibilityLabel("Share episode link at current time")
+                                                .accessibilityHint("Opens the share sheet with the current playback timestamp")
 
                                             }
                                             
