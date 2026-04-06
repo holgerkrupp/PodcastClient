@@ -11,6 +11,12 @@ import Foundation
 
 class OPMLParser: NSObject, XMLParserDelegate{
     var podcastFeeds: [PodcastFeed] = []
+
+    private enum MetadataAttribute {
+        static let lastRefresh = "upnextLastRefresh"
+        static let lastEpisodeDate = "upnextLastEpisodeDate"
+        static let lastEpisodeURL = "upnextLastEpisodeURL"
+    }
     
     func parserDidStartDocument(_ parser: XMLParser) {
         podcastFeeds.removeAll()
@@ -40,6 +46,20 @@ class OPMLParser: NSObject, XMLParserDelegate{
                     let newPodcast = PodcastFeed(url: feedURL)
                     
                     newPodcast.title = attributeDict["text"]
+
+                    if let dateString = attributeDict[MetadataAttribute.lastRefresh] {
+                        newPodcast.importedLastRefresh = Date.dateFromOPMLMetadata(dateString: dateString)
+                    }
+
+                    if let dateString = attributeDict[MetadataAttribute.lastEpisodeDate] {
+                        newPodcast.importedLastEpisodeDate = Date.dateFromOPMLMetadata(dateString: dateString)
+                    }
+
+                    if let episodeURLString = attributeDict[MetadataAttribute.lastEpisodeURL],
+                       let episodeURL = URL(string: episodeURLString) {
+                        newPodcast.importedLastEpisodeURL = episodeURL
+                    }
+
                     podcastFeeds.append(newPodcast)
                 }
                 
@@ -74,4 +94,3 @@ class OPMLParser: NSObject, XMLParserDelegate{
     
     
 }
-

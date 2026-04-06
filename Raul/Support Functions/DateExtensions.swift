@@ -58,6 +58,22 @@ extension Date {
             return dateFormatter
         }
     }
+
+    private static func ISO8601DateTimeFormatter() -> ISO8601DateFormatter {
+        return cachedThreadLocalObjectWithKey(key: "ISO8601DateTimeFormatter") {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter
+        }
+    }
+
+    private static func ISO8601FractionalDateTimeFormatter() -> ISO8601DateFormatter {
+        return cachedThreadLocalObjectWithKey(key: "ISO8601FractionalDateTimeFormatter") {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return formatter
+        }
+    }
     
     static func dateFromRFC1123(dateString:String) -> Date? {
         
@@ -81,8 +97,24 @@ extension Date {
         }
         return nil
     }
+
+    static func dateFromOPMLMetadata(dateString: String) -> Date? {
+        if let date = Date.ISO8601FractionalDateTimeFormatter().date(from: dateString) {
+            return date
+        }
+
+        if let date = Date.ISO8601DateTimeFormatter().date(from: dateString) {
+            return date
+        }
+
+        return Date.dateFromRFC1123(dateString: dateString)
+    }
     
     func RFC1123String() -> String? {
         return Date.RFC1123DateFormatter().string(from: self)
+    }
+
+    func opmlMetadataString() -> String {
+        Date.ISO8601FractionalDateTimeFormatter().string(from: self)
     }
 }

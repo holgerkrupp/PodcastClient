@@ -354,8 +354,17 @@ actor SubscriptionManager:NSObject{
         UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
     }
     
-    
-    
+    private func latestFetchedEpisode(for podcast: Podcast) -> Episode? {
+        podcast.episodes?.max {
+            ($0.publishDate ?? .distantPast) < ($1.publishDate ?? .distantPast)
+        }
+    }
+
+    private func opmlAttribute(_ name: String, _ value: String?) -> String {
+        guard let value, value.isEmpty == false else { return "" }
+        return " \(name)=\"\(value.xmlEscaped)\""
+    }
+
     func generateOPML() -> String {
         fetchData()
         // print("generate OPML")
@@ -369,8 +378,13 @@ actor SubscriptionManager:NSObject{
     """
         
         for podcast in podcasts {
+            let latestEpisode = latestFetchedEpisode(for: podcast)
+            let lastRefresh = podcast.metaData?.lastRefresh?.opmlMetadataString()
+            let lastEpisodeDate = latestEpisode?.publishDate?.opmlMetadataString()
+            let lastEpisodeURL = latestEpisode?.url?.absoluteString
+
             opmlString += """
-            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\(podcast.feed?.absoluteString ?? "")" />\n
+            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\((podcast.feed?.absoluteString ?? "").xmlEscaped)"\(opmlAttribute("upnextLastRefresh", lastRefresh))\(opmlAttribute("upnextLastEpisodeDate", lastEpisodeDate))\(opmlAttribute("upnextLastEpisodeURL", lastEpisodeURL)) />\n
         """
         }
         

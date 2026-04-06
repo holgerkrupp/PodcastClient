@@ -26,6 +26,11 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     var artist: String?
     var artworkURL: URL?
     var lastRelease: Date?
+
+    // Optional metadata restored from OPML custom attributes.
+    var importedLastRefresh: Date?
+    var importedLastEpisodeDate: Date?
+    var importedLastEpisodeURL: URL?
     
     
     
@@ -61,6 +66,9 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         artist: String? = nil,
         artworkURL: URL? = nil,
         lastRelease: Date? = nil,
+        importedLastRefresh: Date? = nil,
+        importedLastEpisodeDate: Date? = nil,
+        importedLastEpisodeURL: URL? = nil,
         fetchMetadataIfNeeded: Bool = false
     ) {
         self.url = url
@@ -71,6 +79,9 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         self.artist = artist
         self.artworkURL = artworkURL
         self.lastRelease = lastRelease
+        self.importedLastRefresh = importedLastRefresh
+        self.importedLastEpisodeDate = importedLastEpisodeDate
+        self.importedLastEpisodeURL = importedLastEpisodeURL
 
         if fetchMetadataIfNeeded {
             fetchAndPopulateFeedIfNeeded()

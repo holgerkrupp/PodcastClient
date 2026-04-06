@@ -137,6 +137,9 @@
     "%lld%% complete" : {
 
     },
+    "Actions" : {
+
+    },
     "Add" : {
       "localizations" : {
         "de" : {
@@ -210,7 +213,11 @@
         }
       }
     },
+    "Already in Library (%lld)" : {
+
+    },
     "already subscribed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -790,6 +797,7 @@
       }
     },
     "Export Podcasts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -800,6 +808,7 @@
       }
     },
     "Export your subscriptions as OMPL file." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1009,6 +1018,7 @@
 
     },
     "Import" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1027,6 +1037,15 @@
           }
         }
       }
+    },
+    "Import from another app, review your feeds, then subscribe only to what is new." : {
+
+    },
+    "Import from OPML, review what is new, and export your current library whenever you need it." : {
+
+    },
+    "Import Preview" : {
+
     },
     "In Apple Shortcuts, search for Up Next to add these actions to personal automations." : {
 
@@ -1347,6 +1366,9 @@
     "Move Current To End" : {
 
     },
+    "Move Subscriptions in Minutes" : {
+
+    },
     "Move the current episode to the end of your Up Next queue." : {
 
     },
@@ -1380,6 +1402,7 @@
       }
     },
     "new Podcasts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1943,6 +1966,9 @@
         }
       }
     },
+    "Podcasts.opml" : {
+
+    },
     "Preset" : {
       "localizations" : {
         "de" : {
@@ -2003,6 +2029,9 @@
 
     },
     "Queue Behavior" : {
+
+    },
+    "Ready to Subscribe (%lld)" : {
 
     },
     "Rebuild Analytics" : {
@@ -2211,6 +2240,7 @@
 
     },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2221,6 +2251,7 @@
       }
     },
     "Select file to import" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2421,7 +2452,11 @@
         }
       }
     },
+    "Subscribe to All New Podcasts" : {
+
+    },
     "Subscribe to new podcasts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
