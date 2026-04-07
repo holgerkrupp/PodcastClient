@@ -18,6 +18,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        CrashBreadcrumbs.shared.record("app_delegate_did_finish_launching")
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier,
             using: DispatchQueue.main
@@ -40,9 +41,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier)
 
         guard automaticTranscriptionsEnabled, requiresCharging else {
+            CrashBreadcrumbs.shared.record(
+                "automatic_transcription_background_task_not_scheduled",
+                details: "enabled=\(automaticTranscriptionsEnabled),requires_charging=\(requiresCharging)"
+            )
             return
         }
 
+        CrashBreadcrumbs.shared.record("automatic_transcription_background_task_schedule_requested")
         BasicLogger.shared.log("schedule automaticTranscriptionProcessing")
         let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier)
         request.requiresExternalPower = true
@@ -51,19 +57,27 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
         do {
             try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("automatic_transcription_background_task_scheduled")
         } catch {
+            CrashBreadcrumbs.shared.record(
+                "automatic_transcription_background_task_schedule_failed",
+                details: error.localizedDescription
+            )
             BasicLogger.shared.log(error.localizedDescription)
         }
     }
 
     private func handleAutomaticTranscriptionProcessing(task: BGProcessingTask) {
+        CrashBreadcrumbs.shared.record("automatic_transcription_background_task_started")
         task.expirationHandler = {
+            CrashBreadcrumbs.shared.record("automatic_transcription_background_task_expired")
             BasicLogger.shared.log("automatic transcription background task expired")
         }
 
         Task {
             await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
             let didProcess = await TranscriptionManager.shared.runAutomaticTranscriptionsFromUpNextUntilIdle()
+            CrashBreadcrumbs.shared.record("automatic_transcription_background_task_completed", details: "did_process=\(didProcess)")
             task.setTaskCompleted(success: didProcess)
         }
     }

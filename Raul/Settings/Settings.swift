@@ -49,6 +49,8 @@ class PodcastSettings {
     var getContinuousPlay:Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
+    /// Upper limit for each generated transcript snippet to improve playback alignment.
+    var transcriptionMaxSnippetDurationSeconds: Double = 1.2
 
     var sleepTimerAddMinutes: Double = 10 // 10 minutes
     var sleepTimerDurationToReactivate: Double = 300 // 5 minutes * 60 seconds

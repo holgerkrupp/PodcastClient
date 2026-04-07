@@ -80,10 +80,14 @@ actor TranscriptionManager {
                     uiItem.setState(.preparingModel, progress: 0.02, status: "Preparing model…")
                 }
 
+                let settingsActor = PodcastSettingsModelActor(modelContainer: container)
+                let maxSnippetDurationSeconds = await settingsActor.getTranscriptionMaxSnippetDurationSeconds()
+
                 // Build transcriber (pure value types: URL + language string)
                 let transcriber = await AITranscripts(
                     url: snapshot.localFile,
                     language: snapshot.language,
+                    maxSnippetDurationSeconds: maxSnippetDurationSeconds,
                     progressHandler: { progress, status in
                         await MainActor.run {
                             let nextState: TranscriptionItem.State

@@ -251,6 +251,11 @@ actor PodcastSettingsModelActor {
         await standardSettings().limitAutomaticOnDeviceTranscriptionsToCharging
     }
 
+    func getTranscriptionMaxSnippetDurationSeconds() async -> Double {
+        let configuredValue = await standardSettings().transcriptionMaxSnippetDurationSeconds
+        return min(max(configuredValue, 0.4), 8.0)
+    }
+
     func getArchiveFileRetentionDays(for podcastFeed: URL?) async -> Int {
         if let podcastFeed,
            let customValue = await fetchPodcastSettings(for: podcastFeed)?.archiveFileRetentionDays {

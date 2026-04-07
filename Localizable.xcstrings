@@ -21,6 +21,9 @@
         }
       }
     },
+    "%.1fs" : {
+
+    },
     "%@" : {
       "localizations" : {
         "de" : {
@@ -1470,6 +1473,9 @@
         }
       }
     },
+    "Max snippet length" : {
+
+    },
     "Mini player, %@" : {
 
     },
@@ -2632,6 +2638,9 @@
     "Share episode link at current time" : {
 
     },
+    "Shorter snippets follow playback more closely and are better for word-level highlighting, but they create more transcript rows." : {
+
+    },
     "Show all Settings" : {
       "localizations" : {
         "de" : {
@@ -2868,6 +2877,9 @@
 
     },
     "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size." : {
+
+    },
+    "These chapter rules could not be loaded." : {
 
     },
     "These control whether playback scrubbing is available inside the app and through system playback controls." : {
