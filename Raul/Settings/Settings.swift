@@ -25,6 +25,9 @@ class PodcastSettings {
     var isEnabled:Bool = true
     
     var autoDownload:Bool = false
+    var autoDownloadEpisodeCount: Int = 3
+    var autoDownloadSelectionRawValue: String? = AutoDownloadSelection.newestUnplayed.rawValue
+    var autoDownloadNetworkModeRawValue: String? = AutoDownloadNetworkMode.wifiAndCellular.rawValue
     var playnextPosition:Playlist.Position = Playlist.Position.none
     var playbackSpeed:Float? = 1.0
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
@@ -33,6 +36,9 @@ class PodcastSettings {
     
     var skipForward:SkipSteps = SkipSteps.thirty
     var skipBack: SkipSteps = SkipSteps.fifteen
+
+    /// Number of days archived episode files should be kept locally before cleanup may delete them.
+    var archiveFileRetentionDays: Int = 7
     
     
     // Secret Settings that should only be applied on global way:
@@ -69,6 +75,34 @@ class PodcastSettings {
             self.title = "de.holgerkrupp.podbay.queue"
         }
     }
+
+    var autoDownloadSelection: AutoDownloadSelection {
+        get {
+            AutoDownloadSelection(rawValue: autoDownloadSelectionRawValue ?? "") ?? .newestUnplayed
+        }
+        set {
+            autoDownloadSelectionRawValue = newValue.rawValue
+        }
+    }
+
+    var autoDownloadNetworkMode: AutoDownloadNetworkMode {
+        get {
+            AutoDownloadNetworkMode(rawValue: autoDownloadNetworkModeRawValue ?? "") ?? .wifiAndCellular
+        }
+        set {
+            autoDownloadNetworkModeRawValue = newValue.rawValue
+        }
+    }
+}
+
+enum AutoDownloadSelection: String, Codable, CaseIterable, Hashable, Sendable {
+    case newestUnplayed
+    case oldestUnplayed
+}
+
+enum AutoDownloadNetworkMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case wifiAndCellular
+    case wifiOnly
 }
 
 enum Operator: Codable, CaseIterable, Hashable {

@@ -43,6 +43,39 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var episodePeopleArray = [[String: Any]]()
     private var currentPerson = [String: Any]()
     private var currentPersonName = ""
+
+    var podcastOptionalTags = PodcastNamespaceOptionalTags()
+    var episodeOptionalTags = PodcastNamespaceOptionalTags()
+    private var optionalNamespaceNodeStack: [NamespaceNodeBuilder] = []
+
+    private let optionalNamespaceRootTags: Set<String> = [
+        "podcast:alternateEnclosure",
+        "podcast:block",
+        "podcast:chat",
+        "podcast:contentLink",
+        "podcast:episode",
+        "podcast:image",
+        "podcast:images", // deprecated, still stored if present
+        "podcast:integrity",
+        "podcast:license",
+        "podcast:liveItem",
+        "podcast:location",
+        "podcast:locked",
+        "podcast:medium",
+        "podcast:podping",
+        "podcast:podroll",
+        "podcast:publisher",
+        "podcast:remoteItem",
+        "podcast:season",
+        "podcast:soundbite",
+        "podcast:source",
+        "podcast:trailer",
+        "podcast:txt",
+        "podcast:updateFrequency",
+        "podcast:value",
+        "podcast:valueRecipient",
+        "podcast:valueTimeSplit"
+    ]
     
     private var currentSocial: [String: Any] = [:]
     
@@ -103,6 +136,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
         episodePeopleArray.removeAll()
         currentPerson.removeAll()
         currentPersonName = ""
+
+        podcastOptionalTags = PodcastNamespaceOptionalTags()
+        episodeOptionalTags = PodcastNamespaceOptionalTags()
+        optionalNamespaceNodeStack.removeAll()
     }
     
     
@@ -135,14 +172,25 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
         }
         
-        if currentElement == "podcast:funding" {
+        if optionalNamespaceNodeStack.isEmpty && currentElement == "podcast:funding" {
             currentFundingURL = attributeDict["url"] ?? ""
             currentValue = ""
         } else {
             currentFundingURL = ""
         }
+
+        let shouldStartOptionalNamespaceNode: Bool
+        if optionalNamespaceNodeStack.isEmpty {
+            shouldStartOptionalNamespaceNode = optionalNamespaceRootTags.contains(currentElement)
+        } else {
+            shouldStartOptionalNamespaceNode = true
+        }
+        if shouldStartOptionalNamespaceNode {
+            let node = NamespaceNodeBuilder(name: currentElement, attributes: attributeDict)
+            optionalNamespaceNodeStack.append(node)
+        }
         
-        if currentElement == "podcast:socialInteract" {
+        if optionalNamespaceNodeStack.isEmpty && currentElement == "podcast:socialInteract" {
             // initialize with required attributes if present; we'll validate on end
             currentSocial = [:]
             if let proto = attributeDict["protocol"] { currentSocial["protocol"] = proto }
@@ -152,7 +200,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             if let priorityStr = attributeDict["priority"], let priorityInt = Int(priorityStr) {
                 currentSocial["priority"] = priorityInt
             }
-        } else if currentElement == "podcast:person" {
+        } else if optionalNamespaceNodeStack.isEmpty && currentElement == "podcast:person" {
             currentPerson = [:]
             currentPersonName = ""
             if let role = attributeDict["role"] { currentPerson["role"] = role }
@@ -174,6 +222,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             episodeFundingArray.removeAll()
             episodeSocialArray.removeAll()
             episodePeopleArray.removeAll()
+            episodeOptionalTags = PodcastNamespaceOptionalTags()
         }
         
         if currentElement == "psc:chapters"{
@@ -246,9 +295,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
         
         if !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             currentValue += string
-            if currentElement == "podcast:person" {
+            if currentElement == "podcast:person", optionalNamespaceNodeStack.isEmpty {
                 currentPersonName += string
             }
+        }
+        if let topNode = optionalNamespaceNodeStack.last {
+            topNode.value += string
         }
     }
     
@@ -298,6 +350,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
                         episodeDict.updateValue(episodePeopleArray, forKey: "people")
                         episodePeopleArray.removeAll()
                     }
+                    if episodeOptionalTags.isEmpty == false {
+                        episodeDict.updateValue(episodeOptionalTags, forKey: "optionalTags")
+                        episodeOptionalTags = PodcastNamespaceOptionalTags()
+                    }
                     episodeDeepLinks.removeAll()
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
@@ -320,7 +376,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             
         }
 
-        if elementName == "podcast:funding" {
+        if elementName == "podcast:funding", optionalNamespaceNodeStack.isEmpty {
             let fundingDict = ["url": currentFundingURL, "label": currentValue.trimmingCharacters(in: .whitespacesAndNewlines)]
             if isHeader {
                 podcastFundingArray.append(fundingDict)
@@ -329,7 +385,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
             currentFundingURL = ""
         }
-        if elementName == "podcast:socialInteract" {
+        if elementName == "podcast:socialInteract", optionalNamespaceNodeStack.isEmpty {
             // Only append if required fields exist
             if let _ = currentSocial["protocol"], let _ = currentSocial["uri"] {
                 if isHeader {
@@ -340,7 +396,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
             currentSocial.removeAll()
         }
-        if elementName == "podcast:person" {
+        if elementName == "podcast:person", optionalNamespaceNodeStack.isEmpty {
             let name = currentPersonName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !name.isEmpty {
                 var dict = currentPerson
@@ -353,6 +409,18 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
             currentPerson.removeAll()
             currentPersonName = ""
+        }
+
+        let closedElementName = qName ?? elementName
+        if let topNode = optionalNamespaceNodeStack.last, topNode.name == closedElementName {
+            let completedNode = optionalNamespaceNodeStack.removeLast().build()
+            if let parentNode = optionalNamespaceNodeStack.last {
+                parentNode.children.append(completedNode)
+            } else if isHeader {
+                podcastOptionalTags.append(completedNode)
+            } else {
+                episodeOptionalTags.append(completedNode)
+            }
         }
 
         if currentElements.count > 0{
@@ -376,9 +444,34 @@ class PodcastParser:NSObject, XMLParserDelegate{
         if !podcastPeopleArray.isEmpty {
             podcastDictArr.updateValue(podcastPeopleArray, forKey: "people")
         }
+        if podcastOptionalTags.isEmpty == false {
+            podcastDictArr.updateValue(podcastOptionalTags, forKey: "optionalTags")
+        }
     }
 
     
+}
+
+private final class NamespaceNodeBuilder {
+    let name: String
+    var value: String = ""
+    var attributes: [String: String]
+    var children: [NamespaceNode] = []
+
+    init(name: String, attributes: [String: String]) {
+        self.name = name
+        self.attributes = attributes
+    }
+
+    func build() -> NamespaceNode {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NamespaceNode(
+            name: name,
+            value: trimmed.isEmpty ? nil : trimmed,
+            attributes: attributes,
+            children: children
+        )
+    }
 }
 
 

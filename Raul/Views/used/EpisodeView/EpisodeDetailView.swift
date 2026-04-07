@@ -174,6 +174,8 @@ struct EpisodeDetailView: View {
                         .padding()
                     PeopleView(people: episode.people)
                         .padding()
+                    PodcastNamespaceMetadataView(optionalTags: episode.optionalTags)
+                        .padding()
                     
                     RichText(html: episode.content ?? episode.desc ?? "")
                         .linkColor(light: Color.secondary, dark: Color.secondary)

@@ -263,6 +263,26 @@ struct PodcastSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            Stepper(
+                value: Binding(
+                    get: { settings.archiveFileRetentionDaysClamped },
+                    set: {
+                        settings.archiveFileRetentionDays = $0
+                        saveAndNotify()
+                    }
+                ),
+                in: 0...180,
+                step: 1
+            ) {
+                LabeledContent("Archive file retention") {
+                    Text(settings.archiveRetentionSummary)
+                }
+            }
+
+            Text("When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             NavigationLink {
                 ChapterRuleSettingsDetailView(
                     settings: settings,
@@ -348,27 +368,138 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func podcastCustomizationSection(settings: PodcastSettings) -> some View {
-        Section("Podcast Sections") {
-            NavigationLink {
-                QueuePlaybackSettingsDetailView(
-                    settings: settings,
-                    isEditable: isPodcastCustomSettingsActive,
-                    source: resolvedSettingsSource,
-                    readOnlyMessage: isPodcastCustomSettingsActive ? nil : "These values currently come from the global defaults. Switch this podcast to Custom to edit them just for this show.",
-                    onChange: saveAndNotify
+        Section("Queue & Playback") {
+            Picker(
+                "New episodes go to",
+                selection: Binding(
+                    get: { settings.playnextPosition },
+                    set: {
+                        settings.playnextPosition = $0
+                        saveAndNotify()
+                    }
                 )
-            } label: {
-                SettingsNavigationRow(
-                    title: "Queue & Playback",
-                    summary: settings.queueAndPlaybackSummary,
-                    detail: isPodcastCustomSettingsActive
-                        ? "Podcast-specific placement and default speed."
-                        : "Showing the global defaults currently applied to this podcast.",
-                    systemImage: "speedometer",
-                    source: resolvedSettingsSource
-                )
+            ) {
+                ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
+                    Text(position.settingsLabel).tag(position)
+                }
             }
 
+            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Stepper(
+                value: Binding(
+                    get: { settings.playbackSpeed ?? 1.0 },
+                    set: {
+                        settings.playbackSpeed = $0
+                        saveAndNotify()
+                    }
+                ),
+                in: 0.5...3.0,
+                step: 0.1
+            ) {
+                LabeledContent("Default speed") {
+                    Text(settings.playbackSpeed.formattedPlaybackSpeed)
+                        .monospacedDigit()
+                }
+            }
+
+            Text("This speed is used when playback starts. The player speed control also writes back here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Stepper(
+                value: Binding(
+                    get: { settings.archiveFileRetentionDaysClamped },
+                    set: {
+                        settings.archiveFileRetentionDays = $0
+                        saveAndNotify()
+                    }
+                ),
+                in: 0...180,
+                step: 1
+            ) {
+                LabeledContent("Archive file retention") {
+                    Text(settings.archiveRetentionSummary)
+                }
+            }
+
+            Text("When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Section("Auto Downloads") {
+            Toggle(
+                "Auto-download unplayed episodes",
+                isOn: Binding(
+                    get: { settings.autoDownload },
+                    set: {
+                        settings.autoDownload = $0
+                        if $0, settings.autoDownloadEpisodeCount < 1 {
+                            settings.autoDownloadEpisodeCount = 1
+                        }
+                        saveAndNotify()
+                    }
+                )
+            )
+
+            if settings.autoDownload {
+                Stepper(
+                    value: Binding(
+                        get: { max(settings.autoDownloadEpisodeCount, 1) },
+                        set: {
+                            settings.autoDownloadEpisodeCount = max($0, 1)
+                            saveAndNotify()
+                        }
+                    ),
+                    in: 1...50,
+                    step: 1
+                ) {
+                    LabeledContent("Keep available") {
+                        Text("\(max(settings.autoDownloadEpisodeCount, 1))")
+                            .monospacedDigit()
+                    }
+                }
+
+                Picker(
+                    "Selection",
+                    selection: Binding(
+                        get: { settings.autoDownloadSelection },
+                        set: {
+                            settings.autoDownloadSelection = $0
+                            saveAndNotify()
+                        }
+                    )
+                ) {
+                    ForEach(AutoDownloadSelection.allCases, id: \.self) { selection in
+                        Text(selection.settingsLabel).tag(selection)
+                    }
+                }
+
+                Picker(
+                    "Network",
+                    selection: Binding(
+                        get: { settings.autoDownloadNetworkMode },
+                        set: {
+                            settings.autoDownloadNetworkMode = $0
+                            saveAndNotify()
+                        }
+                    )
+                ) {
+                    ForEach(AutoDownloadNetworkMode.allCases, id: \.self) { mode in
+                        Text(mode.settingsLabel).tag(mode)
+                    }
+                }
+            }
+
+            Text("Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Section("Podcast Sections") {
             NavigationLink {
                 ChapterRuleSettingsDetailView(
                     settings: settings,
@@ -490,21 +621,36 @@ struct PodcastSettingsView: View {
     private func handleCustomSettingsToggle(_ newValue: Bool) {
         guard let podcast else { return }
         useCustomSettings = newValue
+        let podcastFeed = podcast.feed
 
         if newValue {
             enableCustomSettings(for: podcast, in: context)
         } else {
             disableCustomSettings(for: podcast, in: context)
         }
+
+        if let podcastFeed {
+            Task {
+                await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+            }
+        }
     }
 
     private func saveAndNotify() {
         context.saveIfNeeded()
         postSettingsDidChange()
+        applyAutomaticDownloadPolicyIfNeeded()
     }
 
     private func postSettingsDidChange() {
         NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+    }
+
+    private func applyAutomaticDownloadPolicyIfNeeded() {
+        guard let podcastFeed = podcast?.feed else { return }
+        Task {
+            await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+        }
     }
 }
 
@@ -631,85 +777,6 @@ private struct SettingsReadOnlyNotice: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
-    }
-}
-
-private struct QueuePlaybackSettingsDetailView: View {
-    @Bindable var settings: PodcastSettings
-
-    let isEditable: Bool
-    let source: SettingsSource
-    let readOnlyMessage: String?
-    let onChange: () -> Void
-
-    var body: some View {
-        List {
-            if let readOnlyMessage, isEditable == false {
-                Section {
-                    SettingsReadOnlyNotice(message: readOnlyMessage, source: source)
-                }
-            }
-
-            Section("Queue") {
-                if isEditable {
-                    Picker(
-                        "New episodes go to",
-                        selection: Binding(
-                            get: { settings.playnextPosition },
-                            set: {
-                                settings.playnextPosition = $0
-                                onChange()
-                            }
-                        )
-                    ) {
-                        ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
-                            Text(position.settingsLabel).tag(position)
-                        }
-                    }
-                } else {
-                    LabeledContent("New episodes go to") {
-                        Text(settings.playnextPosition.settingsLabel)
-                    }
-                }
-
-                Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Playback") {
-                if isEditable {
-                    Stepper(
-                        value: Binding(
-                            get: { settings.playbackSpeed ?? 1.0 },
-                            set: {
-                                settings.playbackSpeed = $0
-                                onChange()
-                            }
-                        ),
-                        in: 0.5...3.0,
-                        step: 0.1
-                    ) {
-                        LabeledContent("Default speed") {
-                            Text(settings.playbackSpeed.formattedPlaybackSpeed)
-                                .monospacedDigit()
-                        }
-                    }
-                } else {
-                    LabeledContent("Default speed") {
-                        Text(settings.playbackSpeed.formattedPlaybackSpeed)
-                            .monospacedDigit()
-                    }
-                }
-
-                Text("This speed is used when playback starts. The player speed control also writes back here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle("Queue & Playback")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -1143,6 +1210,11 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         settings.playbackSpeed = globalSettings.playbackSpeed
         settings.playnextPosition = globalSettings.playnextPosition
         settings.autoSkipKeywords = globalSettings.autoSkipKeywords
+        settings.autoDownload = globalSettings.autoDownload
+        settings.autoDownloadEpisodeCount = globalSettings.autoDownloadEpisodeCount
+        settings.autoDownloadSelection = globalSettings.autoDownloadSelection
+        settings.autoDownloadNetworkMode = globalSettings.autoDownloadNetworkMode
+        settings.archiveFileRetentionDays = globalSettings.archiveFileRetentionDays
         context.insert(settings)
         podcast.settings = settings
     }
@@ -1192,7 +1264,15 @@ private struct DeferredView<Content: View>: View {
 
 private extension PodcastSettings {
     var queueAndPlaybackSummary: String {
-        "\(playnextPosition.settingsLabel) • \(playbackSpeed.formattedPlaybackSpeed)"
+        "\(playnextPosition.settingsLabel) • \(playbackSpeed.formattedPlaybackSpeed) • \(archiveRetentionSummary) • \(autoDownloadSummary)"
+    }
+
+    var autoDownloadSummary: String {
+        guard autoDownload else { return "Auto-download off" }
+
+        let count = max(autoDownloadEpisodeCount, 1)
+        let episodeLabel = count == 1 ? "episode" : "episodes"
+        return "\(autoDownloadSelection.settingsLabel), \(count) \(episodeLabel), \(autoDownloadNetworkMode.settingsLabel)"
     }
 
     var appControlsSummary: String {
@@ -1211,6 +1291,39 @@ private extension PodcastSettings {
         }
 
         return "Automatic local fallback on"
+    }
+
+    var archiveFileRetentionDaysClamped: Int {
+        max(archiveFileRetentionDays, 0)
+    }
+
+    var archiveRetentionSummary: String {
+        if archiveFileRetentionDaysClamped == 1 {
+            return "1 day"
+        }
+        return "\(archiveFileRetentionDaysClamped) days"
+    }
+}
+
+private extension AutoDownloadSelection {
+    var settingsLabel: String {
+        switch self {
+        case .newestUnplayed:
+            "Newest unplayed"
+        case .oldestUnplayed:
+            "Oldest unplayed"
+        }
+    }
+}
+
+private extension AutoDownloadNetworkMode {
+    var settingsLabel: String {
+        switch self {
+        case .wifiAndCellular:
+            "Wi-Fi + Cellular"
+        case .wifiOnly:
+            "Wi-Fi only"
+        }
     }
 }
 

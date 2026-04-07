@@ -27,7 +27,7 @@ class Playlist{
     enum CodingKeys: CodingKey {
         case title, deleteable, hidden, items
     }
-    enum Position: Identifiable, Codable, CaseIterable, Hashable {
+    enum Position: Identifiable, Codable, CaseIterable, Hashable, Sendable {
         case front
         case end
         case none

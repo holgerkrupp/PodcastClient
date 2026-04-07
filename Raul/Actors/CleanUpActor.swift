@@ -11,8 +11,9 @@ import SwiftData
 @ModelActor
 actor CleanUpActor {
     lazy var episodeActor: EpisodeActor = EpisodeActor(modelContainer: self.modelContainer)
+    lazy var settingsActor: PodcastSettingsModelActor = PodcastSettingsModelActor(modelContainer: self.modelContainer)
 
-    /// Deletes downloaded episode files with no attached playlist and lastPlayed >= one week ago
+    /// Deletes downloaded episode files once they are eligible for cleanup.
     func cleanUpOldDownloads() async {
         let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date.distantPast
         let fetchDescriptor = FetchDescriptor<Episode>()
@@ -23,18 +24,28 @@ actor CleanUpActor {
         } catch {
             return
         }
+
+        let now = Date()
         
         for episode in episodes {
-            // Must have a local file and lastPlayed at least a week ago
-            guard 
-                let lastPlayed = episode.metaData?.lastPlayed,
-                lastPlayed < oneWeekAgo,
-                episode.metaData?.isAvailableLocally == true else { continue }
-            
-            if episode.playlist?.count == 0 {
-              //  await episodeActor.deleteFile(episodeURL: episode.url)
-                await episodeActor.deleteFile(episodeURL: episode.url)
+            guard episode.metaData?.isAvailableLocally == true else { continue }
 
+            if episode.metaData?.isArchived == true {
+                let retentionDays = await settingsActor.getArchiveFileRetentionDays(for: episode.podcast?.feed)
+                let archivedAt = episode.metaData?.archivedAt
+                    ?? episode.metaData?.completionDate
+                    ?? episode.metaData?.lastPlayed
+                    ?? now
+                let earliestDeletionDate = Calendar.current.date(byAdding: .day, value: retentionDays, to: archivedAt) ?? archivedAt
+
+                guard earliestDeletionDate <= now else { continue }
+                await episodeActor.deleteFile(episodeURL: episode.url)
+                continue
+            }
+
+            guard let lastPlayed = episode.metaData?.lastPlayed, lastPlayed < oneWeekAgo else { continue }
+            if episode.playlist?.count == 0 {
+                await episodeActor.deleteFile(episodeURL: episode.url)
             }
         }
     }

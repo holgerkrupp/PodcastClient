@@ -74,6 +74,16 @@
         }
       }
     },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -83,6 +93,9 @@
           }
         }
       }
+    },
+    "%lld details" : {
+
     },
     "%lld file%@" : {
       "localizations" : {
@@ -104,12 +117,22 @@
         }
       }
     },
-    "%lld file%@ (%@) can be removed without deleting downloads needed for the current Up Next queue." : {
+    "%lld file%@ (%@) are currently protected by archive retention settings." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$lld file%2$@ (%3$@) can be removed without deleting downloads needed for the current Up Next queue."
+            "value" : "%1$lld file%2$@ (%3$@) are currently protected by archive retention settings."
+          }
+        }
+      }
+    },
+    "%lld file%@ (%@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld file%2$@ (%3$@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window."
           }
         }
       }
@@ -318,6 +341,9 @@
         }
       }
     },
+    "Archive file retention" : {
+
+    },
     "Archiving inbox episodes" : {
 
     },
@@ -350,6 +376,12 @@
           }
         }
       }
+    },
+    "Auto Downloads" : {
+
+    },
+    "Auto-download unplayed episodes" : {
+
     },
     "Automatic Chapter Filtering" : {
 
@@ -670,9 +702,6 @@
         }
       }
     },
-    "Delete Files Not in Up Next" : {
-
-    },
     "Delete Played" : {
       "localizations" : {
         "de" : {
@@ -682,6 +711,9 @@
           }
         }
       }
+    },
+    "Delete Unprotected Files" : {
+
     },
     "Deletes the local file from this device" : {
 
@@ -1189,7 +1221,13 @@
     "Jumps to the furthest point you have listened to in this episode" : {
 
     },
+    "Keep available" : {
+
+    },
     "Keep the current transcript line centered" : {
+
+    },
+    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device." : {
 
     },
     "Keyword or phrase" : {
@@ -1455,6 +1493,9 @@
         }
       }
     },
+    "More Metadata" : {
+
+    },
     "More Views" : {
       "localizations" : {
         "de" : {
@@ -1490,6 +1531,9 @@
 
     },
     "Needs keyword" : {
+
+    },
+    "Network" : {
 
     },
     "New episodes can be placed at the front, end, or not added automatically, depending on your settings." : {
@@ -1825,6 +1869,9 @@
     "Open chapter link" : {
 
     },
+    "Open episode %@" : {
+
+    },
     "Open full player" : {
 
     },
@@ -1864,6 +1911,9 @@
         }
       }
     },
+    "Open podcast %@" : {
+
+    },
     "Open settings for this podcast" : {
 
     },
@@ -1883,6 +1933,12 @@
 
     },
     "Opens the transcript list and jumps to the current playback line" : {
+
+    },
+    "Opens this episode details screen" : {
+
+    },
+    "Opens this podcast details screen" : {
 
     },
     "Overview" : {
@@ -2008,6 +2064,7 @@
 
     },
     "Playback" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2137,6 +2194,9 @@
     "Podcast-attributed storage will appear here once content is stored locally." : {
 
     },
+    "Podcasting 2.0" : {
+
+    },
     "Podcasts" : {
 
     },
@@ -2214,6 +2274,7 @@
 
     },
     "Queue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2510,6 +2571,9 @@
           }
         }
       }
+    },
+    "Selection" : {
+
     },
     "Settings" : {
       "localizations" : {
@@ -3189,6 +3253,9 @@
       }
     },
     "When an episode finishes, continuous playback can automatically start the next item from Up Next." : {
+
+    },
+    "When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it." : {
 
     },
     "When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available, and the manual Transcribe button remains available even when this is off." : {

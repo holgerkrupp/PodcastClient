@@ -12,6 +12,7 @@ import BasicLogger
 import SwiftUI
 import UIKit
 import ImageIO
+import Network
 
 
 @ModelActor
@@ -200,6 +201,10 @@ actor EpisodeActor {
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
+
+        if let podcastFeed = episode.podcast?.feed {
+            await applyAutomaticDownloadPolicy(for: podcastFeed)
+        }
     }
     
     func removeFromPlaylist(_ episodeURL: URL) async {
@@ -222,10 +227,10 @@ actor EpisodeActor {
             episode.metaData?.isArchived = true
             episode.metaData?.isInbox = false
             episode.metaData?.status = .archived
+            episode.metaData?.archivedAt = Date()
         }
 
-        await deleteFile(episodeURL: episodeURL)
-         modelContext.saveIfNeeded()
+        modelContext.saveIfNeeded()
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
@@ -242,6 +247,7 @@ actor EpisodeActor {
             episode.metaData?.isArchived = false
             episode.metaData?.isInbox = true
             episode.metaData?.status = .inbox
+            episode.metaData?.archivedAt = nil
         }
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
@@ -250,6 +256,7 @@ actor EpisodeActor {
     func moveToHistory(episodeURL: URL) async {
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else { return }
+        let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
         await removeFromPlaylist(episodeURL)
 
         for episode in episodes {
@@ -266,6 +273,142 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         WatchSyncCoordinator.refreshSoon()
+
+        for podcastFeed in podcastFeeds {
+            await applyAutomaticDownloadPolicy(for: podcastFeed)
+        }
+    }
+
+    func applyAutomaticDownloadPolicy(for podcastFeed: URL) async {
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+
+        guard let policy = await settingsActor.autoDownloadPolicy(for: podcastFeed) else {
+            return
+        }
+
+        let keepCount = policy.keepCount
+        let selection = policy.selection
+        let queuePosition = policy.queuePosition
+        let networkMode = policy.networkMode
+
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { episode in
+                episode.podcast?.feed == podcastFeed
+            }
+        )
+
+        guard let podcastEpisodes = try? modelContext.fetch(descriptor),
+              podcastEpisodes.isEmpty == false else {
+            return
+        }
+
+        let eligibleEpisodes = podcastEpisodes.filter { episode in
+            episode.metaData?.isHistory != true
+            && episode.metaData?.isArchived != true
+        }
+
+        guard eligibleEpisodes.isEmpty == false else { return }
+
+        let sortedEpisodes = eligibleEpisodes.sorted { lhs, rhs in
+            let lhsDate: Date
+            let rhsDate: Date
+
+            switch selection {
+            case .newestUnplayed:
+                lhsDate = lhs.publishDate ?? .distantPast
+                rhsDate = rhs.publishDate ?? .distantPast
+                if lhsDate != rhsDate {
+                    return lhsDate > rhsDate
+                }
+            case .oldestUnplayed:
+                lhsDate = lhs.publishDate ?? .distantFuture
+                rhsDate = rhs.publishDate ?? .distantFuture
+                if lhsDate != rhsDate {
+                    return lhsDate < rhsDate
+                }
+            }
+
+            let lhsKey = lhs.url?.absoluteString ?? lhs.title
+            let rhsKey = rhs.url?.absoluteString ?? rhs.title
+            return lhsKey.localizedStandardCompare(rhsKey) == .orderedAscending
+        }
+
+        let targetEpisodes = Array(sortedEpisodes.prefix(keepCount))
+        let targetEpisodeURLs = Set(targetEpisodes.compactMap(\.url))
+        let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
+        let canScheduleDownloads = await canScheduleAutoDownloads(for: networkMode)
+
+        if canScheduleDownloads {
+            for episode in targetEpisodes {
+                guard let episodeURL = episode.url else { continue }
+                let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
+
+                if queuePosition == .none {
+                    if isDownloaded == false {
+                        await download(episodeURL: episodeURL)
+                    }
+                    continue
+                }
+
+                let isQueued = (episode.playlist?.isEmpty ?? true) == false
+                if isQueued == false {
+                    try? await playlistActor?.add(episodeURL: episodeURL, to: queuePosition)
+                    continue
+                }
+
+                if isDownloaded == false {
+                    await download(episodeURL: episodeURL)
+                }
+            }
+        }
+
+        let hasTargetCoverage = targetEpisodes.allSatisfy { episode in
+            let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
+            if queuePosition == .none {
+                return isDownloaded
+            }
+
+            let isQueued = (episode.playlist?.isEmpty ?? true) == false
+            return isDownloaded || isQueued
+        }
+
+        if canScheduleDownloads == false && hasTargetCoverage == false {
+            return
+        }
+
+        for episode in podcastEpisodes {
+            guard let episodeURL = episode.url else { continue }
+            guard targetEpisodeURLs.contains(episodeURL) == false else { continue }
+            guard episode.metaData?.calculatedIsAvailableLocally == true else { continue }
+            guard (episode.playlist?.isEmpty ?? true) else { continue }
+
+            await deleteFile(episodeURL: episodeURL)
+        }
+    }
+
+    private func canScheduleAutoDownloads(for networkMode: AutoDownloadNetworkMode) async -> Bool {
+        switch networkMode {
+        case .wifiAndCellular:
+            return true
+        case .wifiOnly:
+            return await isOnWiFi()
+        }
+    }
+
+    private func isOnWiFi() async -> Bool {
+        await withCheckedContinuation { continuation in
+            let monitor = NWPathMonitor()
+            let queue = DispatchQueue(label: "AutoDownloadNetworkMonitor")
+
+            monitor.pathUpdateHandler = { path in
+                let isConnected = path.status == .satisfied
+                let isWiFiLikeConnection = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
+                monitor.cancel()
+                continuation.resume(returning: isConnected && isWiFiLikeConnection)
+            }
+
+            monitor.start(queue: queue)
+        }
     }
     
     

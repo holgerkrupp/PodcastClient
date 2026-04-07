@@ -16,7 +16,11 @@ struct EpisodeRowView: View {
     @Environment(DownloadedFilesManager.self) var fileManager
 
     @Bindable var episode: Episode
-    private let height:CGFloat = 210
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
+    @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
+    @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
+    @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeWidth: CGFloat = 300
+    @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeHeight: CGFloat = 120
 
     init(episode: Episode) {
         self._episode = Bindable(wrappedValue: episode)
@@ -42,7 +46,7 @@ struct EpisodeRowView: View {
         ZStack {
             CoverImageView(podcast: episode.podcast)
                 .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
+                .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
                 .blur(radius: 8)
                 //.opacity(0.45)
                 .clipped()
@@ -52,7 +56,7 @@ struct EpisodeRowView: View {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack(alignment: .topTrailing) {
                         CoverImageView(episode: episode)
-                            .frame(width: 120, height: 120)
+                            .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
 
                         if hasBookmarks {
@@ -78,8 +82,7 @@ struct EpisodeRowView: View {
 
                         Text(episode.title)
                             .font(.headline)
-                            .lineLimit(3)
-                            .minimumScaleFactor(0.75)
+                            .lineLimit(4)
                             .foregroundStyle(.primary)
 
                         Spacer(minLength: 0)
@@ -118,11 +121,11 @@ struct EpisodeRowView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                 }
 
                 EpisodeControlView(episode: episode)
-                    .frame(height: 50)
+                    .frame(minHeight: controlsHeight)
             }
             .padding(8)
             .background(
@@ -130,7 +133,7 @@ struct EpisodeRowView: View {
                     .fill(.thinMaterial)
             )
         }
-        .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .overlay(alignment: .bottomLeading) {
             Rectangle()
                 .fill(Color.accent)
@@ -138,6 +141,7 @@ struct EpisodeRowView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(height: 4)
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .accessibilityHidden(true)
         }
             .overlay{
 
@@ -155,7 +159,7 @@ struct EpisodeRowView: View {
                                     .font(.title.bold())
                             }
                         }
-                        .frame(width: 300, height: 120)
+                        .frame(width: nowPlayingBadgeWidth, height: nowPlayingBadgeHeight)
               
                         
                     
@@ -166,7 +170,7 @@ struct EpisodeRowView: View {
           
              
              .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  20.0))
-             .frame(maxWidth: 300, maxHeight: 120, alignment: .center)
+             .frame(maxWidth: nowPlayingBadgeWidth, maxHeight: nowPlayingBadgeHeight, alignment: .center)
             }
                 
             }
