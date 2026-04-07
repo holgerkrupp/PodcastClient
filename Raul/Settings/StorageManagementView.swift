@@ -243,7 +243,7 @@ struct StorageManagementView: View {
                             )
                         )
                     } label: {
-                        Label("Delete Files Not in Up Next", systemImage: "text.line.last.and.arrowtriangle.forward")
+                        Label("Delete Unprotected Files", systemImage: "text.line.last.and.arrowtriangle.forward")
                     }
                     .disabled(isDeleting)
                 }
@@ -261,8 +261,14 @@ struct StorageManagementView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if report.archiveRetentionProtectedFileCount > 0 {
+                    Text("\(report.archiveRetentionProtectedFileCount) file\(report.archiveRetentionProtectedFileCount == 1 ? "" : "s") (\(report.archiveRetentionProtectedFileBytes.formattedAsStorage)) are currently protected by archive retention settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if outsideUpNextFiles.isEmpty == false {
-                    Text("\(outsideUpNextFiles.count) file\(outsideUpNextFiles.count == 1 ? "" : "s") (\(outsideUpNextFiles.totalBytes.formattedAsStorage)) can be removed without deleting downloads needed for the current Up Next queue.")
+                    Text("\(outsideUpNextFiles.count) file\(outsideUpNextFiles.count == 1 ? "" : "s") (\(outsideUpNextFiles.totalBytes.formattedAsStorage)) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -580,7 +586,7 @@ private enum PendingDeletion: Identifiable {
         case .file(let file):
             "Delete \(file.displayName)?"
         case .outsideUpNext:
-            "Delete files not in Up Next?"
+            "Delete unprotected files?"
         case .allFiles:
             "Delete all stored files?"
         }
@@ -591,7 +597,7 @@ private enum PendingDeletion: Identifiable {
         case .file:
             "This removes the selected file from local storage."
         case .outsideUpNext(let fileCount, let bytes):
-            "This removes \(fileCount) file\(fileCount == 1 ? "" : "s") (\(bytes.formattedAsStorage)) while keeping files for episodes that are still in Up Next."
+            "This removes \(fileCount) file\(fileCount == 1 ? "" : "s") (\(bytes.formattedAsStorage)) while keeping files for episodes that are still in Up Next or still protected by archive retention."
         case .allFiles:
             "This removes all listed files from local storage but keeps the database."
         }

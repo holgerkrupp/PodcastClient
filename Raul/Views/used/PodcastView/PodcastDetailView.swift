@@ -146,6 +146,8 @@ struct PodcastDetailView: View {
                             .padding()
                         PeopleView(people: podcast.people)
                             .padding()
+                        PodcastNamespaceMetadataView(optionalTags: podcast.optionalTags)
+                            .padding()
                         if let desc = podcast.desc {
                             RichText(html: desc)
                                 .linkColor(light: Color.secondary, dark: Color.secondary)
@@ -220,7 +222,10 @@ struct PodcastDetailView: View {
                            //     .id(episode.url)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
-                            }.opacity(0)
+                            }
+                            .opacity(0)
+                            .accessibilityLabel("Open episode \(episode.title)")
+                            .accessibilityHint("Opens this episode details screen")
                         }
                         
                        

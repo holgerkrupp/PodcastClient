@@ -428,6 +428,13 @@ actor PodcastModelActor {
             podcast.people = peopleArr
         }
 
+        if let optionalTags = fullPodcast["optionalTags"] as? PodcastNamespaceOptionalTags,
+           optionalTags.isEmpty == false {
+            podcast.optionalTags = optionalTags
+        } else {
+            podcast.optionalTags = nil
+        }
+
         if let episodesData = fullPodcast["episodes"] as? [[String: Any]] {
             podcast.metaData?.message = "Updating Podcast Episodes"
             podcast.message = "Updating Podcast Episodes"
@@ -452,6 +459,7 @@ actor PodcastModelActor {
                     ($0.guid != nil && $0.guid == episodeIdentifier) || ($0.url != nil && $0.url == candidateEpisodeURL)
                 }) {
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
+                    existingEpisode.refreshOptionalTags(from: episodeData)
                     modelContext.saveIfNeeded()
                     continue
                 }
@@ -479,6 +487,7 @@ actor PodcastModelActor {
                         episode.metaData?.status = .archived
                         episode.metaData?.isArchived = true
                         episode.metaData?.isInbox = false
+                        episode.metaData?.archivedAt = Date()
                     } else {
                         print("episode is new")
                         if let episodeURL = episode.url {
@@ -489,10 +498,16 @@ actor PodcastModelActor {
                     print("SILENT")
                     episode.metaData?.isInbox = false
                     episode.metaData?.status = .archived
+                    episode.metaData?.isArchived = true
+                    episode.metaData?.archivedAt = Date()
                 }
             }
 
             await reportProgress(SubscriptionProgressUpdate(0.96, "Finalizing library updates"), using: progress)
+
+            if let podcastFeed = podcast.feed {
+                await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: podcastFeed)
+            }
         }
     }
     
@@ -607,6 +622,7 @@ actor PodcastModelActor {
         episode.metaData?.isArchived = false
         episode.metaData?.isInbox = true
         episode.metaData?.status = .inbox
+        episode.metaData?.archivedAt = nil
 
         modelContext.saveIfNeeded()
     }

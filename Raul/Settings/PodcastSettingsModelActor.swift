@@ -8,6 +8,12 @@ import Foundation
 import SwiftData
 import BasicLogger
 
+struct AutoDownloadPolicySnapshot: Sendable {
+    let keepCount: Int
+    let selection: AutoDownloadSelection
+    let queuePosition: Playlist.Position
+    let networkMode: AutoDownloadNetworkMode
+}
 
 @ModelActor
 actor PodcastSettingsModelActor {
@@ -91,9 +97,6 @@ actor PodcastSettingsModelActor {
         // print("FETCHING ALL PODCASTSETTINGS")
         do {
             let results = try modelContext.fetch(FetchDescriptor<PodcastSettings>())
-            for result in results{
-                // print("⚙️ - Found custom Settings: \(result.title ?? "nil") - \(result.id.uuidString) - Podcast: \(result.podcast?.title ?? "nil") - \(result.podcast?.id.uuidString ?? "NIL")")
-            }
             // print("----")
             return results
         } catch {
@@ -142,6 +145,11 @@ actor PodcastSettingsModelActor {
             newSettings.playbackSpeed = standardSettings.playbackSpeed
             newSettings.playnextPosition = standardSettings.playnextPosition
             newSettings.autoSkipKeywords = standardSettings.autoSkipKeywords
+            newSettings.autoDownload = standardSettings.autoDownload
+            newSettings.autoDownloadEpisodeCount = standardSettings.autoDownloadEpisodeCount
+            newSettings.autoDownloadSelection = standardSettings.autoDownloadSelection
+            newSettings.autoDownloadNetworkMode = standardSettings.autoDownloadNetworkMode
+            newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
             modelContext.insert(newSettings)
             podcast.settings = newSettings
         }
@@ -241,5 +249,29 @@ actor PodcastSettingsModelActor {
 
     func getAutomaticOnDeviceTranscriptionsRequiresCharging() async -> Bool {
         await standardSettings().limitAutomaticOnDeviceTranscriptionsToCharging
+    }
+
+    func getArchiveFileRetentionDays(for podcastFeed: URL?) async -> Int {
+        if let podcastFeed,
+           let customValue = await fetchPodcastSettings(for: podcastFeed)?.archiveFileRetentionDays {
+            return max(customValue, 0)
+        }
+
+        return max(await standardSettings().archiveFileRetentionDays, 0)
+    }
+
+    func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {
+        guard let settings = await fetchPodcastSettings(for: podcastFeed),
+              settings.isEnabled,
+              settings.autoDownload else {
+            return nil
+        }
+
+        return AutoDownloadPolicySnapshot(
+            keepCount: max(settings.autoDownloadEpisodeCount, 1),
+            selection: settings.autoDownloadSelection,
+            queuePosition: settings.playnextPosition,
+            networkMode: settings.autoDownloadNetworkMode
+        )
     }
 }

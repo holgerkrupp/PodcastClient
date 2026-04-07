@@ -66,7 +66,7 @@ struct WatchPlayerView: View {
                             if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
                                 Text(podcastTitle)
                                     .font(.footnote)
-                                    .foregroundStyle(.white.opacity(0.72))
+                                    .foregroundStyle(.white.opacity(0.84))
                                     .multilineTextAlignment(.center)
                             }
 
@@ -93,7 +93,7 @@ struct WatchPlayerView: View {
                                     Text(watchPlaybackTime(episode.duration ?? 0))
                                 }
                                 .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.white.opacity(0.72))
+                                .foregroundStyle(.white.opacity(0.84))
                             }
                         }
 
@@ -172,7 +172,7 @@ struct WatchPlayerView: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Chapters")
                                         .font(.caption)
-                                        .foregroundStyle(.white.opacity(0.72))
+                                        .foregroundStyle(.white.opacity(0.84))
 
                                     ForEach(episode.chapters) { chapter in
                                         Button {
@@ -188,7 +188,7 @@ struct WatchPlayerView: View {
 
                                                     Text(watchPlaybackTime(chapter.start))
                                                         .font(.caption2.monospacedDigit())
-                                                        .foregroundStyle(.white.opacity(0.65))
+                                                        .foregroundStyle(.white.opacity(0.78))
                                                 }
 
                                                 if activeChapter?.id == chapter.id {

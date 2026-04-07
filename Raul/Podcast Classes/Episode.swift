@@ -89,6 +89,7 @@ class EpisodeDownloadStatus{
     var funding: [FundingInfo] = []
     var social: [SocialInfo] = []
     var people: [PersonInfo] = []
+    var optionalTags: PodcastNamespaceOptionalTags?
  
     @Relationship(deleteRule: .cascade) var chapters: [Marker]? = []
     @Relationship(deleteRule: .cascade) var bookmarks: [Bookmark]? = []
@@ -296,6 +297,13 @@ class EpisodeDownloadStatus{
         } else if let peopleArr = episodeData["people"] as? [PersonInfo] {
             self.people = peopleArr
         }
+
+        if let optionalTags = episodeData["optionalTags"] as? PodcastNamespaceOptionalTags,
+           optionalTags.isEmpty == false {
+            self.optionalTags = optionalTags
+        } else {
+            self.optionalTags = nil
+        }
         
         if self.metaData == nil {
             let metadata = EpisodeMetaData()
@@ -320,6 +328,14 @@ class EpisodeDownloadStatus{
         let updatedFiles = feedExternalFiles(from: episodeData)
         guard updatedFiles != externalFiles else { return }
         replaceExternalFiles(with: updatedFiles)
+        refresh.toggle()
+    }
+
+    func refreshOptionalTags(from episodeData: [String: Any]) {
+        let parsedOptionalTags = episodeData["optionalTags"] as? PodcastNamespaceOptionalTags
+        let updatedOptionalTags = (parsedOptionalTags?.isEmpty == false) ? parsedOptionalTags : nil
+        guard updatedOptionalTags != optionalTags else { return }
+        optionalTags = updatedOptionalTags
         refresh.toggle()
     }
     
@@ -371,6 +387,9 @@ enum EpisodeStatus: String, Codable{
     
     /// Date the episode was finished
     var completionDate: Date?
+
+    /// Date the episode was moved to archive
+    var archivedAt: Date?
 
     /// Playback start times per session
     var playbackStartTimes: CodableArray<Date>?

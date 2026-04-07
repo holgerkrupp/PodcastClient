@@ -133,8 +133,11 @@ struct StorageUsageReport: Sendable {
     let podcasts: [PodcastStorageUsage]
     let files: [StorageFileEntry]
     let upNextEpisodeURLStrings: Set<String>
+    let archiveRetentionProtectedEpisodeURLStrings: Set<String>
     let upNextProtectedFileBytes: Int64
     let upNextProtectedFileCount: Int
+    let archiveRetentionProtectedFileBytes: Int64
+    let archiveRetentionProtectedFileCount: Int
     let unattributedDatabaseBytes: Int64
     let unattributedFileBytes: Int64
     let unattributedFileCount: Int
@@ -191,6 +194,14 @@ actor StorageManagementService {
         var podcastTitleIndex: [String: String] = [:]
         var episodeAssociationsByFileURL: [URL: FileAssociation] = [:]
         var episodeAssociationsByEpisodeURL: [URL: FileAssociation] = [:]
+        var archiveRetentionProtectedEpisodeURLStrings: Set<String> = []
+        var retentionDaysByFeedKey: [String: Int] = [:]
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let now = Date()
+
+        func retentionCacheKey(for feed: URL?) -> String {
+            feed?.absoluteString ?? "__global__"
+        }
 
         func addGlobalUsage(_ category: StorageDatabaseCategory, count: Int = 1, bytes: Int64) {
             guard bytes > 0 || count > 0 else { return }
@@ -249,6 +260,28 @@ actor StorageManagementService {
                 }
                 if let localFile = episode.localFile?.standardizedFileURL {
                     episodeAssociationsByFileURL[localFile] = fileAssociation
+                }
+
+                if episode.metaData?.isArchived == true,
+                   let episodeURLString = episode.url?.absoluteString {
+                    let retentionKey = retentionCacheKey(for: podcast.feed)
+                    let retentionDays: Int
+                    if let cached = retentionDaysByFeedKey[retentionKey] {
+                        retentionDays = cached
+                    } else {
+                        let resolved = await settingsActor.getArchiveFileRetentionDays(for: podcast.feed)
+                        retentionDaysByFeedKey[retentionKey] = resolved
+                        retentionDays = resolved
+                    }
+                    let archivedAt = episode.metaData?.archivedAt
+                        ?? episode.metaData?.completionDate
+                        ?? episode.metaData?.lastPlayed
+                        ?? now
+                    let earliestDeletionDate = Calendar.current.date(byAdding: .day, value: retentionDays, to: archivedAt) ?? archivedAt
+
+                    if earliestDeletionDate > now {
+                        archiveRetentionProtectedEpisodeURLStrings.insert(episodeURLString)
+                    }
                 }
 
                 for transcriptLine in episode.transcriptLines ?? [] {
@@ -455,6 +488,14 @@ actor StorageManagementService {
             partialResult += file.size
         }
 
+        let archiveRetentionProtectedFiles = files.filter { file in
+            guard let episodeURLString = file.associatedEpisodeURL?.absoluteString else { return false }
+            return archiveRetentionProtectedEpisodeURLStrings.contains(episodeURLString)
+        }
+        let archiveRetentionProtectedFileBytes = archiveRetentionProtectedFiles.reduce(into: Int64(0)) { partialResult, file in
+            partialResult += file.size
+        }
+
         let rawDatabaseBytes = databaseCategoryTotals.values.reduce(into: Int64(0)) { partialResult, usage in
             partialResult += usage.bytes
         }
@@ -514,8 +555,11 @@ actor StorageManagementService {
             podcasts: podcastsOutput,
             files: files,
             upNextEpisodeURLStrings: upNextEpisodeURLStrings,
+            archiveRetentionProtectedEpisodeURLStrings: archiveRetentionProtectedEpisodeURLStrings,
             upNextProtectedFileBytes: upNextProtectedFileBytes,
             upNextProtectedFileCount: upNextProtectedFiles.count,
+            archiveRetentionProtectedFileBytes: archiveRetentionProtectedFileBytes,
+            archiveRetentionProtectedFileCount: archiveRetentionProtectedFiles.count,
             unattributedDatabaseBytes: max(databaseBytes - attributedDatabaseBytes, 0),
             unattributedFileBytes: max(fileBytes - attributedFileBytes, 0),
             unattributedFileCount: max(files.count - attributedFileCount, 0)
@@ -589,7 +633,15 @@ extension StorageManagementService {
                 return true
             }
 
-            return report.upNextEpisodeURLStrings.contains(episodeURLString) == false
+            if report.upNextEpisodeURLStrings.contains(episodeURLString) {
+                return false
+            }
+
+            if report.archiveRetentionProtectedEpisodeURLStrings.contains(episodeURLString) {
+                return false
+            }
+
+            return true
         }
     }
 

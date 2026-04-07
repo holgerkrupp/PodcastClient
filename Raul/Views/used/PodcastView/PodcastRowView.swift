@@ -9,12 +9,14 @@ import SwiftData
 
 struct PodcastRowView: View {
     let podcast: Podcast
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
+    @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
 
     var body: some View {
         ZStack {
             CoverImageView(podcast: podcast)
                 .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: 140, maxHeight: 140)
+                .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
                 .blur(radius: 8)
                 .opacity(0.45)
                 .clipped()
@@ -22,7 +24,7 @@ struct PodcastRowView: View {
 
             HStack(spacing: 14) {
                 CoverImageView(podcast: podcast)
-                    .frame(width: 112, height: 112)
+                    .frame(width: artworkSize, height: artworkSize)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -55,13 +57,13 @@ struct PodcastRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(8)
-            .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
             .background(
                 Rectangle()
                     .fill(.thinMaterial)
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 140, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .overlay {
             if  let message = podcast.message {
                 ZStack {

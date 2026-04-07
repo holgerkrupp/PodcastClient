@@ -38,6 +38,9 @@ struct PodcastListView: View {
     @State private var searchProgress: Double = 0.0
     @State private var expandedEpisodePodcastGroupIDs: Set<String> = []
     private let minimumCharactersForTranscriptSearch = 3
+    @ScaledMetric(relativeTo: .body) private var searchGroupArtworkSize: CGFloat = 56
+    @ScaledMetric(relativeTo: .body) private var searchEpisodeArtworkSize: CGFloat = 88
+    @ScaledMetric(relativeTo: .body) private var searchResultRowHeight: CGFloat = 124
 
     init(modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
@@ -155,7 +158,10 @@ struct PodcastListView: View {
                        //     .id(episode.url)
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                             EmptyView()
-                        }.opacity(0)
+                        }
+                        .opacity(0)
+                        .accessibilityLabel("Open podcast \(podcast.title)")
+                        .accessibilityHint("Opens this podcast details screen")
                     }
                     
                     .buttonStyle(.plain)
@@ -499,8 +505,9 @@ struct PodcastListView: View {
     private func episodeResultGroupHeader(_ group: EpisodeSearchResultGroup) -> some View {
         HStack(spacing: 12) {
             CoverImageView(podcast: group.podcast)
-                .frame(width: 56, height: 56)
+                .frame(width: searchGroupArtworkSize, height: searchGroupArtworkSize)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.podcastTitle)
@@ -525,14 +532,16 @@ struct PodcastListView: View {
         ZStack {
             CoverImageView(podcast: episode.podcast)
                 .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124)
+                .frame(maxWidth: .infinity, minHeight: searchResultRowHeight, maxHeight: searchResultRowHeight)
                 .blur(radius: 4)
                 .clipped()
+                .accessibilityHidden(true)
 
             HStack(alignment: .top, spacing: 12) {
                 CoverImageView(episode: episode)
-                    .frame(width: 88, height: 88)
+                    .frame(width: searchEpisodeArtworkSize, height: searchEpisodeArtworkSize)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
 
                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -578,10 +587,10 @@ struct PodcastListView: View {
                 }
             }
             .padding(8)
-            .frame(maxWidth: .infinity, minHeight: 124, maxHeight: 124, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: searchResultRowHeight, maxHeight: searchResultRowHeight, alignment: .topLeading)
             .background(Rectangle().fill(.thinMaterial))
         }
-        .frame(maxWidth: .infinity, minHeight: 124, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: searchResultRowHeight, alignment: .leading)
     }
 }
 

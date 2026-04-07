@@ -140,6 +140,7 @@ actor PlaylistModelActor {
             episode.metaData?.isInbox = false
             episode.metaData?.isArchived = false
             episode.metaData?.status = .none
+            episode.metaData?.archivedAt = nil
             episode.refresh.toggle()
         }
     }

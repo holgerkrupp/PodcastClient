@@ -95,6 +95,7 @@ final class Podcast: Identifiable {
     var funding: [FundingInfo] = [] // See also: Episode.funding
     var social: [SocialInfo] = []
     var people: [PersonInfo] = []
+    var optionalTags: PodcastNamespaceOptionalTags?
     
     @Transient var message: String?
     

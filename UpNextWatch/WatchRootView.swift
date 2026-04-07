@@ -166,7 +166,7 @@ private struct WatchStorageStatusCard: View {
                 HStack {
                     Text("Watch Storage")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(.white.opacity(0.84))
                     Spacer()
                     Text(store.usedStorageDescription)
                         .font(.caption2.monospacedDigit())
@@ -177,7 +177,7 @@ private struct WatchStorageStatusCard: View {
 
                 Text("Downloads prefer Wi-Fi and stay within your watch storage limit.")
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.white.opacity(0.78))
             }
         }
     }
@@ -218,7 +218,7 @@ private struct WatchNowPlayingHero: View {
                         if let chapterTitle = playback.currentChapter?.title {
                             Text(chapterTitle)
                                 .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.65))
+                                .foregroundStyle(.white.opacity(0.78))
                                 .lineLimit(1)
                         }
                     }
@@ -232,7 +232,7 @@ private struct WatchNowPlayingHero: View {
                     Text(watchPlaybackTime(playback.currentDuration ?? 0))
                 }
                 .font(.caption2.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(.white.opacity(0.84))
             }
         }
     }
@@ -273,7 +273,7 @@ private struct WatchPlaylistCard: View {
                             Text(watchPlaybackTime(episode.duration ?? 0))
                         }
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(.white.opacity(0.78))
                     }
                 }
 
@@ -300,7 +300,7 @@ private struct WatchPlaylistCard: View {
                 if episode.phoneHasLocalFile && store.isDownloaded(episode) == false {
                     Text("The iPhone already has this file, so it should sync here when space opens up.")
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(.white.opacity(0.74))
                 }
             }
         }
@@ -343,7 +343,7 @@ private struct WatchPlaylistCard: View {
                 if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
                     Text(podcastTitle)
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(1)
                 }
 
@@ -379,7 +379,7 @@ private struct WatchInboxPage: View {
 
                             Text("Pull new episodes from the phone, then send the ones you want straight into Up Next.")
                                 .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.65))
+                                .foregroundStyle(.white.opacity(0.78))
 
                             Button(store.isRefreshingInbox ? "Refreshing…" : "Refresh Inbox") {
                                 store.refreshInbox()
@@ -437,7 +437,7 @@ private struct WatchInboxCard: View {
                         if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
                             Text(podcastTitle)
                                 .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.65))
+                                .foregroundStyle(.white.opacity(0.78))
                                 .lineLimit(1)
                         }
                     }
@@ -447,6 +447,7 @@ private struct WatchInboxCard: View {
                     store.queueEpisode(episode, downloadAfterQueue: episode.resolvedAudioURL != nil)
                 }
                 .buttonStyle(WatchCapsuleButtonStyle(accent: .orange))
+                .accessibilityHint("Adds this episode to your queue and downloads it when available")
             }
         }
     }
@@ -472,7 +473,7 @@ private struct WatchEmptyState: View {
 
                 Text(detail)
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.white.opacity(0.78))
                     .multilineTextAlignment(.center)
 
                 Button("Sync Now", action: action)

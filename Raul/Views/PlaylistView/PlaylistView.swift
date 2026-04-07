@@ -36,7 +36,10 @@ struct PlaylistView: View {
                                //     .id(episode.url)
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()
-                                }.opacity(0)
+                                }
+                                .opacity(0)
+                                .accessibilityLabel("Open episode \(episode.title)")
+                                .accessibilityHint("Opens this episode details screen")
                             }
                             
                             
