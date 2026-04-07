@@ -25,6 +25,7 @@ class CarPlayNowPlaying {
     
     func setupTempate(interfaceController: CPInterfaceController) {
         // print("setupTempate")
+        let player = self.player
  
         // Configure the now playing template
         template.isUpNextButtonEnabled = false
@@ -35,29 +36,25 @@ class CarPlayNowPlaying {
         if let chapters = player.chapters, chapters.isEmpty != true {
             let listButton = CPNowPlayingImageButton(
                 image: UIImage(systemName: "list.bullet") ?? UIImage()
-            ) { [weak self] _ in
-                //   let playListModelActor = PlaylistModelActor(modelContainer: container)
-                
+            ) { _ in
                 let chapterList = CarPlayChapterMarkList(interfaceController: interfaceController).template
-                
-                self?.interfaceController.pushTemplate(chapterList, animated: false, completion: nil)
+
+                interfaceController.pushTemplate(chapterList, animated: false, completion: nil)
             }
             
             let previousChapterButton = CPNowPlayingImageButton(
                 image: UIImage(systemName: "backward.end.alt") ?? UIImage()
-            ) { [weak self] _ in
-                // Your logic to go to the previous chapter
-                Task{
-                    await self?.player.skipToChapterStart()
+            ) { _ in
+                Task {
+                    await player.skipToChapterStart()
                 }
             }
             
             let nextChapterButton = CPNowPlayingImageButton(
                 image: UIImage(systemName: "forward.end.alt") ?? UIImage()
-            ) { [weak self] _ in
-                // Your logic to go to the next chapter
-                Task{
-                    await self?.player.skipToNextChapter()
+            ) { _ in
+                Task {
+                    await player.skipToNextChapter()
                 }
             }
             
@@ -66,18 +63,17 @@ class CarPlayNowPlaying {
         
         
         
-        let rateButton = CPNowPlayingPlaybackRateButton { [weak self] _ in
-            guard let self = self else { return }
-            self.player.switchPlayBackSpeed()
-            }
+        let rateButton = CPNowPlayingPlaybackRateButton { _ in
+            player.switchPlayBackSpeed()
+        }
         
         buttons.append(rateButton)
         
         let bookmarkButton = CPNowPlayingImageButton(
             image: UIImage(systemName: "bookmark") ?? UIImage()
-        ) { [weak self] _ in
-            Task{
-                 self?.player.createBookmark()
+        ) { _ in
+            Task {
+                player.createBookmark()
             }
         }
         buttons.append(bookmarkButton)
