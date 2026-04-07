@@ -73,39 +73,41 @@ class CarPlayInbox {
     }
 
     private func presentActions(for episode: Episode) {
-        let playNext = CPAlertAction(title: "Play Next", style: .default) { [weak self] _ in
-            guard let self else { return }
+        let playlistActor = self.playlistActor
+        let episodeActor = self.episodeActor
+        let interfaceController = self.interfaceController
+        let refreshTemplate = self.setupTemplate
+
+        let playNext = CPAlertAction(title: "Play Next", style: .default) { _ in
             Task {
                 if let url = episode.url {
-                    try? await self.playlistActor.insert(episodeURL: url, after: Player.shared.currentEpisodeURL)
-                    await self.setupTemplate()
+                    try? await playlistActor.insert(episodeURL: url, after: Player.shared.currentEpisodeURL)
+                    await refreshTemplate()
                 }
-                self.interfaceController.dismissTemplate(animated: true, completion: nil)
+                interfaceController.dismissTemplate(animated: true, completion: nil)
             }
         }
 
-        let playLast = CPAlertAction(title: "Play Last", style: .default) { [weak self] _ in
-            guard let self else { return }
+        let playLast = CPAlertAction(title: "Play Last", style: .default) { _ in
             Task {
                 if let url = episode.url {
-                    try? await self.playlistActor.add(episodeURL: url, to: .end)
-                    await self.setupTemplate()
+                    try? await playlistActor.add(episodeURL: url, to: .end)
+                    await refreshTemplate()
                 }
-                self.interfaceController.dismissTemplate(animated: true, completion: nil)
+                interfaceController.dismissTemplate(animated: true, completion: nil)
             }
         }
 
-        let archive = CPAlertAction(title: "Archive", style: .destructive) { [weak self] _ in
-            guard let self else { return }
+        let archive = CPAlertAction(title: "Archive", style: .destructive) { _ in
             Task {
-                await self.episodeActor.archiveEpisode(episode.url)
-                await self.setupTemplate()
-                self.interfaceController.dismissTemplate(animated: true, completion: nil)
+                await episodeActor.archiveEpisode(episode.url)
+                await refreshTemplate()
+                interfaceController.dismissTemplate(animated: true, completion: nil)
             }
         }
 
-        let cancel = CPAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.interfaceController.dismissTemplate(animated: true, completion: nil)
+        let cancel = CPAlertAction(title: "Cancel", style: .cancel) { _ in
+            interfaceController.dismissTemplate(animated: true, completion: nil)
         }
 
         let sheet = CPActionSheetTemplate(

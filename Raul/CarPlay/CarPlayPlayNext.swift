@@ -128,11 +128,6 @@ class CarPlayPlayNext {
         // Update the template with all sections
         template.updateSections(sections)
 
-        let nowButton = CPBarButton(title: "Now Playing") { [weak self] _ in
-            guard let self else { return }
-            self.interfaceController.pushTemplate(CarPlayNowPlaying(interfaceController: self.interfaceController).template, animated: true, completion: { _, _ in })
-        }
-
         let inboxButton = CPBarButton(title: "Inbox") { [weak self] _ in
             guard let self else { return }
             let inbox = CarPlayInbox(playlistActor: self.playlistActor, interfaceController: self.interfaceController)
@@ -140,7 +135,7 @@ class CarPlayPlayNext {
         }
 
         template.leadingNavigationBarButtons = [inboxButton]
-        template.trailingNavigationBarButtons = [nowButton]
+        template.trailingNavigationBarButtons = []
     }
     
     private func refreshEpisodeList() async{

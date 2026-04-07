@@ -20,6 +20,7 @@ class CarPlayChapterMarkList {
             template.updateSections([])
             return
         }
+        let interfaceController = self.interfaceController
 
         var images: [UIImage?] = []
         images.reserveCapacity(loadedChapters.count)
@@ -35,13 +36,11 @@ class CarPlayChapterMarkList {
             )
             item.userInfo = chapter
             item.isPlaying = (chapter.id == Player.shared.currentChapter?.id)
-            item.handler = { [weak self] _, _ in
-               
-                guard let self else { return }
+            item.handler = { _, _ in
                 Task {
                     await Player.shared.skipTo(chapter: chapter)
                 }
-                self.interfaceController.popTemplate(animated: true, completion: nil)
+                interfaceController.popTemplate(animated: true, completion: nil)
             }
             return item
         }
