@@ -7,7 +7,7 @@ struct PodcastSettingsView: View {
 
     @Environment(\.modelContext) private var context
 
-    let podcast: Podcast?
+    let podcastID: PersistentIdentifier?
     let embedInNavigationStack: Bool
 
     @State private var useCustomSettings: Bool
@@ -15,11 +15,23 @@ struct PodcastSettingsView: View {
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
+    init(podcastID: PersistentIdentifier?, modelContainer: ModelContainer, embedInNavigationStack: Bool = false) {
+        self.podcastID = podcastID
+        self.embedInNavigationStack = embedInNavigationStack
+        _ = modelContainer
+        self._useCustomSettings = State(initialValue: false)
+    }
+
     init(podcast: Podcast?, modelContainer: ModelContainer, embedInNavigationStack: Bool = false) {
-        self.podcast = podcast
+        self.podcastID = podcast?.persistentModelID
         self.embedInNavigationStack = embedInNavigationStack
         _ = modelContainer
         self._useCustomSettings = State(initialValue: podcast?.settings?.isEnabled == true)
+    }
+
+    private var podcast: Podcast? {
+        guard let podcastID else { return nil }
+        return context.model(for: podcastID) as? Podcast
     }
 
     private var globalSettings: PodcastSettings? {
@@ -54,13 +66,22 @@ struct PodcastSettingsView: View {
         podcasts.filter { $0.settings?.isEnabled != true }
     }
 
+    private var viewIdentity: String {
+        if let podcastID {
+            return "podcast-settings-\(String(describing: podcastID))"
+        }
+        return "global-settings"
+    }
+
     var body: some View {
         if embedInNavigationStack {
             NavigationStack {
                 settingsList
+                    .id(viewIdentity)
             }
         } else {
             settingsList
+                .id(viewIdentity)
         }
     }
 
@@ -285,7 +306,7 @@ struct PodcastSettingsView: View {
 
             NavigationLink {
                 ChapterRuleSettingsDetailView(
-                    settings: settings,
+                    settingsID: settings.persistentModelID,
                     isEditable: true,
                     source: .global,
                     readOnlyMessage: nil,
@@ -363,6 +384,9 @@ struct PodcastSettingsView: View {
                     systemImage: "waveform.and.mic"
                 )
             }
+            .simultaneousGesture(TapGesture().onEnded {
+                CrashBreadcrumbs.shared.record("open_transcription_settings")
+            })
         }
     }
 
@@ -502,7 +526,7 @@ struct PodcastSettingsView: View {
         Section("Podcast Sections") {
             NavigationLink {
                 ChapterRuleSettingsDetailView(
-                    settings: settings,
+                    settingsID: settings.persistentModelID,
                     isEditable: isPodcastCustomSettingsActive,
                     source: resolvedSettingsSource,
                     readOnlyMessage: isPodcastCustomSettingsActive ? nil : "These chapter rules currently come from the global defaults. Switch this podcast to Custom to edit them just for this show.",
@@ -525,7 +549,7 @@ struct PodcastSettingsView: View {
     private var globalSettingsShortcutSection: some View {
         Section("Global Settings") {
             NavigationLink {
-                PodcastSettingsView(podcast: nil, modelContainer: context.container)
+                GlobalPodcastSettingsScreen()
             } label: {
                 SettingsNavigationRow(
                     title: "Open Global Settings",
@@ -781,6 +805,43 @@ private struct SettingsReadOnlyNotice: View {
 }
 
 private struct ChapterRuleSettingsDetailView: View {
+    @Environment(\.modelContext) private var context
+
+    let settingsID: PersistentIdentifier
+
+    let isEditable: Bool
+    let source: SettingsSource
+    let readOnlyMessage: String?
+    let onChange: () -> Void
+
+    private var settings: PodcastSettings? {
+        context.model(for: settingsID) as? PodcastSettings
+    }
+
+    var body: some View {
+        if let settings {
+            ChapterRuleSettingsLoadedView(
+                settings: settings,
+                isEditable: isEditable,
+                source: source,
+                readOnlyMessage: readOnlyMessage,
+                onChange: onChange
+            )
+        } else {
+            List {
+                Section {
+                    Text("These chapter rules could not be loaded.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Chapter Rules")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct ChapterRuleSettingsLoadedView: View {
     @Bindable var settings: PodcastSettings
 
     let isEditable: Bool
@@ -1132,7 +1193,7 @@ private struct PodcastOverridesManagementView: View {
                 } else {
                     ForEach(podcastsUsingCustomSettings) { podcast in
                         NavigationLink {
-                            PodcastSettingsView(podcast: podcast, modelContainer: context.container)
+                            PodcastSpecificSettingsScreen(podcastID: podcast.persistentModelID)
                         } label: {
                             PodcastSettingsPodcastRow(
                                 podcast: podcast,
@@ -1259,6 +1320,24 @@ private struct DeferredView<Content: View>: View {
 
     var body: some View {
         content()
+    }
+}
+
+private struct GlobalPodcastSettingsScreen: View {
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        PodcastSettingsView(podcastID: nil, modelContainer: context.container)
+    }
+}
+
+private struct PodcastSpecificSettingsScreen: View {
+    @Environment(\.modelContext) private var context
+
+    let podcastID: PersistentIdentifier
+
+    var body: some View {
+        PodcastSettingsView(podcastID: podcastID, modelContainer: context.container)
     }
 }
 

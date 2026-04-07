@@ -72,15 +72,19 @@ struct ContentView: View {
 
         
         .task {
+            CrashBreadcrumbs.shared.record("content_view_task_started")
             await loadInboxCount()
+            CrashBreadcrumbs.shared.record("content_view_task_completed")
         }
         .onChange(of: phase, {
             if SETTINGgoingBackToPlayerafterBackground{
                 switch phase {
                 case .background:
+                    CrashBreadcrumbs.shared.record("scene_phase_background")
                     setGoingToBackgroundDate()
                    
                 case .active:
+                    CrashBreadcrumbs.shared.record("scene_phase_active")
                     // Refresh the badge when app becomes active
                     Task { await loadInboxCount() }
                     if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
@@ -96,9 +100,11 @@ struct ContentView: View {
         // React to inbox change notifications anywhere in the app
         .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
             print("inbox Changed")
+            CrashBreadcrumbs.shared.record("inbox_did_change_notification")
             Task { await loadInboxCount() }
         }
         .onOpenURL { url in
+            CrashBreadcrumbs.shared.record("on_open_url", details: url.absoluteString)
             if IncomingPodcastSubscriptionController.canHandle(url) {
                 selectedTab = .add
                 incomingPodcastSubscription.handleIncomingURL(url)
@@ -125,13 +131,16 @@ struct ContentView: View {
     // MARK: - Manual count loader
     @MainActor
     private func loadInboxCount() async {
-        let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
-        let descriptor = FetchDescriptor<Episode>(predicate: predicate)
+        CrashBreadcrumbs.shared.record("load_inbox_count_started")
+        let predicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
+        let descriptor = FetchDescriptor<EpisodeMetaData>(predicate: predicate)
 
         do {
             inboxCount = try modelContext.fetch(descriptor).count
+            CrashBreadcrumbs.shared.record("load_inbox_count_success", details: "count=\(inboxCount)")
         } catch {
-            BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription)")
+            BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
+            CrashBreadcrumbs.shared.record("load_inbox_count_failed", details: error.localizedDescription)
             inboxCount = 0
         }
     }

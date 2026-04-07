@@ -23,8 +23,10 @@ struct RaulApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
+        CrashBreadcrumbs.shared.record("raul_app_init_start")
         _ = Player.shared
         WatchSyncCoordinator.activate()
+        CrashBreadcrumbs.shared.record("raul_app_init_completed")
     }
 
     var body: some Scene {
@@ -37,6 +39,7 @@ struct RaulApp: App {
                     .withDeviceStyle()
                 
                     .onAppear {
+                        CrashBreadcrumbs.shared.record("root_view_on_appear")
                         let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
                         Task {
                             await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
@@ -54,6 +57,7 @@ struct RaulApp: App {
                         }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
+                        CrashBreadcrumbs.shared.record("battery_state_changed")
                         Task {
                             await runAutomaticTranscriptionSweep(reason: "power state changed")
                         }
@@ -61,6 +65,7 @@ struct RaulApp: App {
             }
         }
         .onChange(of: phase, {
+            CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
                 scheduleFeedRefresh()
@@ -160,36 +165,46 @@ struct RaulApp: App {
     func scheduleFeedRefresh() {
         
         // this should replace scheduleAppRefresh
+        CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
         BasicLogger.shared.log("schedule checkFeedUpdates")
         let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.feedRefreshIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
         
         do{
             try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("schedule_feed_refresh_submitted")
 
         }catch{
             // print(error)
+            CrashBreadcrumbs.shared.record("schedule_feed_refresh_failed", details: error.localizedDescription)
             BasicLogger.shared.log(error.localizedDescription)
         }
        
     }
 
     func scheduleStorageCleanup() {
+        CrashBreadcrumbs.shared.record("schedule_storage_cleanup_requested")
         BasicLogger.shared.log("schedule storageCleanup")
         let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.storageCleanupIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.nightlyStorageCleanupInterval)
 
         do {
             try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("schedule_storage_cleanup_submitted")
         } catch {
+            CrashBreadcrumbs.shared.record("schedule_storage_cleanup_failed", details: error.localizedDescription)
             BasicLogger.shared.log(error.localizedDescription)
         }
     }
 
     func runAutomaticTranscriptionSweep(reason: String) async {
+        CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started", details: reason)
         let startedEpisodeURL = await TranscriptionManager.shared.processNextAutomaticTranscriptionFromUpNext()
         if let startedEpisodeURL {
+            CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started_episode", details: startedEpisodeURL.absoluteString)
             BasicLogger.shared.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.absoluteString)")
+        } else {
+            CrashBreadcrumbs.shared.record("automatic_transcription_sweep_idle", details: reason)
         }
     }
 
@@ -204,8 +219,10 @@ struct RaulApp: App {
     }
 
     func runScheduledStorageCleanupIfNeeded(minimumInterval: TimeInterval, reason: String) async {
+        CrashBreadcrumbs.shared.record("storage_cleanup_check_started", details: reason)
         if let lastCleanup = getLastStorageCleanupDate(),
            Date().timeIntervalSince(lastCleanup) < minimumInterval {
+            CrashBreadcrumbs.shared.record("storage_cleanup_skipped_recent", details: reason)
             return
         }
 
@@ -216,10 +233,15 @@ struct RaulApp: App {
                 .maintainChapterImageStorage()
             setLastStorageCleanupDate()
             downloadedFilesManager.rescanDownloadedFiles()
+            CrashBreadcrumbs.shared.record(
+                "storage_cleanup_completed",
+                details: "\(reason):deleted=\(result.deletedFileCount),kept=\(result.keptUpNextFileCount),chapter_images_optimized=\(chapterImageResult.optimizedImageCount)"
+            )
             BasicLogger.shared.log(
                 "storage cleanup (\(reason)) deleted \(result.deletedFileCount) files, kept \(result.keptUpNextFileCount) Up Next files, optimized \(chapterImageResult.optimizedImageCount) chapter images saving \(chapterImageResult.optimizedBytesSaved) bytes, restored \(chapterImageResult.restoredImageCount) Up Next chapter images"
             )
         } catch {
+            CrashBreadcrumbs.shared.record("storage_cleanup_failed", details: "\(reason):\(error.localizedDescription)")
             BasicLogger.shared.log("storage cleanup failed (\(reason)): \(error.localizedDescription)")
         }
     }

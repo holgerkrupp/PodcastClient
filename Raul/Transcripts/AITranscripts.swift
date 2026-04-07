@@ -15,6 +15,8 @@ class AITranscripts {
     //MARK: INPUT
     let url: URL
     var language: Locale = Locale.current
+    let maxSnippetDurationSeconds: Double
+    let maxWordsPerSnippet: Int
     let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
     
     
@@ -24,9 +26,13 @@ class AITranscripts {
     init(
         url: URL,
         language: String? = nil,
+        maxSnippetDurationSeconds: Double = 1.2,
+        maxWordsPerSnippet: Int = 3,
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
     ) async {
         self.url = url
+        self.maxSnippetDurationSeconds = min(max(maxSnippetDurationSeconds, 0.4), 8.0)
+        self.maxWordsPerSnippet = max(maxWordsPerSnippet, 1)
         self.progressHandler = progressHandler
         if let language{
             self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
@@ -158,9 +164,13 @@ class AITranscripts {
     print("1")
         
         let progressReporter = self.progressHandler
+        let configuredMaxSnippetDurationSeconds = self.maxSnippetDurationSeconds
+        let configuredMaxWordsPerSnippet = self.maxWordsPerSnippet
         async let transcriptionFuture = Self.collectTranscriptionResults(
             from: transcriber,
             audioDuration: audioDuration,
+            maxSnippetDurationSeconds: configuredMaxSnippetDurationSeconds,
+            maxWordsPerSnippet: configuredMaxWordsPerSnippet,
             progressHandler: progressReporter
         )
         print("2")
@@ -260,16 +270,105 @@ class AITranscripts {
     private static func collectTranscriptionResults(
         from transcriber: SpeechTranscriber,
         audioDuration: Double,
+        maxSnippetDurationSeconds: Double,
+        maxWordsPerSnippet: Int,
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
     ) async throws -> [(range: CMTimeRange, text: String)] {
         var results: [(range: CMTimeRange, text: String)] = []
         for try await result in transcriber.results {
-           //  print(result.range.start.value.formatted(), result.range.end.value.formatted(), result.text)
-            results.append((range: result.range, text: result.text.description))
+            let splitSegments = Self.splitResult(
+                range: result.range,
+                rawText: result.text.description,
+                maxSnippetDurationSeconds: maxSnippetDurationSeconds,
+                maxWordsPerSnippet: maxWordsPerSnippet
+            )
+            results.append(contentsOf: splitSegments)
             let update = Self.progressUpdate(resultEnd: result.range.end, audioDuration: audioDuration)
             await progressHandler?(update.progress, update.status)
         }
         return results
+    }
+
+    private static func splitResult(
+        range: CMTimeRange,
+        rawText: String,
+        maxSnippetDurationSeconds: Double,
+        maxWordsPerSnippet: Int
+    ) -> [(range: CMTimeRange, text: String)] {
+        let cleanedText = normalizeTranscriptText(rawText)
+        guard cleanedText.isEmpty == false else { return [] }
+
+        let words = cleanedText.split(whereSeparator: \.isWhitespace)
+        guard words.isEmpty == false else { return [] }
+
+        let startSeconds = CMTimeGetSeconds(range.start)
+        let endSeconds = CMTimeGetSeconds(range.end)
+        let durationSeconds = endSeconds - startSeconds
+
+        guard durationSeconds.isFinite, durationSeconds > 0 else {
+            return [(range: range, text: cleanedText)]
+        }
+
+        let durationChunkCount = Int(ceil(durationSeconds / max(maxSnippetDurationSeconds, 0.4)))
+        let wordChunkCount = Int(ceil(Double(words.count) / Double(max(maxWordsPerSnippet, 1))))
+        let targetChunkCount = max(1, min(words.count, max(durationChunkCount, wordChunkCount)))
+
+        guard targetChunkCount > 1 else {
+            return [(range: range, text: cleanedText)]
+        }
+
+        let baseSize = words.count / targetChunkCount
+        let remainder = words.count % targetChunkCount
+        let chunkWordCounts = (0..<targetChunkCount).map { index in
+            baseSize + (index < remainder ? 1 : 0)
+        }
+
+        var splitSegments: [(range: CMTimeRange, text: String)] = []
+        splitSegments.reserveCapacity(targetChunkCount)
+
+        let timescale: CMTimeScale = 600
+        var currentStartSeconds = startSeconds
+        var remainingDurationSeconds = durationSeconds
+        var remainingWords = words.count
+        var wordOffset = 0
+
+        for (index, chunkWordCount) in chunkWordCounts.enumerated() {
+            guard chunkWordCount > 0 else { continue }
+            let isLastChunk = index == chunkWordCounts.count - 1
+
+            let chunkDurationSeconds: Double
+            if isLastChunk || remainingWords <= chunkWordCount {
+                chunkDurationSeconds = max(remainingDurationSeconds, 0)
+            } else {
+                let ratio = Double(chunkWordCount) / Double(remainingWords)
+                chunkDurationSeconds = max(remainingDurationSeconds * ratio, 0)
+            }
+
+            let chunkEndSeconds = isLastChunk
+                ? endSeconds
+                : min(endSeconds, currentStartSeconds + chunkDurationSeconds)
+            let safeDuration = max(chunkEndSeconds - currentStartSeconds, 0)
+
+            let chunkStart = CMTime(seconds: currentStartSeconds, preferredTimescale: timescale)
+            let chunkDuration = CMTime(seconds: safeDuration, preferredTimescale: timescale)
+            let chunkRange = CMTimeRange(start: chunkStart, duration: chunkDuration)
+
+            let chunkWords = words[wordOffset..<(wordOffset + chunkWordCount)]
+            splitSegments.append((range: chunkRange, text: chunkWords.joined(separator: " ")))
+
+            currentStartSeconds = chunkEndSeconds
+            remainingDurationSeconds = max(endSeconds - currentStartSeconds, 0)
+            remainingWords -= chunkWordCount
+            wordOffset += chunkWordCount
+        }
+
+        return splitSegments
+    }
+
+    private static func normalizeTranscriptText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func reportProgress(_ progress: Double, status: String) async {
