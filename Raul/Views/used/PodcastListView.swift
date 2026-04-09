@@ -333,29 +333,54 @@ struct PodcastListView: View {
 
         if searchInEpisodes {
             var results: [EpisodeSearchResult] = []
+            var transcriptCandidates: [Episode] = []
             var processedEpisodes = 0
             let totalEpisodes = max(1, currentPodcasts.reduce(0) { partialResult, podcast in
                 partialResult + (podcast.episodes?.count ?? 0)
             })
 
+            // Phase 1: inexpensive metadata checks (title, show notes, chapters).
             for podcast in currentPodcasts {
                 for episode in (podcast.episodes ?? []) {
                     guard Task.isCancelled == false else { return }
-                    if let match = episodeSearchMatch(for: episode, query: query) {
+                    if let match = episodeSearchMatchWithoutTranscript(for: episode, query: query) {
                         results.append(match)
+                    } else if shouldSearchTranscript(in: episode, query: query) {
+                        transcriptCandidates.append(episode)
                     }
                     processedEpisodes += 1
+
                     if processedEpisodes.isMultiple(of: 25) {
-                        searchProgress = min(1.0, Double(processedEpisodes) / Double(totalEpisodes))
+                        searchProgress = min(0.7, 0.7 * Double(processedEpisodes) / Double(totalEpisodes))
+                        episodeSearchResults = sortedEpisodeResults(results)
                         await Task.yield()
                     }
                 }
             }
 
-            results.sort {
-                ($0.episode.publishDate ?? .distantPast) > ($1.episode.publishDate ?? .distantPast)
+            episodeSearchResults = sortedEpisodeResults(results)
+
+            // Phase 2: transcript scan only for episodes still unmatched.
+            if transcriptCandidates.isEmpty == false {
+                var processedTranscriptEpisodes = 0
+                let totalTranscriptEpisodes = max(1, transcriptCandidates.count)
+
+                for episode in transcriptCandidates {
+                    guard Task.isCancelled == false else { return }
+                    if let transcriptMatch = transcriptSearchMatch(for: episode, query: query) {
+                        results.append(transcriptMatch)
+                    }
+                    processedTranscriptEpisodes += 1
+                    if processedTranscriptEpisodes.isMultiple(of: 10) {
+                        let transcriptProgress = 0.3 * Double(processedTranscriptEpisodes) / Double(totalTranscriptEpisodes)
+                        searchProgress = min(1.0, 0.7 + transcriptProgress)
+                        episodeSearchResults = sortedEpisodeResults(results)
+                        await Task.yield()
+                    }
+                }
             }
-            episodeSearchResults = results
+
+            episodeSearchResults = sortedEpisodeResults(results)
             expandedEpisodePodcastGroupIDs = expandedEpisodePodcastGroupIDs.intersection(Set(groupedEpisodeSearchResults.map(\.id)))
             filteredPodcasts = []
             searchProgress = 1.0
@@ -389,25 +414,23 @@ struct PodcastListView: View {
         searchProgress = 1.0
     }
 
-    private func episodeSearchMatch(for episode: Episode, query: String) -> EpisodeSearchResult? {
-        let normalizedQuery = query.lowercased()
-
+    private func episodeSearchMatchWithoutTranscript(for episode: Episode, query: String) -> EpisodeSearchResult? {
         if searchInDescription {
-            if let desc = episode.desc, desc.lowercased().contains(normalizedQuery) {
+            if let desc = episode.desc, containsIgnoringCaseAndDiacritics(desc, query: query) {
                 return EpisodeSearchResult(
                     episode: episode,
                     kind: .showNotes,
                     snippet: snippet(from: desc, query: query)
                 )
             }
-            if let subtitle = episode.subtitle, subtitle.lowercased().contains(normalizedQuery) {
+            if let subtitle = episode.subtitle, containsIgnoringCaseAndDiacritics(subtitle, query: query) {
                 return EpisodeSearchResult(
                     episode: episode,
                     kind: .showNotes,
                     snippet: snippet(from: subtitle, query: query)
                 )
             }
-            if let content = episode.content, content.lowercased().contains(normalizedQuery) {
+            if let content = episode.content, containsIgnoringCaseAndDiacritics(content, query: query) {
                 return EpisodeSearchResult(
                     episode: episode,
                     kind: .showNotes,
@@ -416,7 +439,7 @@ struct PodcastListView: View {
             }
         }
 
-        if episode.title.lowercased().contains(normalizedQuery) {
+        if containsIgnoringCaseAndDiacritics(episode.title, query: query) {
             return EpisodeSearchResult(
                 episode: episode,
                 kind: .title,
@@ -424,11 +447,9 @@ struct PodcastListView: View {
             )
         }
 
-        let chapterMatches = episode.preferredChapters
-            .sorted(by: { ($0.start ?? 0) < ($1.start ?? 0) })
-        for chapter in chapterMatches {
+        for chapter in episode.preferredChapters {
             guard chapter.title.isEmpty == false else { continue }
-            if chapter.title.lowercased().contains(normalizedQuery) {
+            if containsIgnoringCaseAndDiacritics(chapter.title, query: query) {
                 return EpisodeSearchResult(
                     episode: episode,
                     kind: .chapter(startTime: chapter.start ?? 0),
@@ -437,21 +458,37 @@ struct PodcastListView: View {
             }
         }
 
-        if query.count >= minimumCharactersForTranscriptSearch,
-           let transcriptLines = episode.transcriptLines,
-           transcriptLines.isEmpty == false {
-            for line in transcriptLines {
-                if line.text.lowercased().contains(normalizedQuery) {
-                    return EpisodeSearchResult(
-                        episode: episode,
-                        kind: .transcript(startTime: line.startTime),
-                        snippet: line.text
-                    )
-                }
+        return nil
+    }
+
+    private func shouldSearchTranscript(in episode: Episode, query: String) -> Bool {
+        guard query.count >= minimumCharactersForTranscriptSearch else { return false }
+        guard let transcriptLines = episode.transcriptLines else { return false }
+        return transcriptLines.isEmpty == false
+    }
+
+    private func transcriptSearchMatch(for episode: Episode, query: String) -> EpisodeSearchResult? {
+        guard let transcriptLines = episode.transcriptLines else { return nil }
+        for line in transcriptLines {
+            if containsIgnoringCaseAndDiacritics(line.text, query: query) {
+                return EpisodeSearchResult(
+                    episode: episode,
+                    kind: .transcript(startTime: line.startTime),
+                    snippet: line.text
+                )
             }
         }
-
         return nil
+    }
+
+    private func sortedEpisodeResults(_ results: [EpisodeSearchResult]) -> [EpisodeSearchResult] {
+        results.sorted {
+            ($0.episode.publishDate ?? .distantPast) > ($1.episode.publishDate ?? .distantPast)
+        }
+    }
+
+    private func containsIgnoringCaseAndDiacritics(_ text: String, query: String) -> Bool {
+        text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: nil, locale: .current) != nil
     }
 
     private func snippet(from text: String, query: String, maxLength: Int = 140) -> String {
