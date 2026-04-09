@@ -16,6 +16,7 @@ private struct IdentifiableURL: Identifiable, Equatable {
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.deviceUIStyle) var style
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Bindable var episode: Episode
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
@@ -26,6 +27,8 @@ struct EpisodeDetailView: View {
     @State private var isLoadingTranscript: Bool = false
     @State private var isStartingTranscription: Bool = false
     @State private var showTranscriptSheet: Bool = false
+    @ScaledMetric(relativeTo: .title2) private var podcastCardWidth: CGFloat = 300
+    @ScaledMetric(relativeTo: .title2) private var artworkSize: CGFloat = 300
 
 
     
@@ -57,11 +60,12 @@ struct EpisodeDetailView: View {
                         }
                         .padding()
                         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(width: 300)
+                        .frame(maxWidth: podcastCardWidth)
                     }
                     
                     CoverImageView(episode: episode)
-                        .frame(width: 300, height: 300)
+                        .frame(width: artworkSize, height: artworkSize)
+                        .accessibilityHidden(true)
                     
                     HStack{
                         if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
@@ -119,6 +123,9 @@ struct EpisodeDetailView: View {
                                 .buttonStyle(.glass(.clear))
                                 .padding()
                                 .disabled(isLoadingTranscript)
+                                .accessibilityLabel("Open captions and transcript")
+                                .accessibilityHint("Opens episode captions if available")
+                                .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
                             } else if let item = activeTranscriptionItem, item.isTranscribing || isStartingTranscription {
                                 TranscriptionProgressView(item: item)
                                     .padding()
@@ -131,6 +138,9 @@ struct EpisodeDetailView: View {
                                 .buttonStyle(.glass(.clear))
                                 .padding()
                                 .disabled(isStartingTranscription)
+                                .accessibilityLabel("Generate captions")
+                                .accessibilityHint("Creates an on-device transcript to use as captions")
+                                .accessibilityInputLabels([Text("Generate captions"), Text("Transcribe episode")])
                             }
                         }
                     }
@@ -210,7 +220,7 @@ struct EpisodeDetailView: View {
                 NavigationStack {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
                         TranscriptListView(transcriptLines: transcriptLines, episode: episode)
-                            .navigationTitle("Transcript")
+                            .navigationTitle("Captions & Transcript")
                             .navigationBarTitleDisplayMode(.inline)
                     } else {
                         ContentUnavailableView("Transcript Unavailable", systemImage: "quote.bubble")
@@ -292,6 +302,8 @@ struct EpisodeDetailView: View {
 // A compact progress/status view that fits where the button sits.
 @MainActor
 private struct TranscriptionProgressView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .body) private var progressCardWidth: CGFloat = 200
     let item: TranscriptionItem
     
     var body: some View {
@@ -300,7 +312,10 @@ private struct TranscriptionProgressView: View {
                 switch item.state {
                 case .queued, .preparingModel, .downloadingModel, .analyzing, .saving:
                     Image(systemName: "quote.bubble.fill")
-                        .symbolEffect(.pulse.byLayer, options: .repeat(.continuous))
+                        .symbolEffect(
+                            .pulse.byLayer,
+                            options: reduceMotion ? .nonRepeating : .repeat(.continuous)
+                        )
                         .foregroundStyle(.accent)
                 case .finished:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
@@ -333,11 +348,14 @@ private struct TranscriptionProgressView: View {
                     .lineLimit(2)
             }
         }
-        .frame(width: 200, alignment: .leading)
+        .frame(width: progressCardWidth, alignment: .leading)
         .padding(10)
         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 12))
-        .animation(.easeInOut(duration: 0.2), value: item.progress)
-        .animation(.easeInOut(duration: 0.2), value: item.state)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: item.progress)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: item.state)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Captions processing")
+        .accessibilityValue(statusTitle)
     }
     
     private var progressValue: Double {

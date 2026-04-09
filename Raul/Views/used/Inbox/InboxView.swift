@@ -54,6 +54,7 @@ struct InboxView: View {
                         .disabled(refreshViewModel.isLoading)
                         .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
                         .accessibilityHint("Fetches new episodes and reloads your inbox")
+                        .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
                     }
                 }
             }
@@ -61,16 +62,13 @@ struct InboxView: View {
             NavigationStack{
                 List {
                     ForEach(episodes) { episode in
-                        ZStack {
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EpisodeRowView(episode: episode)
                                 .id(episode.url)
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-                            .accessibilityLabel("Open episode \(episode.title)")
-                            .accessibilityHint("Opens this episode details screen")
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open episode \(episode.title)")
+                        .accessibilityHint("Opens this episode details screen")
                         .swipeActions(edge: .trailing){
                             Button(role: .none) {
                                 Task { @MainActor in
@@ -125,6 +123,7 @@ struct InboxView: View {
                         .disabled(refreshViewModel.isLoading)
                         .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
                         .accessibilityHint("Fetches new episodes and reloads your inbox")
+                        .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
                     }
                     
                     ToolbarItem(placement: .topBarTrailing) {
@@ -143,6 +142,7 @@ struct InboxView: View {
                         .disabled(isArchiving)
                         .accessibilityLabel(isArchiving ? "Archiving inbox episodes" : "Archive all inbox episodes")
                         .accessibilityHint("Moves every inbox episode to archive")
+                        .accessibilityInputLabels([Text("Archive inbox"), Text("Archive all inbox episodes")])
                     }
                 }
             }

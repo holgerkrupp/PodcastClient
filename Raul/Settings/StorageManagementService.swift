@@ -575,8 +575,8 @@ actor StorageManagementService {
     }
 
     func deleteFilesOutsideUpNext() async throws -> StorageCleanupResult {
-        let report = try await makeReport()
-        let filesToDelete = Self.filesOutsideUpNext(in: report)
+        let cleanupPlan = try await makeCleanupPlan()
+        let filesToDelete = cleanupPlan.filesToDelete
         let deletedBytes = filesToDelete.reduce(into: Int64(0)) { partialResult, file in
             partialResult += file.size
         }
@@ -585,7 +585,7 @@ actor StorageManagementService {
             return StorageCleanupResult(
                 deletedFileCount: 0,
                 deletedBytes: 0,
-                keptUpNextFileCount: report.upNextProtectedFileCount
+                keptUpNextFileCount: cleanupPlan.keptUpNextFileCount
             )
         }
 
@@ -594,8 +594,97 @@ actor StorageManagementService {
         return StorageCleanupResult(
             deletedFileCount: filesToDelete.count,
             deletedBytes: deletedBytes,
-            keptUpNextFileCount: report.upNextProtectedFileCount
+            keptUpNextFileCount: cleanupPlan.keptUpNextFileCount
         )
+    }
+
+    private func makeCleanupPlan() async throws -> (filesToDelete: [StorageFileEntry], keptUpNextFileCount: Int) {
+        let context = ModelContext(modelContainer)
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        let now = Date()
+
+        var episodeAssociationsByFileURL: [URL: FileAssociation] = [:]
+        var archiveRetentionProtectedEpisodeURLStrings: Set<String> = []
+        var retentionDaysByFeedKey: [String: Int] = [:]
+
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+
+        func retentionCacheKey(for feed: URL?) -> String {
+            feed?.absoluteString ?? "__global__"
+        }
+
+        func podcastKey(for podcast: Podcast) -> (id: String, title: String) {
+            let title = Self.cleanedTitle(podcast.title, fallback: podcast.feed?.host ?? "Untitled Podcast")
+            let id = podcast.feed?.absoluteString ?? "podcast:\(title)"
+            return (id, title)
+        }
+
+        for podcast in podcasts {
+            let key = podcastKey(for: podcast)
+            for episode in podcast.episodes ?? [] {
+                let fileAssociation = FileAssociation(
+                    associatedEpisodeURL: episode.url,
+                    episodeTitle: Self.cleanedTitle(episode.title, fallback: "Untitled Episode"),
+                    podcastID: key.id,
+                    podcastTitle: key.title
+                )
+
+                if let localFile = episode.localFile?.standardizedFileURL {
+                    episodeAssociationsByFileURL[localFile] = fileAssociation
+                }
+
+                if episode.metaData?.isArchived == true,
+                   let episodeURLString = episode.url?.absoluteString {
+                    let retentionKey = retentionCacheKey(for: podcast.feed)
+                    let retentionDays: Int
+                    if let cached = retentionDaysByFeedKey[retentionKey] {
+                        retentionDays = cached
+                    } else {
+                        let resolved = await settingsActor.getArchiveFileRetentionDays(for: podcast.feed)
+                        retentionDaysByFeedKey[retentionKey] = resolved
+                        retentionDays = resolved
+                    }
+                    let archivedAt = episode.metaData?.archivedAt
+                        ?? episode.metaData?.completionDate
+                        ?? episode.metaData?.lastPlayed
+                        ?? now
+                    let earliestDeletionDate = Calendar.current.date(byAdding: .day, value: retentionDays, to: archivedAt) ?? archivedAt
+
+                    if earliestDeletionDate > now {
+                        archiveRetentionProtectedEpisodeURLStrings.insert(episodeURLString)
+                    }
+                }
+            }
+        }
+
+        let upNextEpisodeURLStrings = await currentUpNextEpisodeURLStrings()
+        let databasePaths = Set(Self.databaseArtifacts().map { $0.url.standardizedFileURL.path })
+        let files = await Self.enumerateFiles(
+            excludingPaths: databasePaths,
+            associationsByFileURL: episodeAssociationsByFileURL
+        )
+
+        let keptUpNextFileCount = files.reduce(into: 0) { partialResult, file in
+            guard let episodeURLString = file.associatedEpisodeURL?.absoluteString else { return }
+            if upNextEpisodeURLStrings.contains(episodeURLString) {
+                partialResult += 1
+            }
+        }
+
+        let filesToDelete = files.filter { file in
+            guard let episodeURLString = file.associatedEpisodeURL?.absoluteString else {
+                return true
+            }
+            if upNextEpisodeURLStrings.contains(episodeURLString) {
+                return false
+            }
+            if archiveRetentionProtectedEpisodeURLStrings.contains(episodeURLString) {
+                return false
+            }
+            return true
+        }
+
+        return (filesToDelete: filesToDelete, keptUpNextFileCount: keptUpNextFileCount)
     }
 
     private func delete(files: [StorageFileEntry], clearURLCache: Bool) async {

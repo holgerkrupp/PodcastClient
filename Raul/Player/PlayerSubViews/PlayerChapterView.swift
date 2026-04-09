@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct PlayerChapterView: View {
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State var player = Player.shared
     @State var presentingModal = false
 
@@ -16,10 +17,6 @@ struct PlayerChapterView: View {
         // print("PlayerChapterView \(player.currentEpisode?.id.uuidString ?? "NO UUID")")
         // print("loading PlayerChapterView with \(String(describing: player.currentEpisode?.preferredChapters.count.description)) Chapters")
         // print("currentChapter: \(player.currentChapter?.title ?? "nil")")
-        
-        for chapter in player.currentEpisode?.preferredChapters ?? [] {
-            // print("\(chapter.title): \(chapter.start?.description ?? <#default value#>) - \(String(describing: chapter.endTime?.description)) - \(chapter.type.rawValue)")
-        }
     }
     
     var body: some View {
@@ -38,6 +35,9 @@ struct PlayerChapterView: View {
                         .tint(.primary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Previous chapter")
+                .accessibilityHint("Skips to the start of the previous chapter")
+                .accessibilityInputLabels([Text("Previous chapter"), Text("Back chapter")])
                 
                 
                 Spacer()
@@ -50,6 +50,12 @@ struct PlayerChapterView: View {
                       //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
                         .scaleEffect(x: (player.currentChapter?.progress ?? 0.0), y: 1, anchor: .leading)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay {
+                            if differentiateWithoutColor {
+                                Rectangle()
+                                    .strokeBorder(Color.primary.opacity(0.4), lineWidth: 1)
+                            }
+                        }
                     
                     
                     VStack{
@@ -66,6 +72,9 @@ struct PlayerChapterView: View {
                             
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Open chapter list")
+                        .accessibilityHint("Shows all chapter markers")
+                        .accessibilityInputLabels([Text("Open chapters"), Text("Chapter list")])
                         
                         .sheet(isPresented: $presentingModal, content: {
                             if let episode = player.currentEpisode{
@@ -102,6 +111,9 @@ struct PlayerChapterView: View {
                         .tint(.primary)
                 }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Next chapter")
+                    .accessibilityHint("Skips to the next chapter")
+                    .accessibilityInputLabels([Text("Next chapter"), Text("Forward chapter")])
                 
                 Spacer()
                     .frame(width: 50)

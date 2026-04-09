@@ -15,6 +15,7 @@ struct PodcastListeningStat: Identifiable {
 
 struct ListeningTimeByPodcastChart: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State private var weekStartDate: Date? = nil
     @State private var podcastStats: [PodcastListeningStat] = []
     @Query(sort: \ListeningStat.startOfHour, order: .reverse) var latestStat: [ListeningStat]
@@ -85,7 +86,9 @@ struct ListeningTimeByPodcastChart: View {
                 }
                 .font(.caption)
                 .foregroundStyle(weekStartDate == nil ? .primary : .secondary)
+                .accessibilityLabel("Show summary")
                 .accessibilityHint("Shows listening stats aggregated across all weeks")
+                .accessibilityInputLabels([Text("Show summary"), Text("Listening summary")])
                 Button(action: {
                     if let start = weekStartDate {
                         weekStartDate = Calendar.current.date(byAdding: .day, value: 7, to: start)
@@ -116,6 +119,24 @@ struct ListeningTimeByPodcastChart: View {
                     )
                     .foregroundStyle(by: .value("Podcast", "\(stat.podcastName) (\(formatTime(stat.totalSeconds)))"))
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Podcast listening distribution")
+                .accessibilityValue(chartAccessibilitySummary)
+
+                if differentiateWithoutColor {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Listening breakdown")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(Array(podcastStats.prefix(5).enumerated()), id: \.offset) { index, stat in
+                            Text("\(index + 1). \(stat.podcastName): \(formatTime(stat.totalSeconds))")
+                                .font(.caption)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
             }
             Spacer()
         }
@@ -133,6 +154,13 @@ struct ListeningTimeByPodcastChart: View {
         } else {
             return "\(mins)m"
         }
+    }
+
+    private var chartAccessibilitySummary: String {
+        guard let top = podcastStats.first else {
+            return "No listening data."
+        }
+        return "Top podcast: \(top.podcastName), \(formatTime(top.totalSeconds))."
     }
 }
 

@@ -18,21 +18,20 @@ struct DownloadedEpisodesView: View {
             } else {
                 Section {
                     ForEach(downloadedEpisodes, id: \.id) { episode in
-                        ZStack {
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                             EpisodeRowView(episode: episode)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        Task{
-                                            await deleteEpisode(episode.url)
-                                        }
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open episode \(episode.title)")
+                        .accessibilityHint("Opens this episode details screen")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task{
+                                    await deleteEpisode(episode.url)
                                 }
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) { EmptyView() }
-                                .opacity(0)
-                                .accessibilityLabel("Open episode \(episode.title)")
-                                .accessibilityHint("Opens this episode details screen")
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                        // .onDelete(perform: delete)
                         .listRowSeparator(.hidden)
@@ -65,6 +64,7 @@ struct DownloadedEpisodesView: View {
                 }
                 .accessibilityLabel("Download actions and sort")
                 .accessibilityHint("Sort downloads, rescan files, or delete played episodes")
+                .accessibilityInputLabels([Text("Download actions"), Text("Download sort")])
             }
         }
         .task {

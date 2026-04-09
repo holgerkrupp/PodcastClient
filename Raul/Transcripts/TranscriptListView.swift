@@ -11,6 +11,8 @@ private struct TranscriptDisplayRow: Identifiable {
 }
 
 struct TranscriptListView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     let transcriptLines: [TranscriptLineAndTime]
     let episode: Episode?
 
@@ -78,7 +80,7 @@ struct TranscriptListView: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
 
-                    TextField("Search transcript...", text: $searchText)
+                    TextField("Search captions…", text: $searchText)
                         .textFieldStyle(.plain)
                 }
                 .padding(.horizontal, 12)
@@ -95,6 +97,9 @@ struct TranscriptListView: View {
                     }
                     .buttonStyle(.glass(.clear))
                     .help(followPlayback ? "Stop following playback" : "Keep the current transcript line centered")
+                    .accessibilityLabel(followPlayback ? "Following playback" : "Follow playback")
+                    .accessibilityHint("Keeps captions centered around the current playback time")
+                    .accessibilityInputLabels([Text("Follow captions"), Text("Follow playback")])
                 }
             }
             .padding()
@@ -159,11 +164,20 @@ struct TranscriptListView: View {
                     .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Play from \(formatTime(row.startTime))")
+                .accessibilityHint("Starts playback from this caption line")
+                .accessibilityInputLabels([Text("Play from \(formatTime(row.startTime))"), Text("Play caption")])
 
                 if row.showsSpeaker, let speaker = row.speaker {
                     Text("\(speaker):")
                         .font(.headline)
-                        .foregroundColor(speakerColorMap[speaker] ?? .accent)
+                        .foregroundColor(differentiateWithoutColor ? .primary : (speakerColorMap[speaker] ?? .accent))
+                }
+
+                if isActive && differentiateWithoutColor {
+                    Label("Current", systemImage: "speaker.wave.2.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -176,13 +190,21 @@ struct TranscriptListView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isActive ? Color.accentColor.opacity(0.16) : Color.clear)
+                .fill(isActive ? Color.accentColor.opacity(differentiateWithoutColor ? 0.08 : 0.16) : Color.clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isActive ? Color.accentColor.opacity(0.45) : Color.secondary.opacity(0.15), lineWidth: 1)
+                .stroke(
+                    isActive
+                        ? Color.accentColor.opacity(differentiateWithoutColor ? 0.8 : 0.45)
+                        : Color.secondary.opacity(differentiateWithoutColor ? 0.35 : 0.15),
+                    lineWidth: differentiateWithoutColor && isActive ? 2 : 1
+                )
         )
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Caption \(formatTime(row.startTime))")
+        .accessibilityValue(row.speaker == nil ? row.text : "\(row.speaker!), \(row.text)")
     }
 
     private func playbackIcon(isActive: Bool) -> String {
@@ -195,7 +217,7 @@ struct TranscriptListView: View {
     private func scrollToActiveRow(with proxy: ScrollViewProxy, animated: Bool = true) {
         guard followPlayback, let activeDisplayRowID else { return }
 
-        if animated {
+        if animated && !reduceMotion {
             withAnimation(.snappy(duration: 0.18, extraBounce: 0.0)) {
                 proxy.scrollTo(activeDisplayRowID, anchor: .center)
             }

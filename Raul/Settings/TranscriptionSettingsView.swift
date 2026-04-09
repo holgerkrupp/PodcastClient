@@ -91,6 +91,15 @@ struct TranscriptionSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Captions & Audio Descriptions") {
+                Text("Episode transcripts are used as captions inside the player and transcript screens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("This app plays spoken-word audio and does not include separate audio-description tracks. Chapter titles and transcripts provide descriptive context instead.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if installedLocales.isEmpty == false {
                 Section("Installed Models") {
                     ForEach(installedLocales.map { $0.identifier(.bcp47) }, id: \.self) { identifier in

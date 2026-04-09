@@ -14,6 +14,8 @@ struct EpisodeRowView: View {
     }
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     @Bindable var episode: Episode
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
@@ -150,7 +152,10 @@ struct EpisodeRowView: View {
                         Group {
                             if Player.shared.isPlaying {
                                 Label("Now Playing", systemImage: "waveform")
-                                    .symbolEffect(.bounce.up.byLayer, options: .repeat(.continuous))
+                                    .symbolEffect(
+                                        .bounce.up.byLayer,
+                                        options: reduceMotion ? .nonRepeating : .repeat(.continuous)
+                                    )
                                     .foregroundStyle(Color.primary)
                                     .font(.title.bold())
                             } else {
@@ -165,7 +170,7 @@ struct EpisodeRowView: View {
                     
              .background{
                  RoundedRectangle(cornerRadius:  20.0)
-                     .fill(.background.opacity(0.3))
+                     .fill(.background.opacity(differentiateWithoutColor ? 0.5 : 0.3))
              }
           
              

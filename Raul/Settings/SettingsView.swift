@@ -99,6 +99,12 @@ struct SettingsHelpView: View {
                 Text("In Apple Shortcuts, search for Up Next to add these actions to personal automations.")
                 Text("For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"")
             }
+
+            Section("Accessibility") {
+                Text("VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views.")
+                Text("For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device.")
+                Text("Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.")
+            }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Using Up Next")

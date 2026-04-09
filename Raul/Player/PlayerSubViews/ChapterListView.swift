@@ -10,6 +10,7 @@ import SwiftData
 
 struct ChapterListView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var player = Player.shared
 
    @Bindable var episode: Episode
@@ -37,7 +38,7 @@ struct ChapterListView: View {
                                     .fill(Color.accent.opacity(0.1))
                                     .scaleEffect(x: (player.chapterProgress  ?? 0.0), y: 1, anchor: .leading)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .animation(.easeInOut, value: player.chapterProgress)
+                                    .animation(reduceMotion ? nil : .easeInOut, value: player.chapterProgress)
                             } else {
                                 Rectangle()
                                     .fill(Color.accent.opacity(0.1))

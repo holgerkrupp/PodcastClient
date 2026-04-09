@@ -10,6 +10,7 @@ import SwiftData
 
 struct PlayerControllView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
@@ -17,9 +18,9 @@ struct PlayerControllView: View {
     @State private var openFullTranscriptFollowingPlayback: Bool = false
     @State var showSpeedSetting:Bool = false
     @State var showSettings: Bool = false
-    private let mediaSectionHeight: CGFloat = 360
-    private let transcriptCardHeight: CGFloat = 120
-    private let mediaSectionSpacing: CGFloat = 12
+    @ScaledMetric(relativeTo: .body) private var mediaSectionHeight: CGFloat = 360
+    @ScaledMetric(relativeTo: .body) private var transcriptCardHeight: CGFloat = 120
+    @ScaledMetric(relativeTo: .body) private var mediaSectionSpacing: CGFloat = 12
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
@@ -58,6 +59,7 @@ struct PlayerControllView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Playback settings")
                     .accessibilityHint("Opens playback speed, sleep timer, and queue settings")
+                    .accessibilityInputLabels([Text("Playback settings"), Text("Settings")])
                
                     
                     
@@ -172,12 +174,13 @@ struct PlayerControllView: View {
                         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .accessibilityLabel("Open full transcript")
                         .accessibilityHint("Opens the transcript list and jumps to the current playback line")
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
+                        .transition(reduceMotion ? .identity : .move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: mediaSectionHeight, alignment: .top)
-                .animation(.spring(response: 0.32, dampingFraction: 0.85), value: showTranscripts)
+                .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85), value: showTranscripts)
                 .sheet(isPresented: $showFullTranscripts, onDismiss: {
                     openFullTranscriptFollowingPlayback = false
                 }) {
@@ -203,6 +206,7 @@ struct PlayerControllView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Hide inline transcript")
                                 .accessibilityHint("Removes the transcript panel below the artwork")
+                                .accessibilityInputLabels([Text("Hide captions"), Text("Hide transcript")])
                         }else{
                             Button {
                                     showTranscripts.toggle()
@@ -212,6 +216,7 @@ struct PlayerControllView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Show inline transcript")
                                 .accessibilityHint("Shows the transcript panel below the artwork")
+                                .accessibilityInputLabels([Text("Show captions"), Text("Show transcript")])
                         }
                         Spacer()
                         Button {
@@ -223,6 +228,7 @@ struct PlayerControllView: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open full transcript")
                             .accessibilityHint("Opens the full transcript in a sheet")
+                            .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
                     }
                 }
                 
@@ -296,6 +302,7 @@ struct PlayerControllView: View {
                     .frame(width: 30)
                     .accessibilityLabel("Skip back 15 seconds")
                     .accessibilityHint("Moves playback backward by 15 seconds")
+                    .accessibilityInputLabels([Text("Skip back"), Text("Back 15 seconds")])
                     
                     Spacer()
                     Button(action: {
@@ -313,6 +320,7 @@ struct PlayerControllView: View {
                     .frame(width: 30)
                     .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
                     .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
+                    .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
                     
                     
                     Spacer()
@@ -332,6 +340,7 @@ struct PlayerControllView: View {
                     .frame(width: 30)
                     .accessibilityLabel("Skip forward 30 seconds")
                     .accessibilityHint("Moves playback forward by 30 seconds")
+                    .accessibilityInputLabels([Text("Skip forward"), Text("Forward 30 seconds")])
 
                     Spacer()
                     Button(action:player.createBookmark){
@@ -350,6 +359,7 @@ struct PlayerControllView: View {
                     .frame(height: 30)
                     .accessibilityLabel("Add bookmark")
                     .accessibilityHint("Saves the current playback position as a bookmark")
+                    .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
                     
                 }
                 .frame(height: 40)

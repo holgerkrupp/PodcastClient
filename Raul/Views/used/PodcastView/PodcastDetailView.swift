@@ -217,19 +217,12 @@ struct PodcastDetailView: View {
                 
                 Section{
                     ForEach(filteredEpisodes, id: \.id) { episode in
-                        ZStack {
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                            EpisodeRowView(episode: episode)
-                           //     .id(episode.url)
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-                            .accessibilityLabel("Open episode \(episode.title)")
-                            .accessibilityHint("Opens this episode details screen")
                         }
-                        
-                       
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Open episode \(episode.title)")
+                        .accessibilityHint("Opens this episode details screen")
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
@@ -329,6 +322,7 @@ struct PodcastDetailView: View {
                     }
                     .accessibilityLabel("Episode sort and visibility")
                     .accessibilityHint("Choose episode sort order and hide played episodes")
+                    .accessibilityInputLabels([Text("Sort episodes"), Text("Episode sort")])
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
@@ -338,6 +332,7 @@ struct PodcastDetailView: View {
                     }
                     .accessibilityLabel("Podcast settings")
                     .accessibilityHint("Open settings for this podcast")
+                    .accessibilityInputLabels([Text("Podcast settings"), Text("Open settings")])
                     
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -358,6 +353,7 @@ struct PodcastDetailView: View {
                     .disabled(podcast.isSubscribed == false || isLoading)
                     .accessibilityLabel(isLoading ? "Refreshing podcast" : "Refresh podcast")
                     .accessibilityHint("Downloads the latest episodes from this podcast feed")
+                    .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast")])
                     
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -370,6 +366,7 @@ struct PodcastDetailView: View {
                     }
                     .accessibilityLabel("Archive all episodes")
                     .accessibilityHint("Marks all episodes in this podcast as archived")
+                    .accessibilityInputLabels([Text("Archive all episodes"), Text("Archive podcast episodes")])
                 }
                 
                 

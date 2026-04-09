@@ -153,24 +153,19 @@ struct PodcastListView: View {
                 }
                 
                 ForEach(filteredPodcasts) { podcast in
-                    ZStack {
+                    NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                         PodcastRowView(podcast: podcast)
-                       //     .id(episode.url)
-                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                            EmptyView()
-                        }
-                        .opacity(0)
-                        .accessibilityLabel("Open podcast \(podcast.title)")
-                        .accessibilityHint("Opens this podcast details screen")
                     }
-                    
                     .buttonStyle(.plain)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0,
-                                                 leading: 0,
-                                                 bottom: 0,
-                                                 trailing: 0))
+                    .accessibilityLabel("Open podcast \(podcast.title)")
+                    .accessibilityHint("Opens this podcast details screen")
+                    
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
                 }
                 .onDelete { indexSet in
                     Task {
@@ -240,6 +235,7 @@ struct PodcastListView: View {
                 }
                 .accessibilityLabel("Podcast scope")
                 .accessibilityHint("Filter library by subscribed, not subscribed, or all podcasts")
+                .accessibilityInputLabels([Text("Podcast scope"), Text("Library scope")])
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -253,6 +249,7 @@ struct PodcastListView: View {
                 }
                 .accessibilityLabel("Search filters")
                 .accessibilityHint("Choose whether search matches titles, authors, descriptions, or episodes")
+                .accessibilityInputLabels([Text("Search filters"), Text("Filter search")])
             }
 
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -275,6 +272,7 @@ struct PodcastListView: View {
                 .disabled(viewModel.isLoading)
                 .accessibilityLabel(viewModel.isLoading ? "Refreshing podcasts" : "Refresh podcasts")
                 .accessibilityHint("Updates all podcast feeds in your library")
+                .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
             }
         }
     }
