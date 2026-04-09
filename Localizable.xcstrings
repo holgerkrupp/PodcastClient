@@ -153,6 +153,16 @@
     "%lld percent" : {
 
     },
+    "%lld. %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld. %2$@: %3$@"
+          }
+        }
+      }
+    },
     "%lld%%" : {
       "localizations" : {
         "de" : {
@@ -164,6 +174,9 @@
       }
     },
     "%lld%% complete" : {
+
+    },
+    "Accessibility" : {
 
     },
     "Actions" : {
@@ -347,6 +360,12 @@
     "Archive file retention" : {
 
     },
+    "Archive inbox" : {
+
+    },
+    "Archive podcast episodes" : {
+
+    },
     "Archiving inbox episodes" : {
 
     },
@@ -396,6 +415,12 @@
 
     },
     "Back" : {
+
+    },
+    "Back 15 seconds" : {
+
+    },
+    "Back chapter" : {
 
     },
     "Bookmark" : {
@@ -470,6 +495,27 @@
           }
         }
       }
+    },
+    "Caption %@" : {
+
+    },
+    "Captions & Audio Descriptions" : {
+
+    },
+    "Captions & Transcript" : {
+
+    },
+    "Captions processing" : {
+
+    },
+    "Chapter %@" : {
+
+    },
+    "Chapter link" : {
+
+    },
+    "Chapter list" : {
+
     },
     "Chapter Rules" : {
 
@@ -568,6 +614,18 @@
           }
         }
       }
+    },
+    "Creates an on-device transcript to use as captions" : {
+
+    },
+    "Current" : {
+
+    },
+    "Current caption" : {
+
+    },
+    "Current chapter" : {
+
     },
     "Custom" : {
       "extractionState" : "stale",
@@ -760,7 +818,13 @@
         }
       }
     },
+    "Download actions" : {
+
+    },
     "Download actions and sort" : {
+
+    },
+    "Download sort" : {
 
     },
     "Downloaded" : {
@@ -830,6 +894,9 @@
         }
       }
     },
+    "Enabled" : {
+
+    },
     "End: %@" : {
       "localizations" : {
         "de" : {
@@ -860,7 +927,13 @@
         }
       }
     },
+    "Episode sort" : {
+
+    },
     "Episode sort and visibility" : {
+
+    },
+    "Episode transcripts are used as captions inside the player and transcript screens." : {
 
     },
     "Episodes" : {
@@ -983,7 +1056,16 @@
     "Filter library by subscribed, not subscribed, or all podcasts" : {
 
     },
+    "Filter search" : {
+
+    },
     "Follow" : {
+
+    },
+    "Follow captions" : {
+
+    },
+    "Follow playback" : {
 
     },
     "Following" : {
@@ -1002,10 +1084,22 @@
     "Following Global Defaults" : {
 
     },
+    "Following playback" : {
+
+    },
     "For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"" : {
 
     },
+    "For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device." : {
+
+    },
     "Forward" : {
+
+    },
+    "Forward 30 seconds" : {
+
+    },
+    "Forward chapter" : {
 
     },
     "From %@ to %@" : {
@@ -1023,6 +1117,9 @@
           }
         }
       }
+    },
+    "Generate captions" : {
+
     },
     "Get the source code" : {
       "localizations" : {
@@ -1103,7 +1200,13 @@
         }
       }
     },
+    "Heat map summary" : {
+
+    },
     "Help" : {
+
+    },
+    "Hide captions" : {
 
     },
     "Hide inline transcript" : {
@@ -1118,6 +1221,9 @@
           }
         }
       }
+    },
+    "Hide transcript" : {
+
     },
     "Hot Podcasts" : {
       "localizations" : {
@@ -1218,6 +1324,9 @@
         }
       }
     },
+    "Jump to chapter %@" : {
+
+    },
     "Jump to max play position" : {
 
     },
@@ -1228,6 +1337,9 @@
 
     },
     "Keep the current transcript line centered" : {
+
+    },
+    "Keeps captions centered around the current playback time" : {
 
     },
     "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device." : {
@@ -1293,6 +1405,9 @@
         }
       }
     },
+    "Library scope" : {
+
+    },
     "Listening" : {
       "localizations" : {
         "de" : {
@@ -1302,6 +1417,9 @@
           }
         }
       }
+    },
+    "Listening breakdown" : {
+
     },
     "Listening Habits" : {
       "localizations" : {
@@ -1332,6 +1450,9 @@
           }
         }
       }
+    },
+    "Listening summary" : {
+
     },
     "Listening Time" : {
       "localizations" : {
@@ -1589,6 +1710,9 @@
     "Next" : {
 
     },
+    "Next chapter" : {
+
+    },
     "Next week" : {
 
     },
@@ -1816,6 +1940,9 @@
         }
       }
     },
+    "Now playing" : {
+
+    },
     "Now Playing" : {
       "localizations" : {
         "de" : {
@@ -1872,7 +1999,19 @@
     "Only while charging" : {
 
     },
+    "Open captions" : {
+
+    },
+    "Open captions and transcript" : {
+
+    },
     "Open chapter link" : {
+
+    },
+    "Open chapter list" : {
+
+    },
+    "Open chapters" : {
 
     },
     "Open episode %@" : {
@@ -1907,6 +2046,9 @@
     "Open playback and queue settings" : {
 
     },
+    "Open player" : {
+
+    },
     "Open Podcast" : {
       "localizations" : {
         "de" : {
@@ -1920,13 +2062,25 @@
     "Open podcast %@" : {
 
     },
+    "Open settings" : {
+
+    },
     "Open settings for this podcast" : {
+
+    },
+    "Open transcript" : {
 
     },
     "Opens clip export for the current episode" : {
 
     },
+    "Opens episode captions if available" : {
+
+    },
     "Opens playback speed, sleep timer, and queue settings" : {
+
+    },
+    "Opens the chapter webpage in Safari" : {
 
     },
     "Opens the full transcript in a sheet" : {
@@ -2021,6 +2175,9 @@
         }
       }
     },
+    "Play caption" : {
+
+    },
     "Play chapter" : {
 
     },
@@ -2033,6 +2190,9 @@
           }
         }
       }
+    },
+    "Play chapter %@" : {
+
     },
     "Play episode" : {
 
@@ -2070,7 +2230,6 @@
 
     },
     "Playback" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2147,6 +2306,9 @@
           }
         }
       }
+    },
+    "Podcast listening distribution" : {
+
     },
     "Podcast Not Found" : {
       "localizations" : {
@@ -2273,6 +2435,9 @@
     "Previous" : {
 
     },
+    "Previous chapter" : {
+
+    },
     "Previous week" : {
 
     },
@@ -2372,7 +2537,13 @@
         }
       }
     },
+    "Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces." : {
+
+    },
     "Refresh inbox" : {
+
+    },
+    "Refresh library" : {
 
     },
     "Refresh podcast" : {
@@ -2510,6 +2681,9 @@
         }
       }
     },
+    "Search captions…" : {
+
+    },
     "Search filters" : {
 
     },
@@ -2534,6 +2708,7 @@
       }
     },
     "Search transcript..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2651,7 +2826,19 @@
         }
       }
     },
+    "Show captions" : {
+
+    },
     "Show inline transcript" : {
+
+    },
+    "Show summary" : {
+
+    },
+    "Show transcript" : {
+
+    },
+    "Shows all chapter markers" : {
 
     },
     "Shows listening activity aggregated across all weeks" : {
@@ -2678,6 +2865,9 @@
     "Siri & Shortcuts Intents" : {
 
     },
+    "Skip back" : {
+
+    },
     "Skip Back" : {
       "localizations" : {
         "de" : {
@@ -2697,6 +2887,12 @@
     "Skip backward by 15 seconds." : {
 
     },
+    "Skip chapter" : {
+
+    },
+    "Skip forward" : {
+
+    },
     "Skip Forward" : {
 
     },
@@ -2704,6 +2900,15 @@
 
     },
     "Skip forward by 30 seconds." : {
+
+    },
+    "Skipped" : {
+
+    },
+    "Skips to the next chapter" : {
+
+    },
+    "Skips to the start of the previous chapter" : {
 
     },
     "Sleep Timer" : {
@@ -2749,6 +2954,9 @@
     "Sort downloads, rescan files, or delete played episodes" : {
 
     },
+    "Sort episodes" : {
+
+    },
     "Start listening to see your summarized playback history here." : {
       "localizations" : {
         "de" : {
@@ -2774,6 +2982,9 @@
           }
         }
       }
+    },
+    "Starts playback from this caption line" : {
+
     },
     "Starts playback of the current episode" : {
 
@@ -2905,6 +3116,9 @@
           }
         }
       }
+    },
+    "This app plays spoken-word audio and does not include separate audio-description tracks. Chapter titles and transcripts provide descriptive context instead." : {
+
     },
     "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
       "localizations" : {
@@ -3039,6 +3253,9 @@
         }
       }
     },
+    "Transcribe episode" : {
+
+    },
     "Transcribing" : {
       "localizations" : {
         "de" : {
@@ -3153,6 +3370,12 @@
     "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"" : {
 
     },
+    "Update inbox" : {
+
+    },
+    "Update podcast" : {
+
+    },
     "Updates all podcast feeds in your library" : {
 
     },
@@ -3183,6 +3406,9 @@
 
     },
     "Use podcast-specific settings" : {
+
+    },
+    "Use previous and next week buttons to change the date range" : {
 
     },
     "Use rules for repeated segments like ads, intros, and credits. Each rule checks the chapter title with a match style such as contains or starts with." : {
@@ -3234,6 +3460,9 @@
         }
       }
     },
+    "VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views." : {
+
+    },
     "Weekday" : {
       "localizations" : {
         "de" : {
@@ -3253,6 +3482,9 @@
           }
         }
       }
+    },
+    "Weekly listening heat map" : {
+
     },
     "Weekly Listening Heat Map" : {
       "localizations" : {
@@ -3285,6 +3517,9 @@
           }
         }
       }
+    },
+    "Will be skipped" : {
+
     },
     "Y-axis: listening time per %@." : {
       "localizations" : {

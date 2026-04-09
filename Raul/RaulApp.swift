@@ -96,10 +96,7 @@ struct RaulApp: App {
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
            //  await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await scheduleFeedRefresh()
-            await runScheduledStorageCleanupIfNeeded(
-                minimumInterval: BackgroundTaskConfiguration.nightlyStorageCleanupInterval,
-                reason: "feed refresh task"
-            )
+            CrashBreadcrumbs.shared.record("skip_storage_cleanup_in_feed_refresh_task")
        
             await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
 
@@ -107,10 +104,7 @@ struct RaulApp: App {
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
             await scheduleStorageCleanup()
-            await runScheduledStorageCleanupIfNeeded(
-                minimumInterval: BackgroundTaskConfiguration.nightlyStorageCleanupInterval,
-                reason: "storage cleanup task"
-            )
+            CrashBreadcrumbs.shared.record("skip_storage_cleanup_in_background_task")
         }
     }
 

@@ -14,6 +14,7 @@ struct PlaylistView: View {
     @Query(filter: #Predicate<PlaylistEntry> { $0.playlist?.title == "de.holgerkrupp.podbay.queue" },
            sort: [SortDescriptor(\PlaylistEntry.order)] ) var playListEntries: [PlaylistEntry]
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showSettings: Bool = false
 
     var body: some View {
@@ -31,16 +32,12 @@ struct PlaylistView: View {
                     ForEach(playListEntries, id: \.id) { entry in
                         if let episode = entry.episode {
                             
-                            ZStack {
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                EpisodeRowView(episode: episode)
-                               //     .id(episode.url)
-                                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                    EmptyView()
-                                }
-                                .opacity(0)
-                                .accessibilityLabel("Open episode \(episode.title)")
-                                .accessibilityHint("Opens this episode details screen")
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open episode \(episode.title)")
+                            .accessibilityHint("Opens this episode details screen")
                             
                             
 
@@ -92,6 +89,7 @@ struct PlaylistView: View {
                     }
                     .accessibilityLabel("Queue settings")
                     .accessibilityHint("Open playback and queue settings")
+                    .accessibilityInputLabels([Text("Queue settings"), Text("Open settings")])
                     
                 }
                }
@@ -102,7 +100,7 @@ struct PlaylistView: View {
                     .presentationBackground(.ultraThinMaterial)
                 
             }
-            .animation(.easeInOut, value: playListEntries)
+            .animation(reduceMotion ? nil : .easeInOut, value: playListEntries)
            // .environment(\.editMode, $editMode)
             .listStyle(.plain)
             .navigationTitle("Up Next")

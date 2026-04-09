@@ -36,6 +36,7 @@ class CarPlayInbox {
 
     private func setupTemplate() async {
         let episodes = loadInboxEpisodes()
+        let presentActions = self.presentActions
 
         var images: [UIImage?] = []
         images.reserveCapacity(episodes.count)
@@ -51,12 +52,8 @@ class CarPlayInbox {
             )
             item.userInfo = episode.summary
             item.accessoryType = .disclosureIndicator
-            item.handler = { [weak self] _, completion in
-                guard let self else {
-                    completion()
-                    return
-                }
-                self.presentActions(for: episode)
+            item.handler = { _, completion in
+                presentActions(episode)
                 completion()
             }
             return item

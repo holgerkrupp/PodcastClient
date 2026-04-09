@@ -17,6 +17,8 @@ struct TranscriptLine: Identifiable, Hashable {
 
 struct TranscriptView: View {
    // let decoder: TranscriptDecoder
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     let transcriptLines: [TranscriptLineAndTime]
     @Binding var currentTime: TimeInterval
     
@@ -46,12 +48,12 @@ struct TranscriptView: View {
                 if let speaker = line.speaker {
                     Text("\(speaker):")
                         .font(.headline)
-                        .foregroundColor(speakerColorMap[speaker] ?? .accent)
-                        .transition(.opacity)
+                        .foregroundColor(differentiateWithoutColor ? .primary : (speakerColorMap[speaker] ?? .accent))
+                        .transition(reduceMotion ? .identity : .opacity)
                 }
                 Text(line.text)
                     .font(.body)
-                    .transition(.opacity)
+                    .transition(reduceMotion ? .identity : .opacity)
                     .lineLimit(4)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -59,7 +61,10 @@ struct TranscriptView: View {
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.easeInOut(duration: 0.3), value: currentLine?.id)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: currentLine?.id)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Current caption")
+            .accessibilityValue(line.speaker == nil ? line.text : "\(line.speaker!), \(line.text)")
             .onAppear {
                 self.speakerColorMap = computeSpeakerColorMap()
             }

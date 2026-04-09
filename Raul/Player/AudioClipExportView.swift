@@ -3,6 +3,7 @@ import AVFoundation
 
 struct AudioClipExportView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var trimStart: Double = 0
     @State private var trimEnd: Double = 60
     @State private var isExporting = false
@@ -108,7 +109,7 @@ struct AudioClipExportView: View {
                                     }, progress: $playbackProgress
                                 )
                                 .frame(height: 70)
-                                .animation(.easeInOut, value: waveformSamples)
+                                .animation(reduceMotion ? nil : .easeInOut, value: waveformSamples)
                                 .background{
                                     RoundedRectangle(cornerRadius:  8.0)
                                         .fill(.black.opacity(0.5))

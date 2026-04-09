@@ -20,6 +20,7 @@ private struct WeekHeatMapSnapshot {
 
 struct WeekListeningHeatMapView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
     @State private var selectedPodcastFeed: URL? = nil
@@ -77,7 +78,9 @@ struct WeekListeningHeatMapView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(weekStartDate == nil ? .primary : .secondary)
+                .accessibilityLabel("Show summary")
                 .accessibilityHint("Shows listening activity aggregated across all weeks")
+                .accessibilityInputLabels([Text("Show summary"), Text("Heat map summary")])
 
                 Button(action: {
                     if let start = weekStartDate {
@@ -126,15 +129,21 @@ struct WeekListeningHeatMapView: View {
                                 .frame(width: blockWidth, height: 18)
 
                             ForEach(hours, id: \.self) { hour in
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(heatColor(for: heatMap.seconds(weekday: column.weekday, hour: hour)))
-                                    .frame(width: blockWidth, height: blockHeight)
+                                heatCell(
+                                    seconds: heatMap.seconds(weekday: column.weekday, hour: hour),
+                                    blockWidth: blockWidth,
+                                    blockHeight: blockHeight
+                                )
                             }
                         }
                     }
                 }
             }
             .frame(minHeight: 420)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Weekly listening heat map")
+            .accessibilityValue(heatMapAccessibilitySummary)
+            .accessibilityHint("Use previous and next week buttons to change the date range")
 
             HStack(spacing: 10) {
                 Text("Less")
@@ -222,8 +231,53 @@ struct WeekListeningHeatMapView: View {
     }
 
     private func heatColor(for seconds: Double) -> Color {
-        let intensity = min(max(seconds / heatMap.maxSeconds, 0), 1)
+        let intensity = normalizedIntensity(for: seconds)
         return Color.accentColor.opacity(0.12 + intensity * 0.88)
+    }
+
+    private func normalizedIntensity(for seconds: Double) -> Double {
+        min(max(seconds / heatMap.maxSeconds, 0), 1)
+    }
+
+    @ViewBuilder
+    private func heatCell(seconds: Double, blockWidth: CGFloat, blockHeight: CGFloat) -> some View {
+        let intensity = normalizedIntensity(for: seconds)
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(heatColor(for: seconds))
+            .overlay {
+                if differentiateWithoutColor && seconds > 0 {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(
+                            Color.primary.opacity(0.75),
+                            style: StrokeStyle(
+                                lineWidth: intensity > 0.66 ? 1.2 : 0.8,
+                                dash: intensity > 0.66 ? [] : (intensity > 0.33 ? [2, 1] : [1, 2])
+                            )
+                        )
+                }
+            }
+            .frame(width: blockWidth, height: blockHeight)
+    }
+
+    private var heatMapAccessibilitySummary: String {
+        var strongest: (weekday: Int, hour: Int, seconds: Double)?
+        for weekday in weekdayIndexOrder {
+            for hour in hours {
+                let seconds = heatMap.seconds(weekday: weekday, hour: hour)
+                if strongest == nil || seconds > strongest!.seconds {
+                    strongest = (weekday, hour, seconds)
+                }
+            }
+        }
+
+        guard let strongest, strongest.seconds > 0 else {
+            return "No listening activity in this range."
+        }
+
+        let dayName = Calendar.current.weekdaySymbols[strongest.weekday]
+        let hourLabel = String(format: "%02d:00", strongest.hour)
+        let durationLabel = Duration.seconds(strongest.seconds).formatted(.units(width: .wide))
+        return "Most listening: \(dayName) at \(hourLabel), about \(durationLabel)."
     }
 }
 

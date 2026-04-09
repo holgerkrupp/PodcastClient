@@ -74,6 +74,7 @@ struct SkipBackView: View {
 
 
 struct SkipChapter: ToggleStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     func makeBody(configuration: Configuration) -> some View {
         HStack {
@@ -93,7 +94,7 @@ struct SkipChapter: ToggleStyle {
                                 .foregroundColor(configuration.isOn ? .accent  : .accent)
                         )
                         .offset(x: configuration.isOn ? 11 : -11, y: 0)
-                        .animation(.linear, value: 0.2)
+                        .animation(reduceMotion ? nil : .linear, value: configuration.isOn)
                     
                 ).cornerRadius(20)
                 .onTapGesture { configuration.isOn.toggle() }

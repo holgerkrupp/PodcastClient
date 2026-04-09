@@ -328,21 +328,41 @@ actor SubscriptionManager:NSObject{
       
        //  await BasicLogger.shared.log("bgupdateFeeds")
         
+        let startedAt = Date()
+        let maxPodcastsPerRun = 3
+        let maxRuntime: TimeInterval = 20
 
-            setLastRefreshDate()
-            fetchData()
-        //let all = podcasts.count
+        setLastRefreshDate()
+        fetchData()
         var updated = 0
-            for podcast in podcasts.sorted(by: { lhs, rhs in
-                lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
-            }){
-                if let feed = podcast.feed{
-                    let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(feed)
-                    podcast.message = nil
-                    if new == true { updated += 1}
-                }
+        var processed = 0
+
+        CrashBreadcrumbs.shared.record("bgupdate_feeds_started", details: "podcasts=\(podcasts.count)")
+
+        for podcast in podcasts.sorted(by: { lhs, rhs in
+            lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
+        }) {
+            if processed >= maxPodcastsPerRun {
+                CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
+                break
             }
-            WatchSyncCoordinator.refreshSoon()
+            if Date().timeIntervalSince(startedAt) >= maxRuntime {
+                CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_runtime")
+                break
+            }
+            guard let feed = podcast.feed else { continue }
+
+            processed += 1
+            let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(feed)
+            podcast.message = nil
+            if new == true { updated += 1 }
+        }
+
+        CrashBreadcrumbs.shared.record(
+            "bgupdate_feeds_completed",
+            details: "processed=\(processed),updated=\(updated),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
+        )
+        WatchSyncCoordinator.refreshSoon()
     }
     
     func getLastRefreshDate() -> Date? {

@@ -113,7 +113,7 @@ private struct LaunchBarsCurtainView: View {
                 Rectangle()
                     .fill(
                         LinearGradient(
-                            colors: [color.opacity(0.96), color],
+                            colors: [color.opacity(1), color],
                             startPoint: .top,
                             endPoint: .bottom
                         )

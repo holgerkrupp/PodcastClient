@@ -55,6 +55,8 @@ class CarPlayPlayNext {
         if let current = Player.shared.currentEpisode {
             // Load current episode image
             let currentImage = await self.loadImage(episode: current.summary) ?? UIImage()
+            let currentEpisodeURL = current.url
+            let interfaceController = self.interfaceController
             let nowPlayingItem = CPListItem(
                 text: current.title,
                 detailText: current.desc ?? current.title,
@@ -63,15 +65,15 @@ class CarPlayPlayNext {
             nowPlayingItem.userInfo = current
             nowPlayingItem.isPlaying = true
             nowPlayingItem.accessoryType = .disclosureIndicator
-            nowPlayingItem.handler = { [weak self] _, _ in
-                guard let self else { return }
-                // Push/show the Now Playing template
-                self.interfaceController.pushTemplate(
-                    CarPlayNowPlaying(interfaceController: self.interfaceController).template,
+            nowPlayingItem.handler = { _, _ in
+                Task {
+                    await Player.shared.playEpisode(currentEpisodeURL)
+                }
+                interfaceController.pushTemplate(
+                    CarPlayNowPlaying(interfaceController: interfaceController).template,
                     animated: true,
                     completion: { _, _ in }
                 )
-              
             }
             let nowPlayingSection = CPListSection(items: [nowPlayingItem])
             sections.append(nowPlayingSection)

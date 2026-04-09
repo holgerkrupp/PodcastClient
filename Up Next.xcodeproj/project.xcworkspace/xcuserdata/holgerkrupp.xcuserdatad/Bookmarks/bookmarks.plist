@@ -100,16 +100,16 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
+				<string>        do {
 </string>
 				<key>leading</key>
-				<string>        do {
-            var episodes = try modelContext.fetch(descriptor).filter { episode in
+				<string>        )
+
 </string>
 				<key>trailing</key>
-				<string>                return downloadedFiles.contains(localFile)
-            }
-
+				<string>            var episodes = try modelContext.fetch(descriptor).filter { episode in
+                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
+                return downloadedFiles.contains(localFile)
 </string>
 			</dict>
 			<key>title</key>
