@@ -404,3 +404,105 @@ private extension Comparable where Self == Double {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }
+
+#Preview("Episode Detail - All Subviews") {
+    let previewFilesManager = DownloadedFilesManager(folder: FileManager.default.temporaryDirectory)
+
+    NavigationStack {
+        EpisodeDetailView(episode: EpisodeDetailPreviewData.allSubviewsEpisode)
+    }
+    .environment(previewFilesManager)
+    .modelContainer(for: Episode.self, inMemory: true)
+}
+
+private enum EpisodeDetailPreviewData {
+    static var allSubviewsEpisode: Episode {
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        podcast.title = "Preview Weekly"
+        podcast.author = "Preview Host"
+        podcast.desc = "A preview podcast to exercise all EpisodeDetailView sections."
+        podcast.imageURL = URL(string: "https://picsum.photos/400")
+
+        let episode = Episode(
+            title: "Building Better SwiftUI Previews",
+            publishDate: Date(timeIntervalSinceNow: -(60 * 60 * 26)),
+            url: URL(string: "https://example.com/audio/preview-episode.mp3")!,
+            podcast: podcast,
+            duration: 3600,
+            author: "Preview Editor"
+        )
+
+        episode.desc = "Episode detail preview with <b>all</b> sections enabled."
+        episode.content = """
+        <p>This preview includes social links, people, chapters, funding, transcript actions, and namespace metadata.</p>
+        <p><a href="https://example.com/episodes/swiftui-previews">Read full notes</a></p>
+        """
+        episode.link = URL(string: "https://example.com/episodes/swiftui-previews")
+        episode.deeplinks = [URL(string: "https://example.com/app/episode/swiftui-previews")!]
+        episode.imageURL = URL(string: "https://picsum.photos/600")
+        episode.metaData?.playPosition = 1320
+        episode.metaData?.maxPlayposition = 1800
+
+        episode.funding = [
+            FundingInfo(url: URL(string: "https://example.com/support")!, label: "Support"),
+            FundingInfo(url: URL(string: "https://example.com/membership")!, label: "Membership")
+        ]
+        episode.social = [
+            SocialInfo(url: URL(string: "https://example.social/@previewshow")!, socialprotocol: "activitypub", accountId: "@previewshow", accountURL: URL(string: "https://example.social/@previewshow"), priority: 1),
+            SocialInfo(url: URL(string: "https://example.com/previewshow")!, socialprotocol: "website", accountId: nil, accountURL: nil, priority: 2)
+        ]
+        episode.people = [
+            PersonInfo(name: "Ava Preview", role: "host", href: URL(string: "https://example.com/ava"), img: nil),
+            PersonInfo(name: "Liam Sample", role: "guest", href: URL(string: "https://example.com/liam"), img: URL(string: "https://picsum.photos/80"))
+        ]
+        episode.externalFiles = [
+            ExternalFile(
+                url: "https://example.com/transcripts/swiftui-previews.vtt",
+                category: .transcript,
+                source: "podcastindex",
+                fileType: "text/vtt"
+            )
+        ]
+        episode.optionalTags = namespaceTags
+
+        let intro = Marker(start: 0, title: "Intro", type: .mp3, duration: 180)
+        let deepDive = Marker(start: 180, title: "Preview Data Setup", type: .mp3, duration: 1320)
+        deepDive.link = URL(string: "https://example.com/chapters/preview-data-setup")
+        let recap = Marker(start: 1500, title: "Recap", type: .mp3, duration: 240)
+
+        episode.chapters = [intro, deepDive, recap]
+        episode.chapters?.forEach { $0.episode = episode }
+
+        return episode
+    }
+
+    static var namespaceTags: PodcastNamespaceOptionalTags {
+        var tags = PodcastNamespaceOptionalTags()
+        tags.chat = [
+            NamespaceNode(
+                name: "podcast:chat",
+                attributes: ["url": "https://chat.example.com", "protocol": "irc"]
+            )
+        ]
+        tags.license = [
+            NamespaceNode(name: "podcast:license", value: "CC-BY-4.0")
+        ]
+        tags.value = [
+            NamespaceNode(
+                name: "podcast:value",
+                attributes: ["type": "lightning", "method": "keysend"],
+                children: [
+                    NamespaceNode(
+                        name: "podcast:valueRecipient",
+                        attributes: ["name": "Host", "address": "03abc", "split": "95"]
+                    ),
+                    NamespaceNode(
+                        name: "podcast:valueRecipient",
+                        attributes: ["name": "Producer", "address": "03def", "split": "5"]
+                    )
+                ]
+            )
+        ]
+        return tags
+    }
+}

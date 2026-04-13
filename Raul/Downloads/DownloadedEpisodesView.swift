@@ -18,8 +18,12 @@ struct DownloadedEpisodesView: View {
             } else {
                 Section {
                     ForEach(downloadedEpisodes, id: \.id) { episode in
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                        ZStack{
                             EpisodeRowView(episode: episode)
+
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open episode \(episode.title)")

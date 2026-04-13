@@ -31,9 +31,11 @@ struct PlaylistView: View {
              
                     ForEach(playListEntries, id: \.id) { entry in
                         if let episode = entry.episode {
-                            
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                               EpisodeRowView(episode: episode)
+                            ZStack {
+                                EpisodeRowView(episode: episode)
+                                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                    EmptyView()
+                                }.opacity(0)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Open episode \(episode.title)")
