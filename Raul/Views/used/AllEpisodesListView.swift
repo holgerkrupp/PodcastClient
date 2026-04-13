@@ -35,8 +35,12 @@ struct AllEpisodesListView: View {
         NavigationStack {
             List {
                 ForEach(episodes) { episode in
-                    NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                    ZStack{
                         EpisodeRowView(episode: episode)
+
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                            EmptyView()
+                        }.opacity(0)
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)

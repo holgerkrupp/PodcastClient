@@ -553,9 +553,6 @@
     "Choose episode sort order and hide played episodes" : {
 
     },
-    "Choose whether search matches titles, authors, descriptions, or episodes" : {
-
-    },
     "Continue" : {
       "localizations" : {
         "de" : {
@@ -936,6 +933,9 @@
     "Episode transcripts are used as captions inside the player and transcript screens." : {
 
     },
+    "Episode Unavailable" : {
+
+    },
     "Episodes" : {
       "localizations" : {
         "de" : {
@@ -1054,9 +1054,6 @@
 
     },
     "Filter library by subscribed, not subscribed, or all podcasts" : {
-
-    },
-    "Filter search" : {
 
     },
     "Follow" : {
@@ -1408,6 +1405,12 @@
     "Library scope" : {
 
     },
+    "Library search" : {
+
+    },
+    "Library Search" : {
+
+    },
     "Listening" : {
       "localizations" : {
         "de" : {
@@ -1581,6 +1584,9 @@
     "Match style" : {
 
     },
+    "Matched in podcast metadata" : {
+
+    },
     "Matching chapter titles will be marked to skip as soon as chapter data is loaded." : {
 
     },
@@ -1645,6 +1651,12 @@
     "Move To End" : {
 
     },
+    "Move to next %@" : {
+
+    },
+    "Move to previous %@" : {
+
+    },
     "Moves every inbox episode to archive" : {
 
     },
@@ -1707,9 +1719,6 @@
         }
       }
     },
-    "Next" : {
-
-    },
     "Next chapter" : {
 
     },
@@ -1757,9 +1766,6 @@
         }
       }
     },
-    "No episodes matched \"%@\"." : {
-
-    },
     "No Files for This Podcast" : {
 
     },
@@ -1784,6 +1790,9 @@
       }
     },
     "No listening sessions in this %@." : {
+
+    },
+    "No matches found for \"%@\"." : {
 
     },
     "No Matching Transcript" : {
@@ -1843,6 +1852,7 @@
       }
     },
     "No podcasts matched \"%@\"." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1939,9 +1949,6 @@
           }
         }
       }
-    },
-    "Now playing" : {
-
     },
     "Now Playing" : {
       "localizations" : {
@@ -2044,9 +2051,6 @@
       }
     },
     "Open playback and queue settings" : {
-
-    },
-    "Open player" : {
 
     },
     "Open Podcast" : {
@@ -2198,6 +2202,9 @@
 
     },
     "Play from %@" : {
+
+    },
+    "Play from transcript match" : {
 
     },
     "Play Last" : {
@@ -2359,10 +2366,10 @@
         }
       }
     },
-    "Podcast-attributed storage will appear here once content is stored locally." : {
+    "Podcast Unavailable" : {
 
     },
-    "Podcasting 2.0" : {
+    "Podcast-attributed storage will appear here once content is stored locally." : {
 
     },
     "Podcasts" : {
@@ -2431,9 +2438,6 @@
           }
         }
       }
-    },
-    "Previous" : {
-
     },
     "Previous chapter" : {
 
@@ -2684,6 +2688,9 @@
     "Search captions…" : {
 
     },
+    "Search Failed" : {
+
+    },
     "Search filters" : {
 
     },
@@ -2697,7 +2704,14 @@
         }
       }
     },
+    "Search library" : {
+
+    },
+    "Search Library" : {
+
+    },
     "Search podcasts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2706,6 +2720,12 @@
           }
         }
       }
+    },
+    "Search podcasts, episodes, chapters, and transcripts" : {
+
+    },
+    "Search podcasts, episodes, chapters, and transcripts directly in SwiftData." : {
+
     },
     "Search transcript..." : {
       "extractionState" : "stale",
@@ -2718,7 +2738,10 @@
         }
       }
     },
-    "Searching… %lld%%" : {
+    "Search Your Library" : {
+
+    },
+    "Searching Library..." : {
 
     },
     "Select a OPML file to import your podcasts subscriptions from different podcast apps" : {
@@ -3120,6 +3143,9 @@
     "This app plays spoken-word audio and does not include separate audio-description tracks. Chapter titles and transcripts provide descriptive context instead." : {
 
     },
+    "This episode could not be loaded." : {
+
+    },
     "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
       "localizations" : {
         "de" : {
@@ -3129,6 +3155,9 @@
           }
         }
       }
+    },
+    "This podcast could not be loaded." : {
+
     },
     "This podcast currently has no standalone files stored outside the database." : {
 
@@ -3379,6 +3408,9 @@
     "Updates all podcast feeds in your library" : {
 
     },
+    "Updating search results..." : {
+
+    },
     "URL or Search" : {
       "localizations" : {
         "de" : {
@@ -3390,6 +3422,9 @@
       }
     },
     "Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available. Manual transcription is still unaffected." : {
+
+    },
+    "Use at least %lld characters to search transcripts." : {
 
     },
     "Use Custom" : {

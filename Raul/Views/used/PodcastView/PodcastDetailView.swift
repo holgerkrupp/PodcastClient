@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import RichText
 
 struct PodcastDetailView: View {
@@ -477,4 +478,94 @@ struct PodcastDetailView: View {
         await actor.setSubscriptionStatus(podcast.persistentModelID, isSubscribed: !podcast.isSubscribed)
     }
 
+}
+
+#Preview("Podcast Detail") {
+    let previewFilesManager = DownloadedFilesManager(folder: FileManager.default.temporaryDirectory)
+    let previewContainer = try! ModelContainer(for: Podcast.self, Episode.self)
+
+    NavigationStack {
+        PodcastDetailView(podcast: PodcastDetailPreviewData.samplePodcast)
+    }
+    .environment(previewFilesManager)
+    .modelContainer(previewContainer)
+}
+
+private enum PodcastDetailPreviewData {
+    static var samplePodcast: Podcast {
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        podcast.title = "Preview Engineering Weekly"
+        podcast.author = "Preview Team"
+        podcast.desc = """
+        <p>A sample podcast description for the PodcastDetailView preview.</p>
+        <p><a href=\"https://example.com\">Visit website</a></p>
+        """
+        podcast.link = URL(string: "https://example.com/show")
+        podcast.imageURL = URL(string: "https://picsum.photos/400")
+        podcast.copyright = "© 2026 Preview Network"
+        podcast.lastBuildDate = Date(timeIntervalSinceNow: -(60 * 60 * 2))
+        podcast.metaData?.feedUpdateCheckDate = Date(timeIntervalSinceNow: -(60 * 30))
+
+        podcast.funding = [
+            FundingInfo(url: URL(string: "https://example.com/support")!, label: "Support"),
+            FundingInfo(url: URL(string: "https://example.com/membership")!, label: "Membership")
+        ]
+        podcast.social = [
+            SocialInfo(url: URL(string: "https://example.social/@preview")!, socialprotocol: "activitypub", accountId: "@preview", accountURL: URL(string: "https://example.social/@preview"), priority: 1),
+            SocialInfo(url: URL(string: "https://example.com/team")!, socialprotocol: "website", accountId: nil, accountURL: nil, priority: 2)
+        ]
+        podcast.people = [
+            PersonInfo(name: "Alex Preview", role: "host", href: URL(string: "https://example.com/alex"), img: nil),
+            PersonInfo(name: "Sam Builder", role: "producer", href: URL(string: "https://example.com/sam"), img: URL(string: "https://picsum.photos/80"))
+        ]
+
+        var tags = PodcastNamespaceOptionalTags()
+        tags.episode = [NamespaceNode(name: "podcast:episode", attributes: ["number": "42"])]
+        tags.season = [NamespaceNode(name: "podcast:season", value: "4", attributes: ["name": "Scaling SwiftUI"])]
+        tags.chat = [NamespaceNode(name: "podcast:chat", attributes: ["url": "https://chat.example.com", "protocol": "irc"])]
+        tags.license = [NamespaceNode(name: "podcast:license", value: "CC-BY-4.0")]
+        podcast.optionalTags = tags
+
+        let latest = Episode(
+            title: "Making SwiftUI Metadata Views Better",
+            publishDate: Date(timeIntervalSinceNow: -(60 * 60 * 20)),
+            url: URL(string: "https://example.com/episodes/42.mp3")!,
+            podcast: podcast,
+            duration: 3200,
+            author: "Alex Preview"
+        )
+        latest.desc = "Refactoring metadata views and improving previews."
+        latest.link = URL(string: "https://example.com/episodes/42")
+        latest.externalFiles = [
+            ExternalFile(
+                url: "https://example.com/transcripts/42.vtt",
+                category: .transcript,
+                source: "podcastindex",
+                fileType: "text/vtt"
+            )
+        ]
+        latest.metaData?.playPosition = 980
+        latest.metaData?.maxPlayposition = 1600
+
+        let chapterOne = Marker(start: 0, title: "Intro", type: .mp3, duration: 120)
+        let chapterTwo = Marker(start: 120, title: "UI Grouping", type: .mp3, duration: 900)
+        latest.chapters = [chapterOne, chapterTwo]
+        latest.chapters?.forEach { $0.episode = latest }
+
+        let previous = Episode(
+            title: "Designing Better Episode Detail Screens",
+            publishDate: Date(timeIntervalSinceNow: -(60 * 60 * 48)),
+            url: URL(string: "https://example.com/episodes/41.mp3")!,
+            podcast: podcast,
+            duration: 2800,
+            author: "Sam Builder"
+        )
+        previous.desc = "Layout and navigation improvements."
+        previous.link = URL(string: "https://example.com/episodes/41")
+        previous.metaData?.maxPlayposition = previous.duration
+        previous.metaData?.completionDate = Date(timeIntervalSinceNow: -(60 * 60 * 8))
+
+        podcast.episodes = [latest, previous]
+        return podcast
+    }
 }

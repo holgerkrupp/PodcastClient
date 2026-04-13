@@ -158,9 +158,10 @@ struct PlaySessionDebugView: View {
                     Button {
                         moveSelectedPeriod(by: -1)
                     } label: {
-                        Label("Previous", systemImage: "chevron.left")
+                        Label("", systemImage: "chevron.left")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityLabel(Text("Move to previous \(selectedPeriodSingular)"))
 
                     Spacer(minLength: 8)
 
@@ -178,8 +179,9 @@ struct PlaySessionDebugView: View {
                     Button {
                         moveSelectedPeriod(by: 1)
                     } label: {
-                        Label("Next", systemImage: "chevron.right")
+                        Label("", systemImage: "chevron.right")
                     }
+                    .accessibilityLabel(Text("Move to next \(selectedPeriodSingular)"))
                     .buttonStyle(.bordered)
                     .disabled(!canMoveToNextPeriod)
                 }
