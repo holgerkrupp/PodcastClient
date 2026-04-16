@@ -177,25 +177,19 @@ class PodcastSearchViewModel: ObservableObject {
 
     
     func parseURL(feedURL: URL) async throws -> [String:String]{
-        let (data, _) = try await URLSession.shared.data(from: feedURL)
-        
-        let parser = XMLParser(data: data)
-        let podcastParser = PodcastParser()
-        parser.delegate = podcastParser
-        
-        let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
+        let page = try await PodcastParser.fetchPage(from: feedURL)
         
         var podcastDetails: [String:String] = [:]
         podcastDetails["xmlURL"] = feedURL.absoluteString
-        podcastDetails["title"] = fullPodcast["title"] as? String ?? ""
-        podcastDetails["author"]  = fullPodcast["itunes:author"] as? String
-        podcastDetails["desc"]  = fullPodcast["description"] as? String
-        podcastDetails["copyright"]  = fullPodcast["copyright"] as? String
-        podcastDetails["language"]  = fullPodcast["language"] as? String
-        podcastDetails["link"]  = fullPodcast["link"] as? String ?? ""
-        podcastDetails["imageURL"] = fullPodcast["coverImage"] as? String
-        podcastDetails["lastBuildDate"]  = fullPodcast["lastBuildDate"] as? String ?? ""
-        podcastDetails["episodes"] = (fullPodcast["episodes"] as? [[String: Any]])?.count.description ?? ""
+        podcastDetails["title"] = page.parsedFeed["title"] as? String ?? ""
+        podcastDetails["author"]  = page.parsedFeed["itunes:author"] as? String
+        podcastDetails["desc"]  = page.parsedFeed["description"] as? String
+        podcastDetails["copyright"]  = page.parsedFeed["copyright"] as? String
+        podcastDetails["language"]  = page.parsedFeed["language"] as? String
+        podcastDetails["link"]  = page.parsedFeed["link"] as? String ?? ""
+        podcastDetails["imageURL"] = page.parsedFeed["coverImage"] as? String
+        podcastDetails["lastBuildDate"]  = page.parsedFeed["lastBuildDate"] as? String ?? ""
+        podcastDetails["episodes"] = page.episodes.count.description
         return podcastDetails
     }
     

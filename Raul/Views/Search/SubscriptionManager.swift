@@ -212,6 +212,76 @@ actor SubscriptionManager:NSObject{
     
     
 
+    private func fetchPodcast(by feedURL: URL) -> Podcast? {
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feed == feedURL }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private func fetchEpisode(by episodeURL: URL) -> Episode? {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.url == episodeURL }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private func upsertEpisode(
+        from draft: PodcastEpisodeDraft,
+        in podcast: Podcast
+    ) -> Episode? {
+        if let existingEpisode = fetchEpisode(by: draft.episodeURL) {
+            if existingEpisode.podcast?.feed != podcast.feed {
+                existingEpisode.podcast = podcast
+            }
+            existingEpisode.update(from: draft.rawEpisodeData)
+            return existingEpisode
+        }
+
+        guard let episode = Episode(from: draft.rawEpisodeData, podcast: podcast) else {
+            return nil
+        }
+
+        modelContext.insert(episode)
+        return episode
+    }
+
+    func queueBrowseEpisode(
+        _ draft: PodcastEpisodeDraft,
+        from podcastFeed: PodcastFeed,
+        to position: Playlist.Position = .end
+    ) async throws {
+        guard let feedURL = podcastFeed.url else {
+            throw SubscribeError.loadfeed
+        }
+
+        let existingPodcast = fetchPodcast(by: feedURL)
+        let podcast: Podcast
+        if let existingPodcast {
+            podcast = existingPodcast
+            applyFeedPreview(podcastFeed, to: existingPodcast)
+        } else {
+            let newPodcast = Podcast(from: podcastFeed)
+            modelContext.insert(newPodcast)
+            podcast = newPodcast
+        }
+
+        let metadata = ensureMetadata(for: podcast)
+        if existingPodcast == nil {
+            metadata.isSubscribed = false
+            metadata.subscriptionDate = nil
+        }
+
+        guard let episode = upsertEpisode(from: draft, in: podcast) else {
+            throw SubscribeError.parsing
+        }
+
+        modelContext.saveIfNeeded()
+
+        let playlistActor = try PlaylistModelActor(modelContainer: modelContainer)
+        try await playlistActor.add(episodeURL: episode.url ?? draft.episodeURL, to: position)
+    }
+
     func subscribe_old(all newPodcasts: [PodcastFeed]) async {
         let podcastSemaphore = AsyncSemaphore(value: 1)
         await withTaskGroup(of: Void.self) { group in

@@ -24,7 +24,7 @@ struct PodcastSearchView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Group {
 
             if viewModel.isLoading {
                 ProgressView()
@@ -144,9 +144,6 @@ struct PodcastSearchView: View {
                 .listRowBackground(Color.clear)
             }
         }
-        
-
-        
         .onChange(of: search) {
             viewModel.searchText = search
         }

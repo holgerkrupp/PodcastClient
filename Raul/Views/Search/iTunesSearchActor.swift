@@ -45,7 +45,7 @@ actor ITunesSearchActor {
                         
                         for podcast in podcasts {
                             if  let urlString = podcast["feedUrl"] as? String, let url = URL(string: urlString){
-                                let newFeed = PodcastFeed(url: url)
+                                let newFeed = PodcastFeed(url: url, fetchMetadataIfNeeded: false)
                                 newFeed.source = .iTunes
                                 newFeed.artist = podcast["artistName"] as? String
                                 newFeed.title = podcast["collectionName"] as? String
@@ -71,4 +71,3 @@ actor ITunesSearchActor {
     }
     
 }
-

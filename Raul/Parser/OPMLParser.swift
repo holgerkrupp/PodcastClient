@@ -43,7 +43,7 @@ class OPMLParser: NSObject, XMLParserDelegate{
 
                 
                 if let feedURL = URL(string: attributeDict["xmlUrl"] ?? ""){
-                    let newPodcast = PodcastFeed(url: feedURL)
+                    let newPodcast = PodcastFeed(url: feedURL, fetchMetadataIfNeeded: false)
                     
                     newPodcast.title = attributeDict["text"]
 

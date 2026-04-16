@@ -218,6 +218,9 @@
         }
       }
     },
+    "Add to End" : {
+
+    },
     "Add to end of queue" : {
 
     },
@@ -464,6 +467,7 @@
       }
     },
     "Browse Episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -474,6 +478,7 @@
       }
     },
     "Browse Episodes adds this podcast to your library without subscribing, so you can download or queue individual episodes." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1497,6 +1502,9 @@
         }
       }
     },
+    "Loading episodes..." : {
+
+    },
     "Loading languages..." : {
       "localizations" : {
         "de" : {
@@ -1625,6 +1633,9 @@
           }
         }
       }
+    },
+    "More episodes load as you scroll." : {
+
     },
     "More Metadata" : {
 
@@ -1765,6 +1776,9 @@
           }
         }
       }
+    },
+    "No Episodes Yet" : {
+
     },
     "No Files for This Podcast" : {
 
@@ -2054,6 +2068,7 @@
 
     },
     "Open Podcast" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2318,6 +2333,7 @@
 
     },
     "Podcast Not Found" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3147,6 +3163,7 @@
 
     },
     "This feed can be previewed, but it does not expose a reusable subscribe URL." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3156,6 +3173,9 @@
         }
       }
     },
+    "This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to." : {
+
+    },
     "This podcast could not be loaded." : {
 
     },
@@ -3163,6 +3183,7 @@
 
     },
     "This podcast is already stored without a subscription. Open it to download or queue individual episodes, or subscribe to keep it refreshed." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

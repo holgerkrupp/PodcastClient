@@ -5,11 +5,28 @@ enum elements:String, CaseIterable{
     case title, link, description, lastBuildDate, language, trash, pubDate
 }
 
+enum PodcastParserError: LocalizedError {
+    case notAPodcastFeed
+
+    var errorDescription: String? {
+        switch self {
+        case .notAPodcastFeed:
+            return "This XML document does not look like a podcast feed."
+        }
+    }
+}
+
+struct PodcastFeedDocument: Sendable {
+    let data: Data
+    let sourceURL: URL
+}
+
 
 
 class PodcastParser:NSObject, XMLParserDelegate{
     
     var episodeDeepLinks: [String] = []
+    var maximumEpisodeCount: Int?
 
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
@@ -37,6 +54,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var podcastSocialArray = [[String: Any]]()
     var episodeSocialArray = [[String: Any]]()
     private var currentFundingURL: String = ""
+    private var didHitEpisodeLimit = false
 
     
     var podcastPeopleArray = [[String: Any]]()
@@ -136,6 +154,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         episodePeopleArray.removeAll()
         currentPerson.removeAll()
         currentPersonName = ""
+        didHitEpisodeLimit = false
 
         podcastOptionalTags = PodcastNamespaceOptionalTags()
         episodeOptionalTags = PodcastNamespaceOptionalTags()
@@ -358,6 +377,11 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
                     externalFilesArray.removeAll()
+                    if let maximumEpisodeCount, episodesArray.count >= maximumEpisodeCount {
+                        didHitEpisodeLimit = true
+                        parser.abortParsing()
+                        return
+                    }
                 case "psc:chapters":
                     // list of chapters is finished
                     episodeDict.updateValue(chapterArray, forKey: currentElement) // add all chapters to the Episode
@@ -478,6 +502,68 @@ private final class NamespaceNodeBuilder {
 // MARK: - RFC 5005 Paged Feed Aggregation
 
 extension PodcastParser {
+    static func downloadFeed(from url: URL) async throws -> PodcastFeedDocument {
+        let (data, response) = try await URLSession.shared.data(from: url)
+        return PodcastFeedDocument(data: data, sourceURL: response.url ?? url)
+    }
+
+    static func fetchPage(from url: URL, maximumEpisodes: Int? = nil) async throws -> PodcastFeedPage {
+        let document = try await downloadFeed(from: url)
+        return try await parsePage(from: document, maximumEpisodes: maximumEpisodes)
+    }
+
+    static func parsePage(from document: PodcastFeedDocument, maximumEpisodes: Int? = nil) async throws -> PodcastFeedPage {
+        try await Task.detached(priority: .utility) {
+            let parser = PodcastParser()
+            parser.maximumEpisodeCount = maximumEpisodes
+
+            let xmlParser = XMLParser(data: document.data)
+            xmlParser.delegate = parser
+
+            let parsedSuccessfully = xmlParser.parse()
+            if parsedSuccessfully == false, parser.didHitEpisodeLimit == false {
+                throw xmlParser.parserError ?? PodcastParserError.notAPodcastFeed
+            }
+
+            guard parser.podcastDictArr.isEmpty == false else {
+                throw PodcastParserError.notAPodcastFeed
+            }
+
+            var parsedFeed = parser.podcastDictArr
+            parsedFeed["episodes"] = parser.episodesArray
+            if let selfFeedURL = parser.selfFeedURL {
+                parsedFeed["selfURL"] = selfFeedURL
+            }
+            if !parser.podcastFundingArray.isEmpty {
+                parsedFeed["funding"] = parser.podcastFundingArray
+            }
+            if !parser.podcastSocialArray.isEmpty {
+                parsedFeed["socialInteract"] = parser.podcastSocialArray
+            }
+            if !parser.podcastPeopleArray.isEmpty {
+                parsedFeed["people"] = parser.podcastPeopleArray
+            }
+            if parser.podcastOptionalTags.isEmpty == false {
+                parsedFeed["optionalTags"] = parser.podcastOptionalTags
+            }
+            let podcastFeed = PodcastFeed(url: document.sourceURL, fetchMetadataIfNeeded: false)
+            podcastFeed.apply(parsedFeed: parsedFeed, fallbackURL: document.sourceURL)
+
+            let episodes = (parsedFeed["episodes"] as? [[String: Any]] ?? [])
+                .compactMap(PodcastEpisodeDraft.init(episodeData:))
+
+            let nextPageURL = parser.nextPageURL.flatMap { URL(string: $0, relativeTo: document.sourceURL)?.absoluteURL }
+
+            return PodcastFeedPage(
+                parsedFeed: parsedFeed,
+                feed: podcastFeed,
+                episodes: episodes,
+                nextPageURL: nextPageURL,
+                isPartial: parser.didHitEpisodeLimit
+            )
+        }.value
+    }
+
     /// Fetches and aggregates all podcast data and episodes from all paged feed documents, following RFC 5005.
     /// - Parameter url: The URL of the first (or any) feed page.
     /// - Returns: The merged podcast dictionary with all episodes.
@@ -488,24 +574,17 @@ extension PodcastParser {
         var podcastHeader: [String: Any] = [:]
         var seenFirstHeader = false
         while let currentURL = nextURL {
-            let (data, _) = try await URLSession.shared.data(from: currentURL)
-            let parser = PodcastParser()
-            let xmlParser = XMLParser(data: data)
-            xmlParser.delegate = parser
-            xmlParser.parse()
+            let page = try await fetchPage(from: currentURL)
             // On the first page, get header
             if !seenFirstHeader {
-                podcastHeader = parser.podcastDictArr
+                podcastHeader = page.parsedFeed
                 seenFirstHeader = true
             }
             // Always append episodes
-            if let episodes = parser.podcastDictArr["episodes"] as? [Any] {
-                
-                allEpisodes.append(contentsOf: episodes)
-            }
+            allEpisodes.append(contentsOf: page.episodes.map(\.rawEpisodeData))
             // Advance to next page if present
-            if let nextString = parser.nextPageURL, let next = URL(string: nextString, relativeTo: currentURL) {
-                nextURL = next.absoluteURL
+            if let next = page.nextPageURL {
+                nextURL = next
             } else {
                 nextURL = nil
             }

@@ -26,6 +26,12 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     var artist: String?
     var artworkURL: URL?
     var lastRelease: Date?
+    var copyright: String?
+    var link: URL?
+    var funding: [FundingInfo] = []
+    var social: [SocialInfo] = []
+    var people: [PersonInfo] = []
+    var optionalTags: PodcastNamespaceOptionalTags?
 
     // Optional metadata restored from OPML custom attributes.
     var importedLastRefresh: Date?
@@ -89,7 +95,7 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     }
 
     convenience init(url: URL) {
-        self.init(url: url, fetchMetadataIfNeeded: true)
+        self.init(url: url, fetchMetadataIfNeeded: false)
     }
     
     private func fetchAndPopulateFeedIfNeeded() {
@@ -103,9 +109,9 @@ class PodcastFeed: Hashable, @unchecked Sendable {
      
         Task {
             do {
-                let parsed = try await PodcastParser.fetchAllPages(from: url)
+                let page = try await PodcastParser.fetchPage(from: url, maximumEpisodes: 1)
                 await MainActor.run {
-                    self.apply(parsedFeed: parsed, fallbackURL: url)
+                    self.apply(parsedFeed: page.parsedFeed, fallbackURL: url)
                 }
             } catch {
                 print(error)
@@ -124,6 +130,7 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         let parsedTitle = parsedFeed["title"] as? String
         let parsedDescription = parsedFeed["description"] as? String
         let parsedAuthor = (parsedFeed["itunes:author"] as? String) ?? (parsedFeed["author"] as? String)
+        let parsedCopyright = parsedFeed["copyright"] as? String
 
         if let artworkString = parsedFeed["coverImage"] as? String,
            let resolvedArtworkURL = URL(string: artworkString, relativeTo: fallbackURL ?? url)?.absoluteURL {
@@ -139,9 +146,65 @@ class PodcastFeed: Hashable, @unchecked Sendable {
             lastRelease = date
         }
 
+        if let linkString = parsedFeed["link"] as? String,
+           let resolvedLink = URL(string: linkString, relativeTo: fallbackURL ?? url)?.absoluteURL {
+            link = resolvedLink
+        }
+
+        if let fundingArray = parsedFeed["funding"] as? [[String: String]] {
+            funding = fundingArray.compactMap { dict in
+                guard
+                    let urlString = dict["url"],
+                    let label = dict["label"],
+                    let url = URL(string: urlString, relativeTo: fallbackURL ?? self.url)?.absoluteURL
+                else { return nil }
+                return FundingInfo(url: url, label: label)
+            }
+        } else if let fundingArray = parsedFeed["funding"] as? [FundingInfo] {
+            funding = fundingArray
+        }
+
+        if let socialArray = parsedFeed["socialInteract"] as? [[String: Any]] {
+            social = socialArray.compactMap { dict in
+                guard
+                    let proto = dict["protocol"] as? String,
+                    let uriString = dict["uri"] as? String,
+                    let uri = URL(string: uriString, relativeTo: fallbackURL ?? self.url)?.absoluteURL
+                else { return nil }
+
+                let accountId = dict["accountId"] as? String
+                let accountUrlString = dict["accountUrl"] as? String
+                let accountURL = accountUrlString.flatMap { URL(string: $0, relativeTo: fallbackURL ?? self.url)?.absoluteURL }
+                let priority = dict["priority"] as? Int
+                return SocialInfo(url: uri, socialprotocol: proto, accountId: accountId, accountURL: accountURL, priority: priority)
+            }
+        } else if let socialArray = parsedFeed["socialInteract"] as? [SocialInfo] {
+            social = socialArray
+        }
+
+        if let peopleArray = parsedFeed["people"] as? [[String: Any]] {
+            people = peopleArray.compactMap { dict in
+                guard let name = dict["name"] as? String, !name.isEmpty else { return nil }
+                let role = dict["role"] as? String
+                let href = (dict["href"] as? String).flatMap { URL(string: $0, relativeTo: fallbackURL ?? self.url)?.absoluteURL }
+                let img = (dict["img"] as? String).flatMap { URL(string: $0, relativeTo: fallbackURL ?? self.url)?.absoluteURL }
+                return PersonInfo(name: name, role: role, href: href, img: img)
+            }
+        } else if let peopleArray = parsedFeed["people"] as? [PersonInfo] {
+            people = peopleArray
+        }
+
+        if let optionalTags = parsedFeed["optionalTags"] as? PodcastNamespaceOptionalTags,
+           optionalTags.isEmpty == false {
+            self.optionalTags = optionalTags
+        } else {
+            self.optionalTags = nil
+        }
+
         title = parsedTitle ?? title
         description = parsedDescription ?? description
         artist = parsedAuthor ?? artist
+        copyright = parsedCopyright ?? copyright
     }
     
     convenience init(fyydPodcast: FyydPodcast) {
