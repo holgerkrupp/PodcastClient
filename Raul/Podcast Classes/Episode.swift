@@ -313,6 +313,10 @@ class EpisodeDownloadStatus{
         
     }
 
+    func update(from episodeData: [String: Any]) {
+        updateEpisodeData(from: episodeData)
+    }
+
     private func feedExternalFiles(from episodeData: [String: Any]) -> [ExternalFile] {
         (episodeData["externalFiles"] as? [ExternalFile])
         ?? (episodeData["transcripts"] as? [ExternalFile])

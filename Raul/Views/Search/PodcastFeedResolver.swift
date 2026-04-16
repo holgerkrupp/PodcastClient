@@ -43,7 +43,7 @@ enum PodcastFeedResolver {
         case .remote(let candidates):
             return try await resolveRemote(candidates: candidates, allowAuthenticationPrompt: allowAuthenticationPrompt)
         case .file(let fileURL):
-            return .podcast(try resolveFile(fileURL))
+            return .podcast(try await resolveFile(fileURL))
         }
     }
 }
@@ -130,7 +130,7 @@ private extension PodcastFeedResolver {
         }
 
         if looksLikePodcastFeed(data) {
-            return try buildPodcastFeed(from: data, sourceURL: finalURL)
+            return try await buildPodcastFeed(from: data, sourceURL: finalURL)
         }
 
         if let html = String(data: data, encoding: .utf8),
@@ -143,7 +143,7 @@ private extension PodcastFeedResolver {
         throw PodcastFeedResolverError.notAPodcastFeed
     }
 
-    static func resolveFile(_ fileURL: URL) throws -> PodcastFeed {
+    static func resolveFile(_ fileURL: URL) async throws -> PodcastFeed {
         let accessed = fileURL.startAccessingSecurityScopedResource()
         defer {
             if accessed {
@@ -181,41 +181,13 @@ private extension PodcastFeedResolver {
             throw PodcastFeedResolverError.unreadableFile
         }
 
-        return try buildPodcastFeed(from: data, sourceURL: fileURL)
+        return try await buildPodcastFeed(from: data, sourceURL: fileURL)
     }
 
-    static func buildPodcastFeed(from data: Data, sourceURL: URL) throws -> PodcastFeed {
-        let parserDelegate = PodcastParser()
-        let parser = XMLParser(data: data)
-        parser.delegate = parserDelegate
-
-        guard parser.parse() else {
-            throw PodcastFeedResolverError.notAPodcastFeed
-        }
-
-        let parsedFeed = parserDelegate.podcastDictArr
-        guard parsedFeed.isEmpty == false else {
-            throw PodcastFeedResolverError.notAPodcastFeed
-        }
-
-        let canonicalURL = canonicalFeedURL(from: parsedFeed, sourceURL: sourceURL)
-        let podcastFeed = PodcastFeed(url: canonicalURL, fetchMetadataIfNeeded: false)
-        let fallbackURL = canonicalURL ?? (sourceURL.isFileURL ? nil : sourceURL)
-        podcastFeed.apply(parsedFeed: parsedFeed, fallbackURL: fallbackURL)
-        return podcastFeed
-    }
-
-    static func canonicalFeedURL(from parsedFeed: [String: Any], sourceURL: URL) -> URL? {
-        if let selfURLString = parsedFeed["selfURL"] as? String,
-           let selfURL = URL(string: selfURLString, relativeTo: sourceURL)?.absoluteURL {
-            return selfURL
-        }
-
-        if sourceURL.isFileURL {
-            return nil
-        }
-
-        return sourceURL
+    static func buildPodcastFeed(from data: Data, sourceURL: URL) async throws -> PodcastFeed {
+        let document = PodcastFeedDocument(data: data, sourceURL: sourceURL)
+        let page = try await PodcastParser.parsePage(from: document, maximumEpisodes: 1)
+        return page.feed
     }
 
     static func nestedURL(from url: URL) -> URL? {
