@@ -7,9 +7,11 @@
 
 
 import Foundation
+import CryptoKit
 import SwiftData
 import AVFoundation
 import UniformTypeIdentifiers
+import mp3ChapterReader
 
 extension Notification.Name {
     static let podcastSettingsDidChange = Notification.Name("podcastSettingsDidChange")
@@ -190,6 +192,7 @@ struct SideLoadedAudioMetadata: Sendable {
     let publishDate: Date?
     let duration: Double?
     let fileSize: Int64?
+    let imageURL: URL?
 }
 
 private struct CollectedSideLoadedFiles {
@@ -601,6 +604,7 @@ actor SideLoadedLibraryActor {
                 episode.subtitle = metadata.subtitle
                 episode.desc = metadata.description
                 episode.fileSize = metadata.fileSize
+                episode.imageURL = metadata.imageURL
                 episode.metaData?.isInbox = true
                 episode.metaData?.isArchived = false
                 episode.metaData?.status = .inbox
@@ -659,6 +663,11 @@ actor SideLoadedLibraryActor {
 
             if existingEpisode.fileSize != metadata.fileSize {
                 existingEpisode.fileSize = metadata.fileSize
+                episodeDidChange = true
+            }
+
+            if isAvailableLocally, existingEpisode.imageURL != metadata.imageURL {
+                existingEpisode.imageURL = metadata.imageURL
                 episodeDidChange = true
             }
 
@@ -736,6 +745,12 @@ actor SideLoadedLibraryActor {
             duration = nil
         }
 
+        let artworkURL = await loadArtworkURL(
+            for: fileURL,
+            metadataItems: metadataItems,
+            canLoadMediaMetadata: canLoadMediaMetadata
+        )
+
         func firstString(for keys: [AVMetadataKey]) async -> String? {
             guard metadataItems.isEmpty == false else { return nil }
 
@@ -765,7 +780,8 @@ actor SideLoadedLibraryActor {
             publishDate: resourceValues?.creationDate
                 ?? resourceValues?.contentModificationDate,
             duration: duration,
-            fileSize: resourceValues?.fileSize.map(Int64.init)
+            fileSize: resourceValues?.fileSize.map(Int64.init),
+            imageURL: artworkURL
         )
     }
 
@@ -775,5 +791,111 @@ actor SideLoadedLibraryActor {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return cleaned.isEmpty ? fileURL.lastPathComponent : cleaned
+    }
+
+    private func loadArtworkURL(
+        for fileURL: URL,
+        metadataItems: [AVMetadataItem],
+        canLoadMediaMetadata: Bool
+    ) async -> URL? {
+        guard canLoadMediaMetadata else { return nil }
+
+        if let assetArtworkData = await assetArtworkData(from: metadataItems),
+           let cachedURL = cacheArtworkData(assetArtworkData) {
+            return cachedURL
+        }
+
+        guard fileURL.pathExtension.lowercased() == "mp3",
+              let mp3ArtworkData = await mp3ArtworkData(from: fileURL),
+              let cachedURL = cacheArtworkData(mp3ArtworkData) else {
+            return nil
+        }
+
+        return cachedURL
+    }
+
+    private func assetArtworkData(from metadataItems: [AVMetadataItem]) async -> Data? {
+        guard let artworkItem = metadataItems.first(where: { $0.commonKey == .commonKeyArtwork }) else {
+            return nil
+        }
+
+        let artworkValue = try? await artworkItem.load(.value)
+        return artworkValue as? Data
+    }
+
+    private func mp3ArtworkData(from fileURL: URL) async -> Data? {
+        await Task.detached(priority: .utility) {
+            guard let reader = mp3ChapterReader(with: fileURL) else {
+                return nil
+            }
+
+            let pictureFrames = Self.pictureFrames(in: reader.frames)
+            if let frontCover = pictureFrames.first(where: { $0.type == .coverFront })?.image,
+               frontCover.isEmpty == false {
+                return frontCover
+            }
+
+            return pictureFrames.first(where: { $0.image?.isEmpty == false })?.image
+        }.value
+    }
+
+    private func cacheArtworkData(_ data: Data) -> URL? {
+        guard let directoryURL = artworkCacheDirectoryURL() else { return nil }
+
+        let fileName = "\(Self.artworkCacheKey(for: data)).img"
+        let artworkURL = directoryURL.appendingPathComponent(fileName)
+
+        if FileManager.default.fileExists(atPath: artworkURL.path) == false {
+            do {
+                try data.write(to: artworkURL, options: [.atomic])
+            } catch {
+                return nil
+            }
+        }
+
+        return artworkURL
+    }
+
+    private func artworkCacheDirectoryURL() -> URL? {
+        guard let cachesURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+
+        let directoryURL = cachesURL.appendingPathComponent("SideLoadedArtwork", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+
+        return directoryURL
+    }
+
+    private static func artworkCacheKey(for data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func pictureFrames(in frames: [Frame]) -> [PictureFrame] {
+        var collectedPictureFrames: [PictureFrame] = []
+        collectedPictureFrames.reserveCapacity(frames.count)
+
+        for frame in frames {
+            if let pictureFrame = frame as? PictureFrame {
+                collectedPictureFrames.append(pictureFrame)
+                continue
+            }
+
+            if let chapterFrame = frame as? ChapFrame {
+                collectedPictureFrames.append(contentsOf: Self.pictureFrames(in: chapterFrame.frames))
+                continue
+            }
+
+            if let tocFrame = frame as? CTOCFrame {
+                collectedPictureFrames.append(contentsOf: Self.pictureFrames(in: tocFrame.frames))
+                continue
+            }
+        }
+
+        return collectedPictureFrames
     }
 }

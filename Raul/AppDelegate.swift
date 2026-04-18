@@ -7,6 +7,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     // when background URLSession events are delivered
     var backgroundSessionCompletionHandler: (() -> Void)?
 
+    func applicationWillResignActive(_ application: UIApplication) {
+        flushPlaybackState(reason: "will_resign_active")
+    }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        flushPlaybackState(reason: "did_enter_background")
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        flushPlaybackState(reason: "will_terminate")
+    }
+
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
@@ -31,6 +43,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         return true
+    }
+
+    private func flushPlaybackState(reason: String) {
+        CrashBreadcrumbs.shared.record("player_playback_state_flush_requested", details: reason)
+
+        guard Player.shared.currentEpisodeURL != nil else { return }
+
+        var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SavePlaybackState") {
+            if backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                backgroundTaskID = .invalid
+            }
+        }
+
+        Task {
+            await Player.shared.captureCurrentPlaybackStateFromEngine(force: true)
+            if backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                backgroundTaskID = .invalid
+            }
+        }
     }
 
     static func scheduleAutomaticTranscriptionProcessingIfNeeded() async {
