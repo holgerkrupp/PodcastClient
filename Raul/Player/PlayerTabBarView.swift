@@ -33,6 +33,7 @@ struct PlayerTabBarView: View {
     
     var body: some View {
         if let episode = player.currentEpisode{
+            let podcastTitle = episode.displayPodcastTitle ?? "here be podcast title"
             
             ZStack(alignment: .leading) {
                 
@@ -67,7 +68,7 @@ struct PlayerTabBarView: View {
                             
                             
                             VStack(alignment: .leading){
-                                Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
+                                Text("\(podcastTitle)")
                                     .font(.caption2)
                                     .lineLimit(1)
                                     .foregroundColor(dynamicSecondaryColor)
@@ -107,8 +108,7 @@ struct PlayerTabBarView: View {
                             
                             
                         }
-                    }else{
-                        
+                    } else {
                         HStack{
                             
                             
@@ -121,7 +121,7 @@ struct PlayerTabBarView: View {
                             
                             
                             VStack(alignment: .leading){
-                                Text("\(player.currentEpisode?.podcast?.title ?? "here be podcast title")")
+                                Text("\(podcastTitle)")
                                     .font(.caption2)
                                     .lineLimit(1)
                                     .foregroundColor(dynamicSecondaryColor)

@@ -378,6 +378,14 @@ class Player {
 
     
     private func playbackItem(for episode: Episode) -> (item: AVPlayerItem, source: PlaybackSource)? {
+        if episode.source == .sideLoaded {
+            guard let localFile = episode.localFile,
+                  FileManager.default.fileExists(atPath: localFile.path) else {
+                return nil
+            }
+            return (AVPlayerItem(url: localFile), .local)
+        }
+
         if episode.metaData?.calculatedIsAvailableLocally == true,
            let localFile = episode.localFile,
            FileManager.default.fileExists(atPath: localFile.path) {
@@ -893,7 +901,7 @@ class Player {
     
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
-            MPMediaItemPropertyArtist:  episode.podcast?.title ?? episode.podcast?.author ?? episode.author ?? "",
+            MPMediaItemPropertyArtist:  episode.displayPodcastTitle ?? episode.podcast?.author ?? episode.author ?? "",
             MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
             MPNowPlayingInfoPropertyPlaybackRate: effectivePlaybackRate,

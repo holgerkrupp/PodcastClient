@@ -6,11 +6,15 @@ struct PodcastSettingsView: View {
     static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
 
     @Environment(\.modelContext) private var context
+    @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
 
     let podcastID: PersistentIdentifier?
     let embedInNavigationStack: Bool
 
     @State private var useCustomSettings: Bool
+    @State private var isApplyingSideloadingChange = false
+    @State private var sideloadingAlertMessage: String?
+    @State private var showSideloadingAlert = false
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
@@ -102,6 +106,7 @@ struct PodcastSettingsView: View {
                         globalDefaultsSection(settings: effectiveSettings)
                         appControlsSection(settings: globalSettings)
                         transcriptionSection(settings: globalSettings)
+                        sideloadingSection
                         podcastManagementSection
                         integrationsSection
                         maintenanceSection
@@ -131,6 +136,11 @@ struct PodcastSettingsView: View {
             .task {
                 _ = ensureStandardSettings(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
+            }
+            .alert("Unable to Enable Sideloading", isPresented: $showSideloadingAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(sideloadingAlertMessage ?? "Please try again.")
             }
     }
 
@@ -546,6 +556,32 @@ struct PodcastSettingsView: View {
         }
     }
 
+    private var sideloadingSection: some View {
+        Section("Sideloading") {
+            Toggle(isOn: Binding(
+                get: { sideloadingEnabled },
+                set: { newValue in
+                    handleSideloadingToggleChange(newValue)
+                }
+            )) {
+                Label("Enable Sideloading", systemImage: "square.and.arrow.down.on.square")
+            }
+            .disabled(isApplyingSideloadingChange)
+
+            Text("When enabled, the app watches the iCloud Drive > Up Next root and imports audio files from there when you open the iCloud Drive view. Turning it off stops discovery, but keeps existing sideloaded items in the database.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Text("Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            if isApplyingSideloadingChange {
+                ProgressView("Setting up the iCloud folder...")
+            }
+        }
+    }
+
     private var globalSettingsShortcutSection: some View {
         Section("Global Settings") {
             NavigationLink {
@@ -639,6 +675,30 @@ struct PodcastSettingsView: View {
         Section {
             CreatedByView()
                 .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func handleSideloadingToggleChange(_ newValue: Bool) {
+        guard newValue != sideloadingEnabled else { return }
+        guard isApplyingSideloadingChange == false else { return }
+
+        isApplyingSideloadingChange = true
+        sideloadingEnabled = newValue
+
+        Task {
+            do {
+                try await SideloadingCoordinator.shared.syncEnabledState(newValue)
+                await MainActor.run {
+                    isApplyingSideloadingChange = false
+                }
+            } catch {
+                await MainActor.run {
+                    sideloadingEnabled = false
+                    sideloadingAlertMessage = error.localizedDescription
+                    showSideloadingAlert = true
+                    isApplyingSideloadingChange = false
+                }
+            }
         }
     }
 
@@ -751,6 +811,45 @@ private struct SettingsNavigationRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+struct SettingsHelpView: View {
+    var body: some View {
+        List {
+            Section("Up Next Basics") {
+                Text("Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"")
+                Text("Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible.")
+                Text("When an episode finishes, continuous playback can automatically start the next item from Up Next.")
+            }
+
+            Section("Queue Behavior") {
+                Text("New episodes can be placed at the front, end, or not added automatically, depending on your settings.")
+                Text("The currently playing episode is kept pinned at the top while playback is active.")
+                Text("You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue.")
+            }
+
+            Section("Chapter Skip Keywords") {
+                Text("Chapter rules let you skip recurring segments like intro, ads, or outro.")
+                Text("Rules are checked against chapter titles and can use operators like contains, starts with, or ends with.")
+                Text("Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior.")
+            }
+
+            Section("Siri & Shortcuts Intents") {
+                Text("Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, and Remove Current From Up Next.")
+                Text("In Apple Shortcuts, search for Up Next to add these actions to personal automations.")
+                Text("For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"")
+            }
+
+            Section("Accessibility") {
+                Text("VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views.")
+                Text("For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device.")
+                Text("Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Using Up Next")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -146,6 +146,7 @@ actor PlaylistModelActor {
     }
 
     private func startDownloadIfNeeded(for episode: Episode, episodeURL: URL) async {
+        guard episode.source != .sideLoaded else { return }
         guard episode.metaData?.calculatedIsAvailableLocally != true else { return }
 
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
@@ -203,8 +204,8 @@ actor PlaylistModelActor {
             EpisodeSummary(
                 url: episode.url,
                 title: episode.title,
-                desc: episode.subtitle ?? episode.desc ?? episode.podcast?.title,
-                podcast: episode.podcast?.title,
+                desc: episode.subtitle ?? episode.desc ?? episode.displayPodcastTitle,
+                podcast: episode.displayPodcastTitle,
                 cover: episode.imageURL,
                 podcastCover: episode.podcast?.imageURL,
                 file: episode.url,

@@ -55,6 +55,14 @@ struct RaulApp: App {
                         Task { @MainActor in
                             Player.shared.startRecoveryIfNeeded()
                         }
+                        Task {
+                            let enabled = UserDefaults.standard.bool(forKey: SideloadingConfiguration.enabledKey)
+                            do {
+                                try await SideloadingCoordinator.shared.syncEnabledState(enabled)
+                            } catch {
+                                BasicLogger.shared.log("Failed to restore sideloading state: \(error.localizedDescription)")
+                            }
+                        }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
                         CrashBreadcrumbs.shared.record("battery_state_changed")

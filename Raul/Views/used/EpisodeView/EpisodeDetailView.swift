@@ -61,8 +61,14 @@ struct EpisodeDetailView: View {
                         .padding()
                         .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                         .frame(maxWidth: podcastCardWidth)
+                    } else if episode.source == .sideLoaded {
+                        Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
+                            .font(.title2.weight(.semibold))
+                            .padding()
+                            .frame(maxWidth: podcastCardWidth, alignment: .leading)
+                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                     }
-                    
+
                     CoverImageView(episode: episode)
                         .frame(width: artworkSize, height: artworkSize)
                         .accessibilityHidden(true)
@@ -147,11 +153,13 @@ struct EpisodeDetailView: View {
                     
                     Spacer(minLength: 10)
                     
-                    DownloadControllView(episode: episode, showDelete: false)
-                        .symbolRenderingMode(.hierarchical)
-                        .padding(8)
-                        .foregroundColor(.accent)
-                        .labelStyle(.iconOnly)
+                    if episode.source != .sideLoaded {
+                        DownloadControllView(episode: episode, showDelete: false)
+                            .symbolRenderingMode(.hierarchical)
+                            .padding(8)
+                            .foregroundColor(.accent)
+                            .labelStyle(.iconOnly)
+                    }
                     
                     if Player.shared.currentEpisodeURL != episode.url {
                         EpisodeControlView(episode: episode)
