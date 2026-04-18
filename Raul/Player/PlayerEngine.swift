@@ -179,7 +179,7 @@ actor PlayerEngine {
         }
     }
 
-    private func currentTime() -> Double {
+    func currentTime() -> Double {
         avPlayer.currentTime().seconds
     }
 

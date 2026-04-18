@@ -87,6 +87,9 @@ struct RaulApp: App {
                 cleanUp()
                 refreshOnActive()
                 Task {
+                    await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
+                }
+                Task {
                     await runScheduledStorageCleanupIfNeeded(
                         minimumInterval: BackgroundTaskConfiguration.weeklyStorageCleanupFallbackInterval,
                         reason: "active fallback"

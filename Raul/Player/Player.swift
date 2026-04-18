@@ -360,10 +360,6 @@ class Player {
         let duration = max(chapterEnd - chapterStart, .leastNonzeroMagnitude)
         chapterProgress = (playPosition - chapterStart) / duration
         currentChapter.progress = chapterProgress
-        if progressUpdateCounter >= progressSaveInterval {
-            guard let chapterProgress  else { return }
-            saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
-        }
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
@@ -373,6 +369,77 @@ class Player {
             Task.detached(priority: .background) {
                 await chapterActor?.setChapterProgress(progress, for: chapterID)
             }
+        }
+    }
+
+    func saveCurrentPlaybackState(force: Bool = false) async {
+        guard let currentEpisodeURL else { return }
+
+        let currentPlayPosition = playPosition
+        let currentChapterProgress = chapterProgress
+        let currentChapterID = currentChapter?.uuid
+        let episodeActor = self.episodeActor
+        let chapterActor = self.chapterActor
+
+        await episodeActor?.setLastPlayed(episodeURL: currentEpisodeURL)
+        await episodeActor?.setPlayPosition(
+            episodeURL: currentEpisodeURL,
+            position: currentPlayPosition,
+            force: force
+        )
+
+        currentEpisode?.metaData?.playPosition = currentPlayPosition
+        if currentPlayPosition > (currentEpisode?.metaData?.maxPlayposition ?? 0.0) {
+            currentEpisode?.metaData?.maxPlayposition = currentPlayPosition
+        }
+
+        if let currentChapterID, let currentChapterProgress {
+            await chapterActor?.setChapterProgress(currentChapterProgress, for: currentChapterID)
+        }
+    }
+
+    func captureCurrentPlaybackStateFromEngine(force: Bool = true) async {
+        guard currentEpisodeURL != nil else { return }
+
+        playPosition = max(0, await engine.currentTime())
+        if currentEpisode?.chapters?.isEmpty == false {
+            _ = updateCurrentChapter()
+            updateChapterProgress()
+        }
+        updateNowPlayingInfo()
+        await saveCurrentPlaybackState(force: force)
+    }
+
+    func reloadPlaybackStateFromPersistenceIfNeeded() async {
+        guard !isPlaying,
+              let currentEpisodeURL,
+              currentEpisode != nil,
+              let snapshot = await episodeActor?.playbackStateSnapshot(for: currentEpisodeURL) else {
+            return
+        }
+
+        if let playPosition = snapshot.playPosition {
+            self.playPosition = playPosition
+            currentEpisode?.metaData?.playPosition = playPosition
+        }
+
+        if let maxPlayPosition = snapshot.maxPlayPosition {
+            currentEpisode?.metaData?.maxPlayposition = maxPlayPosition
+        }
+
+        if currentEpisode?.chapters?.isEmpty == false {
+            updateChapters()
+            _ = updateCurrentChapter()
+            updateChapterProgress()
+        }
+
+        updateNowPlayingInfo()
+    }
+
+    private func savePlayPosition(force: Bool = false) {
+        Task(priority: .background) { [weak self] in
+            guard let self else { return }
+            await self.saveCurrentPlaybackState(force: force)
         }
     }
 
@@ -544,7 +611,7 @@ class Player {
     
     func play(){
         loadPlayBackSpeed()
-        updateLastPlayed()
+        savePlayPosition(force: true)
         startPlaybackUpdates()
      //   startNowPlayingInfoUpdater()
         initRemoteCommandCenter()
@@ -580,19 +647,17 @@ class Player {
 
     func pause() {
         isPlaying = false
-        Task { 
+        stopPlaybackUpdates()
+        stopNowPlayingInfoUpdater()
+        Task {
             await engine.pause()
-            
+            await captureCurrentPlaybackStateFromEngine(force: true)
+
             // New session tracking integration: pause the play session
-            if let currentEpisode = currentEpisode {
+            if currentEpisode != nil {
                 await playSessionTracker.pauseSession(at: playPosition)
             }
         }
-        updateLastPlayed()
-       // savePlayPosition()
-        stopPlaybackUpdates()
-        stopNowPlayingInfoUpdater()
-        updateNowPlayingInfo()
     }
     
     func skipback(){
@@ -624,7 +689,7 @@ class Player {
         updateNowPlayingInfo()
         _ = updateCurrentChapter()
         updateChapterProgress()
-        savePlayPosition()
+        await saveCurrentPlaybackState(force: true)
     }
     
     func setRate(_ rate: Float){
@@ -670,22 +735,9 @@ class Player {
     
     
     
-    func updateLastPlayed()  {
-        if let currentEpisodeURL {
-            let episodeActor = self.episodeActor
-            let currentPlayPosition = playPosition
-            Task {
-                await episodeActor?.setLastPlayed(episodeURL: currentEpisodeURL)
-                await episodeActor?.setPlayPosition(episodeURL: currentEpisodeURL, position: currentPlayPosition)
-            }
-        }
-    }
-
-
-
     private var progressUpdateCounter = 0
     private var nowPlayingUpdateCounter = 0
-    private let progressSaveInterval = 40  // 0.5 seconds * 20 = 10 seconds
+    private let progressSaveInterval = 20  // 0.5 seconds * 20 = 10 seconds
     private let nowPlayingUpdateInterval = 2 // 0.5 seconds * 2 = 1 second
     
     private func updateEpisodeProgress(to time: Double) {
@@ -712,7 +764,7 @@ class Player {
             if currentEpisode?.chapters?.isEmpty == false {
                 updateChapters()
             }
-            savePlayPosition()
+            savePlayPosition(force: true)
             progressUpdateCounter = 0
         }
     }
@@ -754,17 +806,6 @@ class Player {
     }
     
     
-    private func savePlayPosition() {
-        guard let currentEpisodeURL else { return }
-        let episodeActor = self.episodeActor
-        let currentPlayPosition = playPosition
-        Task.detached(priority: .background) {
-            await episodeActor?.setPlayPosition(episodeURL: currentEpisodeURL, position: currentPlayPosition)
-        }
-    }
-    
-    
-    
     func skipTo(chapter: Marker) async{
         guard let start = chapter.start else { return }
 
@@ -789,10 +830,6 @@ class Player {
     }
     
     func skipToChapterStart() async{
-        
-        let referenceTime = self.playPosition - 3 // if the chapter just started, jump to the previous chapter
-   //     let lastChapter = chapters?.sorted(by: {$0.start ?? 0 < $1.start ?? 0}).last(where: {$0.start ?? 0 <= referenceTime})
-        
         guard let currentChapter else {
             return
         }

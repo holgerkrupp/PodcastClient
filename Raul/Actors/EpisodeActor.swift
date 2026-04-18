@@ -15,6 +15,12 @@ import ImageIO
 import Network
 
 
+struct EpisodePlaybackStateSnapshot: Sendable {
+    let playPosition: Double?
+    let maxPlayPosition: Double?
+}
+
+
 @ModelActor
 actor EpisodeActor {
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
@@ -184,7 +190,7 @@ actor EpisodeActor {
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         let previousPosition = episode.metaData?.playPosition ?? 0.0
-        if force || abs(previousPosition - position) > 10 {
+        if force || abs(previousPosition - position) >= 10 {
             if position > episode.metaData?.maxPlayposition ?? 0.0 {
                 episode.metaData?.maxPlayposition = position
             }
@@ -192,6 +198,14 @@ actor EpisodeActor {
             modelContext.saveIfNeeded()
         }
 
+    }
+
+    func playbackStateSnapshot(for episodeURL: URL) async -> EpisodePlaybackStateSnapshot? {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return nil }
+        return EpisodePlaybackStateSnapshot(
+            playPosition: episode.metaData?.playPosition,
+            maxPlayPosition: episode.metaData?.maxPlayposition
+        )
     }
     
     func markasPlayed(_ episodeURL: URL) async {
