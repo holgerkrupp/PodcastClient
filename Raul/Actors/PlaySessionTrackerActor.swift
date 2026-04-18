@@ -96,7 +96,7 @@ final class PlaySession: Identifiable {
         self.endPosition = endPosition
         self.segments = segments
         self.endedCleanly = endedCleanly
-        self.podcastName = episode?.podcast?.title
+        self.podcastName = episode?.displayPodcastTitle
     }
 }
 

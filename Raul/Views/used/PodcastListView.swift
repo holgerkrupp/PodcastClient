@@ -23,9 +23,11 @@ struct PodcastListView: View {
 
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @StateObject private var viewModel: PodcastListViewModel
+    private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
 
     init(modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
     }
 
@@ -43,93 +45,95 @@ struct PodcastListView: View {
     }
 
     var body: some View {
-        Group {
+        List {
+            NavigationLink(destination: LibrarySearchView()) {
+                Label("Search Library", systemImage: "magnifyingglass")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: AllEpisodesListView()) {
+                Label("All Episodes", systemImage: "rectangle.stack")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: AllEpisodesListView().onlyPlayed()) {
+                Label("Recently Played Episodes", systemImage: "clock.arrow.circlepath")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: DownloadedEpisodesView()) {
+                Label("Downloaded Episodes", systemImage: "arrow.down.circle")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: SideLoadedEpisodesView(modelContainer: modelContainer)) {
+                Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: BookmarkListView()) {
+                Label("All Bookmarks", systemImage: "bookmark")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: PlaySessionDebugView()) {
+                Label("Listening History", systemImage: "waveform")
+                    .font(.headline)
+            }
+
             if podcastsInScope.isEmpty {
                 if selectedScope == .subscribed {
                     PodcastsEmptyView()
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 16,
+                                             leading: 0,
+                                             bottom: 16,
+                                             trailing: 0))
                 } else {
                     ContentUnavailableView(
                         selectedScope == .unsubscribed ? "No Unsubscribed Podcasts" : "No Podcasts",
                         systemImage: selectedScope == .unsubscribed ? "pause.circle" : "dot.radiowaves.left.and.right",
                         description: Text(selectedScope == .unsubscribed ? "Podcasts kept in the database but excluded from refresh will appear here." : "No podcasts are stored in the library yet.")
                     )
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 16,
+                                         leading: 0,
+                                         bottom: 16,
+                                         trailing: 0))
                 }
             } else {
-                List {
-                    
-                    NavigationLink(destination: LibrarySearchView()) {
-                        HStack {
-                            Text("Search Library")
-                                .font(.headline)
-                        }
+                ForEach(podcastsInScope) { podcast in
+                    ZStack {
+                        PodcastRowView(podcast: podcast)
+                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                            EmptyView()
+                        }.opacity(0)
                     }
-
-                    NavigationLink(destination: AllEpisodesListView()) {
-                        HStack {
-                            Text("All Episodes")
-                                .font(.headline)
-                        }
-                    }
-
-                    NavigationLink(destination: AllEpisodesListView().onlyPlayed()) {
-                        HStack {
-                            Text("Recently Played Episodes")
-                                .font(.headline)
-                        }
-                    }
-
-                    NavigationLink(destination: DownloadedEpisodesView()) {
-                        HStack {
-                            Text("Downloaded Episodes")
-                                .font(.headline)
-                        }
-                    }
-
-                    NavigationLink(destination: BookmarkListView()) {
-                        HStack {
-                            Text("All Bookmarks")
-                                .font(.headline)
-                        }
-                    }
-
-                    NavigationLink(destination: PlaySessionDebugView()) {
-                        HStack {
-                            Text("Listening History")
-                                .font(.headline)
-                        }
-                    }
-
-                    ForEach(podcastsInScope) { podcast in
-                        ZStack {
-                            PodcastRowView(podcast: podcast)
-                            NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                                EmptyView()
-                            }.opacity(0)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open podcast \(podcast.title)")
-                        .accessibilityHint("Opens this podcast details screen")
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                    }
-                    .onDelete { indexSet in
-                        Task {
-                            for index in indexSet {
-                                await viewModel.deletePodcast(podcastsInScope[index])
-                            }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open podcast \(podcast.title)")
+                    .accessibilityHint("Opens this podcast details screen")
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
+                }
+                .onDelete { indexSet in
+                    Task {
+                        for index in indexSet {
+                            await viewModel.deletePodcast(podcastsInScope[index])
                         }
                     }
                 }
-                .animation(.easeInOut, value: podcastsInScope.map(\.persistentModelID))
-                .listStyle(.plain)
-                .listRowSpacing(0)
             }
         }
         .navigationTitle("Library")
+        .animation(.easeInOut, value: podcastsInScope.map(\.persistentModelID))
+        .listStyle(.plain)
+        .listRowSpacing(0)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -177,6 +181,124 @@ struct PodcastListView: View {
                 .accessibilityHint("Updates all podcast feeds in your library")
                 .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
             }
+        }
+    }
+}
+
+struct SideLoadedEpisodesView: View {
+    let modelContainer: ModelContainer
+
+    @Query(
+        filter: #Predicate<Episode> { $0.sourceRawValue == "sideLoaded" },
+        sort: \Episode.publishDate,
+        order: .reverse
+    ) private var episodes: [Episode]
+    @State private var searchText: String = ""
+    @State private var isRefreshing = false
+
+    private var visibleEpisodes: [Episode] {
+        episodes.filter { episode in
+            guard episode.source == .sideLoaded else {
+                return false
+            }
+
+            guard searchText.isEmpty == false else { return true }
+
+            let searchableText = [
+                episode.title,
+                episode.subtitle,
+                episode.desc,
+                episode.author,
+                episode.displayPodcastTitle
+            ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+            return searchableText.localizedStandardContains(searchText.lowercased())
+        }
+    }
+
+    var body: some View {
+        Group {
+            if visibleEpisodes.isEmpty {
+                if searchText.isEmpty {
+                    SideLoadedEmptyStateView(modelContainer: modelContainer)
+                } else {
+                    ContentUnavailableView(
+                        "No Matching Side Loaded Audio",
+                        systemImage: "magnifyingglass",
+                        description: Text("No side loaded episodes match \"\(searchText)\".")
+                    )
+                }
+            } else {
+                List {
+                    ForEach(visibleEpisodes) { episode in
+                        ZStack {
+                            EpisodeRowView(episode: episode)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }
+                            .opacity(0)
+                        }
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .listRowSeparator(.hidden)
+                    }
+                }
+                .listStyle(.plain)
+                .listRowSpacing(0)
+            }
+        }
+        .navigationTitle("iCloud Drive")
+        .searchable(text: $searchText, prompt: "Search side loaded audio")
+        .task {
+            await refreshSideLoadedContent()
+        }
+        .refreshable {
+            await refreshSideLoadedContent()
+        }
+        .overlay {
+            if isRefreshing {
+                ProgressView()
+            }
+        }
+    }
+
+    private func refreshSideLoadedContent() async {
+        guard isRefreshing == false else { return }
+        isRefreshing = true
+
+        defer {
+            isRefreshing = false
+        }
+
+        await SideloadingCoordinator.shared.refreshNow()
+    }
+}
+
+private struct SideLoadedEmptyStateView: View {
+    let modelContainer: ModelContainer
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+             
+                Text("Turn on Sideloading in Settings, then place audio files directly in the iCloud Drive > Up Next root. Open this view to refresh the list, or pull down to scan again after adding new files.")
+
+                Text("Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open.")
+
+                NavigationLink {
+                    PodcastSettingsView(podcast: nil, modelContainer: modelContainer, embedInNavigationStack: true)
+                } label: {
+                    Label("Open Settings", systemImage: "gearshape")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
         }
     }
 }

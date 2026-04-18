@@ -135,7 +135,9 @@ struct AllEpisodesListView: View {
     
     
     private func deleteFiles() {
-        let urls = episodes.compactMap(\.localFile)
+        let urls = episodes
+            .filter { $0.source != .sideLoaded }
+            .compactMap(\.localFile)
         for url in urls {
             do {
                 try FileManager.default.removeItem(at: url)

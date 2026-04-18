@@ -101,7 +101,7 @@ final class PhoneWatchSyncController: NSObject {
             audioURL: audioURL,
             title: episode.title,
             subtitle: episode.subtitle ?? episode.desc,
-            podcastTitle: episode.podcast?.title,
+            podcastTitle: episode.displayPodcastTitle,
             publishDate: episode.publishDate,
             duration: episode.duration,
             imageURL: imageURL,

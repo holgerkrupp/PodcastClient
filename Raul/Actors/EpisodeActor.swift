@@ -415,6 +415,7 @@ actor EpisodeActor {
     func download(episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
             return }
+        guard episode.source != .sideLoaded else { return }
 
         if let localFile = episode.localFile {
             if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile) != nil {
@@ -446,7 +447,7 @@ actor EpisodeActor {
             try? await playlistActor?.add(episodeURL: episodeURL, to: playnext)
         }
 
-        await NotificationManager().sendNotification(title: episode.podcast?.title ?? "New Episode", body: episode.title)
+        await NotificationManager().sendNotification(title: episode.displayPodcastTitle ?? "New Episode", body: episode.title)
         await getRemoteChapters(episodeURL: episodeURL)
     }
     
@@ -474,6 +475,7 @@ actor EpisodeActor {
         guard let episodeURL else { return }
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard let firstEpisode = episodes.first else { return }
+        guard firstEpisode.source != .sideLoaded else { return }
 
         if let file = firstEpisode.localFile{
             try? FileManager.default.removeItem(at: file)
@@ -1516,7 +1518,7 @@ actor EpisodeActor {
         return TranscriptionEpisodeSnapshot(
             episodeURL: episodeURL,
             episodeTitle: episode.title,
-            podcastTitle: episode.podcast?.title,
+            podcastTitle: episode.displayPodcastTitle,
             audioDuration: episode.duration ?? 0,
             localFile: localFile,
             language: episode.podcast?.language

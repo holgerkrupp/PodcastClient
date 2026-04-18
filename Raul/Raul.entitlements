@@ -10,9 +10,18 @@
 	<array>
 		<string>iCloud.de.holgerkrupp.PodcastClient</string>
 	</array>
+	<key>com.apple.developer.icloud-container-development-container-identifiers</key>
+	<array>
+		<string>iCloud.de.holgerkrupp.PodcastClient</string>
+	</array>
 	<key>com.apple.developer.icloud-services</key>
 	<array>
+		<string>CloudDocuments</string>
 		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.de.holgerkrupp.PodcastClient</string>
 	</array>
 	<key>com.apple.developer.siri</key>
 	<true/>

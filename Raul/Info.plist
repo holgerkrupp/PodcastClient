@@ -124,5 +124,17 @@
 	</array>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>To save exported clips to the library</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.de.holgerkrupp.PodcastClient</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>Up Next</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

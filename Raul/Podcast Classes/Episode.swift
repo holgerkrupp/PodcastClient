@@ -38,6 +38,30 @@ enum EpisodeType: String, Codable{
     case full, trailer, bonus, unknown
 }
 
+private final class EpisodeLocalFileCache: @unchecked Sendable {
+    static let shared = EpisodeLocalFileCache()
+
+    private let cache = NSCache<NSString, NSURL>()
+    private let lock = NSLock()
+
+    func url(for key: NSString) -> URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache.object(forKey: key) as URL?
+    }
+
+    func store(_ url: URL, for key: NSString) {
+        lock.lock()
+        defer { lock.unlock() }
+        cache.setObject(url as NSURL, forKey: key)
+    }
+}
+
+enum EpisodeSource: String, Codable, CaseIterable, Hashable, Sendable {
+    case feedDownload
+    case sideLoaded
+}
+
 @Observable
 class EpisodeDownloadStatus{
      var isDownloading: Bool = false
@@ -79,6 +103,7 @@ class EpisodeDownloadStatus{
     var duration:Double?
     var number: String?
     var type: EpisodeType?
+    var sourceRawValue: String = EpisodeSource.feedDownload.rawValue
     
     @Relationship(deleteRule: .cascade) var transcriptLines: [TranscriptLineAndTime]?
     @Relationship(deleteRule: .noAction) var playSessions: [PlaySession]?
@@ -113,7 +138,7 @@ class EpisodeDownloadStatus{
             url: url,
             title: title.isEmpty ? nil : title,
             desc: desc,
-            podcast: podcast?.title,
+            podcast: displayPodcastTitle,
             cover: imageURL,
             podcastCover: podcast?.imageURL,
             file: url,
@@ -156,15 +181,42 @@ class EpisodeDownloadStatus{
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
+    var source: EpisodeSource {
+        get {
+            EpisodeSource(rawValue: sourceRawValue) ?? .feedDownload
+        }
+        set {
+            sourceRawValue = newValue.rawValue
+        }
+    }
+
+    var displayPodcastTitle: String? {
+        podcast?.title ?? (source == .sideLoaded ? "Side loaded" : nil)
+    }
+
     var localFile: URL? {
-       
-         let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first // podcast?.directoryURL ?? URL(fileURLWithPath: "/", isDirectory: true)
-        
-        guard let fileName = url?.lastPathComponent,
-              let urlIdentityComponent else { return nil }
-        let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
-        let uniqueURL = baseURL?.appendingPathComponent("\(urlIdentityComponent)_\(sanitizedFileName)")
-        return uniqueURL
+        let cacheKey = "\(source.rawValue)|\(url?.absoluteString ?? "")" as NSString
+        if let cachedURL = EpisodeLocalFileCache.shared.url(for: cacheKey) {
+            return cachedURL
+        }
+
+        let resolvedURL: URL?
+        if source == .sideLoaded {
+            resolvedURL = url
+        } else {
+            let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+
+            guard let fileName = url?.lastPathComponent,
+                  let urlIdentityComponent else { return nil }
+            let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
+            resolvedURL = baseURL?.appendingPathComponent("\(urlIdentityComponent)_\(sanitizedFileName)")
+        }
+
+        if let resolvedURL {
+            EpisodeLocalFileCache.shared.store(resolvedURL, for: cacheKey)
+        }
+
+        return resolvedURL
     }
     
     @Transient var preferredChapters: [Marker] {
@@ -183,20 +235,48 @@ class EpisodeDownloadStatus{
         }
     }
 
-    init(guid:String? = nil, title: String, publishDate: Date? = nil, url: URL, podcast: Podcast, duration:Double? = nil, author: String? = nil) {
+    init(
+        guid:String? = nil,
+        title: String,
+        publishDate: Date? = nil,
+        url: URL,
+        podcast: Podcast? = nil,
+        duration:Double? = nil,
+        author: String? = nil,
+        source: EpisodeSource = .feedDownload
+    ) {
         self.guid = guid
         self.title = title
         self.author = author
         self.publishDate = publishDate
         self.url = url
-      //  self.podcasts?.append(podcast)
         self.podcast = podcast
         self.duration = duration
+        self.source = source
         
         // Create metadata after all properties are initialized
         let metadata = EpisodeMetaData()
         metadata.episode = self
         self.metaData = metadata
+    }
+
+    convenience init(
+        sideLoadedURL: URL,
+        title: String,
+        publishDate: Date? = nil,
+        duration: Double? = nil,
+        author: String? = nil
+    ) {
+        self.init(
+            guid: sideLoadedURL.absoluteString,
+            title: title,
+            publishDate: publishDate,
+            url: sideLoadedURL,
+            podcast: nil,
+            duration: duration,
+            author: author,
+            source: .sideLoaded
+        )
     }
   
     private func updateEpisodeData(from episodeData: [String: Any]) {

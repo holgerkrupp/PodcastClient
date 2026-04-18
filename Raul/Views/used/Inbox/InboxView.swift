@@ -5,7 +5,52 @@ extension Notification.Name {
     static let inboxDidChange = Notification.Name("inboxDidChange")
 }
 
+enum InboxSection: String, CaseIterable, Identifiable {
+    case inbox
+    case iCloudDrive
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .inbox:
+            return "Inbox"
+        case .iCloudDrive:
+            return "iCloud Drive"
+        }
+    }
+}
+
 struct InboxView: View {
+    @State private var selectedSection: InboxSection = .inbox
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Inbox section", selection: $selectedSection) {
+                ForEach(InboxSection.allCases) { section in
+                    Text(section.title).tag(section)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            Group {
+                switch selectedSection {
+                case .inbox:
+                    InboxListView()
+                case .iCloudDrive:
+                    NavigationStack {
+                        SideLoadedEpisodesView(modelContainer: ModelContainerManager.shared.container)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+struct InboxListView: View {
  
     @State private var episodes: [Episode] = []
     @State private var isArchiving = false
@@ -24,6 +69,7 @@ struct InboxView: View {
         if episodes.isEmpty{
             NavigationStack{
                 InboxEmptyView()
+                .navigationTitle("Inbox")
                 .task {
                     await loadEpisodes()
                 }

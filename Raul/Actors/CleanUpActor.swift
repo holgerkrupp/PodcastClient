@@ -28,6 +28,7 @@ actor CleanUpActor {
         let now = Date()
         
         for episode in episodes {
+            guard episode.source != .sideLoaded else { continue }
             guard episode.metaData?.isAvailableLocally == true else { continue }
 
             if episode.metaData?.isArchived == true {

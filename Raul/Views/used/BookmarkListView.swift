@@ -68,7 +68,7 @@ struct BookmarkListView: View {
                                         .frame(width: 120, height: 120)
                                         .cornerRadius(8)
                                     VStack(alignment: .leading) {
-                                        Text(marker.bookmarkEpisode?.podcast?.title ?? marker.bookmarkEpisode?.title ?? "")
+                                        Text(marker.bookmarkEpisode?.displayPodcastTitle ?? marker.bookmarkEpisode?.title ?? "")
                                             .font(.headline)
                                         Text(marker.title)
                                             .font(.body)

@@ -31,7 +31,7 @@ struct EpisodeRowView: View {
     
     var body: some View {
         let _ = episode.refresh
-        let podcastTitle = episode.podcast?.title ?? ""
+        let podcastTitle = episode.displayPodcastTitle ?? ""
         let publishText = episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""
         let duration = episode.duration ?? 0.0
         let remainingTime = episode.remainingTime
@@ -39,7 +39,7 @@ struct EpisodeRowView: View {
         let timeText = Duration.seconds(showRemaining ? (remainingTime ?? 0) : duration).formatted(.units(width: .narrow))
         let timeDisplay = showRemaining ? timeText + " remaining" : timeText
         let completionDate = episode.metaData?.completionDate
-        let isDownloaded = fileManager.isDownloaded(episode.localFile) == true
+        let isDownloaded = episode.source == .sideLoaded || fileManager.isDownloaded(episode.localFile) == true
         let hasChapters = episode.chapters?.isEmpty == false
         let hasTranscript = episode.externalFiles.contains(where: { $0.category == .transcript }) || (episode.transcriptLines?.isEmpty == false)
         let hasBookmarks = episode.bookmarks?.isEmpty == false

@@ -47,7 +47,7 @@ class CarPlayInbox {
         let items = episodes.enumerated().map { index, episode in
             let item = CPListItem(
                 text: episode.title,
-                detailText: episode.subtitle ?? episode.desc ?? episode.podcast?.title,
+                detailText: episode.subtitle ?? episode.desc ?? episode.displayPodcastTitle,
                 image: images[index] ?? UIImage()
             )
             item.userInfo = episode.summary
@@ -109,7 +109,7 @@ class CarPlayInbox {
 
         let sheet = CPActionSheetTemplate(
             title: episode.title,
-            message: episode.podcast?.title,
+            message: episode.displayPodcastTitle,
             actions: [playNext, playLast, archive, cancel]
         )
         interfaceController.presentTemplate(sheet, animated: true, completion: nil)

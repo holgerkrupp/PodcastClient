@@ -22,16 +22,12 @@ struct DownloadControllView: View {
 
     var body: some View {
         Group {
-            
-            if let item = viewModel.item {
-                
-                    DownloadProgressView(item: item, viewModel: viewModel)
-                        .progressViewStyle(CircularProgressViewStyle())
-                
-                
-                
+            if episode.source == .sideLoaded {
+                EmptyView()
+            } else if let item = viewModel.item {
+                DownloadProgressView(item: item, viewModel: viewModel)
+                    .progressViewStyle(CircularProgressViewStyle())
             } else if let url = episode.url, fileManager.isDownloaded(episode.localFile) != true {
-                
                 // Avoid calling actor-isolated API synchronously from the view body.
                 // Kick off a task to capture any ongoing download and bind it to the view model.
                 let _ = {
@@ -46,11 +42,7 @@ struct DownloadControllView: View {
                 if let item = viewModel.item, item.isDownloading {
                     DownloadProgressView(item: item, viewModel: viewModel)
                         .progressViewStyle(CircularProgressViewStyle())
-                }
-            
-                
-                else {
-                   
+                } else {
                     Button {
                         viewModel.startDownload(for: episode)
                         updateUI.toggle()
@@ -59,26 +51,21 @@ struct DownloadControllView: View {
                     }
                     .accessibilityHint("Downloads this episode for offline playback")
                 }
-                
-                
-            } else {
-                
-                if showDelete {
-                    
-                    Button {
-                        Task {
-                            if let container = episode.modelContext?.container {
-                                await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
-                            }
+            } else if showDelete {
+                Button {
+                    Task {
+                        if let container = episode.modelContext?.container {
+                            await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
                         }
-                    } label: {
-                        Label("Remove Download", systemImage: "trash")
                     }
-                    .accessibilityHint("Deletes the local file from this device")
+                } label: {
+                    Label("Remove Download", systemImage: "trash")
                 }
+                .accessibilityHint("Deletes the local file from this device")
             }
         }
         .onAppear {
+            guard episode.source != .sideLoaded else { return }
             viewModel.observeDownload(for: episode)
             // Fallback: Check for ongoing download in DownloadManager if viewModel.item is nil
             if let url = episode.url {
