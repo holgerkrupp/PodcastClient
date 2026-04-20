@@ -102,6 +102,13 @@ actor AIChapterGenerator{
         }
         guard transcriptLines.isEmpty == false else { return [:] }
 
+        let orderedTranscriptLines = transcriptLines.enumerated().sorted { left, right in
+            if left.element.startTime != right.element.startTime {
+                return left.element.startTime < right.element.startTime
+            }
+            return left.offset < right.offset
+        }.map(\.element)
+
         let instructions = """
            You are a podcast chapter generator.
            Given transcript lines with timestamps, produce a sparse list of chapter boundaries.
@@ -125,10 +132,10 @@ actor AIChapterGenerator{
             chunkBudget = 800
         }
 
-        let chunks = await chunkTranscriptLines(transcriptLines, tokenBudget: chunkBudget, model: model)
+        let chunks = await chunkTranscriptLines(orderedTranscriptLines, tokenBudget: chunkBudget, model: model)
 
         #if DEBUG
-        print("AI transcript chapter generation will process \(transcriptLines.count) transcript line(s) in \(chunks.count) chunk(s) using \(usesExactTokenCounting ? "exact" : "estimated") token counting and will keep up to \(maxChaptersPerChunk) chapter(s) per chunk.")
+        print("AI transcript chapter generation will process \(orderedTranscriptLines.count) transcript line(s) in \(chunks.count) chunk(s) using \(usesExactTokenCounting ? "exact" : "estimated") token counting and will keep up to \(maxChaptersPerChunk) chapter(s) per chunk.")
         #endif
 
         var mergedChapters: [String: String] = [:]
