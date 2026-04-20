@@ -607,13 +607,19 @@ actor EpisodeActor {
         print("decodeTranscription")
         let decoder = TranscriptDecoder(transcription)
         let lines = decoder.transcriptLines
-        var transcript = [TranscriptLineAndTime]()
-        for line in lines {
+        let transcript = lines.enumerated().map { _, line in
             let text = line.text
             let start = line.startTime
             let end = line.endTime
             let speaker = line.speaker
-            transcript.append(TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end))
+            return TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end)
+        }.sorted {
+            if $0.startTime != $1.startTime {
+                return $0.startTime < $1.startTime
+            }
+            let leftEnd = $0.endTime ?? .greatestFiniteMagnitude
+            let rightEnd = $1.endTime ?? .greatestFiniteMagnitude
+            return leftEnd < rightEnd
         }
         print("created \(lines.count) lines")
         return transcript
@@ -1390,7 +1396,14 @@ actor EpisodeActor {
     
     func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
         let chapterGenerator = AIChapterGenerator()
-        let snapshots = transcript.map {
+        let orderedTranscript = transcript.enumerated().sorted { left, right in
+            if left.element.startTime != right.element.startTime {
+                return left.element.startTime < right.element.startTime
+            }
+            return left.offset < right.offset
+        }.map(\.element)
+
+        let snapshots = orderedTranscript.map {
             TranscriptLineSnapshot(
                 speaker: $0.speaker,
                 text: $0.text,

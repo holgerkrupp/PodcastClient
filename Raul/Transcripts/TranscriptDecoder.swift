@@ -136,7 +136,7 @@ class TranscriptDecoder{
             currentIndex += 1
         }
         
-        return transcriptLines
+        return sortedTranscriptLines(transcriptLines)
     }
     
     private func separateSpeakerAndText(from line: String) -> (speaker: String?, text: String) {
@@ -222,7 +222,7 @@ class TranscriptDecoder{
         
         results.sort { $0.startTime < $1.startTime }
 
-        return results
+        return sortedTranscriptLines(results)
     }
 
     //MARK: SRT
@@ -260,7 +260,7 @@ class TranscriptDecoder{
             )
         }
 
-        return results
+        return sortedTranscriptLines(results)
     }
 
     // MARK: - JSON Transcript Support
@@ -411,7 +411,7 @@ class TranscriptDecoder{
                         endTime: segment.endTime
                     )
                 }
-                return results
+                return sortedTranscriptLines(results)
             } else if let chapters = decoded.chapters {
                 var results: [TranscriptLineWithTime] = []
                 for (index, chapter) in chapters.enumerated() {
@@ -434,7 +434,7 @@ class TranscriptDecoder{
                         )
                     )
                 }
-                return results
+                return sortedTranscriptLines(results)
             } else {
                 return []
             }
@@ -452,11 +452,20 @@ class TranscriptDecoder{
                     endTime: seg.endTime
                 )
             }
-            return results
+            return sortedTranscriptLines(results)
         }
 
         print("decode failed for both wrapped and plain formats")
         return []
+    }
+
+    private func sortedTranscriptLines(_ lines: [TranscriptLineWithTime]) -> [TranscriptLineWithTime] {
+        lines.enumerated().sorted { left, right in
+            if left.element.startTime != right.element.startTime {
+                return left.element.startTime < right.element.startTime
+            }
+            return left.offset < right.offset
+        }.map(\.element)
     }
     
 }
@@ -472,4 +481,3 @@ private extension String {
         return hours * 3600 + minutes * 60 + seconds
     }
 }
-
