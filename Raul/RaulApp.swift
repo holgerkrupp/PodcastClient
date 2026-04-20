@@ -13,6 +13,8 @@ enum BackgroundTaskConfiguration {
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
     static let automaticTranscriptionInterval: TimeInterval = 60 * 15
     static let lastStorageCleanupKey = "LastStorageCleanup"
+    static let lastForegroundDownloadCleanupKey = "LastForegroundDownloadCleanup"
+    static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
 }
 
 @main
@@ -130,13 +132,17 @@ struct RaulApp: App {
     
     
     func cleanUp()  {
-    
-            Task{
-                let janitor = CleanUpActor(modelContainer: modelContainerManager.container)
-                await janitor.cleanUpOldDownloads()
-            }
-        
-        
+        if let lastCleanup = getLastForegroundDownloadCleanupDate(),
+           Date().timeIntervalSince(lastCleanup) < BackgroundTaskConfiguration.foregroundDownloadCleanupMinimumInterval {
+            return
+        }
+
+        setLastForegroundDownloadCleanupDate()
+        let modelContainer = modelContainerManager.container
+        Task.detached(priority: .utility) {
+            let janitor = CleanUpActor(modelContainer: modelContainer)
+            await janitor.cleanUpOldDownloads()
+        }
     }
 
     func debugActions() {
@@ -249,6 +255,16 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("storage_cleanup_failed", details: "\(reason):\(error.localizedDescription)")
             BasicLogger.shared.log("storage cleanup failed (\(reason)): \(error.localizedDescription)")
         }
+    }
+
+    func setLastForegroundDownloadCleanupDate(_ date: Date = Date()) {
+        UserDefaults.standard.setValue(date.timeIntervalSince1970, forKey: BackgroundTaskConfiguration.lastForegroundDownloadCleanupKey)
+    }
+
+    func getLastForegroundDownloadCleanupDate() -> Date? {
+        let timestamp = UserDefaults.standard.double(forKey: BackgroundTaskConfiguration.lastForegroundDownloadCleanupKey)
+        guard timestamp > 0 else { return nil }
+        return Date(timeIntervalSince1970: timestamp)
     }
     
 }

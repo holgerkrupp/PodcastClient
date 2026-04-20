@@ -12,6 +12,9 @@ class Player {
         case local
         case remote
     }
+    private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
+    private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
+    private static let playSessionRecoveryStartupDelayNanoseconds: UInt64 = 15_000_000_000
     
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
@@ -112,9 +115,22 @@ class Player {
         guard !hasStartedRecovery else { return }
         hasStartedRecovery = true
 
-        Task.detached(priority: .utility) { [playSessionTracker] in
+        guard shouldRunPlaySessionRecoveryNow() else { return }
+
+        Task.detached(priority: .background) { [playSessionTracker] in
+            try? await Task.sleep(nanoseconds: Self.playSessionRecoveryStartupDelayNanoseconds)
             await playSessionTracker.startRecovery()
+            await MainActor.run {
+                UserDefaults.standard.setValue(Date().timeIntervalSince1970, forKey: Self.playSessionRecoveryLastRunKey)
+            }
         }
+    }
+
+    private func shouldRunPlaySessionRecoveryNow() -> Bool {
+        let lastRunTimestamp = UserDefaults.standard.double(forKey: Self.playSessionRecoveryLastRunKey)
+        guard lastRunTimestamp > 0 else { return true }
+        let elapsed = Date().timeIntervalSince(Date(timeIntervalSince1970: lastRunTimestamp))
+        return elapsed >= Self.playSessionRecoveryMinimumInterval
     }
     
     /// Clears the legacy UUID-based last-played key from older builds.
