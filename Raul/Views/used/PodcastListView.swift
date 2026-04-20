@@ -189,7 +189,9 @@ struct SideLoadedEpisodesView: View {
     let modelContainer: ModelContainer
 
     @Query(
-        filter: #Predicate<Episode> { $0.sourceRawValue == "sideLoaded" },
+        filter: #Predicate<Episode> {
+            $0.sourceRawValue == "sideLoaded" && $0.metaData?.isInbox == true
+        },
         sort: \Episode.publishDate,
         order: .reverse
     ) private var episodes: [Episode]
@@ -198,10 +200,6 @@ struct SideLoadedEpisodesView: View {
 
     private var visibleEpisodes: [Episode] {
         episodes.filter { episode in
-            guard episode.source == .sideLoaded else {
-                return false
-            }
-
             guard searchText.isEmpty == false else { return true }
 
             let searchableText = [
@@ -220,17 +218,13 @@ struct SideLoadedEpisodesView: View {
     }
 
     var body: some View {
-        Group {
+        Group{
             if visibleEpisodes.isEmpty {
-                if searchText.isEmpty {
-                    SideLoadedEmptyStateView(modelContainer: modelContainer)
-                } else {
-                    ContentUnavailableView(
-                        "No Matching Side Loaded Audio",
-                        systemImage: "magnifyingglass",
-                        description: Text("No side loaded episodes match \"\(searchText)\".")
-                    )
-                }
+                
+                   
+                  SideLoadedEmptyStateView(modelContainer: modelContainer)
+                    
+                
             } else {
                 List {
                     ForEach(visibleEpisodes) { episode in
@@ -252,8 +246,8 @@ struct SideLoadedEpisodesView: View {
                 .listRowSpacing(0)
             }
         }
-        .navigationTitle("iCloud Drive")
-        .searchable(text: $searchText, prompt: "Search side loaded audio")
+       
+        .navigationTitle("Sideloading")
         .task {
             await refreshSideLoadedContent()
         }
@@ -264,6 +258,29 @@ struct SideLoadedEpisodesView: View {
             if isRefreshing {
                 ProgressView()
             }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: {
+                    Task {
+                        await refreshSideLoadedContent()
+                    }
+                }) {
+                    if isRefreshing {
+                    
+                            ProgressView()
+                        
+                    }else{
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRefreshing)
+                .accessibilityLabel(isRefreshing ? "Refreshing sideloading folder" : "Refresh sideloading folder")
+                .accessibilityHint("Fetches reloads your sideloading folder")
+                .accessibilityInputLabels([Text("Refresh sideloading"), Text("Update sideloading")])
+            }
+            
+  
         }
     }
 
@@ -281,28 +298,47 @@ struct SideLoadedEpisodesView: View {
 
 private struct SideLoadedEmptyStateView: View {
     let modelContainer: ModelContainer
+    @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
+
+    private var instructionText: String {
+        if sideloadingEnabled {
+            return "Place audio files directly in the iCloud Drive > Up Next folder. Open this view to refresh the list, or pull down to scan again after adding new files."
+        } else {
+            return "Turn on Sideloading in Settings to watch the iCloud Drive > Up Next folder for audio files."
+        }
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-             
-                Text("Turn on Sideloading in Settings, then place audio files directly in the iCloud Drive > Up Next root. Open this view to refresh the list, or pull down to scan again after adding new files.")
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 12) {
+                    Text("Your Sideloading Folder is empty")
+                        .font(.headline)
 
-                Text("Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open.")
+                    Divider()
 
-                NavigationLink {
-                    PodcastSettingsView(podcast: nil, modelContainer: modelContainer, embedInNavigationStack: true)
-                } label: {
-                    Label("Open Settings", systemImage: "gearshape")
+                    Text(instructionText)
+/*
+                    Text("Supported formats are MP3, AAC, M4A, M4B, WAV, CAF and AIFF")
+                        .font(Font.caption.italic())
+*/
+                    if sideloadingEnabled == false {
+                        NavigationLink {
+                            PodcastSettingsView(podcast: nil, modelContainer: modelContainer, embedInNavigationStack: true)
+                        } label: {
+                            Label("Open Settings", systemImage: "gearshape")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
+               
+                .padding()
+                .frame(minHeight: geometry.size.height, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
         }
     }
 }
 
 #Preview {
-    PodcastListView(modelContainer: try! ModelContainer(for: Podcast.self, Episode.self))
+    SideLoadedEpisodesView(modelContainer: try! ModelContainer(for: Podcast.self, Episode.self))
 }

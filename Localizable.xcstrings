@@ -1049,6 +1049,9 @@
     "Fetches new episodes and reloads your inbox" : {
 
     },
+    "Fetches reloads your sideloading folder" : {
+
+    },
     "File Cleanup" : {
 
     },
@@ -1252,9 +1255,6 @@
       }
     },
     "How It Works" : {
-
-    },
-    "iCloud Drive" : {
 
     },
     "Import" : {
@@ -1819,9 +1819,6 @@
     "No matches found for \"%@\"." : {
 
     },
-    "No Matching Side Loaded Audio" : {
-
-    },
     "No Matching Transcript" : {
 
     },
@@ -1916,9 +1913,6 @@
 
     },
     "No Sessions" : {
-
-    },
-    "No side loaded episodes match \"%@\"." : {
 
     },
     "No Storage Report" : {
@@ -2593,6 +2587,12 @@
     "Refresh podcasts" : {
 
     },
+    "Refresh sideloading" : {
+
+    },
+    "Refresh sideloading folder" : {
+
+    },
     "Refresh storage report" : {
 
     },
@@ -2603,6 +2603,9 @@
 
     },
     "Refreshing podcasts" : {
+
+    },
+    "Refreshing sideloading folder" : {
 
     },
     "Refreshing storage report" : {
@@ -2762,9 +2765,6 @@
 
     },
     "Search podcasts, episodes, chapters, and transcripts directly in SwiftData." : {
-
-    },
-    "Search side loaded audio" : {
 
     },
     "Search transcript..." : {
@@ -3404,9 +3404,6 @@
     "Turn off to skip this chapter automatically" : {
 
     },
-    "Turn on Sideloading in Settings, then place audio files directly in the iCloud Drive > Up Next root. Open this view to refresh the list, or pull down to scan again after adding new files." : {
-
-    },
     "Unable to Enable Sideloading" : {
 
     },
@@ -3466,6 +3463,9 @@
 
     },
     "Update podcast" : {
+
+    },
+    "Update sideloading" : {
 
     },
     "Updates all podcast feeds in your library" : {
@@ -3684,6 +3684,9 @@
           }
         }
       }
+    },
+    "Your Sideloading Folder is empty" : {
+
     }
   },
   "version" : "1.1"
