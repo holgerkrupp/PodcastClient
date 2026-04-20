@@ -219,20 +219,28 @@ class EpisodeDownloadStatus{
         return resolvedURL
     }
     
-    @Transient var preferredChapters: [Marker] {
-
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-
+    func chaptersForDisplay(preferredType: MarkerType? = nil) -> [Marker] {
         let chapters = chapters ?? []
+        guard chapters.isEmpty == false else { return [] }
 
-        // Pick a single type for the whole list based on availability and preference order
+        if let preferredType {
+            return chapters.filter { $0.type == preferredType }
+        }
+
+        let preferredOrder: [MarkerType] = [.podlove, .mp3, .mp4, .ai, .extracted]
+
+        // Pick a single type for the whole list based on availability and preference order.
         let availableTypes = Set(chapters.map { $0.type })
         if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
             return chapters.filter { $0.type == chosenType }
         } else {
-            // Fallback: no known preferred types found, return all chapters as-is
+            // Fallback: no known preferred types found, return all chapters as-is.
             return chapters
         }
+    }
+
+    @Transient var preferredChapters: [Marker] {
+        chaptersForDisplay()
     }
 
     init(

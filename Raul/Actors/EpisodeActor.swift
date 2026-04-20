@@ -540,6 +540,7 @@ actor EpisodeActor {
         guard let episodeURL = episode.url else { return }
 
         if episode.hasLoadedTranscript {
+            await finalizeTranscriptChapters(for: episodeURL)
             return
         }
         
@@ -668,11 +669,8 @@ actor EpisodeActor {
         if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
             await extractShownotesChapters(fileURL: url)
         }
-        if let url = episode.url{
-            await updateChapterDurations(episodeURL: url)
-        }
         if let url = episode.url {
-            await applyAutoSkipWords(episodeURL: url)
+            await finalizeTranscriptChapters(for: url)
         }
     }
 
@@ -1221,24 +1219,37 @@ actor EpisodeActor {
         }
     }
     
-    func extractTranscriptChapters(fileURL: URL) async  {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+    @discardableResult
+    func extractTranscriptChapters(fileURL: URL, force: Bool = false) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        guard force || shouldGenerateTranscriptChapters(for: episode) else { return false }
         guard let transcriptLines = episode.transcriptLines, transcriptLines != [] else {
-            return  }
+            return false
+        }
         
         let extractedData = await generateAIChapters(from: transcriptLines)
-        if !extractedData.isEmpty {
-            var newchapters:[Marker] = []
-            for extractedChapter in extractedData.sorted(by: { ($0.key.durationAsSeconds ?? 0) < ($1.key.durationAsSeconds ?? 0) }) {
-                if let startingTime =  extractedChapter.key.durationAsSeconds{
-                    let newChapter = Marker(start: startingTime, title: extractedChapter.value, type: .extracted)
-                    newchapters.append(newChapter)
-                }
+        guard !extractedData.isEmpty else { return false }
+
+        var newchapters:[Marker] = []
+        for extractedChapter in extractedData.sorted(by: { ($0.key.durationAsSeconds ?? 0) < ($1.key.durationAsSeconds ?? 0) }) {
+            if let startingTime =  extractedChapter.key.durationAsSeconds{
+                let title = extractedChapter.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard title.isEmpty == false else { continue }
+                let newChapter = Marker(start: startingTime, title: title, type: .ai)
+                newchapters.append(newChapter)
             }
-            episode.chapters?.removeAll(where: { $0.type == .ai })
-            episode.chapters?.append(contentsOf: newchapters)
-            modelContext.saveIfNeeded()
         }
+        guard newchapters.isEmpty == false else { return false }
+
+        if episode.chapters == nil {
+            episode.chapters = []
+        }
+        episode.chapters?.removeAll(where: { $0.type == .extracted || $0.type == .ai })
+        episode.chapters?.append(contentsOf: newchapters)
+        episode.chapters?.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
+        episode.refresh.toggle()
+        modelContext.saveIfNeeded()
+        return true
         
     }
     
@@ -1378,26 +1389,38 @@ actor EpisodeActor {
     }
     
     func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
-        guard let prompt = transcriptLinesToJSONArray(transcript) else { return [:] }
         let chapterGenerator = AIChapterGenerator()
-        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(prompt)
+        let snapshots = transcript.map {
+            TranscriptLineSnapshot(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(snapshots)
         return aiChapters
     }
     
-    private func transcriptLinesToJSONArray(_ lines: [TranscriptLineAndTime]) -> String? {
-        let mapped = lines.map { line in
-            [
-                "starttime": line.startTime,
-                "endtime": line.endTime ?? NSNull(),
-                "text": line.text
-            ] as [String: Any]
-        }
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: mapped, options: [.prettyPrinted])
-            return String(data: jsonData, encoding: .utf8)
-        } catch {
-            return nil
-        }
+    private func shouldGenerateTranscriptChapters(for episode: Episode) -> Bool {
+        guard episode.transcriptLines?.isEmpty == false else { return false }
+
+        let chapters = episode.chapters ?? []
+        guard chapters.isEmpty == false else { return true }
+        return chapters.allSatisfy { $0.type == .extracted }
+    }
+
+    @discardableResult
+    private func finalizeTranscriptChapters(for episodeURL: URL, force: Bool = false) async -> Bool {
+        let didGenerate = await extractTranscriptChapters(fileURL: episodeURL, force: force)
+        await updateChapterDurations(episodeURL: episodeURL)
+        await applyAutoSkipWords(episodeURL: episodeURL)
+        return didGenerate
+    }
+
+    @discardableResult
+    func regenerateTranscriptChapters(for episodeURL: URL) async -> Bool {
+        return await finalizeTranscriptChapters(for: episodeURL, force: true)
     }
     
     func updateChapterDurations(episodeURL: URL) async {
@@ -1492,6 +1515,9 @@ actor EpisodeActor {
                     episode.transcriptLines = decodeTranscription(transcription)
                     episode.refresh.toggle()
                     modelContext.saveIfNeeded()
+                    if let episodeURL = episode.url {
+                        await finalizeTranscriptChapters(for: episodeURL)
+                    }
                     return
                 }else{
                     throw TranscriptError.decodingFailed
@@ -1512,6 +1538,7 @@ actor EpisodeActor {
         episode.transcriptLines = lines
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        await finalizeTranscriptChapters(for: episodeURL)
     }
     
     
@@ -1561,6 +1588,7 @@ actor EpisodeActor {
         episode.transcriptLines = lines
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        await finalizeTranscriptChapters(for: episodeURL)
     }
 
     func saveTranscriptionRecord(

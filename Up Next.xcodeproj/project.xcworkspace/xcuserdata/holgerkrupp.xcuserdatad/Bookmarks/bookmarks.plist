@@ -34,16 +34,16 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>
+				<string>               If the following text might contain time codes (in the format 00:00 or 00:00:00) and titles, please extract them and format them as chapters. If the text does not conatin time codes, return an empty dictionary.
 </string>
 				<key>leading</key>
-				<string>            }
-        }
+				<string>                
+                let instructions = """
     </string>
 				<key>trailing</key>
-				<string>    func createChaptersFromTranscriptLines(_ lines: String) async -&gt; [String:String] {
-        
-        
+				<string>                """
+                let session = LanguageModelSession(instructions: instructions)
+                
 </string>
 			</dict>
 			<key>type</key>
