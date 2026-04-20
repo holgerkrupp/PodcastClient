@@ -118,6 +118,7 @@ actor PlaySessionTrackerActor {
         backfillListeningStatsIfNeeded()
         backfillSummariesIfNeeded()
         pruneOldSessionsIfNeeded()
+        modelContext.saveIfNeeded()
     }
 
     func startOrUpdateSession(episodeURL: URL, position: Double, rate: Float, appVersion: String) async {
@@ -424,6 +425,7 @@ actor PlaySessionTrackerActor {
     private func recoverIncompleteSessionIfNeeded()  {
         let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
         guard !allSessions.isEmpty else { return }
+        var didMutateSessions = false
 
         var sessionsByEpisode: [PersistentIdentifier: [PlaySession]] = [:]
         for session in allSessions {
@@ -483,10 +485,13 @@ actor PlaySessionTrackerActor {
                 }
                 let touchedHours = recordListeningStats(for: session)
                 rebuildSummaries(forHourStarts: touchedHours, podcastFeed: episode.podcast?.feed, podcastName: session.podcastName)
-                // Save the session
-                modelContext.saveIfNeeded()
+                didMutateSessions = true
             }
         }
+        }
+
+        if didMutateSessions {
+            modelContext.saveIfNeeded()
         }
     }
 

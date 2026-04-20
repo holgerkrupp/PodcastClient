@@ -4,16 +4,21 @@ import SwiftData
 
 @MainActor
 class CarPlayPlayNext {
-    let playlistActor: PlaylistModelActor
+    var playlistActor: PlaylistModelActor
     let interfaceController: CPInterfaceController
     var template: CPListTemplate
     private var episodes: [EpisodeSummary] = []
     private var notificationToken: NSObjectProtocol?
+    private var selectedPlaylistID: UUID?
+    private var selectedPlaylistTitle: String = Playlist.defaultQueueDisplayName
 
     init(playlistActor: PlaylistModelActor, interfaceController: CPInterfaceController) {
         self.playlistActor = playlistActor
         self.interfaceController = interfaceController
-        self.template = CPListTemplate(title: "Up Next", sections: [])
+        self.selectedPlaylistID = Playlist.resolvePlaylistID(
+            from: UserDefaults.standard.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        )
+        self.template = CPListTemplate(title: Playlist.defaultQueueDisplayName, sections: [])
         observeChanges()
         Task { await self.setupTemplate() }
     }
@@ -136,8 +141,13 @@ class CarPlayPlayNext {
             self.interfaceController.pushTemplate(inbox.template, animated: true, completion: nil)
         }
 
-        template.leadingNavigationBarButtons = [inboxButton]
-        template.trailingNavigationBarButtons = []
+        let playlistsButton = CPBarButton(title: "Playlists") { [weak self] _ in
+            guard let self else { return }
+            self.presentPlaylistSelection()
+        }
+
+        template.leadingNavigationBarButtons = [playlistsButton]
+        template.trailingNavigationBarButtons = [inboxButton]
     }
     
     private func refreshEpisodeList() async{
@@ -152,4 +162,35 @@ class CarPlayPlayNext {
         interfaceController.setRootTemplate(nowPlayingTemplate, animated: true, completion: nil)
     }
 
+    private func presentPlaylistSelection() {
+        let selector = CarPlayPlaylistSelection(
+            modelContainer: playlistActor.modelContainer,
+            selectedPlaylistID: selectedPlaylistID
+        ) { [weak self] selectedID, selectedTitle in
+            guard let self else { return }
+            Task { @MainActor in
+                self.applyPlaylistSelection(id: selectedID, title: selectedTitle)
+            }
+        }
+
+        interfaceController.pushTemplate(selector.template, animated: true, completion: nil)
+    }
+
+    private func applyPlaylistSelection(id: UUID, title: String) {
+        guard let newPlaylistActor = try? PlaylistModelActor(
+            modelContainer: playlistActor.modelContainer,
+            playlistID: id
+        ) else {
+            return
+        }
+
+        playlistActor = newPlaylistActor
+        selectedPlaylistID = id
+        selectedPlaylistTitle = title
+        UserDefaults.standard.set(id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+
+        template = CPListTemplate(title: selectedPlaylistTitle, sections: [])
+        interfaceController.setRootTemplate(template, animated: true, completion: nil)
+        Task { await self.setupTemplate() }
+    }
 }

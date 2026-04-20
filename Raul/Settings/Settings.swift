@@ -148,7 +148,7 @@ extension Notification.Name {
 
 enum SideloadingConfiguration {
     static let enabledKey = "SideloadingEnabled"
-    static let refreshDebounceNanoseconds: UInt64 = 250_000_000
+    static let refreshDebounceNanoseconds: UInt64 = 2_000_000_000
     static let missingArchiveGracePeriod: TimeInterval = 15 * 60
     static let missingStateDefaultsKey = "SideloadingMissingEpisodes.v1"
     static let visibilityMarkerFileName = ".upnext-sideloading-marker"
@@ -277,7 +277,9 @@ final class SideloadingFolderPresenter: NSObject, NSFilePresenter {
     }
 
     func presentedSubitemDidChange(at url: URL) {
-        onChange()
+        // iCloud can emit very frequent "did change" callbacks while file data is
+        // syncing/downloading. We handle appearance/moves/deletions separately, so
+        // skipping this noisy callback avoids repeated expensive reconciliation.
     }
 
     func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) {
@@ -620,6 +622,7 @@ actor SideLoadedLibraryActor {
             }
 
             let isAvailableLocally = activeURLs.contains(fileURL)
+            let wasAvailableLocally = existingEpisode.metaData?.isAvailableLocally ?? false
             guard existingEpisode.metaData?.isArchived != true else {
                 if existingEpisode.metaData?.isAvailableLocally != isAvailableLocally {
                     existingEpisode.metaData?.isAvailableLocally = isAvailableLocally
@@ -627,7 +630,8 @@ actor SideLoadedLibraryActor {
                     didChange = true
                 }
 
-                if isAvailableLocally {
+                // Avoid repeatedly reprocessing unchanged local files on each refresh.
+                if isAvailableLocally && wasAvailableLocally == false {
                     await episodeActor.markEpisodeAvailable(fileURL: fileURL)
                     didChange = true
                 }
@@ -702,11 +706,13 @@ actor SideLoadedLibraryActor {
                 episodeDidChange = true
             }
 
-            if isAvailableLocally {
+            // Only run expensive "available" processing when a file becomes newly available.
+            if isAvailableLocally && wasAvailableLocally == false {
                 await episodeActor.markEpisodeAvailable(fileURL: fileURL)
                 didChange = true
             } else if episodeDidChange {
                 modelContext.saveIfNeeded()
+                didChange = true
             }
         }
 
