@@ -20,8 +20,7 @@ struct EpisodeControlView: View {
     @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var preferredPlaylistID: String = ""
     @State private var showFrontPlaylistPicker: Bool = false
     @State private var showBackPlaylistPicker: Bool = false
-    @State private var suppressNextFrontTap: Bool = false
-    @State private var suppressNextBackTap: Bool = false
+
 
     private var manualPlaylists: [Playlist] {
         Playlist.manualVisibleSorted(playlists)
@@ -76,10 +75,7 @@ struct EpisodeControlView: View {
             GlassEffectContainer(spacing: 20.0) {
                 HStack(spacing: 0.0) {
                     Button {
-                        if suppressNextFrontTap {
-                            suppressNextFrontTap = false
-                            return
-                        }
+                   
                         Task {
                             await addEpisode(to: resolvedPlaylistID, position: .front)
                         }
@@ -93,23 +89,17 @@ struct EpisodeControlView: View {
                         .padding(5)
                         .minimumScaleFactor(0.5)
                         .labelStyle(.iconOnly)
-                        .frame(width: 50, height: 50)
+                        .frame(width: 50)
+                        .clipShape(Circle())
                     }
                     .buttonStyle(.glass(.clear))
-                    .clipShape(Circle())
-                    .contentShape(Circle())
+                  
                     .accessibilityLabel("Add to playlist")
                     .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
-                    .onLongPressGesture(minimumDuration: 0.45) {
-                        suppressNextFrontTap = true
-                        showFrontPlaylistPicker = true
-                    }
+                    
 
                     Button {
-                        if suppressNextBackTap {
-                            suppressNextBackTap = false
-                            return
-                        }
+                       
                         Task {
                             await addEpisode(to: resolvedPlaylistID, position: .end)
                         }
@@ -123,17 +113,13 @@ struct EpisodeControlView: View {
                         .padding(5)
                         .minimumScaleFactor(0.5)
                         .labelStyle(.iconOnly)
-                        .frame(width: 50, height: 50)
+                        .frame(width: 50)
                     }
                     .buttonStyle(.glass(.clear))
-                    .clipShape(Circle())
-                    .contentShape(Circle())
+                    
                     .accessibilityLabel("Add to end of playlist")
                     .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
-                    .onLongPressGesture(minimumDuration: 0.45) {
-                        suppressNextBackTap = true
-                        showBackPlaylistPicker = true
-                    }
+                    
                 }
             }
 
