@@ -46,7 +46,7 @@ struct EpisodeRowView: View {
         let progress = max(0.0, min(1.0, episode.maxPlayProgress))
 
         ZStack {
-            CoverImageView(podcast: episode.podcast)
+            CoverImageView(episode: episode)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
                 .blur(radius: 8)

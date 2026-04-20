@@ -485,42 +485,44 @@ private struct PodcastBrowseEpisodeRowView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(3)
                         }
-
-                        HStack(spacing: 10) {
-                            Button {
-                                startQueue(.front)
-                            } label: {
-                                Image(systemName: "arrow.up.to.line")
-                                    .symbolRenderingMode(.hierarchical)
-                                    .scaledToFit()
-                                    .padding(5)
-                                    .minimumScaleFactor(0.5)
-                                    .frame(width: 50)
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .clipShape(Circle())
-                            .disabled(isQueueing)
-                            .accessibilityLabel("Add to Up Next")
-
-                            Button {
-                                startQueue(.end)
-                            } label: {
-                                Image(systemName: "arrow.down.to.line")
-                                    .symbolRenderingMode(.hierarchical)
-                                    .scaledToFit()
-                                    .padding(5)
-                                    .minimumScaleFactor(0.5)
-                                    .frame(width: 50)
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .clipShape(Circle())
-                            .disabled(isQueueing)
-                            .accessibilityLabel("Add to End")
-
-                            Spacer()
-
-                            if isQueueing {
-                                ProgressView()
+                        
+                        GlassEffectContainer(spacing: 20.0) {
+                            HStack(spacing: 0.0) {
+                                Button {
+                                    startQueue(.front)
+                                } label: {
+                                    Image(systemName: "arrow.up.to.line")
+                                        .symbolRenderingMode(.hierarchical)
+                                        .scaledToFit()
+                                        .padding(5)
+                                        .minimumScaleFactor(0.5)
+                                        .frame(width: 50)
+                                }
+                                .buttonStyle(.glass(.clear))
+                                .clipShape(Circle())
+                                .disabled(isQueueing)
+                                .accessibilityLabel("Add to Up Next")
+                                
+                                Button {
+                                    startQueue(.end)
+                                } label: {
+                                    Image(systemName: "arrow.down.to.line")
+                                        .symbolRenderingMode(.hierarchical)
+                                        .scaledToFit()
+                                        .padding(5)
+                                        .minimumScaleFactor(0.5)
+                                        .frame(width: 50)
+                                }
+                                .buttonStyle(.glass(.clear))
+                                .clipShape(Circle())
+                                .disabled(isQueueing)
+                                .accessibilityLabel("Add to End")
+                                
+                                Spacer()
+                                
+                                if isQueueing {
+                                    ProgressView()
+                                }
                             }
                         }
                     }

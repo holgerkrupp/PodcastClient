@@ -16,7 +16,7 @@ enum InboxSection: String, CaseIterable, Identifiable {
         case .inbox:
             return "Inbox"
         case .iCloudDrive:
-            return "iCloud Drive"
+            return "Sideloading"
         }
     }
 }
