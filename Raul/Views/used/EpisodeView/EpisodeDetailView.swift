@@ -26,6 +26,8 @@ struct EpisodeDetailView: View {
     @State private var liveTranscriptionItem: TranscriptionItem?
     @State private var isLoadingTranscript: Bool = false
     @State private var isStartingTranscription: Bool = false
+    @State private var isGeneratingTranscriptChapters: Bool = false
+    @State private var chapterGenerationMessage: String?
     @State private var showTranscriptSheet: Bool = false
     @ScaledMetric(relativeTo: .title2) private var podcastCardWidth: CGFloat = 300
     @ScaledMetric(relativeTo: .title2) private var artworkSize: CGFloat = 300
@@ -150,6 +152,40 @@ struct EpisodeDetailView: View {
                             }
                         }
                     }
+
+#if DEBUG
+                    if let url = episode.url {
+                        HStack(spacing: 12) {
+                            Button {
+                                Task { await generateTranscriptChaptersOnDemand(for: url) }
+                            } label: {
+                                Label(
+                                    isGeneratingTranscriptChapters ? "Generating…" : "Generate AI Chapters",
+                                    systemImage: "sparkles"
+                                )
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .disabled(isGeneratingTranscriptChapters || canGenerateTranscriptChapters == false)
+
+                            if isGeneratingTranscriptChapters {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+
+                        if let chapterGenerationMessage {
+                            Text(chapterGenerationMessage)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal)
+                        }
+                    }
+#endif
                     
                     Spacer(minLength: 10)
                     
@@ -248,6 +284,10 @@ struct EpisodeDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    private var canGenerateTranscriptChapters: Bool {
+        episode.transcriptLines?.isEmpty == false
+    }
+
     @MainActor
     private func openTranscript() async {
         if episode.transcriptLines?.isEmpty == false {
@@ -299,6 +339,25 @@ struct EpisodeDetailView: View {
             errorMessage = error.localizedDescription
             liveTranscriptionItem?.setState(.failed(error: error.localizedDescription), status: "Failed")
         }
+    }
+
+    @MainActor
+    private func generateTranscriptChaptersOnDemand(for episodeURL: URL) async {
+        guard isGeneratingTranscriptChapters == false else { return }
+        guard canGenerateTranscriptChapters else {
+            chapterGenerationMessage = "Transcript lines are not available yet."
+            return
+        }
+
+        isGeneratingTranscriptChapters = true
+        chapterGenerationMessage = nil
+        defer {
+            isGeneratingTranscriptChapters = false
+        }
+
+        let actor = EpisodeActor(modelContainer: context.container)
+        let didGenerate = await actor.regenerateTranscriptChapters(for: episodeURL)
+        chapterGenerationMessage = didGenerate ? "Transcript chapters generated." : "No transcript chapters were created."
     }
 
     private func currentTranscriptionItem() async -> TranscriptionItem? {

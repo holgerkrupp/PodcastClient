@@ -10,10 +10,13 @@ import SwiftUI
 struct ChapterRowView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Bindable var chapter: Marker
+    var isCurrentChapter: Bool? = nil
     var player = Player.shared
-    
 
-    
+    private var resolvedIsCurrentChapter: Bool {
+        isCurrentChapter ?? (player.currentChapter == chapter)
+    }
+
     var body: some View {
 
             HStack {
@@ -30,7 +33,7 @@ struct ChapterRowView: View {
                         .font(.title3)
 
                     if differentiateWithoutColor {
-                        if player.currentChapter == chapter {
+                        if resolvedIsCurrentChapter {
                             Label("Current chapter", systemImage: "speaker.wave.2.fill")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
@@ -99,7 +102,7 @@ struct ChapterRowView: View {
                 }
             }
             .foregroundStyle(
-                chapter.shouldPlay == false ? Color.secondary : player.currentChapter == chapter ? Color.accent : Color.primary
+                chapter.shouldPlay == false ? Color.secondary : resolvedIsCurrentChapter ? Color.accent : Color.primary
             )
         
     }

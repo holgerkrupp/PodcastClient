@@ -128,7 +128,7 @@ final class PhoneWatchSyncController: NSObject {
         let chapters = episode.chapters ?? []
         guard chapters.isEmpty == false else { return [] }
 
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .ai, .extracted]
         let priorityByType = Dictionary(
             uniqueKeysWithValues: preferredOrder.enumerated().map { ($1, $0) }
         )
