@@ -57,12 +57,40 @@ struct InboxListView: View {
 
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
+    private var playlists: [Playlist]
+    @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var inboxBasePlaylistID: String = ""
     @StateObject private var refreshViewModel: PodcastListViewModel
     
     init() {
         _refreshViewModel = StateObject(
             wrappedValue: PodcastListViewModel(modelContainer: ModelContainerManager.shared.container)
         )
+    }
+
+    private var manualPlaylists: [Playlist] {
+        Playlist.manualVisibleSorted(playlists)
+    }
+
+    private var resolvedInboxPlaylistID: UUID? {
+        if let explicitID = UUID(uuidString: inboxBasePlaylistID),
+           manualPlaylists.contains(where: { $0.id == explicitID }) {
+            return explicitID
+        }
+
+        if let defaultPlaylist = manualPlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.id
+        }
+
+        return manualPlaylists.first?.id
+    }
+
+    private var resolvedInboxPlaylistTitle: String {
+        guard let playlistID = resolvedInboxPlaylistID,
+              let playlist = manualPlaylists.first(where: { $0.id == playlistID }) else {
+            return Playlist.defaultQueueDisplayName
+        }
+        return playlist.displayTitle
     }
     
     var body: some View {
@@ -77,6 +105,10 @@ struct InboxListView: View {
                     Task { await loadEpisodes() }
                 }
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        playlistPickerMenu
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: {
                             Task {
@@ -146,6 +178,10 @@ struct InboxListView: View {
                     await loadEpisodes()
                 }
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        playlistPickerMenu
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: {
                             Task {
@@ -208,10 +244,32 @@ struct InboxListView: View {
             }
         }
     }
+
+    private var playlistPickerMenu: some View {
+        Menu {
+            ForEach(manualPlaylists) { playlist in
+                Button {
+                    inboxBasePlaylistID = playlist.id.uuidString
+                } label: {
+                    if playlist.id == resolvedInboxPlaylistID {
+                        Label(playlist.displayTitle, systemImage: "checkmark")
+                    } else {
+                        Text(playlist.displayTitle)
+                    }
+                }
+            }
+        } label: {
+            Label(resolvedInboxPlaylistTitle, systemImage: "chevron.down")
+                .labelStyle(.titleAndIcon)
+        }
+        .accessibilityLabel("Select default playlist")
+        .accessibilityHint("Chooses which playlist the quick add buttons use")
+    }
     
     // MARK: - Data Loading
     
     private func loadEpisodes() async {
+        _ = Playlist.ensureDefaultQueue(in: modelContext)
         let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
         let descriptor = FetchDescriptor<Episode>(predicate: predicate, sortBy: [sortDescriptor])

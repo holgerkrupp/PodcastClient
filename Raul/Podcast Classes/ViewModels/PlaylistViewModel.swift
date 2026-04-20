@@ -14,14 +14,24 @@ class PlaylistViewModel: ObservableObject {
 
     private let actor: PlaylistModelActor?
     private let playlistTitle: String
+    private let playlistID: UUID?
     private let context: ModelContext
 
 
     
-    init (playlistTitle: String = "de.holgerkrupp.podbay.queue", container: ModelContainer) {
+    init(
+        playlistID: UUID? = nil,
+        playlistTitle: String = Playlist.defaultQueueTitle,
+        container: ModelContainer
+    ) {
+        self.playlistID = playlistID
         self.playlistTitle = playlistTitle
         self.context = ModelContext(container)
-        self.actor = try? PlaylistModelActor(modelContainer: container)
+        if let playlistID {
+            self.actor = try? PlaylistModelActor(modelContainer: container, playlistID: playlistID)
+        } else {
+            self.actor = try? PlaylistModelActor(modelContainer: container, playlistTitle: playlistTitle)
+        }
         
         Task {
             await loadEntries()
@@ -31,12 +41,24 @@ class PlaylistViewModel: ObservableObject {
 
     func loadEntries() async {
         let localplaylistTitle = playlistTitle
-        let descriptor = FetchDescriptor<PlaylistEntry>(
-            predicate: #Predicate { entry in
-                entry.playlist?.title == localplaylistTitle
-            },
-            sortBy: [SortDescriptor(\.order, order: .forward)]
-        )
+        let localPlaylistID = playlistID
+        let descriptor: FetchDescriptor<PlaylistEntry>
+
+        if let localPlaylistID {
+            descriptor = FetchDescriptor<PlaylistEntry>(
+                predicate: #Predicate { entry in
+                    entry.playlist?.id == localPlaylistID
+                },
+                sortBy: [SortDescriptor(\.order, order: .forward)]
+            )
+        } else {
+            descriptor = FetchDescriptor<PlaylistEntry>(
+                predicate: #Predicate { entry in
+                    entry.playlist?.title == localplaylistTitle
+                },
+                sortBy: [SortDescriptor(\.order, order: .forward)]
+            )
+        }
         do {
             let result = try context.fetch(descriptor)
             self.entries = result

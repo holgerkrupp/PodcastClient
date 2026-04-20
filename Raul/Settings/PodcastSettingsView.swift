@@ -18,6 +18,7 @@ struct PodcastSettingsView: View {
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
+    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)]) private var playlists: [Playlist]
 
     init(podcastID: PersistentIdentifier?, modelContainer: ModelContainer, embedInNavigationStack: Bool = false) {
         self.podcastID = podcastID
@@ -68,6 +69,10 @@ struct PodcastSettingsView: View {
 
     private var podcastsUsingGlobalSettings: [Podcast] {
         podcasts.filter { $0.settings?.isEnabled != true }
+    }
+
+    private var manualPlaylists: [Playlist] {
+        Playlist.manualVisibleSorted(playlists)
     }
 
     private var viewIdentity: String {
@@ -135,6 +140,7 @@ struct PodcastSettingsView: View {
             .tint(.accent)
             .task {
                 _ = ensureStandardSettings(in: context)
+                _ = Playlist.ensureDefaultQueue(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
             }
             .alert("Unable to Enable Sideloading", isPresented: $showSideloadingAlert) {
@@ -269,7 +275,20 @@ struct PodcastSettingsView: View {
                 }
             }
 
-            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
+            Picker(
+                "Default playlist for auto-add",
+                selection: playlistSelectionBinding(for: settings)
+            ) {
+                if manualPlaylists.isEmpty {
+                    Text(Playlist.defaultQueueDisplayName).tag("")
+                }
+                ForEach(manualPlaylists) { playlist in
+                    Text(playlist.displayTitle).tag(playlist.id.uuidString)
+                }
+            }
+            .disabled(settings.playnextPosition == .none)
+
+            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -418,7 +437,20 @@ struct PodcastSettingsView: View {
                 }
             }
 
-            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue.")
+            Picker(
+                "Default playlist for auto-add",
+                selection: playlistSelectionBinding(for: settings)
+            ) {
+                if manualPlaylists.isEmpty {
+                    Text(Playlist.defaultQueueDisplayName).tag("")
+                }
+                ForEach(manualPlaylists) { playlist in
+                    Text(playlist.displayTitle).tag(playlist.id.uuidString)
+                }
+            }
+            .disabled(settings.playnextPosition == .none)
+
+            Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -676,6 +708,35 @@ struct PodcastSettingsView: View {
             CreatedByView()
                 .frame(maxWidth: .infinity)
         }
+    }
+
+    private func playlistSelectionBinding(for settings: PodcastSettings) -> Binding<String> {
+        Binding(
+            get: {
+                if let playlistID = resolvedPlaylistID(for: settings) {
+                    return playlistID.uuidString
+                }
+
+                return manualPlaylists.first?.id.uuidString ?? ""
+            },
+            set: { newValue in
+                settings.defaultPlaylistID = newValue.isEmpty ? nil : UUID(uuidString: newValue)
+                saveAndNotify()
+            }
+        )
+    }
+
+    private func resolvedPlaylistID(for settings: PodcastSettings) -> UUID? {
+        if let playlistID = settings.defaultPlaylistID,
+           manualPlaylists.contains(where: { $0.id == playlistID }) {
+            return playlistID
+        }
+
+        if let defaultPlaylist = manualPlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.id
+        }
+
+        return manualPlaylists.first?.id
     }
 
     private func handleSideloadingToggleChange(_ newValue: Bool) {
@@ -1340,6 +1401,7 @@ private struct PodcastOverridesManagementView: View {
 
 @MainActor
 private func ensureStandardSettings(in context: ModelContext) -> PodcastSettings {
+    let defaultPlaylist = Playlist.ensureDefaultQueue(in: context)
     let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
     var descriptor = FetchDescriptor<PodcastSettings>(
         predicate: #Predicate { $0.title == defaultSettingsTitle }
@@ -1347,11 +1409,16 @@ private func ensureStandardSettings(in context: ModelContext) -> PodcastSettings
     descriptor.fetchLimit = 1
 
     if let result = try? context.fetch(descriptor).first {
+        if result.defaultPlaylistID == nil {
+            result.defaultPlaylistID = defaultPlaylist.id
+            context.saveIfNeeded()
+        }
         return result
     }
 
     let settings = PodcastSettings()
     settings.title = defaultSettingsTitle
+    settings.defaultPlaylistID = defaultPlaylist.id
     context.insert(settings)
     context.saveIfNeeded()
     return settings
@@ -1374,6 +1441,7 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         settings.autoDownloadEpisodeCount = globalSettings.autoDownloadEpisodeCount
         settings.autoDownloadSelection = globalSettings.autoDownloadSelection
         settings.autoDownloadNetworkMode = globalSettings.autoDownloadNetworkMode
+        settings.defaultPlaylistID = globalSettings.defaultPlaylistID
         settings.archiveFileRetentionDays = globalSettings.archiveFileRetentionDays
         context.insert(settings)
         podcast.settings = settings

@@ -30,6 +30,7 @@ class PodcastSettings {
     var autoDownloadSelectionRawValue: String? = AutoDownloadSelection.newestUnplayed.rawValue
     var autoDownloadNetworkModeRawValue: String? = AutoDownloadNetworkMode.wifiAndCellular.rawValue
     var playnextPosition:Playlist.Position = Playlist.Position.none
+    var defaultPlaylistID: UUID?
     var playbackSpeed:Float? = 1.0
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
     var cutFront:Float? // how much to cut from the front / Intro

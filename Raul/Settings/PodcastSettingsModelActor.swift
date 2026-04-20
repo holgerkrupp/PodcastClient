@@ -12,6 +12,7 @@ struct AutoDownloadPolicySnapshot: Sendable {
     let keepCount: Int
     let selection: AutoDownloadSelection
     let queuePosition: Playlist.Position
+    let playlistID: UUID?
     let networkMode: AutoDownloadNetworkMode
 }
 
@@ -24,16 +25,22 @@ actor PodcastSettingsModelActor {
     
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
     func standardSettings() async -> PodcastSettings {
+        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
         let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
         var descriptor = FetchDescriptor<PodcastSettings>(
             predicate: #Predicate { $0.title == defaultSettingsTitle }
         )
         descriptor.fetchLimit = 1
         if let result = try? modelContext.fetch(descriptor).first {
+            if result.defaultPlaylistID == nil {
+                result.defaultPlaylistID = defaultPlaylist.id
+                modelContext.saveIfNeeded()
+            }
             return result
         } else {
             let newDefaultSettings = PodcastSettings()
             newDefaultSettings.title = defaultSettingsTitle
+            newDefaultSettings.defaultPlaylistID = defaultPlaylist.id
             modelContext.insert(newDefaultSettings)
             modelContext.saveIfNeeded()
             return newDefaultSettings
@@ -149,6 +156,7 @@ actor PodcastSettingsModelActor {
             newSettings.autoDownloadEpisodeCount = standardSettings.autoDownloadEpisodeCount
             newSettings.autoDownloadSelection = standardSettings.autoDownloadSelection
             newSettings.autoDownloadNetworkMode = standardSettings.autoDownloadNetworkMode
+            newSettings.defaultPlaylistID = standardSettings.defaultPlaylistID
             newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
             modelContext.insert(newSettings)
             podcast.settings = newSettings
@@ -229,6 +237,18 @@ actor PodcastSettingsModelActor {
             return await standardSettings().playnextPosition
         }
     }
+
+    func getDefaultPlaylistID(for podcastFeed: URL?) async -> UUID? {
+        guard let podcastFeed else {
+            return await standardSettings().defaultPlaylistID
+        }
+
+        if let playlistID = await fetchPodcastSettings(for: podcastFeed)?.defaultPlaylistID {
+            return playlistID
+        }
+
+        return await standardSettings().defaultPlaylistID
+    }
     
     func getContiniousPlay() async -> Bool{
         return await standardSettings().getContinuousPlay
@@ -266,8 +286,11 @@ actor PodcastSettingsModelActor {
     }
 
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {
-        guard let settings = await fetchPodcastSettings(for: podcastFeed),
-              settings.isEnabled,
+        let customSettings = await fetchPodcastSettings(for: podcastFeed)
+        let globalSettings = await standardSettings()
+        let settings = (customSettings?.isEnabled == true) ? customSettings : globalSettings
+
+        guard let settings,
               settings.autoDownload else {
             return nil
         }
@@ -276,6 +299,7 @@ actor PodcastSettingsModelActor {
             keepCount: max(settings.autoDownloadEpisodeCount, 1),
             selection: settings.autoDownloadSelection,
             queuePosition: settings.playnextPosition,
+            playlistID: settings.defaultPlaylistID,
             networkMode: settings.autoDownloadNetworkMode
         )
     }

@@ -68,18 +68,13 @@ class Player {
     var currentEpisode: Episode?
     var currentEpisodeURL: URL?
     
-    let fileMonitor = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
-
-    var downloadedFiles: Set<URL> {
-        fileMonitor.downloadedFiles
-    }
-
     var isCurrentEpisodeDownloaded: Bool {
         return currentEpisode?.metaData?.calculatedIsAvailableLocally ?? false
     }
     
     
     var isPlaying: Bool = false
+    var isPlayerSheetPresented: Bool = false
     
     var chapterProgress: Double?
     var currentChapter: Marker?
@@ -131,6 +126,11 @@ class Player {
     }
     
     func restoreLastPlayedFromPlaylist() async {
+        if let lastPlayedURL = await episodeActor?.getLastPlayedEpisodeURL() {
+            await playEpisode(lastPlayedURL, playDirectly: false)
+            return
+        }
+
         if let episodeURLs = try? await playlistActor?.orderedEpisodeURLs(),
            let firstURL = episodeURLs.first {
             await playEpisode(firstURL, playDirectly: false)
@@ -372,10 +372,65 @@ class Player {
         }
     }
 
+    private func sanitizedPosition(_ value: Double?) -> Double {
+        guard let value,
+              value.isFinite else {
+            return 0
+        }
+
+        return max(0, value)
+    }
+
+    private func resolvedResumePosition(
+        explicitTime: Double?,
+        episodeDuration: Double?,
+        persistedPosition: Double?,
+        persistedMaxPosition: Double?,
+        metadataPosition: Double?,
+        metadataMaxPosition: Double?,
+        inMemoryPosition: Double?
+    ) -> Double {
+        if let explicitTime {
+            BasicLogger.shared.log("Time provided when calling the playEpisode function: \(explicitTime)")
+            return sanitizedPosition(explicitTime)
+        }
+
+        let persistedCandidate = sanitizedPosition(persistedPosition)
+        let metadataCandidate = sanitizedPosition(metadataPosition)
+        let inMemoryCandidate = sanitizedPosition(inMemoryPosition)
+        var candidate = max(persistedCandidate, metadataCandidate, inMemoryCandidate)
+
+        if candidate <= 0 {
+            let maxFallback = max(
+                sanitizedPosition(persistedMaxPosition),
+                sanitizedPosition(metadataMaxPosition)
+            )
+
+            if maxFallback > 0 {
+                BasicLogger.shared.log("using max position as resume fallback: \(maxFallback)")
+                candidate = maxFallback
+            }
+        }
+
+        let duration = sanitizedPosition(episodeDuration)
+        if duration > 0,
+           candidate >= (duration * progressThreshold) {
+            BasicLogger.shared.log("episode considered finished - jump to beginning")
+            return 0
+        }
+
+        if candidate > 0 {
+            BasicLogger.shared.log("jump to last position: \(candidate)")
+        } else {
+            BasicLogger.shared.log("no persisted position - jump to beginning")
+        }
+        return candidate
+    }
+
     func saveCurrentPlaybackState(force: Bool = false) async {
         guard let currentEpisodeURL else { return }
 
-        let currentPlayPosition = playPosition
+        let currentPlayPosition = sanitizedPosition(playPosition)
         let currentChapterProgress = chapterProgress
         let currentChapterID = currentChapter?.uuid
         let episodeActor = self.episodeActor
@@ -401,7 +456,7 @@ class Player {
     func captureCurrentPlaybackStateFromEngine(force: Bool = true) async {
         guard currentEpisodeURL != nil else { return }
 
-        playPosition = max(0, await engine.currentTime())
+        playPosition = sanitizedPosition(await engine.currentTime())
         if currentEpisode?.chapters?.isEmpty == false {
             _ = updateCurrentChapter()
             updateChapterProgress()
@@ -418,13 +473,23 @@ class Player {
             return
         }
 
-        if let playPosition = snapshot.playPosition {
-            self.playPosition = playPosition
-            currentEpisode?.metaData?.playPosition = playPosition
+        let persistedMaxPlayPosition = sanitizedPosition(snapshot.maxPlayPosition)
+        if persistedMaxPlayPosition > (currentEpisode?.metaData?.maxPlayposition ?? 0) {
+            currentEpisode?.metaData?.maxPlayposition = persistedMaxPlayPosition
         }
 
-        if let maxPlayPosition = snapshot.maxPlayPosition {
-            currentEpisode?.metaData?.maxPlayposition = maxPlayPosition
+        let restoredPosition = resolvedResumePosition(
+            explicitTime: nil,
+            episodeDuration: currentEpisode?.duration,
+            persistedPosition: snapshot.playPosition,
+            persistedMaxPosition: snapshot.maxPlayPosition,
+            metadataPosition: currentEpisode?.metaData?.playPosition,
+            metadataMaxPosition: currentEpisode?.metaData?.maxPlayposition,
+            inMemoryPosition: self.playPosition
+        )
+        if restoredPosition > 0 || self.playPosition <= 0 {
+            self.playPosition = restoredPosition
+            currentEpisode?.metaData?.playPosition = restoredPosition
         }
 
         if currentEpisode?.chapters?.isEmpty == false {
@@ -466,6 +531,9 @@ class Player {
     private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
         let episode = (currentEpisode?.url == episodeURL) ? currentEpisode : await fetchEpisode(with: episodeURL)
         guard let episode else { return }
+        BasicLogger.shared.log(
+            "unloadEpisode url=\(episodeURL.absoluteString) finishedPlayback=\(finishedPlayback) playProgress=\(episode.playProgress)"
+        )
 
         stopPlaybackUpdates()
         currentEpisode = nil
@@ -493,6 +561,7 @@ class Player {
         guard let episodeURL,
               let episode = await fetchEpisode(with: episodeURL) else { return }
 
+        let previousEpisodeURL = currentEpisodeURL
         if let currentEpisodeURL, currentEpisodeURL != episodeURL {
             await unloadEpisode(episodeURL: currentEpisodeURL)
         }
@@ -518,20 +587,42 @@ class Player {
             currentEpisode?.duration = duration
         }
 
+        let snapshot = await episodeActor?.playbackStateSnapshot(for: episodeURL)
+        if currentEpisode?.metaData == nil {
+            let metadata = EpisodeMetaData()
+            metadata.episode = currentEpisode
+            currentEpisode?.metaData = metadata
+        }
+        if let persistedPosition = snapshot?.playPosition {
+            let sanitizedPersistedPosition = sanitizedPosition(persistedPosition)
+            if sanitizedPersistedPosition > 0 || sanitizedPosition(currentEpisode?.metaData?.playPosition) <= 0 {
+                currentEpisode?.metaData?.playPosition = sanitizedPersistedPosition
+            }
+        }
+        if let persistedMaxPosition = snapshot?.maxPlayPosition {
+            let sanitizedPersistedMaxPosition = sanitizedPosition(persistedMaxPosition)
+            if sanitizedPersistedMaxPosition > (currentEpisode?.metaData?.maxPlayposition ?? 0) {
+                currentEpisode?.metaData?.maxPlayposition = sanitizedPersistedMaxPosition
+            }
+        }
+
         await engine.replaceCurrentItem(with: item)
 
-        BasicLogger.shared.log("playing episode \(episode.title) - lastPlayPosition \(String(describing: currentEpisode?.metaData?.playPosition))")
-        if let time {
-            BasicLogger.shared.log("Time provided when calling the playEpisode function: \(time)")
-            await jumpTo(time: time)
-        } else if let lastPlayPosition = currentEpisode?.metaData?.playPosition,
-                  lastPlayPosition < ((currentEpisode?.duration ?? 1.0) * progressThreshold) {
-            BasicLogger.shared.log("jump to last position: \(lastPlayPosition)")
-            await jumpTo(time: lastPlayPosition)
-        } else {
-            BasicLogger.shared.log("no time - jump to beginning")
-            await jumpTo(time: 0)
-        }
+        BasicLogger.shared.log(
+            "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
+        )
+        let inMemoryResumePosition = (previousEpisodeURL == episodeURL) ? playPosition : nil
+        let targetStartTime = resolvedResumePosition(
+            explicitTime: time,
+            episodeDuration: currentEpisode?.duration,
+            persistedPosition: snapshot?.playPosition,
+            persistedMaxPosition: snapshot?.maxPlayPosition,
+            metadataPosition: currentEpisode?.metaData?.playPosition,
+            metadataMaxPosition: currentEpisode?.metaData?.maxPlayposition,
+            inMemoryPosition: inMemoryResumePosition
+        )
+
+        await jumpTo(time: targetStartTime)
         _ = updateCurrentChapter()
         setupStaticNowPlayingInfo()
         await updateNowPlayingCover()
@@ -592,7 +683,7 @@ class Player {
                     case .ended, .resume:
                         self.resumeAfterInterruption()
                     case .finished:
-                        self.handlePlaybackFinished()
+                        self.handlePlaybackEndedEvent(source: "interruption_finished_event")
                     }
                 }
             }
@@ -723,22 +814,41 @@ class Player {
                 guard !Task.isCancelled else { break }
                 switch event {
                 case .position(let time):
-                    self.playPosition = time
-                    self.updateEpisodeProgress(to: time)
+                    let sanitizedTime = self.sanitizedPosition(time)
+                    self.playPosition = sanitizedTime
+                    self.updateEpisodeProgress(to: sanitizedTime)
                 case .ended:
-                    BasicLogger.shared.log("Playback finished automatically")
-                    self.handlePlaybackFinished()
+                    self.handlePlaybackEndedEvent(source: "player_engine_stream")
                 }
             }
         }
+    }
+
+    private func handlePlaybackEndedEvent(source: String) {
+        let resolvedDuration = sanitizedPosition(currentEpisode?.duration)
+        guard resolvedDuration > 0 else {
+            BasicLogger.shared.log("Ignoring ended event from \(source): episode duration unavailable")
+            return
+        }
+
+        let finishThreshold = max(resolvedDuration * progressThreshold, resolvedDuration - 2.0)
+        guard playPosition >= finishThreshold else {
+            BasicLogger.shared.log(
+                "Ignoring premature ended event from \(source): position=\(playPosition), duration=\(resolvedDuration)"
+            )
+            return
+        }
+
+        BasicLogger.shared.log("Playback finished automatically (\(source))")
+        handlePlaybackFinished()
     }
     
     
     
     private var progressUpdateCounter = 0
     private var nowPlayingUpdateCounter = 0
-    private let progressSaveInterval = 20  // 0.5 seconds * 20 = 10 seconds
-    private let nowPlayingUpdateInterval = 2 // 0.5 seconds * 2 = 1 second
+    private let progressSaveInterval = 10  // 1 second * 10 = 10 seconds
+    private let nowPlayingUpdateInterval = 1 // 1 second * 1 = 1 second
     
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }

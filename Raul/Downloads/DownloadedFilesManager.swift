@@ -14,12 +14,16 @@ import Observation
     private let monitoredFolder: URL
     private var source: DispatchSourceFileSystemObject?
     private let queue = DispatchQueue(label: "DownloadedFilesMonitor") // serial
+    private var refreshWorkItem: DispatchWorkItem?
+    private var refreshInFlight = false
+    private var lastRefreshDate = Date.distantPast
+    private let minimumRefreshInterval: TimeInterval = 4.0
 
     private(set) var downloadedFiles: Set<URL> = []
 
     init(folder: URL) {
         self.monitoredFolder = folder
-        refreshDownloadedFiles()
+        scheduleRefresh(force: true)
         startMonitoring()
     }
 
@@ -44,30 +48,67 @@ import Observation
      }
       
      func refreshDownloadedFiles() {
+        scheduleRefresh(force: true)
+    }
+
+    private func scheduleRefresh(force: Bool = false) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.refreshWorkItem?.cancel()
+
+            let now = Date()
+            let elapsed = now.timeIntervalSince(self.lastRefreshDate)
+            let requiredDelay: TimeInterval
+            if force {
+                requiredDelay = 0
+            } else {
+                requiredDelay = max(0, self.minimumRefreshInterval - elapsed)
+            }
+
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.performRefreshDownloadedFiles()
+            }
+            self.refreshWorkItem = workItem
+
+            if requiredDelay > 0 {
+                self.queue.asyncAfter(deadline: .now() + requiredDelay, execute: workItem)
+            } else {
+                self.queue.async(execute: workItem)
+            }
+        }
+    }
+
+    private func performRefreshDownloadedFiles() {
+        guard !refreshInFlight else { return }
+        refreshInFlight = true
+        defer {
+            refreshInFlight = false
+            lastRefreshDate = Date()
+        }
+
         let monitoredFolder = monitoredFolder
         let managerBox = WeakObjectBox(object: self)
         let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey]
+        let fileManager = FileManager.default
+        let allEntries = (try? fileManager.contentsOfDirectory(
+            at: monitoredFolder,
+            includingPropertiesForKeys: Array(resourceKeys),
+            options: [.skipsHiddenFiles]
+        )) ?? []
 
-        queue.async {
-            let fileManager = FileManager.default
-            let allEntries = (try? fileManager.contentsOfDirectory(
-                at: monitoredFolder,
-                includingPropertiesForKeys: Array(resourceKeys),
-                options: [.skipsHiddenFiles]
-            )) ?? []
+        let updated = Set<URL>(allEntries.compactMap { url in
+            guard Self.isManagedDownloadFile(url) else { return nil }
+            guard let isRegularFile = try? url.resourceValues(forKeys: resourceKeys).isRegularFile,
+                  isRegularFile == true else {
+                return nil
+            }
+            return url.standardizedFileURL
+        })
 
-            let updated = Set<URL>(allEntries.compactMap { url in
-                guard Self.isManagedDownloadFile(url) else { return nil }
-                guard let isRegularFile = try? url.resourceValues(forKeys: resourceKeys).isRegularFile,
-                      isRegularFile == true else {
-                    return nil
-                }
-                return url.standardizedFileURL
-            })
-
-            
-            Task { @MainActor in
-                managerBox.object?.downloadedFiles = updated
+        Task { @MainActor in
+            guard let manager = managerBox.object else { return }
+            if manager.downloadedFiles != updated {
+                manager.downloadedFiles = updated
             }
         }
     }
@@ -93,12 +134,12 @@ import Observation
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd,
-            eventMask: .write,
+            eventMask: [.rename, .delete],
             queue: queue
         )
 
         source.setEventHandler { [weak self]  in
-            self?.refreshDownloadedFiles()
+            self?.scheduleRefresh(force: false)
         }
 
         source.setCancelHandler {
