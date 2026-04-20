@@ -183,12 +183,14 @@ actor EpisodeActor {
     
     func setLastPlayed(episodeURL: URL, to date: Date = Date()) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
     }
     
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         let previousPosition = episode.metaData?.playPosition ?? 0.0
         if force || abs(previousPosition - position) >= 10 {
             if position > episode.metaData?.maxPlayposition ?? 0.0 {
@@ -220,10 +222,29 @@ actor EpisodeActor {
             await applyAutomaticDownloadPolicy(for: podcastFeed)
         }
     }
+
+    private func playlistActor(for playlistID: UUID?) -> PlaylistModelActor? {
+        if let playlistID,
+           let actor = try? PlaylistModelActor(modelContainer: modelContainer, playlistID: playlistID) {
+            return actor
+        }
+
+        return try? PlaylistModelActor(modelContainer: modelContainer)
+    }
+
+    private func isEpisode(_ episode: Episode, queuedIn playlistID: UUID?) -> Bool {
+        let entries = episode.playlist ?? []
+
+        if let playlistID {
+            return entries.contains { $0.playlist?.id == playlistID }
+        }
+
+        return entries.contains { $0.playlist?.title == Playlist.defaultQueueTitle }
+    }
     
     func removeFromPlaylist(_ episodeURL: URL) async {
-        if let PlaylistmodelActor = try? PlaylistModelActor(modelContainer: modelContainer){
-            try? await PlaylistmodelActor.remove(episodeURL: episodeURL)
+        if let playlistModelActor = try? PlaylistModelActor(modelContainer: modelContainer) {
+            try? await playlistModelActor.removeFromAllPlaylists(episodeURL: episodeURL)
         }
     }
     
@@ -303,6 +324,7 @@ actor EpisodeActor {
         let keepCount = policy.keepCount
         let selection = policy.selection
         let queuePosition = policy.queuePosition
+        let playlistID = policy.playlistID
         let networkMode = policy.networkMode
 
         let descriptor = FetchDescriptor<Episode>(
@@ -349,7 +371,7 @@ actor EpisodeActor {
 
         let targetEpisodes = Array(sortedEpisodes.prefix(keepCount))
         let targetEpisodeURLs = Set(targetEpisodes.compactMap(\.url))
-        let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
+        let playlistActor = playlistActor(for: playlistID)
         let canScheduleDownloads = await canScheduleAutoDownloads(for: networkMode)
 
         if canScheduleDownloads {
@@ -364,7 +386,7 @@ actor EpisodeActor {
                     continue
                 }
 
-                let isQueued = (episode.playlist?.isEmpty ?? true) == false
+                let isQueued = isEpisode(episode, queuedIn: playlistID)
                 if isQueued == false {
                     try? await playlistActor?.add(episodeURL: episodeURL, to: queuePosition)
                     continue
@@ -382,7 +404,7 @@ actor EpisodeActor {
                 return isDownloaded
             }
 
-            let isQueued = (episode.playlist?.isEmpty ?? true) == false
+            let isQueued = isEpisode(episode, queuedIn: playlistID)
             return isDownloaded || isQueued
         }
 
@@ -453,11 +475,13 @@ actor EpisodeActor {
         }
      */
         
-        let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.feed)
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let playnext = await settingsActor.getPlaynextposition(for: episode.podcast?.feed)
+        let playlistID = await settingsActor.getDefaultPlaylistID(for: episode.podcast?.feed)
         print("Processing episode: \(episode.title) - playnext Status is \(playnext)")
 
         if playnext != .none {
-            let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
+            let playlistActor = playlistActor(for: playlistID)
             try? await playlistActor?.add(episodeURL: episodeURL, to: playnext)
         }
 

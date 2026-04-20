@@ -36,7 +36,7 @@ actor PlaylistModelActor {
 
     /// Initialize by title; creates the playlist if it doesn't exist.
     public init(modelContainer: ModelContainer? = nil,
-                playlistTitle: String = "de.holgerkrupp.podbay.queue") throws {
+                playlistTitle: String = Playlist.defaultQueueTitle) throws {
         guard let container = modelContainer else {
             fatalError("PlaylistModelActor requires a modelContainer to be passed in from the main actor.")
         }
@@ -51,6 +51,11 @@ actor PlaylistModelActor {
         } else {
             let newPlaylist = Playlist()
             newPlaylist.title = playlistTitle
+            if playlistTitle == Playlist.defaultQueueTitle {
+                newPlaylist.deleteable = false
+                newPlaylist.sortIndex = 0
+                newPlaylist.kind = .manual
+            }
             modelContext.insert(newPlaylist)
             try modelContext.save()
             self.playlistID = newPlaylist.id
@@ -90,9 +95,22 @@ actor PlaylistModelActor {
         return p
     }
 
+    private func allEpisodes() throws -> [Episode] {
+        try modelContext.fetch(FetchDescriptor<Episode>())
+    }
+
+    private func orderedEpisodes(for playlist: Playlist) throws -> [Episode] {
+        if playlist.isSmartPlaylist {
+            let episodes = try allEpisodes()
+            return SmartPlaylistEngine.episodes(from: episodes, for: playlist)
+        }
+
+        return playlist.ordered.compactMap { $0.episode }
+    }
+
     func orderedEpisodes() throws -> [Episode] {
         guard let playlist = try fetchPlaylist() else { return [] }
-        return playlist.ordered.compactMap { $0.episode }
+        return try orderedEpisodes(for: playlist)
     }
 
     public func orderedEpisodeURLs() throws -> [URL] {
@@ -216,6 +234,7 @@ actor PlaylistModelActor {
     
     func insert(episodeURL: URL, after anchorEpisodeURL: URL?) async throws {
         guard let playlist = try fetchPlaylist() else { return }
+        guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
 
@@ -266,6 +285,7 @@ actor PlaylistModelActor {
     /// Add/move an episode within the playlist.
     func add(episodeURL: URL, to position: Playlist.Position = .end) async throws {
         guard let playlist = try fetchPlaylist() else { return }
+        guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
 
@@ -323,6 +343,7 @@ actor PlaylistModelActor {
     /// Add/move an episode with explicit index control within the visual order.
     func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
         guard let playlist = try fetchPlaylist() else { return }
+        guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
 
@@ -377,6 +398,7 @@ actor PlaylistModelActor {
 
     func remove(episodeURL: URL) throws {
         guard let playlist = try fetchPlaylist() else { return }
+        guard playlist.isSmartPlaylist == false else { return }
 
         let matchingEntries = existingEntries(for: episodeURL, in: playlist)
 
@@ -400,6 +422,7 @@ actor PlaylistModelActor {
     /// Reorders by reindexing .ordered (sorted view) to contiguous 0...n and saves.
     func normalizeOrder()  {
         guard let playlist = try? fetchPlaylist() else { return }
+        guard playlist.isSmartPlaylist == false else { return }
         for (i, entry) in playlist.ordered.enumerated() {
             entry.order = i
         }
@@ -409,14 +432,16 @@ actor PlaylistModelActor {
     /// Move an entry by source/destination indices as seen in sorted order.
     func moveEntry(from sourceIndex: Int, to destinationIndex: Int) throws {
         guard let playlist = try fetchPlaylist() else { return }
+        guard playlist.isSmartPlaylist == false else { return }
         print("move from \(sourceIndex) to \(destinationIndex)")
         if let sorted = playlist.items?.sorted(by: { $0.order < $1.order }){
-            guard sourceIndex < sorted.count, destinationIndex < sorted.count else { return }
-            
-            let moved = sorted[sourceIndex]
+            guard sourceIndex < sorted.count, destinationIndex <= sorted.count else { return }
+
             var reordered = sorted
-            reordered.remove(at: sourceIndex)
-            reordered.insert(moved, at: destinationIndex)
+            let moved = reordered.remove(at: sourceIndex)
+            let adjustedDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+            let safeDestination = max(0, min(adjustedDestination, reordered.count))
+            reordered.insert(moved, at: safeDestination)
             
             for (i, entry) in reordered.enumerated() {
                 entry.order = i
@@ -426,6 +451,42 @@ actor PlaylistModelActor {
                 await PlayNextWidgetSync.refresh(using: modelContainer)
                 WatchSyncCoordinator.refreshSoon()
             }
+        }
+    }
+
+    func removeFromAllPlaylists(episodeURL: URL) throws {
+        let descriptor = FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { entry in
+                entry.episode?.url == episodeURL
+            }
+        )
+
+        let entries = try modelContext.fetch(descriptor)
+        guard entries.isEmpty == false else { return }
+
+        let playlists = Set(entries.compactMap { $0.playlist?.id })
+
+        for entry in entries {
+            modelContext.delete(entry)
+            entry.episode?.refresh.toggle()
+        }
+
+        for playlistID in playlists {
+            let playlistDescriptor = FetchDescriptor<Playlist>(
+                predicate: #Predicate<Playlist> { $0.id == playlistID }
+            )
+            if let playlist = try modelContext.fetch(playlistDescriptor).first, playlist.isSmartPlaylist == false {
+                for (index, entry) in playlist.ordered.enumerated() {
+                    entry.order = index
+                }
+            }
+        }
+
+        modelContext.saveIfNeeded()
+
+        Task {
+            await PlayNextWidgetSync.refresh(using: modelContainer)
+            WatchSyncCoordinator.refreshSoon()
         }
     }
 

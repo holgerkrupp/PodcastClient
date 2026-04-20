@@ -7,22 +7,54 @@
 
 
 import SwiftUI
+import SwiftData
 
 struct EpisodeControlView: View {
-
-
     @Bindable var episode: Episode
- //   @StateObject private var manager = DownloadManager.shared
+
     @Environment(\.modelContext) private var modelContext
-    @State private var downloadProgress: Double = 0.0
-    @State private var isDownloading: Bool = false
-    
+
+    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
+    private var playlists: [Playlist]
+
+    @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var preferredPlaylistID: String = ""
+    @State private var showFrontPlaylistPicker: Bool = false
+    @State private var showBackPlaylistPicker: Bool = false
+    @State private var suppressNextFrontTap: Bool = false
+    @State private var suppressNextBackTap: Bool = false
+
+    private var manualPlaylists: [Playlist] {
+        Playlist.manualVisibleSorted(playlists)
+    }
+
+    private var resolvedPlaylistID: UUID? {
+        if let explicitID = UUID(uuidString: preferredPlaylistID),
+           manualPlaylists.contains(where: { $0.id == explicitID }) {
+            return explicitID
+        }
+
+        if let defaultPlaylist = manualPlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.id
+        }
+
+        return manualPlaylists.first?.id
+    }
+
+    private var resolvedPlaylistTitle: String {
+        guard let resolvedPlaylistID,
+              let playlist = manualPlaylists.first(where: { $0.id == resolvedPlaylistID }) else {
+            return Playlist.defaultQueueDisplayName
+        }
+
+        return playlist.displayTitle
+    }
 
     var body: some View {
+        let isInPlaylist = (episode.playlist?.isEmpty ?? true) == false
 
         HStack {
             Button(action: {
-                Task{
+                Task {
                     await Player.shared.playEpisode(episode.url)
                 }
             }) {
@@ -30,7 +62,6 @@ struct EpisodeControlView: View {
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
                     .padding(5)
-                    // .foregroundColor(.accent)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
                     .clipShape(Circle())
@@ -39,86 +70,136 @@ struct EpisodeControlView: View {
             .buttonStyle(.glass(.clear))
             .accessibilityLabel("Play episode")
             .accessibilityHint("Starts this episode immediately")
-            
+
             Spacer()
-            
+
             GlassEffectContainer(spacing: 20.0) {
                 HStack(spacing: 0.0) {
-                    
                     Button {
-                        
-                        Task{
-                            await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .front)
-                            
+                        if suppressNextFrontTap {
+                            suppressNextFrontTap = false
+                            return
+                        }
+                        Task {
+                            await addEpisode(to: resolvedPlaylistID, position: .front)
                         }
                     } label: {
-                        
-                        Label("Play Next", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
-                            .symbolRenderingMode(.hierarchical)
-                            .scaledToFit()
-                            .padding(5)
-                            .minimumScaleFactor(0.5)
-                            .labelStyle(.iconOnly)
-                            .frame(width: 50)
-                           
+                        Label(
+                            "Play Next",
+                            systemImage: isInPlaylist ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward"
+                        )
+                        .symbolRenderingMode(.hierarchical)
+                        .scaledToFit()
+                        .padding(5)
+                        .minimumScaleFactor(0.5)
+                        .labelStyle(.iconOnly)
+                        .frame(width: 50, height: 50)
                     }
                     .buttonStyle(.glass(.clear))
                     .clipShape(Circle())
-                    .accessibilityLabel("Add to Up Next")
-                    .accessibilityHint("Places this episode at the front of the queue")
-                    
-                 
+                    .contentShape(Circle())
+                    .accessibilityLabel("Add to playlist")
+                    .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
+                    .onLongPressGesture(minimumDuration: 0.45) {
+                        suppressNextFrontTap = true
+                        showFrontPlaylistPicker = true
+                    }
+
                     Button {
-                        Task{
-                            await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
+                        if suppressNextBackTap {
+                            suppressNextBackTap = false
+                            return
+                        }
+                        Task {
+                            await addEpisode(to: resolvedPlaylistID, position: .end)
                         }
                     } label: {
-                        Label("Play Last", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
-                            .symbolRenderingMode(.hierarchical)
-                            .scaledToFit()
-                            .padding(5)
-                            .minimumScaleFactor(0.5)
-                            .labelStyle(.iconOnly)
-                            .frame(width: 50)
+                        Label(
+                            "Play Last",
+                            systemImage: isInPlaylist ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward"
+                        )
+                        .symbolRenderingMode(.hierarchical)
+                        .scaledToFit()
+                        .padding(5)
+                        .minimumScaleFactor(0.5)
+                        .labelStyle(.iconOnly)
+                        .frame(width: 50, height: 50)
                     }
                     .buttonStyle(.glass(.clear))
                     .clipShape(Circle())
-                    .accessibilityLabel("Add to end of queue")
-                    .accessibilityHint("Places this episode at the end of Up Next")
-                    
+                    .contentShape(Circle())
+                    .accessibilityLabel("Add to end of playlist")
+                    .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
+                    .onLongPressGesture(minimumDuration: 0.45) {
+                        suppressNextBackTap = true
+                        showBackPlaylistPicker = true
+                    }
                 }
             }
-            
+
             Spacer()
-            
+
             Button {
-                Task{
+                Task {
                     await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episode.url)
                 }
             } label: {
-                
-                Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                    .symbolRenderingMode(.hierarchical)
-                    .scaledToFit()
-                    .padding(5)
-
-                   // .foregroundColor(.accent)
-                    .minimumScaleFactor(0.5)
-                    .labelStyle(.iconOnly)
-                    .clipShape(Circle())
-                    .frame(width: 50)
+                Label(
+                    episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive",
+                    systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox"
+                )
+                .symbolRenderingMode(.hierarchical)
+                .scaledToFit()
+                .padding(5)
+                .minimumScaleFactor(0.5)
+                .labelStyle(.iconOnly)
+                .clipShape(Circle())
+                .frame(width: 50)
             }
             .buttonStyle(.glass(.clear))
             .accessibilityLabel(episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
             .accessibilityHint("Moves this episode in or out of the archive")
-
-            
-            
         }
-        
+        .confirmationDialog("Add To Front", isPresented: $showFrontPlaylistPicker, titleVisibility: .visible) {
+            ForEach(manualPlaylists) { playlist in
+                Button("Add to front of \(playlist.displayTitle)") {
+                    Task {
+                        await addEpisode(to: playlist.id, position: .front)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+        .confirmationDialog("Add To End", isPresented: $showBackPlaylistPicker, titleVisibility: .visible) {
+            ForEach(manualPlaylists) { playlist in
+                Button("Add to end of \(playlist.displayTitle)") {
+                    Task {
+                        await addEpisode(to: playlist.id, position: .end)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+    }
 
-       
+    private func addEpisode(to playlistID: UUID?, position: Playlist.Position) async {
+        guard let episodeURL = episode.url else { return }
 
+        let playlistActor: PlaylistModelActor?
+        if let playlistID,
+           let actor = try? PlaylistModelActor(modelContainer: modelContext.container, playlistID: playlistID) {
+            playlistActor = actor
+        } else {
+            playlistActor = try? PlaylistModelActor(modelContainer: modelContext.container)
+        }
+
+        guard let playlistActor else { return }
+
+        if position == .front {
+            try? await playlistActor.insert(episodeURL: episodeURL, after: Player.shared.currentEpisodeURL)
+        } else {
+            try? await playlistActor.add(episodeURL: episodeURL, to: position)
+        }
     }
 }
 

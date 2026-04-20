@@ -21,7 +21,13 @@ struct PodcastListView: View {
         }
     }
 
+    @Environment(\.modelContext) private var modelContext
+
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
+
+    @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
+    @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var inboxBasePlaylistID: String = ""
+
     @StateObject private var viewModel: PodcastListViewModel
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
@@ -73,6 +79,11 @@ struct PodcastListView: View {
 
             NavigationLink(destination: BookmarkListView()) {
                 Label("All Bookmarks", systemImage: "bookmark")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: LibraryPlaylistsView()) {
+                Label("Playlists", systemImage: "list.bullet")
                     .font(.headline)
             }
 
@@ -134,6 +145,10 @@ struct PodcastListView: View {
         .animation(.easeInOut, value: podcastsInScope.map(\.persistentModelID))
         .listStyle(.plain)
         .listRowSpacing(0)
+        .task {
+            _ = Playlist.ensureDefaultQueue(in: modelContext)
+            ensurePlaylistPreferencesValid()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -182,6 +197,213 @@ struct PodcastListView: View {
                 .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
             }
         }
+    }
+
+    private func ensurePlaylistPreferencesValid() {
+        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
+        let currentPlaylists = Playlist.manualVisibleSorted((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [])
+        let allIDs = Set(currentPlaylists.map(\.id))
+
+        if let selectedID = UUID(uuidString: selectedPlaylistID),
+           allIDs.contains(selectedID) == false {
+            selectedPlaylistID = defaultPlaylist.id.uuidString
+        } else if selectedPlaylistID.isEmpty {
+            selectedPlaylistID = defaultPlaylist.id.uuidString
+        }
+
+        if let inboxID = UUID(uuidString: inboxBasePlaylistID),
+           allIDs.contains(inboxID) == false {
+            inboxBasePlaylistID = defaultPlaylist.id.uuidString
+        } else if inboxBasePlaylistID.isEmpty {
+            inboxBasePlaylistID = defaultPlaylist.id.uuidString
+        }
+    }
+}
+
+private struct LibraryPlaylistsView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
+    private var playlists: [Playlist]
+
+    @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
+    @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var inboxBasePlaylistID: String = ""
+    @State private var showCreatePlaylistSheet: Bool = false
+
+    private var visiblePlaylists: [Playlist] {
+        Playlist.manualVisibleSorted(playlists)
+    }
+
+    var body: some View {
+        return List {
+            if visiblePlaylists.isEmpty {
+                ContentUnavailableView(
+                    "No playlists yet.",
+                    systemImage: "list.bullet.rectangle.portrait"
+                )
+            } else {
+                ForEach(visiblePlaylists) { playlist in
+                    playlistRowContent(for: playlist)
+                    .deleteDisabled(playlist.deleteable == false)
+                }
+                .onDelete(perform: deletePlaylists)
+            }
+        }
+        .navigationTitle("Playlists")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showCreatePlaylistSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Create playlist")
+                .accessibilityHint("Adds a new playlist")
+            }
+        }
+        .sheet(isPresented: $showCreatePlaylistSheet) {
+            LibraryNewPlaylistSheet { playlistName in
+                createPlaylist(named: playlistName)
+            }
+        }
+        .task {
+            _ = Playlist.ensureDefaultQueue(in: modelContext)
+            ensurePlaylistPreferencesValid()
+        }
+    }
+
+    private func deletePlaylists(at offsets: IndexSet) {
+        let candidates = visiblePlaylists
+        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
+
+        for index in offsets {
+            guard index < candidates.count else { continue }
+            let playlist = candidates[index]
+            guard playlist.deleteable else { continue }
+
+            if let selectedID = UUID(uuidString: selectedPlaylistID),
+               selectedID == playlist.id {
+                selectedPlaylistID = defaultPlaylist.id.uuidString
+            }
+
+            if let inboxID = UUID(uuidString: inboxBasePlaylistID),
+               inboxID == playlist.id {
+                inboxBasePlaylistID = defaultPlaylist.id.uuidString
+            }
+
+            for entry in playlist.items ?? [] {
+                modelContext.delete(entry)
+            }
+            modelContext.delete(playlist)
+        }
+
+        modelContext.saveIfNeeded()
+        ensurePlaylistPreferencesValid()
+    }
+
+    private func itemCount(for playlist: Playlist) -> Int {
+        return playlist.ordered.reduce(into: 0) { partialResult, entry in
+            if entry.episode != nil {
+                partialResult += 1
+            }
+        }
+    }
+
+    private func ensurePlaylistPreferencesValid() {
+        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
+        let currentPlaylists = Playlist.manualVisibleSorted((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [])
+        let allIDs = Set(currentPlaylists.map(\.id))
+
+        if let selectedID = UUID(uuidString: selectedPlaylistID),
+           allIDs.contains(selectedID) == false {
+            selectedPlaylistID = defaultPlaylist.id.uuidString
+        } else if selectedPlaylistID.isEmpty {
+            selectedPlaylistID = defaultPlaylist.id.uuidString
+        }
+
+        if let inboxID = UUID(uuidString: inboxBasePlaylistID),
+           allIDs.contains(inboxID) == false {
+            inboxBasePlaylistID = defaultPlaylist.id.uuidString
+        } else if inboxBasePlaylistID.isEmpty {
+            inboxBasePlaylistID = defaultPlaylist.id.uuidString
+        }
+    }
+
+    private func createPlaylist(named rawName: String) {
+        let allPlaylists = Playlist.manualVisibleSorted(playlists)
+        let title = Playlist.normalizedPlaylistName(rawName, existing: allPlaylists)
+
+        let playlist = Playlist()
+        playlist.title = title
+        playlist.deleteable = true
+        playlist.hidden = false
+        playlist.sortIndex = (allPlaylists.map(\.sortIndex).max() ?? 0) + 1
+        playlist.kind = .manual
+        playlist.smartFilter = nil
+
+        modelContext.insert(playlist)
+        modelContext.saveIfNeeded()
+    }
+
+    private func playlistRowContent(for playlist: Playlist) -> some View {
+        HStack(spacing: 12) {
+            Label(
+                playlist.displayTitle,
+                systemImage: "list.bullet"
+            )
+            .font(.headline)
+
+            Spacer()
+
+            Text(itemCount(for: playlist), format: .number)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            if playlist.deleteable == false {
+                Text("Default")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct LibraryNewPlaylistSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var playlistName: String = ""
+
+    let onCreate: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Playlist") {
+                    TextField("Name", text: $playlistName)
+                }
+            }
+            .navigationTitle("New Playlist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        onCreate(playlistName)
+                        dismiss()
+                    }
+                    .disabled(canCreate == false)
+                }
+            }
+        }
+    }
+
+    private var canCreate: Bool {
+        playlistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 }
 
