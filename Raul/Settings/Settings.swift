@@ -589,8 +589,13 @@ actor SideLoadedLibraryActor {
             guard now.timeIntervalSince(missingSince) >= gracePeriod else { continue }
             guard episode.metaData?.isArchived != true else { continue }
 
-            await episodeActor.archiveEpisode(episode.url)
-            didChange = true
+            if episode.metaData?.systemSuppressionReason != .missingSideload {
+                await episodeActor.suppressEpisodeFromInbox(
+                    episode.url,
+                    reason: .missingSideload
+                )
+                didChange = true
+            }
             missingStateDidChange = missingState.clear(for: episodeURL) || missingStateDidChange
         }
 
@@ -612,6 +617,7 @@ actor SideLoadedLibraryActor {
                 episode.metaData?.isInbox = true
                 episode.metaData?.isArchived = false
                 episode.metaData?.status = .inbox
+                episode.metaData?.systemSuppressionReason = nil
                 episode.metaData?.isAvailableLocally = isAvailableLocally
                 modelContext.insert(episode)
                 modelContext.saveIfNeeded()
@@ -637,6 +643,14 @@ actor SideLoadedLibraryActor {
                     didChange = true
                 }
                 continue
+            }
+
+            if existingEpisode.metaData?.systemSuppressionReason == .missingSideload {
+                existingEpisode.metaData?.systemSuppressionReason = nil
+                existingEpisode.metaData?.isInbox = true
+                existingEpisode.metaData?.status = .inbox
+                existingEpisode.metaData?.archivedAt = nil
+                didChange = true
             }
 
             let metadata = await loadMetadata(for: fileURL, canLoadMediaMetadata: isAvailableLocally)

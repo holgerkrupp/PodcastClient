@@ -418,9 +418,6 @@
         }
       }
     },
-    "Auto Downloads" : {
-
-    },
     "Auto-download unplayed episodes" : {
 
     },
@@ -1354,7 +1351,7 @@
     "Inbox section" : {
 
     },
-    "Include archived episodes" : {
+    "Include back catalog episodes" : {
 
     },
     "Installed Models" : {
@@ -1395,7 +1392,7 @@
     "Keeps captions centered around the current playback time" : {
 
     },
-    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes archived episodes, useful for newly imported back catalogs." : {
+    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports." : {
 
     },
     "Keyword or phrase" : {
@@ -2554,7 +2551,7 @@
         }
       }
     },
-    "Queue & Playback" : {
+    "Queue & Downloads" : {
 
     },
     "Queue Behavior" : {

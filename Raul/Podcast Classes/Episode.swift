@@ -455,6 +455,11 @@ enum EpisodeStatus: String, Codable{
     case inbox, history, archived, unknown
 }
 
+enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
+    case backCatalogImport
+    case missingSideload
+}
+
 @Model final class EpisodeMetaData{
     var calculatedIsAvailableLocally: Bool {
         guard let url = episode?.localFile else {
@@ -473,6 +478,17 @@ enum EpisodeStatus: String, Codable{
     var isInbox: Bool? = true
     
     var status: EpisodeStatus? = EpisodeStatus.inbox
+    var systemSuppressionReasonRawValue: String?
+
+    var systemSuppressionReason: EpisodeSystemSuppressionReason? {
+        get {
+            guard let systemSuppressionReasonRawValue else { return nil }
+            return EpisodeSystemSuppressionReason(rawValue: systemSuppressionReasonRawValue)
+        }
+        set {
+            systemSuppressionReasonRawValue = newValue?.rawValue
+        }
+    }
    
     
     @Relationship(inverse: \Episode.metaData) var episode: Episode?

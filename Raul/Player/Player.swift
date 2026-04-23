@@ -565,7 +565,7 @@ class Player {
 
         if finishedPlayback || episode.playProgress >= progressThreshold {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
-            await episodeActor?.archiveEpisode(episodeURL)
+            await episodeActor?.moveToHistory(episodeURL: episodeURL)
         } else {
             try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
         }
