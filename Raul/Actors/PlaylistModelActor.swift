@@ -31,7 +31,16 @@ actor PlaylistModelActor {
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
         self.playlistID = playlistID
 
-       
+        let descriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.id == playlistID }
+        )
+        guard try modelContext.fetch(descriptor).first != nil else {
+            throw NSError(
+                domain: "PlaylistModelActor",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Playlist not found for id \(playlistID)"]
+            )
+        }
     }
 
     /// Initialize by title; creates the playlist if it doesn't exist.
@@ -64,6 +73,12 @@ actor PlaylistModelActor {
     }
 
     // MARK: - Private helpers
+
+    private func logAutoDownload(_ message: String) {
+        Task { @MainActor in
+            BasicLogger.shared.log("[AutoDL] \(message)")
+        }
+    }
 
     /// Always fetch the current playlist in this actor’s context.
     private func fetchPlaylist() throws -> Playlist? {
@@ -157,8 +172,9 @@ actor PlaylistModelActor {
             ensureMetadata(for: episode)
             episode.metaData?.isInbox = false
             episode.metaData?.isArchived = false
-            episode.metaData?.status = .none
+            episode.metaData?.status = nil
             episode.metaData?.archivedAt = nil
+            episode.metaData?.systemSuppressionReason = nil
             episode.refresh.toggle()
         }
     }
@@ -231,8 +247,14 @@ actor PlaylistModelActor {
             )
         }
     }
+
+    func containsEpisodeURL(_ episodeURL: URL) throws -> Bool {
+        guard let playlist = try fetchPlaylist() else { return false }
+        guard playlist.isSmartPlaylist == false else { return false }
+        return existingEntries(for: episodeURL, in: playlist).isEmpty == false
+    }
     
-    func insert(episodeURL: URL, after anchorEpisodeURL: URL?) async throws {
+    func insert(episodeURL: URL, after anchorEpisodeURL: URL?, startDownload: Bool = true) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
@@ -276,14 +298,16 @@ actor PlaylistModelActor {
         updateQueuedEpisodeMetadata(matchingEpisodes)
         modelContext.saveIfNeeded()
         await notifyInboxDidChange()
-        await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        if startDownload {
+            await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        }
         await restoreQueuedChapterImages(for: episodeURL)
         await PlayNextWidgetSync.refresh(using: modelContainer)
         WatchSyncCoordinator.refreshSoon()
     }
 
     /// Add/move an episode within the playlist.
-    func add(episodeURL: URL, to position: Playlist.Position = .end) async throws {
+    func add(episodeURL: URL, to position: Playlist.Position = .end, startDownload: Bool = true) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
@@ -333,7 +357,9 @@ actor PlaylistModelActor {
         modelContext.saveIfNeeded()
         await notifyInboxDidChange()
 
-        await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        if startDownload {
+            await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        }
         await restoreQueuedChapterImages(for: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
@@ -341,7 +367,7 @@ actor PlaylistModelActor {
     }
 
     /// Add/move an episode with explicit index control within the visual order.
-    func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?) async throws {
+    func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?, startDownload: Bool = true) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
@@ -389,7 +415,9 @@ actor PlaylistModelActor {
         modelContext.saveIfNeeded()
         await notifyInboxDidChange()
 
-        await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        if startDownload {
+            await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+        }
         await restoreQueuedChapterImages(for: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer)
@@ -401,6 +429,10 @@ actor PlaylistModelActor {
         guard playlist.isSmartPlaylist == false else { return }
 
         let matchingEntries = existingEntries(for: episodeURL, in: playlist)
+        let affectedPodcastFeeds = Set(matchingEntries.compactMap { $0.episode?.podcast?.feed })
+        logAutoDownload(
+            "trigger/manual-remove playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) entries=\(matchingEntries.count) affectedFeeds=\(affectedPodcastFeeds.count)"
+        )
 
         if matchingEntries.isEmpty == false {
             for entry in matchingEntries {
@@ -413,8 +445,24 @@ actor PlaylistModelActor {
                 await PlayNextWidgetSync.refresh(using: modelContainer)
                 WatchSyncCoordinator.refreshSoon()
             }
+
+            if affectedPodcastFeeds.isEmpty == false {
+                let container = modelContainer
+                Task {
+                    let episodeActor = EpisodeActor(modelContainer: container)
+                    for podcastFeed in affectedPodcastFeeds {
+                        await MainActor.run {
+                            BasicLogger.shared.log("[AutoDL] trigger/manual-remove applying-policy feed=\(podcastFeed.absoluteString)")
+                        }
+                        await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed)
+                    }
+                }
+            }
             // print("✅ PlaylistEntry deleted and context saved")
         }else{
+            logAutoDownload(
+                "trigger/manual-remove no-op playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) reason=no-matching-entry"
+            )
             // print("No such episode")
         }
     }

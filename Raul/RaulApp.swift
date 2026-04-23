@@ -50,6 +50,15 @@ struct RaulApp: App {
                             await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
                             WatchSyncCoordinator.refreshSoon()
                         }
+                        Task {
+                            await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
+                                modelContainer: modelContainerManager.container
+                            )
+                        }
+                        Task {
+                            let actor = EpisodeActor(modelContainer: modelContainerManager.container)
+                            await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
+                        }
                         UIDevice.current.isBatteryMonitoringEnabled = true
                         Task {
                             await runAutomaticTranscriptionSweep(reason: "launch")

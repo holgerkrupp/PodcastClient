@@ -153,7 +153,12 @@ struct EpisodeControlView: View {
 
             Button {
                 Task {
-                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episode.url)
+                    let actor = EpisodeActor(modelContainer: modelContext.container)
+                    if episode.metaData?.isArchived == true {
+                        await actor.unarchiveEpisode(episode.url)
+                    } else {
+                        await actor.archiveEpisode(episode.url)
+                    }
                 }
             } label: {
                 Label(

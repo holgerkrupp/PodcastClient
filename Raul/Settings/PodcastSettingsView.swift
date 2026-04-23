@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import BasicLogger
 
 struct PodcastSettingsView: View {
     static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
@@ -15,6 +16,7 @@ struct PodcastSettingsView: View {
     @State private var isApplyingSideloadingChange = false
     @State private var sideloadingAlertMessage: String?
     @State private var showSideloadingAlert = false
+    @State private var hasPendingAutoDownloadReconciliation = false
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
@@ -83,14 +85,19 @@ struct PodcastSettingsView: View {
     }
 
     var body: some View {
-        if embedInNavigationStack {
-            NavigationStack {
+        Group {
+            if embedInNavigationStack {
+                NavigationStack {
+                    settingsList
+                        .id(viewIdentity)
+                }
+            } else {
                 settingsList
                     .id(viewIdentity)
             }
-        } else {
-            settingsList
-                .id(viewIdentity)
+        }
+        .onDisappear {
+            applyAutomaticDownloadPolicyIfNeededOnClose()
         }
     }
 
@@ -142,9 +149,6 @@ struct PodcastSettingsView: View {
                 _ = ensureStandardSettings(in: context)
                 _ = Playlist.ensureDefaultQueue(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
-            }
-            .onDisappear {
-                applyAutomaticDownloadPolicyIfNeeded()
             }
             .alert("Unable to Enable Sideloading", isPresented: $showSideloadingAlert) {
                 Button("OK", role: .cancel) { }
@@ -269,7 +273,7 @@ struct PodcastSettingsView: View {
                     get: { settings.playnextPosition },
                     set: {
                         settings.playnextPosition = $0
-                        saveAndNotify()
+                        saveAndNotify(autoDownloadPolicyChanged: true)
                     }
                 )
             ) {
@@ -424,34 +428,8 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func podcastCustomizationSection(settings: PodcastSettings) -> some View {
-        Section("Queue & Playback") {
-            Picker(
-                "New episodes go to",
-                selection: Binding(
-                    get: { settings.playnextPosition },
-                    set: {
-                        settings.playnextPosition = $0
-                        saveAndNotify()
-                    }
-                )
-            ) {
-                ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
-                    Text(position.settingsLabel).tag(position)
-                }
-            }
+        Section("Playback") {
 
-            Picker(
-                "Default playlist for auto-add",
-                selection: playlistSelectionBinding(for: settings)
-            ) {
-                if manualPlaylists.isEmpty {
-                    Text(Playlist.defaultQueueDisplayName).tag("")
-                }
-                ForEach(manualPlaylists) { playlist in
-                    Text(playlist.displayTitle).tag(playlist.id.uuidString)
-                }
-            }
-            .disabled(settings.playnextPosition == .none)
 
             Text("Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.")
                 .font(.caption)
@@ -499,17 +477,56 @@ struct PodcastSettingsView: View {
                 .foregroundStyle(.secondary)
         }
 
-        Section("Auto Downloads") {
+        Section("Queue & Downloads") {
+            Picker(
+                "New episodes go to",
+                selection: Binding(
+                    get: { settings.playnextPosition },
+                    set: {
+                        settings.playnextPosition = $0
+                        saveAndNotify(autoDownloadPolicyChanged: true)
+                    }
+                )
+            ) {
+                ForEach(Playlist.Position.settingsOptions, id: \.self) { position in
+                    Text(position.settingsLabel).tag(position)
+                }
+            }
+
+            Picker(
+                "Default playlist for auto-add",
+                selection: playlistSelectionBinding(for: settings)
+            ) {
+                if manualPlaylists.isEmpty {
+                    Text(Playlist.defaultQueueDisplayName).tag("")
+                }
+                ForEach(manualPlaylists) { playlist in
+                    Text(playlist.displayTitle).tag(playlist.id.uuidString)
+                }
+            }
+            .disabled(settings.playnextPosition == .none)
+            
             Toggle(
                 "Auto-download unplayed episodes",
                 isOn: Binding(
                     get: { settings.autoDownload },
                     set: {
                         settings.autoDownload = $0
-                        if $0, settings.autoDownloadEpisodeCount < 1 {
-                            settings.autoDownloadEpisodeCount = 1
+                        if $0 {
+                            if settings.autoDownloadEpisodeCount < 1 {
+                                settings.autoDownloadEpisodeCount = 1
+                            }
+                            if settings.autoDownloadIncludesArchivedEpisodes == false {
+                                settings.autoDownloadIncludesArchivedEpisodes = true
+                            }
+                            if settings.playnextPosition == .none {
+                                settings.playnextPosition = .end
+                            }
+                            if settings.defaultPlaylistID == nil {
+                                settings.defaultPlaylistID = resolvedPlaylistID(for: settings)
+                            }
                         }
-                        saveAndNotify()
+                        saveAndNotify(autoDownloadPolicyChanged: true)
                     }
                 )
             )
@@ -520,7 +537,7 @@ struct PodcastSettingsView: View {
                         get: { max(settings.autoDownloadEpisodeCount, 1) },
                         set: {
                             settings.autoDownloadEpisodeCount = max($0, 1)
-                            saveAndNotify()
+                            saveAndNotify(autoDownloadPolicyChanged: true)
                         }
                     ),
                     in: 1...50,
@@ -538,7 +555,7 @@ struct PodcastSettingsView: View {
                         get: { settings.autoDownloadSelection },
                         set: {
                             settings.autoDownloadSelection = $0
-                            saveAndNotify()
+                            saveAndNotify(autoDownloadPolicyChanged: true)
                         }
                     )
                 ) {
@@ -553,7 +570,7 @@ struct PodcastSettingsView: View {
                         get: { settings.autoDownloadNetworkMode },
                         set: {
                             settings.autoDownloadNetworkMode = $0
-                            saveAndNotify()
+                            saveAndNotify(autoDownloadPolicyChanged: true)
                         }
                     )
                 ) {
@@ -563,18 +580,18 @@ struct PodcastSettingsView: View {
                 }
 
                 Toggle(
-                    "Include archived episodes",
+                    "Include back catalog episodes",
                     isOn: Binding(
                         get: { settings.autoDownloadIncludesArchivedEpisodes },
                         set: {
                             settings.autoDownloadIncludesArchivedEpisodes = $0
-                            saveAndNotify()
+                            saveAndNotify(autoDownloadPolicyChanged: true)
                         }
                     )
                 )
             }
 
-            Text("Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes archived episodes, useful for newly imported back catalogs.")
+            Text("Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -735,7 +752,7 @@ struct PodcastSettingsView: View {
             },
             set: { newValue in
                 settings.defaultPlaylistID = newValue.isEmpty ? nil : UUID(uuidString: newValue)
-                saveAndNotify()
+                saveAndNotify(autoDownloadPolicyChanged: true)
             }
         )
     }
@@ -780,35 +797,79 @@ struct PodcastSettingsView: View {
     private func handleCustomSettingsToggle(_ newValue: Bool) {
         guard let podcast else { return }
         useCustomSettings = newValue
-        let podcastFeed = podcast.feed
 
         if newValue {
             enableCustomSettings(for: podcast, in: context)
         } else {
             disableCustomSettings(for: podcast, in: context)
         }
-
-        if let podcastFeed {
-            Task {
-                await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
-            }
-        }
+        markAutoDownloadPolicyReconciliationPending(trigger: "scope-toggle")
     }
 
     private func saveAndNotify() {
+        saveAndNotify(autoDownloadPolicyChanged: false)
+    }
+
+    private func saveAndNotify(autoDownloadPolicyChanged: Bool) {
         context.saveIfNeeded()
+        if let podcastFeed = podcast?.feed {
+            BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=podcast feed=\(podcastFeed.absoluteString)")
+        } else {
+            BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=global")
+        }
         postSettingsDidChange()
-        applyAutomaticDownloadPolicyIfNeeded()
+        if autoDownloadPolicyChanged {
+            markAutoDownloadPolicyReconciliationPending(trigger: "settings-change")
+        }
     }
 
     private func postSettingsDidChange() {
         NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
     }
 
-    private func applyAutomaticDownloadPolicyIfNeeded() {
-        guard let podcastFeed = podcast?.feed else { return }
+    private func markAutoDownloadPolicyReconciliationPending(trigger: String) {
+        hasPendingAutoDownloadReconciliation = true
+        if let podcastFeed = podcast?.feed {
+            BasicLogger.shared.log("[AutoDL] trigger/\(trigger) scope=podcast feed=\(podcastFeed.absoluteString) action=mark-pending-reconciliation")
+        } else {
+            BasicLogger.shared.log("[AutoDL] trigger/\(trigger) scope=global action=mark-pending-reconciliation")
+        }
+    }
+
+    private func applyAutomaticDownloadPolicyIfNeededOnClose() {
+        guard hasPendingAutoDownloadReconciliation else {
+            if let podcastFeed = podcast?.feed {
+                BasicLogger.shared.log("[AutoDL] trigger/settings-closed scope=podcast feed=\(podcastFeed.absoluteString) action=no-pending-reconciliation")
+            } else {
+                BasicLogger.shared.log("[AutoDL] trigger/settings-closed scope=global action=no-pending-reconciliation")
+            }
+            return
+        }
+
+        hasPendingAutoDownloadReconciliation = false
+
+        if let podcastFeed = podcast?.feed {
+            BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy scope=podcast feed=\(podcastFeed.absoluteString)")
+            Task {
+                await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+            }
+            return
+        }
+
         Task {
-            await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+            let settingsActor = PodcastSettingsModelActor(modelContainer: context.container)
+            let feeds = await settingsActor.podcastFeedsRequiringAutoDownloadReconciliation()
+            guard feeds.isEmpty == false else { return }
+            await MainActor.run {
+                BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy scope=global feeds=\(feeds.count)")
+            }
+            let episodeActor = EpisodeActor(modelContainer: context.container)
+            for feed in feeds {
+                await MainActor.run {
+                    BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy feed=\(feed.absoluteString)")
+                }
+                await episodeActor.applyAutomaticDownloadPolicy(for: feed)
+            }
         }
     }
 }
@@ -1537,8 +1598,8 @@ private extension PodcastSettings {
 
         let count = max(autoDownloadEpisodeCount, 1)
         let episodeLabel = count == 1 ? "episode" : "episodes"
-        let archivedSuffix = autoDownloadIncludesArchivedEpisodes ? ", incl. archived" : ", inbox/history only"
-        return "\(autoDownloadSelection.settingsLabel), \(count) \(episodeLabel), \(autoDownloadNetworkMode.settingsLabel)\(archivedSuffix)"
+        let backCatalogSuffix = autoDownloadIncludesArchivedEpisodes ? ", incl. back catalog" : ", inbox/history only"
+        return "\(autoDownloadSelection.settingsLabel), \(count) \(episodeLabel), \(autoDownloadNetworkMode.settingsLabel)\(backCatalogSuffix)"
     }
 
     var appControlsSummary: String {
@@ -1601,9 +1662,9 @@ private extension Playlist.Position {
         case .none:
             "Inbox"
         case .front:
-            "Top of Up Next"
+            "Top of Playlist"
         case .end:
-            "Bottom of Up Next"
+            "Bottom of Playlist"
         }
     }
 }
