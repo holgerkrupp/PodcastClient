@@ -140,7 +140,12 @@ class Playlist {
         PlaylistSymbolOption(symbolName: "bubble.left.and.bubble.right", title: "Talk"),
         PlaylistSymbolOption(symbolName: "mic", title: "Interviews"),
         PlaylistSymbolOption(symbolName: "newspaper", title: "News"),
-        PlaylistSymbolOption(symbolName: "calendar", title: "Daily")
+        PlaylistSymbolOption(symbolName: "calendar", title: "Daily"),
+        PlaylistSymbolOption(symbolName: "building.columns", title: "Politics"),
+        PlaylistSymbolOption(symbolName: "hammer", title: "DIY"),
+        PlaylistSymbolOption(symbolName: "macbook.and.iphone", title: "Tech"),
+        PlaylistSymbolOption(symbolName: "brain.head.profile", title: "Education"),
+        PlaylistSymbolOption(symbolName: "soccerball", title: "Sport")
     ]
 
     var title: String = ""
