@@ -108,9 +108,12 @@ struct InboxListView: View {
             NavigationStack{
                 List {
                     ForEach(episodes) { episode in
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                        ZStack{
                             EpisodeRowView(episode: episode)
                                 .id(episode.url)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open episode \(episode.title)")

@@ -18,6 +18,8 @@ struct EpisodeControlView: View {
     private var playlists: [Playlist]
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var preferredPlaylistID: String = ""
+    @State private var isSelectingFrontPlaylist = false
+    @State private var isSelectingEndPlaylist = false
 
 
     private var manualPlaylists: [Playlist] {
@@ -89,7 +91,14 @@ struct EpisodeControlView: View {
                     .clipShape(Circle())
                 }
                 .buttonStyle(.glass(.clear))
-                .contextMenu {
+                .contentShape(Circle())
+                .highPriorityGesture(
+                    LongPressGesture(minimumDuration: 0.4)
+                        .onEnded { _ in
+                            isSelectingFrontPlaylist = true
+                        }
+                )
+                .confirmationDialog("Add to front of playlist", isPresented: $isSelectingFrontPlaylist, titleVisibility: .visible) {
                     ForEach(manualPlaylists) { playlist in
                         Button("Add to front of \(playlist.displayTitle)") {
                             Task {
@@ -97,6 +106,7 @@ struct EpisodeControlView: View {
                             }
                         }
                     }
+                    Button("Cancel", role: .cancel) {}
                 }
                 .accessibilityLabel("Add to playlist")
                 .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
@@ -118,7 +128,14 @@ struct EpisodeControlView: View {
                     .frame(width: 50)
                 }
                 .buttonStyle(.glass(.clear))
-                .contextMenu {
+                .contentShape(Circle())
+                .highPriorityGesture(
+                    LongPressGesture(minimumDuration: 0.4)
+                        .onEnded { _ in
+                            isSelectingEndPlaylist = true
+                        }
+                )
+                .confirmationDialog("Add to end of playlist", isPresented: $isSelectingEndPlaylist, titleVisibility: .visible) {
                     ForEach(manualPlaylists) { playlist in
                         Button("Add to end of \(playlist.displayTitle)") {
                             Task {
@@ -126,6 +143,7 @@ struct EpisodeControlView: View {
                             }
                         }
                     }
+                    Button("Cancel", role: .cancel) {}
                 }
                 .accessibilityLabel("Add to end of playlist")
                 .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
