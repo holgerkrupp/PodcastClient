@@ -26,7 +26,6 @@ struct PodcastListView: View {
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
-    @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var inboxBasePlaylistID: String = ""
 
     @StateObject private var viewModel: PodcastListViewModel
     private let modelContainer: ModelContainer
@@ -211,12 +210,6 @@ struct PodcastListView: View {
             selectedPlaylistID = defaultPlaylist.id.uuidString
         }
 
-        if let inboxID = UUID(uuidString: inboxBasePlaylistID),
-           allIDs.contains(inboxID) == false {
-            inboxBasePlaylistID = defaultPlaylist.id.uuidString
-        } else if inboxBasePlaylistID.isEmpty {
-            inboxBasePlaylistID = defaultPlaylist.id.uuidString
-        }
     }
 }
 
@@ -227,7 +220,6 @@ private struct LibraryPlaylistsView: View {
     private var playlists: [Playlist]
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
-    @AppStorage(PlaylistPreferenceKeys.inboxBasePlaylistID) private var inboxBasePlaylistID: String = ""
     @State private var showCreatePlaylistSheet: Bool = false
 
     private var visiblePlaylists: [Playlist] {
@@ -262,8 +254,8 @@ private struct LibraryPlaylistsView: View {
             }
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
-            LibraryNewPlaylistSheet { playlistName in
-                createPlaylist(named: playlistName)
+            LibraryNewPlaylistSheet { draft in
+                createPlaylist(from: draft)
             }
         }
         .task {
@@ -284,11 +276,6 @@ private struct LibraryPlaylistsView: View {
             if let selectedID = UUID(uuidString: selectedPlaylistID),
                selectedID == playlist.id {
                 selectedPlaylistID = defaultPlaylist.id.uuidString
-            }
-
-            if let inboxID = UUID(uuidString: inboxBasePlaylistID),
-               inboxID == playlist.id {
-                inboxBasePlaylistID = defaultPlaylist.id.uuidString
             }
 
             for entry in playlist.items ?? [] {
@@ -321,17 +308,11 @@ private struct LibraryPlaylistsView: View {
             selectedPlaylistID = defaultPlaylist.id.uuidString
         }
 
-        if let inboxID = UUID(uuidString: inboxBasePlaylistID),
-           allIDs.contains(inboxID) == false {
-            inboxBasePlaylistID = defaultPlaylist.id.uuidString
-        } else if inboxBasePlaylistID.isEmpty {
-            inboxBasePlaylistID = defaultPlaylist.id.uuidString
-        }
     }
 
-    private func createPlaylist(named rawName: String) {
+    private func createPlaylist(from draft: LibraryPlaylistCreationDraft) {
         let allPlaylists = Playlist.manualVisibleSorted(playlists)
-        let title = Playlist.normalizedPlaylistName(rawName, existing: allPlaylists)
+        let title = Playlist.normalizedPlaylistName(draft.name, existing: allPlaylists)
 
         let playlist = Playlist()
         playlist.title = title
@@ -339,6 +320,7 @@ private struct LibraryPlaylistsView: View {
         playlist.hidden = false
         playlist.sortIndex = (allPlaylists.map(\.sortIndex).max() ?? 0) + 1
         playlist.kind = .manual
+        playlist.symbolName = Playlist.normalizedSymbolName(draft.symbolName, fallback: Playlist.defaultManualSymbolName)
         playlist.smartFilter = nil
 
         modelContext.insert(playlist)
@@ -349,7 +331,7 @@ private struct LibraryPlaylistsView: View {
         HStack(spacing: 12) {
             Label(
                 playlist.displayTitle,
-                systemImage: "list.bullet"
+                systemImage: playlist.displaySymbolName
             )
             .font(.headline)
 
@@ -371,15 +353,19 @@ private struct LibraryPlaylistsView: View {
 private struct LibraryNewPlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var playlistName: String = ""
+    @State private var draft = LibraryPlaylistCreationDraft()
 
-    let onCreate: (String) -> Void
+    let onCreate: (LibraryPlaylistCreationDraft) -> Void
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Playlist") {
-                    TextField("Name", text: $playlistName)
+                    TextField("Name", text: $draft.name)
+                }
+
+                Section("Icon") {
+                    LibraryPlaylistSymbolGridPicker(selection: $draft.symbolName)
                 }
             }
             .navigationTitle("New Playlist")
@@ -393,7 +379,7 @@ private struct LibraryNewPlaylistSheet: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
-                        onCreate(playlistName)
+                        onCreate(draft)
                         dismiss()
                     }
                     .disabled(canCreate == false)
@@ -403,7 +389,53 @@ private struct LibraryNewPlaylistSheet: View {
     }
 
     private var canCreate: Bool {
-        playlistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+}
+
+private struct LibraryPlaylistCreationDraft {
+    var name: String = ""
+    var symbolName: String = Playlist.defaultManualSymbolName
+}
+
+private struct LibraryPlaylistSymbolGridPicker: View {
+    @Binding var selection: String
+
+    private let columns: [GridItem] = [
+        GridItem(.adaptive(minimum: 56, maximum: 70), spacing: 10)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(Playlist.symbolOptions) { option in
+                Button {
+                    selection = option.symbolName
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: option.symbolName)
+                            .font(.title3)
+                            .frame(maxWidth: .infinity)
+                        Text(option.title)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(selection == option.symbolName ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(selection == option.symbolName ? Color.accentColor : Color.clear, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .accessibilityLabel("Playlist icon \(option.title)")
+                .accessibilityAddTraits(selection == option.symbolName ? .isSelected : [])
+            }
+        }
     }
 }
 

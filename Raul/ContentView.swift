@@ -51,12 +51,27 @@ struct ContentView: View {
 
         return Playlist.defaultQueueDisplayName
     }
+
+    private var playlistTabSymbolName: String {
+        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
+
+        if let selectedID = UUID(uuidString: selectedPlaylistID),
+           let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
+            return selectedPlaylist.displaySymbolName
+        }
+
+        if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.displaySymbolName
+        }
+
+        return Playlist.defaultQueueSymbolName
+    }
     
     var body: some View {
         
         TabView(selection: $selectedTab) {
             
-            Tab(LocalizedStringKey(playlistTabTitle), systemImage: "calendar.day.timeline.leading", value: RootTab.playlist) {
+            Tab(LocalizedStringKey(playlistTabTitle), systemImage: playlistTabSymbolName, value: RootTab.playlist) {
                 PlaylistView()
             }
           

@@ -31,6 +31,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     
     private override init() {}
 
+    private func makeEpisodeActor() async -> EpisodeActor {
+        let container = await MainActor.run { ModelContainerManager.shared.container }
+        return EpisodeActor(modelContainer: container)
+    }
+
     // MARK: - Public API
     func download(from url: URL, saveTo destination: URL? = nil) async -> DownloadItem? {
         if let existing = downloads[url] {
@@ -40,6 +45,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         let finalDestination = destination ?? defaultDestination(for: url)
         guard !fileExists(at: finalDestination) else {
             await markDownloaded(for: finalDestination)
+            let episodeActor = await makeEpisodeActor()
+            await episodeActor.markEpisodeAvailable(fileURL: url)
             return nil
         }
         
@@ -156,27 +163,40 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             
 
             
-            guard let destination = await DownloadManager.shared.getDestination(for: url) else { return }
+            guard let destination = await DownloadManager.shared.getDestination(for: url) else {
+                try? FileManager.default.removeItem(at: tempCopy)
+                await DownloadManager.shared.cleanUp(url: url)
+                return
+            }
+            var didStoreFile = false
             do {
                 let dir = destination.deletingLastPathComponent()
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                try FileManager.default.copyItem(at: tempCopy, to: destination)
-            } catch {}
+                if FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.moveItem(at: tempCopy, to: destination)
+                didStoreFile = true
+            } catch {
+                didStoreFile = false
+            }
 
             try? FileManager.default.removeItem(at: tempCopy)
 
-            let episodeActor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+            if didStoreFile {
+                let episodeActor = await DownloadManager.shared.makeEpisodeActor()
                 await episodeActor.markEpisodeAvailable(fileURL: url)
+            }
             
             
             if let item = await DownloadManager.shared.getItem(for: url) {
                 print("item received")
                 await MainActor.run {
                     item.isDownloading = false
-                    item.isFinished = true
+                    item.isFinished = didStoreFile
                 }
-                await markDownloaded(for: destination)
             }
+            await markDownloaded(for: destination)
 
             await MainActor.run {
                 NotificationCenter.default.post(
@@ -186,6 +206,22 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 )
             }
             await DownloadManager.shared.cleanUp(url: url)
+        }
+    }
+
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        guard let error else { return }
+        guard let url = task.originalRequest?.url else { return }
+
+        Task {
+            if let item = await DownloadManager.shared.getItem(for: url) {
+                await MainActor.run {
+                    item.isDownloading = false
+                    item.isFinished = false
+                }
+            }
+            await DownloadManager.shared.cleanUp(url: url)
+            print("Download failed for \(url.absoluteString): \(error.localizedDescription)")
         }
     }
 

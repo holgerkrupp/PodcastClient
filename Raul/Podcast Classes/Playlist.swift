@@ -13,6 +13,13 @@ enum PlaylistPreferenceKeys {
     static let inboxBasePlaylistID = "inboxBasePlaylistID"
 }
 
+struct PlaylistSymbolOption: Identifiable, Hashable, Sendable {
+    let symbolName: String
+    let title: String
+
+    var id: String { symbolName }
+}
+
 enum SmartPlaylistMatchMode: String, Codable, CaseIterable, Hashable, Sendable {
     case all
     case any
@@ -110,8 +117,34 @@ struct SmartPlaylistFilter: Codable, Hashable, Sendable {
 class Playlist {
     static let defaultQueueTitle = "de.holgerkrupp.podbay.queue"
     static let defaultQueueDisplayName = "Up Next"
+    static let defaultManualSymbolName = "list.bullet"
+    static let defaultQueueSymbolName = "calendar.day.timeline.leading"
+    static let smartPlaylistSymbolName = "line.3.horizontal.decrease.circle"
+    static let symbolOptions: [PlaylistSymbolOption] = [
+        PlaylistSymbolOption(symbolName: "list.bullet", title: "List"),
+        PlaylistSymbolOption(symbolName: "music.note.list", title: "Mix"),
+        PlaylistSymbolOption(symbolName: "clock", title: "Later"),
+        PlaylistSymbolOption(symbolName: "sparkles", title: "Highlights"),
+        PlaylistSymbolOption(symbolName: "star", title: "Favorites"),
+        PlaylistSymbolOption(symbolName: "heart", title: "Loved"),
+        PlaylistSymbolOption(symbolName: "bolt", title: "Quick"),
+        PlaylistSymbolOption(symbolName: "flame", title: "Hot"),
+        PlaylistSymbolOption(symbolName: "moon", title: "Night"),
+        PlaylistSymbolOption(symbolName: "sun.max", title: "Morning"),
+        PlaylistSymbolOption(symbolName: "person.2", title: "People"),
+        PlaylistSymbolOption(symbolName: "briefcase", title: "Work"),
+        PlaylistSymbolOption(symbolName: "car", title: "Drive"),
+        PlaylistSymbolOption(symbolName: "airplane", title: "Travel"),
+        PlaylistSymbolOption(symbolName: "house", title: "Home"),
+        PlaylistSymbolOption(symbolName: "book", title: "Learning"),
+        PlaylistSymbolOption(symbolName: "bubble.left.and.bubble.right", title: "Talk"),
+        PlaylistSymbolOption(symbolName: "mic", title: "Interviews"),
+        PlaylistSymbolOption(symbolName: "newspaper", title: "News"),
+        PlaylistSymbolOption(symbolName: "calendar", title: "Daily")
+    ]
 
     var title: String = ""
+    var symbolName: String = Playlist.defaultManualSymbolName
     var id: UUID = UUID()
     var deleteable: Bool = true // to enable standard lists like "play next queue" or similar that can't be deleted by the user
     var hidden: Bool = false
@@ -127,6 +160,7 @@ class Playlist {
 
     init() {
         self.title = Self.defaultQueueTitle
+        self.symbolName = Self.defaultQueueSymbolName
         self.deleteable = false
         self.sortIndex = 0
         self.kindRawValue = Kind.manual.rawValue
@@ -152,6 +186,15 @@ class Playlist {
 
     var displayTitle: String {
         title == Self.defaultQueueTitle ? Self.defaultQueueDisplayName : title
+    }
+
+    var displaySymbolName: String {
+        if isSmartPlaylist {
+            return Self.smartPlaylistSymbolName
+        }
+
+        let fallback = title == Self.defaultQueueTitle ? Self.defaultQueueSymbolName : Self.defaultManualSymbolName
+        return Self.normalizedSymbolName(symbolName, fallback: fallback)
     }
 
     static func visibleSorted(_ playlists: [Playlist]) -> [Playlist] {
@@ -211,6 +254,10 @@ class Playlist {
         }
         if defaultPlaylist.sortIndex != 0 {
             defaultPlaylist.sortIndex = 0
+            changed = true
+        }
+        if defaultPlaylist.symbolName.isEmpty || defaultPlaylist.symbolName == defaultManualSymbolName {
+            defaultPlaylist.symbolName = defaultQueueSymbolName
             changed = true
         }
         if defaultPlaylist.smartFilter != nil {
@@ -291,6 +338,11 @@ class Playlist {
         }
 
         return "\(baseName) \(suffix)"
+    }
+
+    static func normalizedSymbolName(_ raw: String?, fallback: String = defaultManualSymbolName) -> String {
+        let candidate = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return candidate.isEmpty ? fallback : candidate
     }
 
     static func resolvePlaylistID(from rawValue: String?) -> UUID? {

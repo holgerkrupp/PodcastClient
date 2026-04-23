@@ -14,10 +14,28 @@ struct AutoDownloadPolicySnapshot: Sendable {
     let queuePosition: Playlist.Position
     let playlistID: UUID?
     let networkMode: AutoDownloadNetworkMode
+    let includesArchivedEpisodes: Bool
 }
 
 @ModelActor
 actor PodcastSettingsModelActor {
+    private static let includeArchivedEpisodesMigrationKey = "PodcastSettings.autoDownloadIncludesArchivedEpisodes.v1"
+
+    private func migrateAutoDownloadIncludeArchivedSettingIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: Self.includeArchivedEpisodesMigrationKey) == false else {
+            return
+        }
+
+        if let settings = try? modelContext.fetch(FetchDescriptor<PodcastSettings>()) {
+            for setting in settings {
+                setting.autoDownloadIncludesArchivedEpisodes = true
+            }
+            modelContext.saveIfNeeded()
+        }
+
+        defaults.set(true, forKey: Self.includeArchivedEpisodesMigrationKey)
+    }
 
     func ensureStandardSettingsExists() async {
         _ = await standardSettings()
@@ -25,6 +43,7 @@ actor PodcastSettingsModelActor {
     
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
     func standardSettings() async -> PodcastSettings {
+        migrateAutoDownloadIncludeArchivedSettingIfNeeded()
         let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
         let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
         var descriptor = FetchDescriptor<PodcastSettings>(
@@ -156,6 +175,7 @@ actor PodcastSettingsModelActor {
             newSettings.autoDownloadEpisodeCount = standardSettings.autoDownloadEpisodeCount
             newSettings.autoDownloadSelection = standardSettings.autoDownloadSelection
             newSettings.autoDownloadNetworkMode = standardSettings.autoDownloadNetworkMode
+            newSettings.autoDownloadIncludesArchivedEpisodes = standardSettings.autoDownloadIncludesArchivedEpisodes
             newSettings.defaultPlaylistID = standardSettings.defaultPlaylistID
             newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
             modelContext.insert(newSettings)
@@ -300,7 +320,8 @@ actor PodcastSettingsModelActor {
             selection: settings.autoDownloadSelection,
             queuePosition: settings.playnextPosition,
             playlistID: settings.defaultPlaylistID,
-            networkMode: settings.autoDownloadNetworkMode
+            networkMode: settings.autoDownloadNetworkMode,
+            includesArchivedEpisodes: settings.autoDownloadIncludesArchivedEpisodes
         )
     }
 }
