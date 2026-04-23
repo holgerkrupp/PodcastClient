@@ -12,7 +12,10 @@ struct PlayerTabBarView: View {
 
     @Bindable private var player = Player.shared
     
+    
+    
     // The following is, because iOS26 Beta 5 (maybe following as well) don't propperly change the text color and often it's not readable.
+    /*
     @Environment(\.colorScheme) var colorScheme
     private var dynamicPrimaryColor: Color {
         colorScheme == .dark ? Color.white : Color.black
@@ -20,7 +23,7 @@ struct PlayerTabBarView: View {
     private var dynamicSecondaryColor: Color {
         colorScheme == .dark ? Color(white: 0.7) : Color(white: 0.3)
     }
-
+*/
     var body: some View {
         if let episode = player.currentEpisode {
             let podcastTitle = episode.displayPodcastTitle ?? "Podcast"
@@ -39,11 +42,11 @@ struct PlayerTabBarView: View {
                         Text(podcastTitle)
                             .font(.caption2)
                             .lineLimit(1)
-                            .foregroundColor(dynamicSecondaryColor)
+                        //    .foregroundColor(dynamicSecondaryColor)
                         Text(episode.title)
                             .font(.caption)
                             .lineLimit(1)
-                            .foregroundColor(dynamicPrimaryColor)
+                         //   .foregroundColor(dynamicPrimaryColor)
                     }
 
                     Spacer(minLength: 8)
@@ -70,7 +73,7 @@ struct PlayerTabBarView: View {
             .transaction { transaction in
                 transaction.animation = nil
             }
-            .tint(dynamicPrimaryColor)
+         //   .tint(dynamicPrimaryColor)
             .accessibilityLabel("Mini player, \(episode.title)")
             .accessibilityHint("Double tap anywhere on the mini player to open full player controls")
             .accessibilityAddTraits(.isButton)
