@@ -143,6 +143,9 @@ struct PodcastSettingsView: View {
                 _ = Playlist.ensureDefaultQueue(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
             }
+            .onDisappear {
+                applyAutomaticDownloadPolicyIfNeeded()
+            }
             .alert("Unable to Enable Sideloading", isPresented: $showSideloadingAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -558,9 +561,20 @@ struct PodcastSettingsView: View {
                         Text(mode.settingsLabel).tag(mode)
                     }
                 }
+
+                Toggle(
+                    "Include archived episodes",
+                    isOn: Binding(
+                        get: { settings.autoDownloadIncludesArchivedEpisodes },
+                        set: {
+                            settings.autoDownloadIncludesArchivedEpisodes = $0
+                            saveAndNotify()
+                        }
+                    )
+                )
             }
 
-            Text("Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device.")
+            Text("Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes archived episodes, useful for newly imported back catalogs.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1396,6 +1410,10 @@ private struct PodcastOverridesManagementView: View {
 
     private func enableCustomSettingsFromList(for podcast: Podcast) {
         enableCustomSettings(for: podcast, in: context)
+        guard let podcastFeed = podcast.feed else { return }
+        Task {
+            await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+        }
     }
 }
 
@@ -1441,6 +1459,7 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         settings.autoDownloadEpisodeCount = globalSettings.autoDownloadEpisodeCount
         settings.autoDownloadSelection = globalSettings.autoDownloadSelection
         settings.autoDownloadNetworkMode = globalSettings.autoDownloadNetworkMode
+        settings.autoDownloadIncludesArchivedEpisodes = globalSettings.autoDownloadIncludesArchivedEpisodes
         settings.defaultPlaylistID = globalSettings.defaultPlaylistID
         settings.archiveFileRetentionDays = globalSettings.archiveFileRetentionDays
         context.insert(settings)
@@ -1518,7 +1537,8 @@ private extension PodcastSettings {
 
         let count = max(autoDownloadEpisodeCount, 1)
         let episodeLabel = count == 1 ? "episode" : "episodes"
-        return "\(autoDownloadSelection.settingsLabel), \(count) \(episodeLabel), \(autoDownloadNetworkMode.settingsLabel)"
+        let archivedSuffix = autoDownloadIncludesArchivedEpisodes ? ", incl. archived" : ", inbox/history only"
+        return "\(autoDownloadSelection.settingsLabel), \(count) \(episodeLabel), \(autoDownloadNetworkMode.settingsLabel)\(archivedSuffix)"
     }
 
     var appControlsSummary: String {

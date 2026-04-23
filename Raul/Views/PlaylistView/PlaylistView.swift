@@ -45,9 +45,10 @@ struct PlaylistView: View {
             .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .topBarLeading) {
                     PlaylistTitleMenu(
                         currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
+                        currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
                         playlists: visiblePlaylists,
                         selectedPlaylistID: selectedPlaylist?.id,
                         onSelect: { playlist in
@@ -59,15 +60,7 @@ struct PlaylistView: View {
                     )
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: {
-                        showCreatePlaylistSheet = true
-                    }) {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("Create playlist")
-                    .accessibilityHint("Adds a new playlist")
-                }
+
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
@@ -154,6 +147,7 @@ struct PlaylistView: View {
         playlist.hidden = false
         playlist.sortIndex = (allPlaylists.map(\.sortIndex).max() ?? 0) + 1
         playlist.kind = .manual
+        playlist.symbolName = Playlist.normalizedSymbolName(draft.symbolName, fallback: Playlist.defaultManualSymbolName)
         playlist.smartFilter = nil
 
         modelContext.insert(playlist)
@@ -166,6 +160,7 @@ struct PlaylistView: View {
 
 private struct PlaylistTitleMenu: View {
     let currentTitle: String
+    let currentSymbolName: String
     let playlists: [Playlist]
     let selectedPlaylistID: UUID?
     let onSelect: (Playlist) -> Void
@@ -178,9 +173,14 @@ private struct PlaylistTitleMenu: View {
                     onSelect(playlist)
                 } label: {
                     if playlist.id == selectedPlaylistID {
-                        Label(playlist.displayTitle, systemImage: "checkmark")
+                        HStack {
+                            Image(systemName: playlist.displaySymbolName)
+                            Text(playlist.displayTitle)
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
                     } else {
-                        Text(playlist.displayTitle)
+                        Label(playlist.displayTitle, systemImage: playlist.displaySymbolName)
                     }
                 }
             }
@@ -194,6 +194,8 @@ private struct PlaylistTitleMenu: View {
             }
         } label: {
             HStack(spacing: 6) {
+                Image(systemName: currentSymbolName)
+                    .font(.headline)
                 Text(currentTitle)
                     .font(.headline)
                     .lineLimit(1)
@@ -294,6 +296,10 @@ private struct NewPlaylistSheet: View {
                 Section("Playlist") {
                     TextField("Name", text: $draft.name)
                 }
+
+                Section("Icon") {
+                    PlaylistSymbolGridPicker(selection: $draft.symbolName)
+                }
             }
             .navigationTitle("New Playlist")
             .navigationBarTitleDisplayMode(.inline)
@@ -322,4 +328,46 @@ private struct NewPlaylistSheet: View {
 
 private struct PlaylistCreationDraft {
     var name: String = ""
+    var symbolName: String = Playlist.defaultManualSymbolName
+}
+
+private struct PlaylistSymbolGridPicker: View {
+    @Binding var selection: String
+
+    private let columns: [GridItem] = [
+        GridItem(.adaptive(minimum: 56, maximum: 70), spacing: 10)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(Playlist.symbolOptions) { option in
+                Button {
+                    selection = option.symbolName
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: option.symbolName)
+                            .font(.title3)
+                            .frame(maxWidth: .infinity)
+                        Text(option.title)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(selection == option.symbolName ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(selection == option.symbolName ? Color.accentColor : Color.clear, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .accessibilityLabel("Playlist icon \(option.title)")
+                .accessibilityAddTraits(selection == option.symbolName ? .isSelected : [])
+            }
+        }
+    }
 }

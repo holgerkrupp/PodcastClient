@@ -21,22 +21,12 @@ struct PlayerTabBarView: View {
         colorScheme == .dark ? Color(white: 0.7) : Color(white: 0.3)
     }
 
-    // Quantize mini-player progress to reduce repaint churn.
-    private var miniPlayerProgress: Double {
-        let clamped = min(1.0, max(0.0, player.progress))
-        return (clamped * 200).rounded() / 200
-    }
-    
     var body: some View {
         if let episode = player.currentEpisode {
             let podcastTitle = episode.displayPodcastTitle ?? "Podcast"
 
             ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.accent.opacity(0.2))
-                    .scaleEffect(x: miniPlayerProgress, y: 1, anchor: .leading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .allowsHitTesting(false)
+                MiniPlayerProgressBackground()
 
                 HStack(spacing: 10) {
                     CoverImageView(episode: episode)
@@ -93,6 +83,50 @@ struct PlayerTabBarView: View {
         }
     }
 }
+
+@available(iOS 26.0, *)
+private struct MiniPlayerProgressBackground: View {
+    @Bindable private var player = Player.shared
+    @State private var displayedProgress: Double = 0.0
+
+    private let progressStep: Double = 0.005
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.accent.opacity(0.2))
+            .scaleEffect(x: displayedProgress, y: 1, anchor: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+            .onAppear {
+                refreshDisplayedProgress(force: true)
+            }
+            .onChange(of: player.currentEpisodeURL) { _, _ in
+                refreshDisplayedProgress(force: true)
+            }
+            .onChange(of: player.currentEpisode?.duration) { _, _ in
+                refreshDisplayedProgress(force: true)
+            }
+            .onChange(of: player.playPosition) { _, _ in
+                refreshDisplayedProgress()
+            }
+    }
+
+    private func quantizedProgress(from rawProgress: Double) -> Double {
+        let clamped = min(1.0, max(0.0, rawProgress))
+        return (clamped / progressStep).rounded() * progressStep
+    }
+
+    private func refreshDisplayedProgress(force: Bool = false) {
+        let quantized = quantizedProgress(from: player.progress)
+        if force || quantized != displayedProgress {
+            displayedProgress = quantized
+        }
+    }
+}
+
 #Preview {
         TabView {
             List{

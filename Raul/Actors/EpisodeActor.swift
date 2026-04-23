@@ -148,6 +148,7 @@ actor EpisodeActor {
 
     func setCompletionDate(episodeURL: URL, date: Date? = nil) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         episode.metaData?.completionDate = date ?? Date()
     }
 
@@ -254,6 +255,7 @@ actor EpisodeActor {
         guard episodes.isEmpty == false else {
             print("could not find episode with URL \(episodeURL) to archive")
             return }
+        let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
         
         await removeFromPlaylist(episodeURL)
 
@@ -270,6 +272,10 @@ actor EpisodeActor {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
         WatchSyncCoordinator.refreshSoon()
+
+        for podcastFeed in podcastFeeds {
+            await applyAutomaticDownloadPolicy(for: podcastFeed)
+        }
     }
     
     func unarchiveEpisode(_ episodeURL: URL?) async  {
@@ -316,6 +322,7 @@ actor EpisodeActor {
 
     func applyAutomaticDownloadPolicy(for podcastFeed: URL) async {
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let playedProgressThreshold = 0.99
 
         guard let policy = await settingsActor.autoDownloadPolicy(for: podcastFeed) else {
             return
@@ -326,6 +333,7 @@ actor EpisodeActor {
         let queuePosition = policy.queuePosition
         let playlistID = policy.playlistID
         let networkMode = policy.networkMode
+        let includesArchivedEpisodes = policy.includesArchivedEpisodes
 
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { episode in
@@ -339,8 +347,25 @@ actor EpisodeActor {
         }
 
         let eligibleEpisodes = podcastEpisodes.filter { episode in
-            episode.metaData?.isHistory != true
-            && episode.metaData?.isArchived != true
+            let isHistory = episode.metaData?.isHistory == true
+            let isArchived = episode.metaData?.isArchived == true
+            let hasCompletionDate = episode.metaData?.completionDate != nil
+            let isPlayed = hasCompletionDate || episode.maxPlayProgress >= playedProgressThreshold
+
+            if isHistory {
+                return false
+            }
+
+            // Auto-download selection is explicitly based on unplayed episodes.
+            if isPlayed {
+                return false
+            }
+
+            if includesArchivedEpisodes == false && isArchived {
+                return false
+            }
+
+            return true
         }
 
         guard eligibleEpisodes.isEmpty == false else { return }
@@ -379,17 +404,14 @@ actor EpisodeActor {
                 guard let episodeURL = episode.url else { continue }
                 let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
 
-                if queuePosition == .none {
-                    if isDownloaded == false {
-                        await download(episodeURL: episodeURL)
+                if queuePosition != .none {
+                    let isArchived = episode.metaData?.isArchived == true
+                    let hasCompletionDate = episode.metaData?.completionDate != nil
+                    let isPlayed = hasCompletionDate || episode.maxPlayProgress >= playedProgressThreshold
+                    let isQueued = isEpisode(episode, queuedIn: playlistID)
+                    if isQueued == false && isArchived == false && isPlayed == false {
+                        try? await playlistActor?.add(episodeURL: episodeURL, to: queuePosition)
                     }
-                    continue
-                }
-
-                let isQueued = isEpisode(episode, queuedIn: playlistID)
-                if isQueued == false {
-                    try? await playlistActor?.add(episodeURL: episodeURL, to: queuePosition)
-                    continue
                 }
 
                 if isDownloaded == false {
@@ -399,16 +421,10 @@ actor EpisodeActor {
         }
 
         let hasTargetCoverage = targetEpisodes.allSatisfy { episode in
-            let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
-            if queuePosition == .none {
-                return isDownloaded
-            }
-
-            let isQueued = isEpisode(episode, queuedIn: playlistID)
-            return isDownloaded || isQueued
+            episode.metaData?.calculatedIsAvailableLocally == true
         }
 
-        if canScheduleDownloads == false && hasTargetCoverage == false {
+        if hasTargetCoverage == false {
             return
         }
 
@@ -536,6 +552,11 @@ actor EpisodeActor {
 
         print ("markEpisodeAvailable for \(episode.title)")
         guard let url = episode.url else {
+            return
+        }
+        ensureMetadata(for: episode)
+        if episode.metaData?.isAvailableLocally == true,
+           episode.metaData?.calculatedIsAvailableLocally == true {
             return
         }
         episode.metaData?.isAvailableLocally = true

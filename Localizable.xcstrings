@@ -192,12 +192,6 @@
         }
       }
     },
-    "Add 1" : {
-
-    },
-    "Add 2" : {
-
-    },
     "Add a rule to skip recurring chapters like ads, intros, or credits." : {
 
     },
@@ -228,16 +222,10 @@
     "Add to End" : {
 
     },
-    "Add To End" : {
-
-    },
     "Add to end of %@" : {
 
     },
     "Add to end of playlist" : {
-
-    },
-    "Add To Front" : {
 
     },
     "Add to front of %@" : {
@@ -581,9 +569,6 @@
 
     },
     "Choose episode sort order and hide played episodes" : {
-
-    },
-    "Chooses which playlist the quick add buttons use" : {
 
     },
     "Continue" : {
@@ -1300,6 +1285,9 @@
     "How It Works" : {
 
     },
+    "Icon" : {
+
+    },
     "Import" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1363,6 +1351,9 @@
     "Inbox section" : {
 
     },
+    "Include archived episodes" : {
+
+    },
     "Installed Models" : {
       "localizations" : {
         "de" : {
@@ -1401,7 +1392,7 @@
     "Keeps captions centered around the current playback time" : {
 
     },
-    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device." : {
+    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes archived episodes, useful for newly imported back catalogs." : {
 
     },
     "Keyword or phrase" : {
@@ -2398,6 +2389,9 @@
     "Playlist" : {
 
     },
+    "Playlist icon %@" : {
+
+    },
     "Playlists" : {
 
     },
@@ -2862,9 +2856,6 @@
           }
         }
       }
-    },
-    "Select default playlist" : {
-
     },
     "Select file to import" : {
       "extractionState" : "stale",

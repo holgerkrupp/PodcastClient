@@ -29,6 +29,7 @@ class PodcastSettings {
     var autoDownloadEpisodeCount: Int = 3
     var autoDownloadSelectionRawValue: String? = AutoDownloadSelection.newestUnplayed.rawValue
     var autoDownloadNetworkModeRawValue: String? = AutoDownloadNetworkMode.wifiAndCellular.rawValue
+    var autoDownloadIncludesArchivedEpisodes: Bool = true
     var playnextPosition:Playlist.Position = Playlist.Position.none
     var defaultPlaylistID: UUID?
     var playbackSpeed:Float? = 1.0
