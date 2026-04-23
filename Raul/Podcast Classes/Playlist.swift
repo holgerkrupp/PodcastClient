@@ -145,7 +145,13 @@ class Playlist {
         PlaylistSymbolOption(symbolName: "hammer", title: "DIY"),
         PlaylistSymbolOption(symbolName: "macbook.and.iphone", title: "Tech"),
         PlaylistSymbolOption(symbolName: "brain.head.profile", title: "Education"),
-        PlaylistSymbolOption(symbolName: "soccerball", title: "Sport")
+        PlaylistSymbolOption(symbolName: "soccerball", title: "Sport"),
+        PlaylistSymbolOption(symbolName: "gamecontroller", title: "Games"),
+        PlaylistSymbolOption(symbolName: "tv", title: "TV"),
+        PlaylistSymbolOption(symbolName: "movieclapper", title: "Movies"),
+        PlaylistSymbolOption(symbolName: "book.closed", title: "Books"),
+        PlaylistSymbolOption(symbolName: "cross.case", title: "Medical")
+        
     ]
 
     var title: String = ""
