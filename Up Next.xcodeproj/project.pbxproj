@@ -83,19 +83,19 @@
 		4845F15A2E7D32980096FCA6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = /System/Library/Frameworks/WidgetKit.framework; sourceTree = "<absolute>"; };
 		4845F15C2E7D32980096FCA6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = /System/Library/Frameworks/SwiftUI.framework; sourceTree = "<absolute>"; };
 		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
-		487F5C6F2D9D4F0C00056D08 /* Raul.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Raul.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		487F5C6F2D9D4F0C00056D08 /* UpNext.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNext.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48B638D02F59999F00940B67 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		487F5CC22D9FF19000056D08 /* Exceptions for "Raul" folder in "Raul" target */ = {
+		487F5CC22D9FF19000056D08 /* Exceptions for "Raul" folder in "UpNext" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 487F5C6E2D9D4F0C00056D08 /* Raul */;
+			target = 487F5C6E2D9D4F0C00056D08 /* UpNext */;
 		};
 		488DEBA02F76391C0088432A /* Exceptions for "Raul" folder in "UpNextWatch" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -111,12 +111,12 @@
 			);
 			target = A1B2C3062F00000100000001 /* PlayNextWidget */;
 		};
-		48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "Raul" target */ = {
+		48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "UpNext" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 487F5C6E2D9D4F0C00056D08 /* Raul */;
+			target = 487F5C6E2D9D4F0C00056D08 /* UpNext */;
 		};
 		A1B2C3032F00000100000001 /* Exceptions for "PlayNextWidget" folder in "PlayNextWidget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -138,7 +138,7 @@
 		480234AC2E0560EE0013C50D /* PlayerIntentsExtension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "Raul" target */,
+				48ED0E6B2E65C7B60024637A /* Exceptions for "PlayerIntentsExtension" folder in "UpNext" target */,
 			);
 			path = PlayerIntentsExtension;
 			sourceTree = "<group>";
@@ -146,7 +146,7 @@
 		487F5C712D9D4F0C00056D08 /* Raul */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				487F5CC22D9FF19000056D08 /* Exceptions for "Raul" folder in "Raul" target */,
+				487F5CC22D9FF19000056D08 /* Exceptions for "Raul" folder in "UpNext" target */,
 				488DEBA02F76391C0088432A /* Exceptions for "Raul" folder in "UpNextWatch" target */,
 				488DEBA12F76391C0088432A /* Exceptions for "Raul" folder in "PlayNextWidget" target */,
 			);
@@ -232,7 +232,7 @@
 			children = (
 				B1C2D3022F10000100000001 /* UpNextWatch.app */,
 				A1B2C3022F00000100000001 /* PlayNextWidget.appex */,
-				487F5C6F2D9D4F0C00056D08 /* Raul.app */,
+				487F5C6F2D9D4F0C00056D08 /* UpNext.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -249,9 +249,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		487F5C6E2D9D4F0C00056D08 /* Raul */ = {
+		487F5C6E2D9D4F0C00056D08 /* UpNext */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 487F5C802D9D4F0D00056D08 /* Build configuration list for PBXNativeTarget "Raul" */;
+			buildConfigurationList = 487F5C802D9D4F0D00056D08 /* Build configuration list for PBXNativeTarget "UpNext" */;
 			buildPhases = (
 				487F5C6B2D9D4F0C00056D08 /* Sources */,
 				487F5C6C2D9D4F0C00056D08 /* Frameworks */,
@@ -271,7 +271,7 @@
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				B1C2D3052F10000100000001 /* WatchShared */,
 			);
-			name = Raul;
+			name = UpNext;
 			packageProductDependencies = (
 				48B3BA072DA06825005B40B8 /* fyyd_swift */,
 				48C078062DB410D000D6DD9C /* DeviceInfo */,
@@ -283,7 +283,7 @@
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
 			);
 			productName = Raul;
-			productReference = 487F5C6F2D9D4F0C00056D08 /* Raul.app */;
+			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
 			productType = "com.apple.product-type.application";
 		};
 		A1B2C3062F00000100000001 /* PlayNextWidget */ = {
@@ -376,7 +376,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				487F5C6E2D9D4F0C00056D08 /* Raul */,
+				487F5C6E2D9D4F0C00056D08 /* UpNext */,
 				B1C2D3062F10000100000001 /* UpNextWatch */,
 				A1B2C3062F00000100000001 /* PlayNextWidget */,
 			);
@@ -585,7 +585,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 15;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_APP_SANDBOX = YES;
@@ -609,7 +609,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2026.6;
+				MARKETING_VERSION = 2026.7;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -629,7 +629,7 @@
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 15;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				ENABLE_APP_SANDBOX = YES;
@@ -653,7 +653,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2026.6;
+				MARKETING_VERSION = 2026.7;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -790,7 +790,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		487F5C802D9D4F0D00056D08 /* Build configuration list for PBXNativeTarget "Raul" */ = {
+		487F5C802D9D4F0D00056D08 /* Build configuration list for PBXNativeTarget "UpNext" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				487F5C812D9D4F0D00056D08 /* Debug */,

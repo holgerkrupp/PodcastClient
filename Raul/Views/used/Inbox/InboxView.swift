@@ -64,7 +64,7 @@ struct InboxListView: View {
             wrappedValue: PodcastListViewModel(modelContainer: ModelContainerManager.shared.container)
         )
     }
-    
+
     var body: some View {
         if episodes.isEmpty{
             NavigationStack{
@@ -108,9 +108,12 @@ struct InboxListView: View {
             NavigationStack{
                 List {
                     ForEach(episodes) { episode in
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                        ZStack{
                             EpisodeRowView(episode: episode)
                                 .id(episode.url)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open episode \(episode.title)")
@@ -212,6 +215,7 @@ struct InboxListView: View {
     // MARK: - Data Loading
     
     private func loadEpisodes() async {
+        _ = Playlist.ensureDefaultQueue(in: modelContext)
         let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
         let descriptor = FetchDescriptor<Episode>(predicate: predicate, sortBy: [sortDescriptor])

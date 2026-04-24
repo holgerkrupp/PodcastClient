@@ -23,6 +23,22 @@ struct EpisodePlaybackStateSnapshot: Sendable {
 
 @ModelActor
 actor EpisodeActor {
+    private static let legacyBackCatalogSuppressionMigrationKey = "EpisodeMetaData.backCatalogSuppressionMigration.v1"
+    private static let legacyBackCatalogSuppressionArchiveWindow: TimeInterval = 24 * 60 * 60
+
+    private func logAutoDownload(_ message: String) async {
+        await MainActor.run {
+            BasicLogger.shared.log("[AutoDL] \(message)")
+        }
+    }
+
+    private func episodeLogID(_ episode: Episode) -> String {
+        if let episodeURL = episode.url?.absoluteString {
+            return episodeURL
+        }
+        return episode.title
+    }
+
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
         let predicate = #Predicate<Bookmark> { marker in
             marker.uuid == markerID
@@ -148,6 +164,7 @@ actor EpisodeActor {
 
     func setCompletionDate(episodeURL: URL, date: Date? = nil) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         episode.metaData?.completionDate = date ?? Date()
     }
 
@@ -164,16 +181,15 @@ actor EpisodeActor {
     }
     
     func getLastPlayedEpisodeURL() async -> URL? {
-        let predicate = #Predicate<Episode> { episode in
-            episode.metaData?.isHistory == false
+        let predicate = #Predicate<EpisodeMetaData> { metadata in
+            metadata.isHistory != true && metadata.lastPlayed != nil
         }
-        let sortDescriptors: [SortDescriptor<Episode>] = [
-            SortDescriptor(\Episode.metaData?.lastPlayed, order: .reverse)
-        ]
         do {
-            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate, sortBy: sortDescriptors))
-
-            return results.first?.url
+            let results = try modelContext.fetch(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
+            let mostRecentlyPlayed = results.max {
+                ($0.lastPlayed ?? .distantPast) < ($1.lastPlayed ?? .distantPast)
+            }
+            return mostRecentlyPlayed?.episode?.url
         } catch {
             // print("❌ Error fetching or saving metadata: \(error)")
         }
@@ -183,12 +199,14 @@ actor EpisodeActor {
     
     func setLastPlayed(episodeURL: URL, to date: Date = Date()) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
     }
     
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         let previousPosition = episode.metaData?.playPosition ?? 0.0
         if force || abs(previousPosition - position) >= 10 {
             if position > episode.metaData?.maxPlayposition ?? 0.0 {
@@ -220,10 +238,22 @@ actor EpisodeActor {
             await applyAutomaticDownloadPolicy(for: podcastFeed)
         }
     }
-    
+
+    private func playlistActor(for playlistID: UUID?) -> PlaylistModelActor? {
+        if let playlistID,
+           let actor = try? PlaylistModelActor(modelContainer: modelContainer, playlistID: playlistID) {
+            return actor
+        }
+
+        return try? PlaylistModelActor(modelContainer: modelContainer)
+    }
+
     func removeFromPlaylist(_ episodeURL: URL) async {
-        if let PlaylistmodelActor = try? PlaylistModelActor(modelContainer: modelContainer){
-            try? await PlaylistmodelActor.remove(episodeURL: episodeURL)
+        await logAutoDownload("trigger/remove-from-all-playlists episode=\(episodeURL.absoluteString)")
+        if let playlistModelActor = try? PlaylistModelActor(modelContainer: modelContainer) {
+            try? await playlistModelActor.removeFromAllPlaylists(episodeURL: episodeURL)
+        } else {
+            await logAutoDownload("trigger/remove-from-all-playlists failed-to-create-playlist-actor episode=\(episodeURL.absoluteString)")
         }
     }
     
@@ -233,6 +263,8 @@ actor EpisodeActor {
         guard episodes.isEmpty == false else {
             print("could not find episode with URL \(episodeURL) to archive")
             return }
+        let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
+        await logAutoDownload("trigger/archive episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         
         await removeFromPlaylist(episodeURL)
 
@@ -242,6 +274,7 @@ actor EpisodeActor {
             episode.metaData?.isInbox = false
             episode.metaData?.status = .archived
             episode.metaData?.archivedAt = Date()
+            episode.metaData?.systemSuppressionReason = nil
         }
 
         modelContext.saveIfNeeded()
@@ -249,12 +282,18 @@ actor EpisodeActor {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
         WatchSyncCoordinator.refreshSoon()
+
+        for podcastFeed in podcastFeeds {
+            await logAutoDownload("trigger/archive applying-policy feed=\(podcastFeed.absoluteString)")
+            await applyAutomaticDownloadPolicy(for: podcastFeed)
+        }
     }
     
     func unarchiveEpisode(_ episodeURL: URL?) async  {
         guard let episodeURL else { return }
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else { return }
+        await logAutoDownload("trigger/unarchive episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count)")
 
         for episode in episodes {
             ensureMetadata(for: episode)
@@ -262,15 +301,53 @@ actor EpisodeActor {
             episode.metaData?.isInbox = true
             episode.metaData?.status = .inbox
             episode.metaData?.archivedAt = nil
+            episode.metaData?.systemSuppressionReason = nil
         }
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
+    }
+
+    func suppressEpisodeFromInbox(
+        _ episodeURL: URL?,
+        reason: EpisodeSystemSuppressionReason
+    ) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.isArchived = false
+            episode.metaData?.isInbox = false
+            episode.metaData?.status = nil
+            episode.metaData?.archivedAt = nil
+            episode.metaData?.systemSuppressionReason = reason
+        }
+
+        modelContext.saveIfNeeded()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
+    }
+
+    func clearSystemSuppression(_ episodeURL: URL?) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.systemSuppressionReason = nil
+        }
+
+        modelContext.saveIfNeeded()
     }
     
     func moveToHistory(episodeURL: URL) async {
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else { return }
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
+        await logAutoDownload("trigger/move-to-history episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         await removeFromPlaylist(episodeURL)
 
         for episode in episodes {
@@ -279,9 +356,11 @@ actor EpisodeActor {
                 episode.metaData?.lastPlayed = Date()
             }
 
+            episode.metaData?.isArchived = false
             episode.metaData?.isHistory = true
             episode.metaData?.isInbox = false
             episode.metaData?.status = .history
+            episode.metaData?.systemSuppressionReason = nil
         }
         
         modelContext.saveIfNeeded()
@@ -289,21 +368,30 @@ actor EpisodeActor {
         WatchSyncCoordinator.refreshSoon()
 
         for podcastFeed in podcastFeeds {
+            await logAutoDownload("trigger/move-to-history applying-policy feed=\(podcastFeed.absoluteString)")
             await applyAutomaticDownloadPolicy(for: podcastFeed)
         }
     }
 
     func applyAutomaticDownloadPolicy(for podcastFeed: URL) async {
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let playedProgressThreshold = 0.99
+        await logAutoDownload("policy/start feed=\(podcastFeed.absoluteString)")
 
         guard let policy = await settingsActor.autoDownloadPolicy(for: podcastFeed) else {
+            await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=no-policy")
             return
         }
 
         let keepCount = policy.keepCount
         let selection = policy.selection
         let queuePosition = policy.queuePosition
+        let playlistID = policy.playlistID
         let networkMode = policy.networkMode
+        let includesBackCatalogEpisodes = policy.includesArchivedEpisodes
+        await logAutoDownload(
+            "policy/config feed=\(podcastFeed.absoluteString) keep=\(keepCount) selection=\(selection.rawValue) queuePosition=\(queuePosition) playlistID=\(playlistID?.uuidString ?? "nil") network=\(networkMode.rawValue) includeBackCatalog=\(includesBackCatalogEpisodes)"
+        )
 
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { episode in
@@ -311,17 +399,92 @@ actor EpisodeActor {
             }
         )
 
-        guard let podcastEpisodes = try? modelContext.fetch(descriptor),
-              podcastEpisodes.isEmpty == false else {
+        let podcastEpisodes: [Episode]
+        do {
+            podcastEpisodes = try modelContext.fetch(descriptor)
+        } catch {
+            await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=fetch-episodes error=\(error.localizedDescription)")
             return
         }
 
-        let eligibleEpisodes = podcastEpisodes.filter { episode in
-            episode.metaData?.isHistory != true
-            && episode.metaData?.isArchived != true
+        guard podcastEpisodes.isEmpty == false else {
+            await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=no-episodes")
+            return
         }
 
-        guard eligibleEpisodes.isEmpty == false else { return }
+        var skippedHistory = 0
+        var skippedArchived = 0
+        var skippedPlayed = 0
+        var skippedMissingSideload = 0
+        var skippedBackCatalogToggle = 0
+        var sampledDecisions: [String] = []
+        let maxSampledDecisions = 25
+
+        let eligibleEpisodes = podcastEpisodes.filter { episode in
+            let isHistory = episode.metaData?.isHistory == true
+            let isUserArchived = episode.metaData?.isArchived == true
+            let hasCompletionDate = episode.metaData?.completionDate != nil
+            let isPlayed = hasCompletionDate || episode.maxPlayProgress >= playedProgressThreshold
+            let suppressionReason = episode.metaData?.systemSuppressionReason
+
+            if isHistory {
+                skippedHistory += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:history")
+                }
+                return false
+            }
+
+            if isUserArchived {
+                skippedArchived += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:userArchived")
+                }
+                return false
+            }
+
+            // Auto-download selection is explicitly based on unplayed episodes.
+            if isPlayed {
+                skippedPlayed += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:played")
+                }
+                return false
+            }
+
+            if suppressionReason == .missingSideload {
+                skippedMissingSideload += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:missingSideload")
+                }
+                return false
+            }
+
+            if suppressionReason == .backCatalogImport && includesBackCatalogEpisodes == false {
+                skippedBackCatalogToggle += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:backCatalogToggleOff")
+                }
+                return false
+            }
+
+            if sampledDecisions.count < maxSampledDecisions {
+                sampledDecisions.append("\(episodeLogID(episode)) => eligible")
+            }
+            return true
+        }
+
+        await logAutoDownload(
+            "policy/eligibility feed=\(podcastFeed.absoluteString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
+        )
+        if sampledDecisions.isEmpty == false {
+            await logAutoDownload("policy/eligibility-sample feed=\(podcastFeed.absoluteString) \(sampledDecisions.joined(separator: " | "))")
+        }
+
+        guard eligibleEpisodes.isEmpty == false else {
+            await logAutoDownload("policy/stop feed=\(podcastFeed.absoluteString) reason=no-eligible-episodes")
+            return
+        }
 
         let sortedEpisodes = eligibleEpisodes.sorted { lhs, rhs in
             let lhsDate: Date
@@ -348,48 +511,112 @@ actor EpisodeActor {
         }
 
         let targetEpisodes = Array(sortedEpisodes.prefix(keepCount))
+        let overflowEpisodes = Array(sortedEpisodes.dropFirst(keepCount))
         let targetEpisodeURLs = Set(targetEpisodes.compactMap(\.url))
-        let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
+        let playlistActor = playlistActor(for: playlistID)
         let canScheduleDownloads = await canScheduleAutoDownloads(for: networkMode)
+        await logAutoDownload(
+            "policy/target feed=\(podcastFeed.absoluteString) targetCount=\(targetEpisodes.count) queuePosition=\(queuePosition) playlistActorAvailable=\(playlistActor != nil) canScheduleDownloads=\(canScheduleDownloads)"
+        )
+        if targetEpisodes.isEmpty == false {
+            let targetIDs = targetEpisodes.map(episodeLogID).joined(separator: ", ")
+            await logAutoDownload("policy/target-episodes feed=\(podcastFeed.absoluteString) \(targetIDs)")
+        }
 
-        if canScheduleDownloads {
-            for episode in targetEpisodes {
-                guard let episodeURL = episode.url else { continue }
-                let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
+        for episode in targetEpisodes {
+            guard let episodeURL = episode.url else { continue }
+            let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
 
-                if queuePosition == .none {
-                    if isDownloaded == false {
-                        await download(episodeURL: episodeURL)
+            if queuePosition != .none {
+                let isUserArchived = episode.metaData?.isArchived == true
+                let hasCompletionDate = episode.metaData?.completionDate != nil
+                let isPlayed = hasCompletionDate || episode.maxPlayProgress >= playedProgressThreshold
+                var isQueued = false
+                if let playlistActor {
+                    do {
+                        isQueued = try await playlistActor.containsEpisodeURL(episodeURL)
+                    } catch {
+                        await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=contains-in-playlist episode=\(episodeURL.absoluteString) error=\(error.localizedDescription)")
                     }
-                    continue
+                } else {
+                    await logAutoDownload("policy/queue-skip feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) reason=no-playlist-actor")
                 }
+                if isQueued == false && isUserArchived == false && isPlayed == false {
+                    if let playlistActor {
+                        do {
+                            try await playlistActor.add(
+                                episodeURL: episodeURL,
+                                to: queuePosition,
+                                startDownload: canScheduleDownloads
+                            )
+                            await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=success")
+                        } catch {
+                            await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=failure error=\(error.localizedDescription)")
+                        }
+                    } else {
+                        await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=skipped-no-playlist-actor")
+                    }
+                } else {
+                    await logAutoDownload(
+                        "policy/queue-skip feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) reason=\(isQueued ? "already-queued" : (isUserArchived ? "user-archived" : "played"))"
+                    )
+                }
+            } else {
+                await logAutoDownload("policy/queue-skip feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) reason=queue-position-none")
+            }
 
-                let isQueued = (episode.playlist?.isEmpty ?? true) == false
-                if isQueued == false {
-                    try? await playlistActor?.add(episodeURL: episodeURL, to: queuePosition)
-                    continue
-                }
-
-                if isDownloaded == false {
-                    await download(episodeURL: episodeURL)
-                }
+            if canScheduleDownloads && isDownloaded == false {
+                await logAutoDownload("policy/download feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) action=start")
+                await download(episodeURL: episodeURL)
+            } else if canScheduleDownloads == false && isDownloaded == false {
+                await logAutoDownload("policy/download feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) action=defer-network-gate")
             }
         }
+
+        var removedFromPlaylist = 0
+        if overflowEpisodes.isEmpty == false {
+            if queuePosition == .none {
+                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.absoluteString) reason=queue-position-none overflowCount=\(overflowEpisodes.count)")
+            } else if let playlistActor {
+                let queuedEpisodeURLs: Set<URL>
+                do {
+                    queuedEpisodeURLs = Set(try await playlistActor.orderedEpisodeURLs())
+                } catch {
+                    await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=fetch-playlist-urls error=\(error.localizedDescription)")
+                    queuedEpisodeURLs = []
+                }
+
+                for episode in overflowEpisodes {
+                    guard let episodeURL = episode.url else { continue }
+                    guard queuedEpisodeURLs.contains(episodeURL) else { continue }
+
+                    do {
+                        try await playlistActor.remove(
+                            episodeURL: episodeURL,
+                            triggerAutoDownload: false
+                        )
+                        removedFromPlaylist += 1
+                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")
+                    } catch {
+                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=failure error=\(error.localizedDescription)")
+                    }
+                }
+            } else {
+                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.absoluteString) reason=no-playlist-actor overflowCount=\(overflowEpisodes.count)")
+            }
+        }
+        await logAutoDownload("policy/prune-summary feed=\(podcastFeed.absoluteString) overflowCount=\(overflowEpisodes.count) removedFromPlaylist=\(removedFromPlaylist)")
 
         let hasTargetCoverage = targetEpisodes.allSatisfy { episode in
-            let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
-            if queuePosition == .none {
-                return isDownloaded
-            }
-
-            let isQueued = (episode.playlist?.isEmpty ?? true) == false
-            return isDownloaded || isQueued
+            episode.metaData?.calculatedIsAvailableLocally == true
         }
 
-        if canScheduleDownloads == false && hasTargetCoverage == false {
+        if hasTargetCoverage == false {
+            await logAutoDownload("policy/cleanup-skip feed=\(podcastFeed.absoluteString) reason=targets-not-downloaded")
             return
         }
 
+        var deletedDownloads = 0
         for episode in podcastEpisodes {
             guard let episodeURL = episode.url else { continue }
             guard targetEpisodeURLs.contains(episodeURL) == false else { continue }
@@ -397,7 +624,62 @@ actor EpisodeActor {
             guard (episode.playlist?.isEmpty ?? true) else { continue }
 
             await deleteFile(episodeURL: episodeURL)
+            deletedDownloads += 1
+            await logAutoDownload("policy/cleanup-delete feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")
         }
+        await logAutoDownload("policy/done feed=\(podcastFeed.absoluteString) deletedDownloads=\(deletedDownloads)")
+    }
+
+    func migrateLegacyBackCatalogSuppressionIfNeeded() async {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: Self.legacyBackCatalogSuppressionMigrationKey) == false else {
+            return
+        }
+
+        let descriptor = FetchDescriptor<Episode>()
+        guard let episodes = try? modelContext.fetch(descriptor),
+              episodes.isEmpty == false else {
+            defaults.set(true, forKey: Self.legacyBackCatalogSuppressionMigrationKey)
+            return
+        }
+
+        var didChange = false
+
+        for episode in episodes {
+            guard let metadata = episode.metaData,
+                  metadata.isArchived == true else {
+                continue
+            }
+            guard metadata.isHistory != true else { continue }
+            guard metadata.completionDate == nil else { continue }
+            guard metadata.lastPlayed == nil else { continue }
+            guard episode.maxPlayProgress <= 0.01 else { continue }
+            guard let publishDate = episode.publishDate,
+                  let subscriptionDate = episode.podcast?.metaData?.subscriptionDate else {
+                continue
+            }
+            guard publishDate < subscriptionDate else { continue }
+            guard let archivedAt = metadata.archivedAt else { continue }
+
+            let interval = abs(archivedAt.timeIntervalSince(subscriptionDate))
+            guard interval <= Self.legacyBackCatalogSuppressionArchiveWindow else { continue }
+
+            metadata.isArchived = false
+            metadata.isInbox = false
+            metadata.status = nil
+            metadata.archivedAt = nil
+            metadata.systemSuppressionReason = .backCatalogImport
+            didChange = true
+        }
+
+        if didChange {
+            modelContext.saveIfNeeded()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            }
+        }
+
+        defaults.set(true, forKey: Self.legacyBackCatalogSuppressionMigrationKey)
     }
 
     private func canScheduleAutoDownloads(for networkMode: AutoDownloadNetworkMode) async -> Bool {
@@ -453,11 +735,13 @@ actor EpisodeActor {
         }
      */
         
-        let playnext = await PodcastSettingsModelActor(modelContainer: modelContainer).getPlaynextposition(for: episode.podcast?.feed)
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let playnext = await settingsActor.getPlaynextposition(for: episode.podcast?.feed)
+        let playlistID = await settingsActor.getDefaultPlaylistID(for: episode.podcast?.feed)
         print("Processing episode: \(episode.title) - playnext Status is \(playnext)")
 
         if playnext != .none {
-            let playlistActor = try? PlaylistModelActor(modelContainer: modelContainer)
+            let playlistActor = playlistActor(for: playlistID)
             try? await playlistActor?.add(episodeURL: episodeURL, to: playnext)
         }
 
@@ -512,6 +796,11 @@ actor EpisodeActor {
 
         print ("markEpisodeAvailable for \(episode.title)")
         guard let url = episode.url else {
+            return
+        }
+        ensureMetadata(for: episode)
+        if episode.metaData?.isAvailableLocally == true,
+           episode.metaData?.calculatedIsAvailableLocally == true {
             return
         }
         episode.metaData?.isAvailableLocally = true

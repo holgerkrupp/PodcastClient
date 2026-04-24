@@ -7,22 +7,53 @@
 
 
 import SwiftUI
+import SwiftData
 
 struct EpisodeControlView: View {
-
-
     @Bindable var episode: Episode
- //   @StateObject private var manager = DownloadManager.shared
+
     @Environment(\.modelContext) private var modelContext
-    @State private var downloadProgress: Double = 0.0
-    @State private var isDownloading: Bool = false
-    
+
+    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
+    private var playlists: [Playlist]
+
+    @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var preferredPlaylistID: String = ""
+    @State private var isSelectingFrontPlaylist = false
+    @State private var isSelectingEndPlaylist = false
+
+
+    private var manualPlaylists: [Playlist] {
+        Playlist.manualVisibleSorted(playlists)
+    }
+
+    private var resolvedPlaylistID: UUID? {
+        if let explicitID = UUID(uuidString: preferredPlaylistID),
+           manualPlaylists.contains(where: { $0.id == explicitID }) {
+            return explicitID
+        }
+
+        if let defaultPlaylist = manualPlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.id
+        }
+
+        return manualPlaylists.first?.id
+    }
+
+    private var resolvedPlaylistTitle: String {
+        guard let resolvedPlaylistID,
+              let playlist = manualPlaylists.first(where: { $0.id == resolvedPlaylistID }) else {
+            return Playlist.defaultQueueDisplayName
+        }
+
+        return playlist.displayTitle
+    }
 
     var body: some View {
+        let isInPlaylist = (episode.playlist?.isEmpty ?? true) == false
 
         HStack {
             Button(action: {
-                Task{
+                Task {
                     await Player.shared.playEpisode(episode.url)
                 }
             }) {
@@ -30,7 +61,6 @@ struct EpisodeControlView: View {
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
                     .padding(5)
-                    // .foregroundColor(.accent)
                     .minimumScaleFactor(0.5)
                     .labelStyle(.iconOnly)
                     .clipShape(Circle())
@@ -39,86 +69,135 @@ struct EpisodeControlView: View {
             .buttonStyle(.glass(.clear))
             .accessibilityLabel("Play episode")
             .accessibilityHint("Starts this episode immediately")
-            
+
             Spacer()
-            
-            GlassEffectContainer(spacing: 20.0) {
+            GlassEffectContainer(spacing: 20.0){
                 HStack(spacing: 0.0) {
-                    
                     Button {
-                        
-                        Task{
-                            await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .front)
-                            
+                        Task {
+                            await addEpisode(to: resolvedPlaylistID, position: .front)
                         }
                     } label: {
-                        
-                        Label("Play Next", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward")
-                            .symbolRenderingMode(.hierarchical)
-                            .scaledToFit()
-                            .padding(5)
-                            .minimumScaleFactor(0.5)
-                            .labelStyle(.iconOnly)
-                            .frame(width: 50)
-                           
+                        Label(
+                            "Play Next",
+                            systemImage: isInPlaylist ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward"
+                        )
+                        .symbolRenderingMode(.hierarchical)
+                        .scaledToFit()
+                        .padding(5)
+                        .minimumScaleFactor(0.5)
+                        .labelStyle(.iconOnly)
+                        .frame(width: 50)
+                        .clipShape(Circle())
                     }
                     .buttonStyle(.glass(.clear))
-                    .clipShape(Circle())
-                    .accessibilityLabel("Add to Up Next")
-                    .accessibilityHint("Places this episode at the front of the queue")
+                    .contentShape(Circle())
+                    .highPriorityGesture(
+                        LongPressGesture(minimumDuration: 0.4)
+                            .onEnded { _ in
+                                isSelectingFrontPlaylist = true
+                            }
+                    )
+                    .confirmationDialog("Add to front of playlist", isPresented: $isSelectingFrontPlaylist, titleVisibility: .visible) {
+                        ForEach(manualPlaylists) { playlist in
+                            Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
+                                Task {
+                                    await addEpisode(to: playlist.id, position: .front)
+                                }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+                    .accessibilityLabel("Add to playlist")
+                    .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
                     
-                 
                     Button {
-                        Task{
-                            await PlaylistViewModel(container: modelContext.container).addEpisode(episode, to: .end)
+                        Task {
+                            await addEpisode(to: resolvedPlaylistID, position: .end)
                         }
                     } label: {
-                        Label("Play Last", systemImage: (!(episode.playlist?.isEmpty ?? true) || episode.playlist?.first?.playlist != nil) ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward")
-                            .symbolRenderingMode(.hierarchical)
-                            .scaledToFit()
-                            .padding(5)
-                            .minimumScaleFactor(0.5)
-                            .labelStyle(.iconOnly)
-                            .frame(width: 50)
+                        Label(
+                            "Play Last",
+                            systemImage: isInPlaylist ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward"
+                        )
+                        .symbolRenderingMode(.hierarchical)
+                        .scaledToFit()
+                        .padding(5)
+                        .minimumScaleFactor(0.5)
+                        .labelStyle(.iconOnly)
+                        .frame(width: 50)
                     }
                     .buttonStyle(.glass(.clear))
-                    .clipShape(Circle())
-                    .accessibilityLabel("Add to end of queue")
-                    .accessibilityHint("Places this episode at the end of Up Next")
-                    
+                    .contentShape(Circle())
+                    .highPriorityGesture(
+                        LongPressGesture(minimumDuration: 0.4)
+                            .onEnded { _ in
+                                isSelectingEndPlaylist = true
+                            }
+                    )
+                    .confirmationDialog("Add to end of playlist", isPresented: $isSelectingEndPlaylist, titleVisibility: .visible) {
+                        ForEach(manualPlaylists) { playlist in
+                            Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
+                                Task {
+                                    await addEpisode(to: playlist.id, position: .end)
+                                }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+                    .accessibilityLabel("Add to end of playlist")
+                    .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
                 }
             }
-            
+
             Spacer()
-            
+
             Button {
-                Task{
-                    await EpisodeActor(modelContainer: modelContext.container).archiveEpisode(episode.url)
+                Task {
+                    let actor = EpisodeActor(modelContainer: modelContext.container)
+                    if episode.metaData?.isArchived == true {
+                        await actor.unarchiveEpisode(episode.url)
+                    } else {
+                        await actor.archiveEpisode(episode.url)
+                    }
                 }
             } label: {
-                
-                Label( episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive", systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
-                    .symbolRenderingMode(.hierarchical)
-                    .scaledToFit()
-                    .padding(5)
-
-                   // .foregroundColor(.accent)
-                    .minimumScaleFactor(0.5)
-                    .labelStyle(.iconOnly)
-                    .clipShape(Circle())
-                    .frame(width: 50)
+                Label(
+                    episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive",
+                    systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox"
+                )
+                .symbolRenderingMode(.hierarchical)
+                .scaledToFit()
+                .padding(5)
+                .minimumScaleFactor(0.5)
+                .labelStyle(.iconOnly)
+                .clipShape(Circle())
+                .frame(width: 50)
             }
             .buttonStyle(.glass(.clear))
             .accessibilityLabel(episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
             .accessibilityHint("Moves this episode in or out of the archive")
-
-            
-            
         }
-        
+    }
 
-       
+    private func addEpisode(to playlistID: UUID?, position: Playlist.Position) async {
+        guard let episodeURL = episode.url else { return }
 
+        let playlistActor: PlaylistModelActor?
+        if let playlistID,
+           let actor = try? PlaylistModelActor(modelContainer: modelContext.container, playlistID: playlistID) {
+            playlistActor = actor
+        } else {
+            playlistActor = try? PlaylistModelActor(modelContainer: modelContext.container)
+        }
+
+        guard let playlistActor else { return }
+
+        if position == .front {
+            try? await playlistActor.insert(episodeURL: episodeURL, after: Player.shared.currentEpisodeURL)
+        } else {
+            try? await playlistActor.add(episodeURL: episodeURL, to: position)
+        }
     }
 }
 

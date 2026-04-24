@@ -21,10 +21,14 @@ struct ContentView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
+    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
+    private var playlists: [Playlist]
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
+    @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
     @State private var inboxCount: Int = 0
     @State private var selectedTab: RootTab = .playlist
+    @Bindable private var player = Player.shared
     
     @State private var search:String = ""
     @StateObject private var incomingPodcastSubscription = IncomingPodcastSubscriptionController()
@@ -32,12 +36,42 @@ struct ContentView: View {
 
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
+
+    private var playlistTabTitle: String {
+        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
+
+        if let selectedID = UUID(uuidString: selectedPlaylistID),
+           let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
+            return selectedPlaylist.displayTitle
+        }
+
+        if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.displayTitle
+        }
+
+        return Playlist.defaultQueueDisplayName
+    }
+
+    private var playlistTabSymbolName: String {
+        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
+
+        if let selectedID = UUID(uuidString: selectedPlaylistID),
+           let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
+            return selectedPlaylist.displaySymbolName
+        }
+
+        if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+            return defaultPlaylist.displaySymbolName
+        }
+
+        return Playlist.defaultQueueSymbolName
+    }
     
     var body: some View {
         
         TabView(selection: $selectedTab) {
             
-            Tab("Up next", systemImage: "calendar.day.timeline.leading", value: RootTab.playlist) {
+            Tab(LocalizedStringKey(playlistTabTitle), systemImage: playlistTabSymbolName, value: RootTab.playlist) {
                 PlaylistView()
             }
           
@@ -63,11 +97,12 @@ struct ContentView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         
         .tabViewBottomAccessory {
-              PlayerTabBarView()
-                .opacity(Player.shared.currentEpisode == nil ? 0 : 1)
-                .allowsHitTesting(Player.shared.currentEpisode != nil)
-            
- 
+            PlayerTabBarView()
+        }
+        .sheet(isPresented: $player.isPlayerSheetPresented) {
+            PlayerView(fullSize: true)
+                .presentationDragIndicator(.visible)
+                .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         }
 
         
