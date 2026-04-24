@@ -142,13 +142,15 @@ class Player {
     }
     
     func restoreLastPlayedFromPlaylist() async {
-        if let lastPlayedURL = await episodeActor?.getLastPlayedEpisodeURL() {
+        let episodeURLs = (try? await playlistActor?.orderedEpisodeURLs()) ?? []
+
+        if let lastPlayedURL = await episodeActor?.getLastPlayedEpisodeURL(),
+           episodeURLs.contains(lastPlayedURL) {
             await playEpisode(lastPlayedURL, playDirectly: false)
             return
         }
 
-        if let episodeURLs = try? await playlistActor?.orderedEpisodeURLs(),
-           let firstURL = episodeURLs.first {
+        if let firstURL = episodeURLs.first {
             await playEpisode(firstURL, playDirectly: false)
         }
     }
