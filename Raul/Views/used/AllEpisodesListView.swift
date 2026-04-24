@@ -100,11 +100,18 @@ struct AllEpisodesListView: View {
                 }
             }
             let descriptor = FetchDescriptor<Episode>(
-                predicate: predicate,
-                sortBy: [SortDescriptor(\.metaData?.lastPlayed, order: .reverse)]
+                predicate: predicate
             )
             do {
-                episodes = try modelContext.fetch(descriptor)
+                let fetchedEpisodes = try modelContext.fetch(descriptor)
+                episodes = fetchedEpisodes.sorted { lhs, rhs in
+                    let lhsDate = lhs.metaData?.lastPlayed ?? .distantPast
+                    let rhsDate = rhs.metaData?.lastPlayed ?? .distantPast
+                    if lhsDate != rhsDate {
+                        return lhsDate > rhsDate
+                    }
+                    return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+                }
             } catch {
                 // print("Fetch error: \(error)")
             }
