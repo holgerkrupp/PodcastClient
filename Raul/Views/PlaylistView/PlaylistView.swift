@@ -20,6 +20,11 @@ struct PlaylistView: View {
     @State private var selectedPlaylistID: String = ""
     @State private var showSettings: Bool = false
     @State private var showCreatePlaylistSheet: Bool = false
+    private let fixedPlaylistID: UUID?
+
+    init(fixedPlaylistID: UUID? = nil) {
+        self.fixedPlaylistID = fixedPlaylistID
+    }
 
     private var visiblePlaylists: [Playlist] {
         Playlist.manualVisibleSorted(playlists)
@@ -30,6 +35,10 @@ struct PlaylistView: View {
             return nil
         }
         return visiblePlaylists.first(where: { $0.id == selectedID })
+    }
+
+    private var isFixedSelectionMode: Bool {
+        fixedPlaylistID != nil
     }
 
     var body: some View {
@@ -43,24 +52,25 @@ struct PlaylistView: View {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
+            .navigationTitle(isFixedSelectionMode ? (selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName) : "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    PlaylistTitleMenu(
-                        currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
-                        currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
-                        playlists: visiblePlaylists,
-                        selectedPlaylistID: selectedPlaylist?.id,
-                        onSelect: { playlist in
-                            selectPlaylist(playlist)
-                        },
-                        onCreate: {
-                            showCreatePlaylistSheet = true
-                        }
-                    )
+                if isFixedSelectionMode == false {
+                    ToolbarItem(placement: .topBarLeading) {
+                        PlaylistTitleMenu(
+                            currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
+                            currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
+                            playlists: visiblePlaylists,
+                            selectedPlaylistID: selectedPlaylist?.id,
+                            onSelect: { playlist in
+                                selectPlaylist(playlist)
+                            },
+                            onCreate: {
+                                showCreatePlaylistSheet = true
+                            }
+                        )
+                    }
                 }
-
-
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
@@ -100,6 +110,11 @@ struct PlaylistView: View {
     }
 
     private func syncSelectionWithStorage() {
+        if let fixedPlaylistID {
+            applyFixedSelection(fixedPlaylistID)
+            return
+        }
+
         if let selectedID = Playlist.resolvePlaylistID(from: storedPlaylistID),
            visiblePlaylists.contains(where: { $0.id == selectedID }) {
             selectedPlaylistID = selectedID.uuidString
@@ -114,6 +129,11 @@ struct PlaylistView: View {
     }
 
     private func ensureSelectionIsValid() {
+        if let fixedPlaylistID {
+            applyFixedSelection(fixedPlaylistID)
+            return
+        }
+
         if let selectedID = UUID(uuidString: selectedPlaylistID),
            visiblePlaylists.contains(where: { $0.id == selectedID }) {
             return
@@ -133,8 +153,24 @@ struct PlaylistView: View {
     }
 
     private func selectPlaylist(_ playlist: Playlist) {
+        guard fixedPlaylistID == nil else { return }
         selectedPlaylistID = playlist.id.uuidString
         storedPlaylistID = selectedPlaylistID
+    }
+
+    private func applyFixedSelection(_ fixedID: UUID) {
+        if visiblePlaylists.contains(where: { $0.id == fixedID }) {
+            let value = fixedID.uuidString
+            selectedPlaylistID = value
+            storedPlaylistID = value
+            return
+        }
+
+        if let fallbackPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle })
+            ?? visiblePlaylists.first {
+            selectedPlaylistID = fallbackPlaylist.id.uuidString
+            storedPlaylistID = selectedPlaylistID
+        }
     }
 
     private func createPlaylist(from draft: PlaylistCreationDraft) {
