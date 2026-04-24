@@ -64,7 +64,7 @@ Key principles of the project:
 ### Subscription Management
 - [x] OPML import
 - - [x] to be validated with big file
-- - [ ] Show import progress
+- - [x] Show import progress
 - - [x] Handle no longer existing feeds (HTTP Status 404, 500, 410 oder 200 but HTML and no XML)
 - [x] podcast directory search
 - - [x] iTunes Directory Search (basic)
@@ -116,24 +116,24 @@ Key principles of the project:
 ##1.1 min requirements 
 
 ### Subscription Management
-- [ ] Sideloads via iCloud Drive
-- [ ] Downloads of Episodes withouth subscribing to a feed
+- [x] Sideloads via iCloud Drive
+- [x] Downloads of Episodes withouth subscribing to a feed
 
-- [ ] accept opml from share sheet
-- [ ] accept rss / xml from share sheet 
-- [ ] accept any URL that could be a feed
+- [x] accept opml from share sheet
+- [x] accept rss / xml from share sheet 
+- [x] accept any URL that could be a feed
 
 ### Refresh and Downloads
 
 ### Player
 
-- [ ] custom playlists
+- [x] custom playlists
 
 
 ##1.x requirements
 - [x] Transkripts
 -   -  [ ] optimized Transcipts view (long text)
-- [ ] Apple Watch App
+- [x] Apple Watch App
 - [ ] remove tracking information from URLs
 - [x] share little videos from episodes for social media
 - [ ] provide suggestions for apple Journal App (https://developer.apple.com/documentation/journalingsuggestions)

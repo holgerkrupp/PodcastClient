@@ -7,6 +7,7 @@ struct PodcastSettingsView: View {
     static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
 
     let podcastID: PersistentIdentifier?
@@ -142,6 +143,17 @@ struct PodcastSettingsView: View {
             .listStyle(.insetGrouped)
             .navigationTitle(podcast == nil ? "Settings" : "Podcast Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if embedInNavigationStack {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel("Dismiss settings")
+                    }
+                }
+            }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
             .tint(.accent)

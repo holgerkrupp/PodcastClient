@@ -3,6 +3,7 @@ import SwiftData
 import BackgroundTasks
 import DeviceInfo
 import BasicLogger
+import CloudKitSyncMonitor
 
 enum BackgroundTaskConfiguration {
     static let feedRefreshIdentifier = "checkFeedUpdates"
@@ -26,6 +27,7 @@ struct RaulApp: App {
 
     init() {
         CrashBreadcrumbs.shared.record("raul_app_init_start")
+        SyncMonitor.default.startMonitoring()
         _ = Player.shared
         WatchSyncCoordinator.activate()
         CrashBreadcrumbs.shared.record("raul_app_init_completed")

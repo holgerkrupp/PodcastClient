@@ -19,6 +19,8 @@
 	<array>
 		<string>iCloud.de.holgerkrupp.PodcastClient</string>
 	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)de.holgerkrupp.PodcastClient</string>
 	<key>com.apple.developer.siri</key>
 	<true/>
 	<key>com.apple.security.application-groups</key>

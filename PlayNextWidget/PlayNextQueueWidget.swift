@@ -85,8 +85,8 @@ struct PlayNextQueueWidget: Widget {
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
-            .systemLarge,
-            .accessoryRectangular,
+            .systemLarge
+            //,.accessoryRectangular,
         ])
     }
 }
