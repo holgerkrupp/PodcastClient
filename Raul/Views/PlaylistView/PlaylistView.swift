@@ -249,7 +249,15 @@ private struct ManualPlaylistPageView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open episode \(episode.title)")
                         .accessibilityHint("Opens this episode details screen")
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task {
+                                    await removeEpisodeFromPlaylist(episode)
+                                }
+                            } label: {
+                                Label("Remove from Playlist", systemImage: "minus.circle")
+                            }
+
                             Button(role: .none) {
                                 Task {
                                     await archiveEpisode(episode)
@@ -257,6 +265,7 @@ private struct ManualPlaylistPageView: View {
                             } label: {
                                 Label("Archive Episode", systemImage: "archivebox.fill")
                             }
+                            .tint(.orange)
                         }
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -280,6 +289,17 @@ private struct ManualPlaylistPageView: View {
     private func archiveEpisode(_ episode: Episode) async {
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         await episodeActor.archiveEpisode(episode.url)
+    }
+
+    private func removeEpisodeFromPlaylist(_ episode: Episode) async {
+        guard let episodeURL = episode.url else { return }
+        guard let playlistActor = try? PlaylistModelActor(
+            modelContainer: modelContext.container,
+            playlistID: playlist.id
+        ) else {
+            return
+        }
+        try? await playlistActor.remove(episodeURL: episodeURL)
     }
 }
 

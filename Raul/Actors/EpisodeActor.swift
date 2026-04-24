@@ -181,16 +181,15 @@ actor EpisodeActor {
     }
     
     func getLastPlayedEpisodeURL() async -> URL? {
-        let predicate = #Predicate<Episode> { episode in
-            episode.metaData?.isHistory == false
+        let predicate = #Predicate<EpisodeMetaData> { metadata in
+            metadata.isHistory != true && metadata.lastPlayed != nil
         }
-        let sortDescriptors: [SortDescriptor<Episode>] = [
-            SortDescriptor(\Episode.metaData?.lastPlayed, order: .reverse)
-        ]
         do {
-            let results = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate, sortBy: sortDescriptors))
-
-            return results.first?.url
+            let results = try modelContext.fetch(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
+            let mostRecentlyPlayed = results.max {
+                ($0.lastPlayed ?? .distantPast) < ($1.lastPlayed ?? .distantPast)
+            }
+            return mostRecentlyPlayed?.episode?.url
         } catch {
             // print("❌ Error fetching or saving metadata: \(error)")
         }
@@ -512,6 +511,7 @@ actor EpisodeActor {
         }
 
         let targetEpisodes = Array(sortedEpisodes.prefix(keepCount))
+        let overflowEpisodes = Array(sortedEpisodes.dropFirst(keepCount))
         let targetEpisodeURLs = Set(targetEpisodes.compactMap(\.url))
         let playlistActor = playlistActor(for: playlistID)
         let canScheduleDownloads = await canScheduleAutoDownloads(for: networkMode)
@@ -572,6 +572,40 @@ actor EpisodeActor {
                 await logAutoDownload("policy/download feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) action=defer-network-gate")
             }
         }
+
+        var removedFromPlaylist = 0
+        if overflowEpisodes.isEmpty == false {
+            if queuePosition == .none {
+                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.absoluteString) reason=queue-position-none overflowCount=\(overflowEpisodes.count)")
+            } else if let playlistActor {
+                let queuedEpisodeURLs: Set<URL>
+                do {
+                    queuedEpisodeURLs = Set(try await playlistActor.orderedEpisodeURLs())
+                } catch {
+                    await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=fetch-playlist-urls error=\(error.localizedDescription)")
+                    queuedEpisodeURLs = []
+                }
+
+                for episode in overflowEpisodes {
+                    guard let episodeURL = episode.url else { continue }
+                    guard queuedEpisodeURLs.contains(episodeURL) else { continue }
+
+                    do {
+                        try await playlistActor.remove(
+                            episodeURL: episodeURL,
+                            triggerAutoDownload: false
+                        )
+                        removedFromPlaylist += 1
+                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")
+                    } catch {
+                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=failure error=\(error.localizedDescription)")
+                    }
+                }
+            } else {
+                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.absoluteString) reason=no-playlist-actor overflowCount=\(overflowEpisodes.count)")
+            }
+        }
+        await logAutoDownload("policy/prune-summary feed=\(podcastFeed.absoluteString) overflowCount=\(overflowEpisodes.count) removedFromPlaylist=\(removedFromPlaylist)")
 
         let hasTargetCoverage = targetEpisodes.allSatisfy { episode in
             episode.metaData?.calculatedIsAvailableLocally == true

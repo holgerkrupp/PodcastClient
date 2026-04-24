@@ -424,7 +424,7 @@ actor PlaylistModelActor {
         WatchSyncCoordinator.refreshSoon()
     }
 
-    func remove(episodeURL: URL) throws {
+    func remove(episodeURL: URL, triggerAutoDownload: Bool = true) throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
 
@@ -446,7 +446,7 @@ actor PlaylistModelActor {
                 WatchSyncCoordinator.refreshSoon()
             }
 
-            if affectedPodcastFeeds.isEmpty == false {
+            if triggerAutoDownload && affectedPodcastFeeds.isEmpty == false {
                 let container = modelContainer
                 Task {
                     let episodeActor = EpisodeActor(modelContainer: container)
