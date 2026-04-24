@@ -25,6 +25,10 @@ struct CoverImageView: View {
                 loadedImage
                     .resizable()
                     .scaledToFit()
+            } else if let cachedImage {
+                cachedImage
+                    .resizable()
+                    .scaledToFit()
             } else {
                 Rectangle()
                     .fill(Color.accent)
@@ -33,6 +37,7 @@ struct CoverImageView: View {
         // Only run the task when the imageKey changes (i.e., at chapter boundaries
         // or when the underlying image source changes), not on every playback tick.
         .task(id: imageKey) {
+            seedFromCacheIfPossible(for: imageKey)
             await loadImage(for: imageKey)
         }
     }
@@ -84,7 +89,61 @@ struct CoverImageView: View {
         return "none"
     }
 
+    private var cachedImage: Image? {
+        guard let uiImage = cachedUIImageForCurrentSource() else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
     // MARK: - Loading
+
+    @MainActor
+    private func seedFromCacheIfPossible(for key: String) {
+        guard key != lastAppliedKey else { return }
+        guard let uiImage = cachedUIImageForCurrentSource() else { return }
+        loadedImage = Image(uiImage: uiImage)
+        lastAppliedKey = key
+    }
+
+    private func cachedUIImageForCurrentSource() -> UIImage? {
+        if let chapter = activeChapter {
+            if let data = chapter.imageData,
+               !data.isEmpty,
+               let uiImage = ImageLoaderAndCache.makeUIImage(from: data) {
+                return uiImage
+            }
+            if let url = chapter.image,
+               let uiImage = cachedUIImage(for: url) {
+                return uiImage
+            }
+        }
+
+        if let directURL = imageURL,
+           let uiImage = cachedUIImage(for: directURL) {
+            return uiImage
+        }
+
+        if let fallbackURL = fallbackEpisodeOrPodcastURL,
+           let uiImage = cachedUIImage(for: fallbackURL) {
+            return uiImage
+        }
+
+        return nil
+    }
+
+    private func cachedUIImage(for url: URL) -> UIImage? {
+        if let inMemory = SharedImageRepository.cachedImage(for: url) {
+            return inMemory
+        }
+
+        let request = URLRequest(url: url, cachePolicy: .returnCacheDataDontLoad)
+        if let cachedData = URLCache.shared.cachedResponse(for: request)?.data,
+           let cachedImage = ImageLoaderAndCache.makeUIImage(from: cachedData) {
+            SharedImageRepository.store(cachedImage, for: url, cost: SharedImageRepository.memoryCost(for: cachedImage))
+            return cachedImage
+        }
+
+        return nil
+    }
 
     @MainActor
     private func loadImage(for key: String) async {

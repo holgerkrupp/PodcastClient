@@ -480,26 +480,27 @@ actor PodcastModelActor {
                 modelContext.insert(episode)
                 modelContext.saveIfNeeded()
 
+                let episodeActor = EpisodeActor(modelContainer: modelContainer)
                 if silent == false {
                     print("NOT SILENT")
                     if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7) {
                         print("episode is old")
-                        episode.metaData?.status = .archived
-                        episode.metaData?.isArchived = true
-                        episode.metaData?.isInbox = false
-                        episode.metaData?.archivedAt = Date()
+                        await episodeActor.suppressEpisodeFromInbox(
+                            episode.url,
+                            reason: .backCatalogImport
+                        )
                     } else {
                         print("episode is new")
                         if let episodeURL = episode.url {
-                            await EpisodeActor(modelContainer: modelContainer).processAfterCreation(episodeURL: episodeURL)
+                            await episodeActor.processAfterCreation(episodeURL: episodeURL)
                         }
                     }
                 } else {
                     print("SILENT")
-                    episode.metaData?.isInbox = false
-                    episode.metaData?.status = .archived
-                    episode.metaData?.isArchived = true
-                    episode.metaData?.archivedAt = Date()
+                    await episodeActor.suppressEpisodeFromInbox(
+                        episode.url,
+                        reason: .backCatalogImport
+                    )
                 }
             }
 
@@ -572,7 +573,6 @@ actor PodcastModelActor {
                 _ = try await updatePodcast(feed, force: true, silent: true, progress: progress)
                 podcast.message = nil
                 await reportProgress(SubscriptionProgressUpdate(0.98, "Finalizing subscription"), using: progress)
-                try await archiveEpisodes(of: podcast.persistentModelID)
             
         } catch {
             // print("Could not update podcast: \(error)")
@@ -623,6 +623,7 @@ actor PodcastModelActor {
         episode.metaData?.isInbox = true
         episode.metaData?.status = .inbox
         episode.metaData?.archivedAt = nil
+        episode.metaData?.systemSuppressionReason = nil
 
         modelContext.saveIfNeeded()
     }

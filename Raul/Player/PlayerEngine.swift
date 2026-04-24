@@ -195,7 +195,7 @@ actor PlayerEngine {
         removeEndObserver()
     }
     
-    func playbackStream(interval: TimeInterval = 0.5) -> AsyncStream<PlaybackEvent> {
+    func playbackStream(interval: TimeInterval = 1.0) -> AsyncStream<PlaybackEvent> {
         let currentItem = avPlayer.currentItem
         activePlaybackStreamID &+= 1
         let streamID = activePlaybackStreamID

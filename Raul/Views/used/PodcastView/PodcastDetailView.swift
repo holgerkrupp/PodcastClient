@@ -218,8 +218,11 @@ struct PodcastDetailView: View {
                 
                 Section{
                     ForEach(filteredEpisodes, id: \.id) { episode in
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                           EpisodeRowView(episode: episode)
+                        ZStack{
+                            EpisodeRowView(episode: episode)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open episode \(episode.title)")

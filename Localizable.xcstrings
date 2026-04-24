@@ -199,6 +199,7 @@
 
     },
     "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -221,10 +222,19 @@
     "Add to End" : {
 
     },
-    "Add to end of queue" : {
+    "Add to end of playlist" : {
+
+    },
+    "Add to front of playlist" : {
+
+    },
+    "Add to playlist" : {
 
     },
     "Add to Up Next" : {
+
+    },
+    "Adds a new playlist" : {
 
     },
     "Adjusts the current playback position" : {
@@ -401,9 +411,6 @@
           }
         }
       }
-    },
-    "Auto Downloads" : {
-
     },
     "Auto-download unplayed episodes" : {
 
@@ -594,6 +601,9 @@
     "Counts" : {
 
     },
+    "Create" : {
+
+    },
     "Create a bookmark at the current playback position." : {
       "localizations" : {
         "de" : {
@@ -605,6 +615,9 @@
       }
     },
     "Create audio clip" : {
+
+    },
+    "Create playlist" : {
 
     },
     "Created in Buxtehude by" : {
@@ -627,6 +640,9 @@
 
     },
     "Current chapter" : {
+
+    },
+    "Current playlist %@" : {
 
     },
     "Custom" : {
@@ -677,6 +693,12 @@
           }
         }
       }
+    },
+    "Default" : {
+
+    },
+    "Default playlist for auto-add" : {
+
     },
     "Default speed" : {
       "localizations" : {
@@ -1257,6 +1279,9 @@
     "How It Works" : {
 
     },
+    "Icon" : {
+
+    },
     "Import" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1304,6 +1329,7 @@
 
     },
     "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into the queue." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1313,7 +1339,13 @@
         }
       }
     },
+    "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist." : {
+
+    },
     "Inbox section" : {
+
+    },
+    "Include back catalog episodes" : {
 
     },
     "Installed Models" : {
@@ -1354,7 +1386,7 @@
     "Keeps captions centered around the current playback time" : {
 
     },
-    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device." : {
+    "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports." : {
 
     },
     "Keyword or phrase" : {
@@ -1690,6 +1722,9 @@
     "Moves this episode in or out of the archive" : {
 
     },
+    "Name" : {
+
+    },
     "Needs keyword" : {
 
     },
@@ -1718,6 +1753,12 @@
           }
         }
       }
+    },
+    "New Playlist" : {
+
+    },
+    "New Playlist…" : {
+
     },
     "new Podcasts" : {
       "extractionState" : "stale",
@@ -1820,6 +1861,9 @@
 
     },
     "No Matching Transcript" : {
+
+    },
+    "No playlists yet." : {
 
     },
     "No Podcast" : {
@@ -2113,6 +2157,9 @@
     "Opens playback speed, sleep timer, and queue settings" : {
 
     },
+    "Opens playlist picker" : {
+
+    },
     "Opens the chapter webpage in Safari" : {
 
     },
@@ -2192,10 +2239,10 @@
         }
       }
     },
-    "Places this episode at the end of Up Next" : {
+    "Places this episode at the end of %@" : {
 
     },
-    "Places this episode at the front of the queue" : {
+    "Places this episode at the front of %@" : {
 
     },
     "Play" : {
@@ -2332,6 +2379,15 @@
           }
         }
       }
+    },
+    "Playlist" : {
+
+    },
+    "Playlist icon %@" : {
+
+    },
+    "Playlists" : {
+
     },
     "Podcast" : {
       "localizations" : {
@@ -2489,7 +2545,7 @@
         }
       }
     },
-    "Queue & Playback" : {
+    "Queue & Downloads" : {
 
     },
     "Queue Behavior" : {
@@ -2647,6 +2703,9 @@
           }
         }
       }
+    },
+    "Remove from Playlist" : {
+
     },
     "Remove rule %lld" : {
 
@@ -3434,6 +3493,7 @@
       }
     },
     "Up next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3676,6 +3736,7 @@
       }
     },
     "Your Playlist is empty" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

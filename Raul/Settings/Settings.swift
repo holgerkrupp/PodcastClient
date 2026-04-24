@@ -29,7 +29,9 @@ class PodcastSettings {
     var autoDownloadEpisodeCount: Int = 3
     var autoDownloadSelectionRawValue: String? = AutoDownloadSelection.newestUnplayed.rawValue
     var autoDownloadNetworkModeRawValue: String? = AutoDownloadNetworkMode.wifiAndCellular.rawValue
+    var autoDownloadIncludesArchivedEpisodes: Bool = true
     var playnextPosition:Playlist.Position = Playlist.Position.none
+    var defaultPlaylistID: UUID?
     var playbackSpeed:Float? = 1.0
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
     var cutFront:Float? // how much to cut from the front / Intro
@@ -147,7 +149,7 @@ extension Notification.Name {
 
 enum SideloadingConfiguration {
     static let enabledKey = "SideloadingEnabled"
-    static let refreshDebounceNanoseconds: UInt64 = 250_000_000
+    static let refreshDebounceNanoseconds: UInt64 = 2_000_000_000
     static let missingArchiveGracePeriod: TimeInterval = 15 * 60
     static let missingStateDefaultsKey = "SideloadingMissingEpisodes.v1"
     static let visibilityMarkerFileName = ".upnext-sideloading-marker"
@@ -276,7 +278,9 @@ final class SideloadingFolderPresenter: NSObject, NSFilePresenter {
     }
 
     func presentedSubitemDidChange(at url: URL) {
-        onChange()
+        // iCloud can emit very frequent "did change" callbacks while file data is
+        // syncing/downloading. We handle appearance/moves/deletions separately, so
+        // skipping this noisy callback avoids repeated expensive reconciliation.
     }
 
     func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) {
@@ -585,8 +589,13 @@ actor SideLoadedLibraryActor {
             guard now.timeIntervalSince(missingSince) >= gracePeriod else { continue }
             guard episode.metaData?.isArchived != true else { continue }
 
-            await episodeActor.archiveEpisode(episode.url)
-            didChange = true
+            if episode.metaData?.systemSuppressionReason != .missingSideload {
+                await episodeActor.suppressEpisodeFromInbox(
+                    episode.url,
+                    reason: .missingSideload
+                )
+                didChange = true
+            }
             missingStateDidChange = missingState.clear(for: episodeURL) || missingStateDidChange
         }
 
@@ -608,6 +617,7 @@ actor SideLoadedLibraryActor {
                 episode.metaData?.isInbox = true
                 episode.metaData?.isArchived = false
                 episode.metaData?.status = .inbox
+                episode.metaData?.systemSuppressionReason = nil
                 episode.metaData?.isAvailableLocally = isAvailableLocally
                 modelContext.insert(episode)
                 modelContext.saveIfNeeded()
@@ -619,6 +629,7 @@ actor SideLoadedLibraryActor {
             }
 
             let isAvailableLocally = activeURLs.contains(fileURL)
+            let wasAvailableLocally = existingEpisode.metaData?.isAvailableLocally ?? false
             guard existingEpisode.metaData?.isArchived != true else {
                 if existingEpisode.metaData?.isAvailableLocally != isAvailableLocally {
                     existingEpisode.metaData?.isAvailableLocally = isAvailableLocally
@@ -626,11 +637,20 @@ actor SideLoadedLibraryActor {
                     didChange = true
                 }
 
-                if isAvailableLocally {
+                // Avoid repeatedly reprocessing unchanged local files on each refresh.
+                if isAvailableLocally && wasAvailableLocally == false {
                     await episodeActor.markEpisodeAvailable(fileURL: fileURL)
                     didChange = true
                 }
                 continue
+            }
+
+            if existingEpisode.metaData?.systemSuppressionReason == .missingSideload {
+                existingEpisode.metaData?.systemSuppressionReason = nil
+                existingEpisode.metaData?.isInbox = true
+                existingEpisode.metaData?.status = .inbox
+                existingEpisode.metaData?.archivedAt = nil
+                didChange = true
             }
 
             let metadata = await loadMetadata(for: fileURL, canLoadMediaMetadata: isAvailableLocally)
@@ -701,11 +721,13 @@ actor SideLoadedLibraryActor {
                 episodeDidChange = true
             }
 
-            if isAvailableLocally {
+            // Only run expensive "available" processing when a file becomes newly available.
+            if isAvailableLocally && wasAvailableLocally == false {
                 await episodeActor.markEpisodeAvailable(fileURL: fileURL)
                 didChange = true
             } else if episodeDidChange {
                 modelContext.saveIfNeeded()
+                didChange = true
             }
         }
 

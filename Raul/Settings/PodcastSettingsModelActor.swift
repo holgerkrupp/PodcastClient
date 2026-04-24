@@ -12,11 +12,46 @@ struct AutoDownloadPolicySnapshot: Sendable {
     let keepCount: Int
     let selection: AutoDownloadSelection
     let queuePosition: Playlist.Position
+    let playlistID: UUID?
     let networkMode: AutoDownloadNetworkMode
+    let includesArchivedEpisodes: Bool
 }
 
 @ModelActor
 actor PodcastSettingsModelActor {
+    private static let includeArchivedEpisodesMigrationKey = "PodcastSettings.autoDownloadIncludesArchivedEpisodes.v1"
+
+    private func logAutoDownload(_ message: String) async {
+        await MainActor.run {
+            BasicLogger.shared.log("[AutoDL] \(message)")
+        }
+    }
+
+    private func manualPlaylistExists(id: UUID) -> Bool {
+        let descriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.id == id }
+        )
+        guard let playlist = try? modelContext.fetch(descriptor).first else {
+            return false
+        }
+        return playlist.isSmartPlaylist == false
+    }
+
+    private func migrateAutoDownloadIncludeArchivedSettingIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: Self.includeArchivedEpisodesMigrationKey) == false else {
+            return
+        }
+
+        if let settings = try? modelContext.fetch(FetchDescriptor<PodcastSettings>()) {
+            for setting in settings {
+                setting.autoDownloadIncludesArchivedEpisodes = true
+            }
+            modelContext.saveIfNeeded()
+        }
+
+        defaults.set(true, forKey: Self.includeArchivedEpisodesMigrationKey)
+    }
 
     func ensureStandardSettingsExists() async {
         _ = await standardSettings()
@@ -24,16 +59,23 @@ actor PodcastSettingsModelActor {
     
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
     func standardSettings() async -> PodcastSettings {
+        migrateAutoDownloadIncludeArchivedSettingIfNeeded()
+        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
         let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
         var descriptor = FetchDescriptor<PodcastSettings>(
             predicate: #Predicate { $0.title == defaultSettingsTitle }
         )
         descriptor.fetchLimit = 1
         if let result = try? modelContext.fetch(descriptor).first {
+            if result.defaultPlaylistID == nil {
+                result.defaultPlaylistID = defaultPlaylist.id
+                modelContext.saveIfNeeded()
+            }
             return result
         } else {
             let newDefaultSettings = PodcastSettings()
             newDefaultSettings.title = defaultSettingsTitle
+            newDefaultSettings.defaultPlaylistID = defaultPlaylist.id
             modelContext.insert(newDefaultSettings)
             modelContext.saveIfNeeded()
             return newDefaultSettings
@@ -149,6 +191,8 @@ actor PodcastSettingsModelActor {
             newSettings.autoDownloadEpisodeCount = standardSettings.autoDownloadEpisodeCount
             newSettings.autoDownloadSelection = standardSettings.autoDownloadSelection
             newSettings.autoDownloadNetworkMode = standardSettings.autoDownloadNetworkMode
+            newSettings.autoDownloadIncludesArchivedEpisodes = standardSettings.autoDownloadIncludesArchivedEpisodes
+            newSettings.defaultPlaylistID = standardSettings.defaultPlaylistID
             newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
             modelContext.insert(newSettings)
             podcast.settings = newSettings
@@ -229,6 +273,18 @@ actor PodcastSettingsModelActor {
             return await standardSettings().playnextPosition
         }
     }
+
+    func getDefaultPlaylistID(for podcastFeed: URL?) async -> UUID? {
+        guard let podcastFeed else {
+            return await standardSettings().defaultPlaylistID
+        }
+
+        if let playlistID = await fetchPodcastSettings(for: podcastFeed)?.defaultPlaylistID {
+            return playlistID
+        }
+
+        return await standardSettings().defaultPlaylistID
+    }
     
     func getContiniousPlay() async -> Bool{
         return await standardSettings().getContinuousPlay
@@ -265,18 +321,118 @@ actor PodcastSettingsModelActor {
         return max(await standardSettings().archiveFileRetentionDays, 0)
     }
 
+    func podcastFeedsRequiringAutoDownloadReconciliationOnWiFi() async -> [URL] {
+        let descriptor = FetchDescriptor<Podcast>()
+        guard let podcasts = try? modelContext.fetch(descriptor),
+              podcasts.isEmpty == false else {
+            return []
+        }
+
+        var feeds = Set<URL>()
+
+        for podcast in podcasts {
+            guard podcast.isSubscribed,
+                  let feed = podcast.feed,
+                  let policy = await autoDownloadPolicy(for: feed),
+                  policy.networkMode == .wifiOnly else {
+                continue
+            }
+            feeds.insert(feed)
+        }
+
+        return Array(feeds)
+    }
+
+    func podcastFeedsRequiringAutoDownloadReconciliation() async -> [URL] {
+        let descriptor = FetchDescriptor<Podcast>()
+        guard let podcasts = try? modelContext.fetch(descriptor),
+              podcasts.isEmpty == false else {
+            return []
+        }
+
+        var feeds = Set<URL>()
+
+        for podcast in podcasts {
+            guard podcast.isSubscribed,
+                  let feed = podcast.feed,
+                  await autoDownloadPolicy(for: feed) != nil else {
+                continue
+            }
+            feeds.insert(feed)
+        }
+
+        return Array(feeds)
+    }
+
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {
-        guard let settings = await fetchPodcastSettings(for: podcastFeed),
-              settings.isEnabled,
-              settings.autoDownload else {
+        await logAutoDownload("policy-resolution/start feed=\(podcastFeed.absoluteString)")
+        guard let podcast = fetchPodcast(podcastFeed) else {
+            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.absoluteString) source=podcast reason=podcast-not-found")
             return nil
         }
+
+        guard podcast.isSubscribed else {
+            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.absoluteString) source=podcast reason=podcast-unsubscribed")
+            return nil
+        }
+
+        let customSettings = await fetchPodcastSettings(for: podcastFeed)
+        let globalSettings = await standardSettings()
+        let settings = (customSettings?.isEnabled == true) ? customSettings : globalSettings
+        let source = (customSettings?.isEnabled == true) ? "podcast" : "global"
+
+        guard let settings,
+              settings.autoDownload else {
+            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.absoluteString) source=\(source) reason=auto-download-disabled")
+            return nil
+        }
+
+        var didMutateSettings = false
+
+        let ensuredDefaultQueue = Playlist.ensureDefaultQueue(in: modelContext)
+        var resolvedGlobalPlaylistID = globalSettings.defaultPlaylistID ?? ensuredDefaultQueue.id
+        if manualPlaylistExists(id: resolvedGlobalPlaylistID) == false {
+            resolvedGlobalPlaylistID = ensuredDefaultQueue.id
+            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.absoluteString) action=fallback-default-queue")
+        }
+        if globalSettings.defaultPlaylistID != resolvedGlobalPlaylistID {
+            globalSettings.defaultPlaylistID = resolvedGlobalPlaylistID
+            didMutateSettings = true
+            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.absoluteString) action=persist-default-playlist id=\(resolvedGlobalPlaylistID.uuidString)")
+        }
+
+        var resolvedQueuePosition = settings.playnextPosition
+        if resolvedQueuePosition == .none {
+            resolvedQueuePosition = .end
+            settings.playnextPosition = .end
+            didMutateSettings = true
+            await logAutoDownload("policy-resolution/repair-queue-position feed=\(podcastFeed.absoluteString) action=none-to-end")
+        }
+
+        var resolvedPlaylistID = settings.defaultPlaylistID ?? resolvedGlobalPlaylistID
+        if manualPlaylistExists(id: resolvedPlaylistID) == false {
+            resolvedPlaylistID = resolvedGlobalPlaylistID
+            settings.defaultPlaylistID = resolvedPlaylistID
+            didMutateSettings = true
+            await logAutoDownload("policy-resolution/repair-target-playlist feed=\(podcastFeed.absoluteString) action=fallback-to-global id=\(resolvedPlaylistID.uuidString)")
+        }
+
+        if didMutateSettings {
+            modelContext.saveIfNeeded()
+            await logAutoDownload("policy-resolution/persisted-repairs feed=\(podcastFeed.absoluteString)")
+        }
+
+        await logAutoDownload(
+            "policy-resolution/result feed=\(podcastFeed.absoluteString) source=\(source) keep=\(max(settings.autoDownloadEpisodeCount, 1)) selection=\(settings.autoDownloadSelection.rawValue) queuePosition=\(resolvedQueuePosition) playlistID=\(resolvedPlaylistID.uuidString) network=\(settings.autoDownloadNetworkMode.rawValue) includeBackCatalog=\(settings.autoDownloadIncludesArchivedEpisodes)"
+        )
 
         return AutoDownloadPolicySnapshot(
             keepCount: max(settings.autoDownloadEpisodeCount, 1),
             selection: settings.autoDownloadSelection,
-            queuePosition: settings.playnextPosition,
-            networkMode: settings.autoDownloadNetworkMode
+            queuePosition: resolvedQueuePosition,
+            playlistID: resolvedPlaylistID,
+            networkMode: settings.autoDownloadNetworkMode,
+            includesArchivedEpisodes: settings.autoDownloadIncludesArchivedEpisodes
         )
     }
 }
