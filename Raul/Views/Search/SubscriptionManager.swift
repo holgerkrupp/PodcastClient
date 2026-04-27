@@ -390,6 +390,41 @@ actor SubscriptionManager:NSObject{
     //MARK: Background
     //the next functions are for background refresh activites. but could be also used in other occations
     
+    private enum TimedPodcastUpdateResult {
+        case completed(Bool?)
+        case timedOut
+    }
+
+    private func updatePodcastWithTimeBudget(
+        _ feed: URL,
+        timeBudget: TimeInterval
+    ) async -> TimedPodcastUpdateResult {
+        let worker = PodcastModelActor(modelContainer: modelContainer)
+        let updateTask = Task(priority: .utility) {
+            try? await worker.updatePodcast(feed)
+        }
+        let timeoutNanoseconds = UInt64(max(timeBudget, 0) * 1_000_000_000)
+
+        let outcome = await withTaskGroup(of: TimedPodcastUpdateResult.self, returning: TimedPodcastUpdateResult.self) { group in
+            group.addTask {
+                .completed(await updateTask.value)
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                return .timedOut
+            }
+
+            let first = await group.next() ?? .timedOut
+            group.cancelAll()
+            return first
+        }
+
+        if case .timedOut = outcome {
+            updateTask.cancel()
+        }
+
+        return outcome
+    }
 
     
     func bgupdateFeeds() async{
@@ -401,11 +436,13 @@ actor SubscriptionManager:NSObject{
         let startedAt = Date()
         let maxPodcastsPerRun = 3
         let maxRuntime: TimeInterval = 20
+        let perPodcastRuntimeLimit: TimeInterval = 8
 
         setLastRefreshDate()
         fetchData()
         var updated = 0
         var processed = 0
+        var reachedPerPodcastTimeout = false
 
         CrashBreadcrumbs.shared.record("bgupdate_feeds_started", details: "podcasts=\(podcasts.count)")
 
@@ -423,9 +460,23 @@ actor SubscriptionManager:NSObject{
             guard let feed = podcast.feed else { continue }
 
             processed += 1
-            let new = try? await PodcastModelActor(modelContainer: modelContainer).updatePodcast(feed)
+            let result = await updatePodcastWithTimeBudget(feed, timeBudget: perPodcastRuntimeLimit)
             podcast.message = nil
-            if new == true { updated += 1 }
+
+            switch result {
+            case .completed(let new):
+                if new == true { updated += 1 }
+            case .timedOut:
+                CrashBreadcrumbs.shared.record(
+                    "bgupdate_feeds_stopped",
+                    details: "reason=per_podcast_timeout"
+                )
+                reachedPerPodcastTimeout = true
+            }
+
+            if reachedPerPodcastTimeout {
+                break
+            }
         }
 
         CrashBreadcrumbs.shared.record(

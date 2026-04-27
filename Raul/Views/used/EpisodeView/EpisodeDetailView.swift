@@ -242,20 +242,14 @@ struct EpisodeDetailView: View {
                 }
             }
             .background{
-                if let image = backgroundImageLoader.image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
-                                        .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                                        
-                        .blur(radius: 20)
-                        .opacity(0.5)
-
-                    
-                } else {
-                    Color.accent.ignoresSafeArea()
-                }
+                CoverImageView(episode: episode)
+                    .aspectRatio(1, contentMode: .fill)
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
+                                    .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
+                                    
+                    .blur(radius: 20)
+                    .opacity(0.5)
             }
             .sheet(item: $shareURL) { identifiable in
                 ShareLink(item: identifiable.url) { Text("Share Episode") }

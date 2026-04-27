@@ -7,7 +7,7 @@
 		<key>PlayNextWidget.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>2</integer>
+			<integer>1</integer>
 		</dict>
 		<key>PlayerIntentsExtension.xcscheme_^#shared#^_</key>
 		<dict>
@@ -22,12 +22,25 @@
 		<key>UpNext.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>1</integer>
+			<integer>7</integer>
 		</dict>
 		<key>UpNextWatch.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
-			<integer>3</integer>
+			<integer>0</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>A1B2C3062F00000100000001</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B1C2D3062F10000100000001</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>

@@ -26,91 +26,95 @@ struct PlayerView: View {
                             
                             Group{
                                 if fullSize == true {
-                                    VStack{
-                                
-                                    ScrollView([.vertical]){
-                                  //      Spacer(minLength: 20)
-                                        PlayerControllView()
-                                            .padding()
-         
-                                        
-                                        HStack{
-                                          
-                                            if let episodeLink = episode.link {
+                                    ScrollView(.vertical) {
+                                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                            PlayerControllView(showPrimaryTransportControls: false)
+                                                .padding()
 
-                                                
-                                                Link(destination: episodeLink) {
-                                                    Label("Open in Browser", systemImage: "safari")
-                                                }
-                                                .buttonStyle(.glass(.clear))
-                                             //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                                            }
-                                            Spacer()
-                                           
-                                            Button(action: {
-                                                showClipExport = true
-                                            }) {
-                                                Image(systemName: "scissors")
-                                            }
-                                            .buttonStyle(.glass(.clear))
-                                            .frame(height: 30)
-                                            .help("Share audio clip")
-                                            .accessibilityLabel("Create audio clip")
-                                            .accessibilityHint("Opens clip export for the current episode")
-                                            .sheet(isPresented: $showClipExport) {
-                                                // TODO: coverImage loading should ideally not be async in the sheet
-                                                
-                                                if let episode = player.currentEpisode, let audioURL = episode.localFile ?? episode.url {
-                                                    AudioClipExportView(
-                                                        title: episode.title,
-                                                        audioURL: audioURL,
-                                                        coverImageURL: episode.imageURL,
-                                                        fallbackCoverImageURL: episode.podcast?.imageURL,
-                                                        playPosition: player.playPosition,
-                                                        duration: episode.duration ?? 60
-                                                    )
-                                                } else {
-                                                    EmptyView()
-                                                }
-                                            }
-                                            Spacer()
-                                            if let url = episode.deeplinks?.first ?? episode.link {
-                                            
-                                                let positionedURL: URL = {
-                                                    guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-                                                    var queryItems = components.queryItems ?? []
-                                                    // Remove old 't' if exists
-                                                    queryItems.removeAll { $0.name == "t" }
-                                                    let playPosition = Int(player.playPosition)
-                                                    queryItems.append(URLQueryItem(name: "t", value: "\(playPosition)"))
-                                                    components.queryItems = queryItems
-                                                    return components.url ?? url
-                                                }()
-                                                
-                                              //  shareURL = IdentifiableURL(url: url)
-                                                ShareLink(item: positionedURL) { Label("Share", systemImage: "square.and.arrow.up")
-                                                    .labelStyle(.iconOnly) }
-                                                .buttonStyle(.glass(.clear))
-                                                .accessibilityLabel("Share episode link at current time")
-                                                .accessibilityHint("Opens the share sheet with the current playback timestamp")
+                                            Section {
+                                                HStack {
 
+                                                    if let episodeLink = episode.link {
+
+
+                                                        Link(destination: episodeLink) {
+                                                            Label("Open in Browser", systemImage: "safari")
+                                                        }
+                                                        .buttonStyle(.glass(.clear))
+                                                     //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                                                    }
+                                                    Spacer()
+
+                                                    Button(action: {
+                                                        showClipExport = true
+                                                    }) {
+                                                        Image(systemName: "scissors")
+                                                    }
+                                                    .buttonStyle(.glass(.clear))
+                                                    .frame(height: 30)
+                                                    .help("Share audio clip")
+                                                    .accessibilityLabel("Create audio clip")
+                                                    .accessibilityHint("Opens clip export for the current episode")
+                                                    .sheet(isPresented: $showClipExport) {
+                                                        // TODO: coverImage loading should ideally not be async in the sheet
+
+                                                        if let episode = player.currentEpisode, let audioURL = episode.localFile ?? episode.url {
+                                                            AudioClipExportView(
+                                                                title: episode.title,
+                                                                audioURL: audioURL,
+                                                                coverImageURL: episode.imageURL,
+                                                                fallbackCoverImageURL: episode.podcast?.imageURL,
+                                                                playPosition: player.playPosition,
+                                                                duration: episode.duration ?? 60
+                                                            )
+                                                        } else {
+                                                            EmptyView()
+                                                        }
+                                                    }
+                                                    Spacer()
+                                                    if let url = episode.deeplinks?.first ?? episode.link {
+
+                                                        let positionedURL: URL = {
+                                                            guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+                                                            var queryItems = components.queryItems ?? []
+                                                            // Remove old 't' if exists
+                                                            queryItems.removeAll { $0.name == "t" }
+                                                            let playPosition = Int(player.playPosition)
+                                                            queryItems.append(URLQueryItem(name: "t", value: "\(playPosition)"))
+                                                            components.queryItems = queryItems
+                                                            return components.url ?? url
+                                                        }()
+
+                                                      //  shareURL = IdentifiableURL(url: url)
+                                                        ShareLink(item: positionedURL) { Label("Share", systemImage: "square.and.arrow.up")
+                                                            .labelStyle(.iconOnly) }
+                                                        .buttonStyle(.glass(.clear))
+                                                        .accessibilityLabel("Share episode link at current time")
+                                                        .accessibilityHint("Opens the share sheet with the current playback timestamp")
+
+                                                    }
+
+
+                                                }
+                                                .padding()
+
+                                                RichText(html: episode.content ?? episode.desc ?? "")
+                                                    .linkColor(light: Color.secondary, dark: Color.secondary)
+                                                    .backgroundColor(.transparent)
+                                                    .padding()
+                                            } header: {
+                                                PlayerPrimaryTransportControlsView(includeBookmark: true)
+                                                    .tint(.primary)
+                                                    .padding(.horizontal)
+                                                    .padding(.top, 8)
+                                                    .padding(.bottom, 6)
+                                                    .frame(maxWidth: .infinity)
+                                                    .zIndex(3)
                                             }
-                                            
-                                         
                                         }
-                                        .padding()
-                                        
-                                        RichText(html: episode.content ?? episode.desc ?? "")
-                                            .linkColor(light: Color.secondary, dark: Color.secondary)
-                                            .backgroundColor(.transparent)
-                                            .padding()
-                                            
-                                          
-                                        
                                     }
-                                }
-                                    .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                                }else{
+                                   
+                                } else {
                                     PlayerControllView()
                                         .padding()
                                 }
@@ -150,6 +154,7 @@ struct PlayerView: View {
        
     }
 }
+
 
 #Preview {
     @Previewable @State var fullSize: Bool = false

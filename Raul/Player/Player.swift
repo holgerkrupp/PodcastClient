@@ -561,7 +561,7 @@ class Player {
         nextChapter = nil
         chapters = []
         currentPlaybackSource = nil
-        progressUpdateCounter = 0
+        lastProgressSaveDate = .distantPast
         lastArtworkURL = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
 
@@ -588,7 +588,7 @@ class Player {
 
         currentEpisode = episode
         currentEpisodeURL = episodeURL
-        progressUpdateCounter = 0
+        lastProgressSaveDate = Date()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
         updateChapters()
@@ -863,9 +863,9 @@ class Player {
     
     
     
-    private var progressUpdateCounter = 0
+    private var lastProgressSaveDate = Date.distantPast
     private var nowPlayingUpdateCounter = 0
-    private let progressSaveInterval = 10  // 1 second * 10 = 10 seconds
+    private let progressSaveInterval: TimeInterval = 10
     private let nowPlayingUpdateInterval = 1 // 1 second * 1 = 1 second
     
     private func updateEpisodeProgress(to time: Double) {
@@ -881,19 +881,19 @@ class Player {
             }
         }
 
-        progressUpdateCounter += 1
         nowPlayingUpdateCounter += 1
         if nowPlayingUpdateCounter >= nowPlayingUpdateInterval {
             updateNowPlayingInfo()
             nowPlayingUpdateCounter = 0
         }
 
-        if progressUpdateCounter >= progressSaveInterval {
+        let now = Date()
+        if now.timeIntervalSince(lastProgressSaveDate) >= progressSaveInterval {
             if currentEpisode?.chapters?.isEmpty == false {
                 updateChapters()
             }
             savePlayPosition(force: true)
-            progressUpdateCounter = 0
+            lastProgressSaveDate = now
         }
     }
     

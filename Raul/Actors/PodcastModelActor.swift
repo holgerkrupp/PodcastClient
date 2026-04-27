@@ -252,6 +252,7 @@ actor PodcastModelActor {
         silent: Bool? = false,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
+        try Task.checkCancellation()
         // Fetch podcast just long enough to snapshot IDs & primitives
         guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
         guard let feedURL = podcast.feed else { return false }
@@ -289,6 +290,7 @@ actor PodcastModelActor {
          */
         modelContext.saveIfNeeded()
         await reportProgress(SubscriptionProgressUpdate(0.12, "Checking feed status"), using: progress)
+        try Task.checkCancellation()
 
         // --- FIRST await boundary ---
         if force == false {
@@ -307,6 +309,7 @@ actor PodcastModelActor {
                 return false
             }
         }
+        try Task.checkCancellation()
 
         // --- SECOND await boundary ---
         guard
@@ -321,10 +324,12 @@ actor PodcastModelActor {
         freshPodcast.message = "Reading Podcast Feed."
         modelContext.saveIfNeeded()
         await reportProgress(SubscriptionProgressUpdate(0.32, "Downloading and parsing feed"), using: progress)
+        try Task.checkCancellation()
 
         do {
             // Parse XML
             let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
+            try Task.checkCancellation()
 
             guard
                 let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
@@ -339,7 +344,12 @@ actor PodcastModelActor {
             modelContext.saveIfNeeded()
             await reportProgress(SubscriptionProgressUpdate(0.56, "Updating podcast details"), using: progress)
 
-            await updateDetails(finalPodcast, fullPodcast: fullPodcast, silent: silent, progress: progress)
+            try await updateDetails(
+                finalPodcast,
+                fullPodcast: fullPodcast,
+                silent: silent,
+                progress: progress
+            )
 
             finalPodcast.message = nil
             finalMeta.message = nil
@@ -350,6 +360,17 @@ actor PodcastModelActor {
             await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription complete"), using: progress)
 
             return true
+        } catch is CancellationError {
+            if let cancelledMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                cancelledMeta.isUpdating = false
+                cancelledMeta.message = nil
+            }
+            if let cancelledPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                cancelledPodcast.message = nil
+            }
+            modelContext.saveIfNeeded()
+            await reportProgress(SubscriptionProgressUpdate(1.0, "Refresh paused"), using: progress)
+            return false
         } catch {
             if let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
                 failedMeta.isUpdating = false
@@ -371,7 +392,7 @@ actor PodcastModelActor {
         fullPodcast: [String : Any],
         silent: Bool? = false,
         progress: SubscriptionProgressHandler? = nil
-    ) async {
+    ) async throws {
         print("updateDetails for \(podcast.title)")
 
         podcast.title = fullPodcast["title"] as? String ?? ""
@@ -443,6 +464,7 @@ actor PodcastModelActor {
             let totalEpisodes = max(episodesData.count, 1)
 
             for (index, episodeData) in episodesData.enumerated() {
+                try Task.checkCancellation()
                 let episodeProgress = 0.7 + (Double(index) / Double(totalEpisodes)) * 0.25
                 await reportProgress(
                     SubscriptionProgressUpdate(

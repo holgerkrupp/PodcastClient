@@ -2,6 +2,11 @@ import Foundation
 import SwiftData
 import UIKit
 
+enum TranscriptionStartOrigin: Sendable {
+    case manual
+    case automatic
+}
+
 actor TranscriptionManager {
     // Immutable singleton initialized once, using the main-actor container.
     static let shared: TranscriptionManager = {
@@ -13,6 +18,11 @@ actor TranscriptionManager {
     // Track jobs by episode URL
     private var items: [URL: TranscriptionItem] = [:]
     private var tasks: [URL: Task<Void, Never>] = [:]
+    private var taskOrigins: [URL: TranscriptionStartOrigin] = [:]
+    private var automaticScanCursor = 0
+    private var lastAutomaticSweepAt: Date?
+    private let automaticScanLimit = 12
+    private let automaticSweepCooldown: TimeInterval = 30
 
     // Dependency
     private let container: ModelContainer
@@ -25,7 +35,10 @@ actor TranscriptionManager {
         items[episodeURL]
     }
 
-    func enqueueTranscription(episodeURL: URL) async -> TranscriptionItem? {
+    func enqueueTranscription(
+        episodeURL: URL,
+        origin: TranscriptionStartOrigin = .manual
+    ) async -> TranscriptionItem? {
         print("enqueueTranscription")
         if let existingItem = items[episodeURL] {
             return existingItem
@@ -59,11 +72,11 @@ actor TranscriptionManager {
 
             // Background task is MainActor-only; keep its lifetime there
             let bgTaskID: UIBackgroundTaskIdentifier = await MainActor.run { () -> UIBackgroundTaskIdentifier in
-                var taskID: UIBackgroundTaskIdentifier = .invalid
-                taskID = UIApplication.shared.beginBackgroundTask(withName: "Transcription") {
-                    UIApplication.shared.endBackgroundTask(taskID)
-                }
-                return taskID
+                guard origin == .manual else { return .invalid }
+                return UIApplication.shared.beginBackgroundTask(
+                    withName: "Transcription",
+                    expirationHandler: nil
+                )
             }
 
             // Make sure we end it on MainActor at the end
@@ -145,16 +158,45 @@ actor TranscriptionManager {
 
         // Register the task in actor state
         tasks[episodeURL] = job
+        taskOrigins[episodeURL] = origin
         return uiItem
     }
 
     func cancel(episodeURL: URL) {
         tasks[episodeURL]?.cancel()
         tasks[episodeURL] = nil
+        taskOrigins[episodeURL] = nil
     }
 
-    func processNextAutomaticTranscriptionFromUpNext() async -> URL? {
+    func cancelAutomaticTranscriptionsForBackground() async {
+        let automaticEpisodeURLs = taskOrigins.compactMap { (episodeURL, origin) in
+            origin == .automatic ? episodeURL : nil
+        }
+
+        guard automaticEpisodeURLs.isEmpty == false else { return }
+
+        for episodeURL in automaticEpisodeURLs {
+            tasks[episodeURL]?.cancel()
+            if let item = items[episodeURL] {
+                await MainActor.run {
+                    item.setState(.cancelled, status: "Deferred until app is active")
+                }
+            }
+            tasks[episodeURL] = nil
+            taskOrigins[episodeURL] = nil
+        }
+    }
+
+    func processNextAutomaticTranscriptionFromUpNext(
+        allowOnDeviceFallback: Bool = true
+    ) async -> URL? {
         guard tasks.isEmpty else { return nil }
+        let now = Date()
+        if let lastAutomaticSweepAt,
+           now.timeIntervalSince(lastAutomaticSweepAt) < automaticSweepCooldown {
+            return nil
+        }
+        lastAutomaticSweepAt = now
 
         let settingsActor = PodcastSettingsModelActor(modelContainer: container)
         guard await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled() else {
@@ -180,31 +222,48 @@ actor TranscriptionManager {
         } catch {
             return nil
         }
+        guard upNextEpisodeURLs.isEmpty == false else { return nil }
 
         let episodeActor = EpisodeActor(modelContainer: container)
+        let scanCount = min(automaticScanLimit, upNextEpisodeURLs.count)
 
-        // Bound the scan to avoid excessive SwiftData/CoreData work on very large queues.
-        for episodeURL in upNextEpisodeURLs.prefix(50) {
+        for offset in 0..<scanCount {
+            let index = (automaticScanCursor + offset) % upNextEpisodeURLs.count
+            let episodeURL = upNextEpisodeURLs[index]
             guard items[episodeURL] == nil else { continue }
-            guard await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL) else { continue }
+            let wasReady = await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL)
+            guard wasReady else { continue }
 
-            try? await episodeActor.transcribe(episodeURL, allowOnDeviceFallback: true)
+            try? await episodeActor.transcribe(
+                episodeURL,
+                allowOnDeviceFallback: allowOnDeviceFallback,
+                origin: .automatic
+            )
 
-            if tasks.isEmpty {
-                if await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL) {
-                    return episodeURL
-                }
-                continue
+            automaticScanCursor = (index + 1) % upNextEpisodeURLs.count
+
+            if tasks[episodeURL] != nil {
+                return episodeURL
             }
 
-            return episodeURL
+            // If the episode stopped being "ready" after transcribe(), we likely imported
+            // a feed-provided transcript without spawning an on-device task.
+            let isStillReady = await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL)
+            if isStillReady == false {
+                return episodeURL
+            }
         }
 
+        automaticScanCursor = (automaticScanCursor + scanCount) % upNextEpisodeURLs.count
         return nil
     }
 
-    func runAutomaticTranscriptionsFromUpNextUntilIdle() async -> Bool {
-        guard let startedEpisodeURL = await processNextAutomaticTranscriptionFromUpNext() else {
+    func runAutomaticTranscriptionsFromUpNextUntilIdle(
+        allowOnDeviceFallback: Bool = true
+    ) async -> Bool {
+        guard let startedEpisodeURL = await processNextAutomaticTranscriptionFromUpNext(
+            allowOnDeviceFallback: allowOnDeviceFallback
+        ) else {
             return false
         }
 
@@ -228,6 +287,7 @@ actor TranscriptionManager {
     private func cleanUp(episodeURL: URL) async {
         tasks[episodeURL]?.cancel()
         tasks[episodeURL] = nil
+        taskOrigins[episodeURL] = nil
         // keep item around for UI to show finished/failed state
     }
 

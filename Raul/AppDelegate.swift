@@ -103,16 +103,34 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     private func handleAutomaticTranscriptionProcessing(task: BGProcessingTask) {
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_started")
+        let processingTask = Task(priority: .utility) {
+            await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
+            guard Task.isCancelled == false else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            let didProcess = await TranscriptionManager.shared.runAutomaticTranscriptionsFromUpNextUntilIdle(
+                allowOnDeviceFallback: true
+            )
+            CrashBreadcrumbs.shared.record(
+                "automatic_transcription_background_task_completed",
+                details: "did_process=\(didProcess)"
+            )
+            guard Task.isCancelled == false else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            task.setTaskCompleted(success: true)
+        }
+
         task.expirationHandler = {
             CrashBreadcrumbs.shared.record("automatic_transcription_background_task_expired")
             BasicLogger.shared.log("automatic transcription background task expired")
-        }
-
-        Task {
-            await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
-            let didProcess = await TranscriptionManager.shared.runAutomaticTranscriptionsFromUpNextUntilIdle()
-            CrashBreadcrumbs.shared.record("automatic_transcription_background_task_completed", details: "did_process=\(didProcess)")
-            task.setTaskCompleted(success: didProcess)
+            processingTask.cancel()
+            Task {
+                await TranscriptionManager.shared.cancelAutomaticTranscriptionsForBackground()
+            }
         }
     }
 }
