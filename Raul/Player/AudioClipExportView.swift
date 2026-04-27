@@ -216,7 +216,7 @@ struct AudioClipExportView: View {
                                     ProgressView(value: exportProgress, total: 1.0)
                                         .progressViewStyle(LinearProgressViewStyle())
                                         .padding()
-                                    Text("Exporting... \(Int(exportProgress * 100))%")
+                                    Text("Exporting... \(exportProgress, format: .percent.precision(.fractionLength(0)))")
                                         .foregroundColor(.primary)
                                         .bold()
                                 } else {

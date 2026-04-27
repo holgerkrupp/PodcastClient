@@ -90,7 +90,7 @@ struct DownloadProgressView: View {
                 ProgressView(value: item.progress)
                     .progressViewStyle(.linear)
                 HStack {
-                Text("\(Int(item.progress * 100))%")
+                Text("\(item.progress, format: .percent.precision(.fractionLength(0)))")
                 Spacer()
                     if item.isDownloading {
                         if item.isPaused {

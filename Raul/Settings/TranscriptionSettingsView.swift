@@ -148,7 +148,7 @@ struct TranscriptionSettingsView: View {
                             HStack {
                                 Text(String(format: "%.2fx realtime", record.speedRelativeToRealtime))
                                 Spacer()
-                                Text(String(format: "%.0f%% of episode length", record.processingShareOfEpisodeDuration * 100))
+                                Text("\(record.processingShareOfEpisodeDuration, format: .percent.precision(.fractionLength(0))) of episode length")
                             }
                             .font(.caption.monospacedDigit())
                         }

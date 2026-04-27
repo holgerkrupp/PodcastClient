@@ -133,6 +133,18 @@ enum SkipSteps:Int, Codable, CaseIterable{
     var float:Float {
         return Float(rawValue)
     }
+
+    var seconds: Double {
+        Double(rawValue)
+    }
+
+    var settingsLabel: String {
+        "\(rawValue) seconds"
+    }
+
+    var accessibilityValue: String {
+        "\(rawValue) seconds"
+    }
     
     var backString:String{
         return "gobackward.".appending(rawValue.description)
@@ -140,6 +152,14 @@ enum SkipSteps:Int, Codable, CaseIterable{
     
     var forwardString:String{
         return "goforward.".appending(rawValue.description)
+    }
+
+    var triangleBackString: String {
+        "\(rawValue).arrow.trianglehead.counterclockwise"
+    }
+
+    var triangleForwardString: String {
+        "\(rawValue).arrow.trianglehead.clockwise"
     }
 }
 

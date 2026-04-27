@@ -128,7 +128,7 @@ struct PlayerView: View {
                                         .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
                                                         .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
                                                         
-                                        .blur(radius: 20)
+                                        .blur(radius: 100)
                                         .opacity(0.5)
                                       
                                     

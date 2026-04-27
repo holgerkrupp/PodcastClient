@@ -256,7 +256,9 @@ final class WatchSyncStore: NSObject, ObservableObject {
         snapshot = WatchSyncSnapshot(
             generatedAt: snapshot.generatedAt,
             playlist: playlist,
-            inbox: inbox
+            inbox: inbox,
+            skipBackSeconds: snapshot.skipBackSeconds,
+            skipForwardSeconds: snapshot.skipForwardSeconds
         )
         persistSnapshot()
     }
@@ -297,7 +299,9 @@ final class WatchSyncStore: NSObject, ObservableObject {
         snapshot = WatchSyncSnapshot(
             generatedAt: .now,
             playlist: updatedPlaylist,
-            inbox: updatedInbox
+            inbox: updatedInbox,
+            skipBackSeconds: snapshot.skipBackSeconds,
+            skipForwardSeconds: snapshot.skipForwardSeconds
         )
         persistSnapshot()
     }

@@ -134,26 +134,26 @@ struct WatchPlayerView: View {
 
                             HStack(spacing: 8) {
                                 WatchSmallControlButton(
-                                    systemName: "gobackward.15",
-                                    accessibilityLabel: "Skip back 15 seconds",
-                                    accessibilityHint: "Moves playback backward by 15 seconds"
+                                    systemName: playback.skipBackSystemName,
+                                    accessibilityLabel: "Skip back \(playback.skipBackSeconds) seconds",
+                                    accessibilityHint: "Moves playback backward by \(playback.skipBackSeconds) seconds"
                                 ) {
                                     if playback.isCurrentEpisode(episode) {
                                         playback.skipBackward()
                                     } else {
-                                        playback.play(episode, startingAt: max(activePosition - 15, 0))
+                                        playback.play(episode, startingAt: max(activePosition - Double(playback.skipBackSeconds), 0))
                                     }
                                 }
 
                                 WatchSmallControlButton(
-                                    systemName: "goforward.30",
-                                    accessibilityLabel: "Skip forward 30 seconds",
-                                    accessibilityHint: "Moves playback forward by 30 seconds"
+                                    systemName: playback.skipForwardSystemName,
+                                    accessibilityLabel: "Skip forward \(playback.skipForwardSeconds) seconds",
+                                    accessibilityHint: "Moves playback forward by \(playback.skipForwardSeconds) seconds"
                                 ) {
                                     if playback.isCurrentEpisode(episode) {
                                         playback.skipForward()
                                     } else {
-                                        playback.play(episode, startingAt: activePosition + 30)
+                                        playback.play(episode, startingAt: activePosition + Double(playback.skipForwardSeconds))
                                     }
                                 }
 

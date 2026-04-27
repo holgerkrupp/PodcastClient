@@ -71,7 +71,7 @@ class RemoteCommandCenter {
             self.player.jumpPlaypostion(by: seconds)
             return.success
         }
-        RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: 30)]
+        RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: player.skipForwardStep.rawValue)]
         
         
         // <<
@@ -83,7 +83,7 @@ class RemoteCommandCenter {
             return.success
         }
         
-        RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: player.skipBackStep.rawValue)]
         
         
         RCC.bookmarkCommand.isEnabled = true
@@ -129,5 +129,10 @@ class RemoteCommandCenter {
     
     func updateLockScreenScrubbableState(_ isEnabled: Bool) {
         RCC.changePlaybackPositionCommand.isEnabled = isEnabled
+    }
+
+    func updateSkipIntervals() {
+        RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: player.skipForwardStep.rawValue)]
+        RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: player.skipBackStep.rawValue)]
     }
 }

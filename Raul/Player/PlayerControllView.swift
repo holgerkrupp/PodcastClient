@@ -299,83 +299,101 @@ struct PlayerControllView: View {
 struct PlayerPrimaryTransportControlsView: View {
     @Bindable private var player = Player.shared
     var includeBookmark: Bool = false
-    @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 20
 
     var body: some View {
         ZStack {
-            HStack(spacing: centerControlsSpacing) {
-                Button(action: player.skipback) {
-                    Label {
-                        Text("Skip Back")
-                    } icon: {
-                        Image(systemName: "15.arrow.trianglehead.counterclockwise")
-                            .resizable()
-                            .scaledToFit()
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .frame(width: 30)
-                .accessibilityLabel("Skip back 15 seconds")
-                .accessibilityHint("Moves playback backward by 15 seconds")
-                .accessibilityInputLabels([Text("Skip back"), Text("Back 15 seconds")])
-
-                Button(action: {
-                    if player.isPlaying {
-                        player.pause()
-                    } else {
-                        player.play()
-                    }
-                }) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .resizable()
-                        .scaledToFit()
-                }
-                .buttonStyle(.borderless)
-                .frame(width: 30)
-                .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
-                .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
-                .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
-
-                Button(action: player.skipforward) {
-                    Label {
-                        Text("Skip Forward")
-                    } icon: {
-                        Image(systemName: "30.arrow.trianglehead.clockwise")
-                            .resizable()
-                            .scaledToFit()
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .frame(width: 30)
-                .accessibilityLabel("Skip forward 30 seconds")
-                .accessibilityHint("Moves playback forward by 30 seconds")
-                .accessibilityInputLabels([Text("Skip forward"), Text("Forward 30 seconds")])
-            }
-
-            if includeBookmark {
-                HStack {
-                    Spacer()
-                    Button(action: player.createBookmark) {
+           // GlassEffectContainer(spacing: centerControlsSpacing){
+                HStack(spacing: centerControlsSpacing) {
+                    Button(action: player.skipback) {
                         Label {
-                            Text("Bookmark")
+                            Text("Skip Back")
                         } icon: {
-                            Image(systemName: "bookmark.fill")
+                            Image(systemName: player.skipBackStep.triangleBackString)
                                 .resizable()
                                 .scaledToFit()
                         }
                         .labelStyle(.iconOnly)
                     }
-                    .buttonStyle(.borderless)
-                    .frame(height: 30)
-                    .accessibilityLabel("Add bookmark")
-                    .accessibilityHint("Saves the current playback position as a bookmark")
-                    .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
+                    .buttonStyle(.glass)
+                    .frame(width: 50)
+                    .accessibilityLabel("Skip back \(player.skipBackStep.rawValue) seconds")
+                    .accessibilityHint("Moves playback backward by \(player.skipBackStep.rawValue) seconds")
+                    .accessibilityInputLabels([Text("Skip back"), Text("Back \(player.skipBackStep.rawValue) seconds")])
+                    
+                    Button(action: {
+                        if player.isPlaying {
+                            player.pause()
+                        } else {
+                            player.play()
+                        }
+                    }) {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .padding(5)
+                    }
+                    .buttonStyle(.glass)
+                    .frame(width: 80)
+                    .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+                    .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
+                    .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
+                    
+                    Button(action: player.skipforward) {
+                        Label {
+                            Text("Skip Forward")
+                        } icon: {
+                            Image(systemName: player.skipForwardStep.triangleForwardString)
+                                .resizable()
+                                .scaledToFit()
+                        }
+                        .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.glass)
+                    .frame(width: 50)
+                    .accessibilityLabel("Skip forward \(player.skipForwardStep.rawValue) seconds")
+                    .accessibilityHint("Moves playback forward by \(player.skipForwardStep.rawValue) seconds")
+                    .accessibilityInputLabels([Text("Skip forward"), Text("Forward \(player.skipForwardStep.rawValue) seconds")])
                 }
+                
+                if includeBookmark {
+                    HStack {
+                        Spacer()
+                        Button(action: player.createBookmark) {
+                            Label {
+                                Text("Bookmark")
+                            } icon: {
+                                Image(systemName: "bookmark.fill")
+                                    .resizable()
+                                    .scaledToFit()
+                                 
+                            }
+                            .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.glass)
+                        .frame(height: 30)
+                        .accessibilityLabel("Add bookmark")
+                        .accessibilityHint("Saves the current playback position as a bookmark")
+                        .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
+                    }
+            //    }
             }
         }
-        .frame(height: 40)
+        .frame(height: 50)
         .zIndex(3)
     }
+}
+
+#Preview {
+    let previewFeedURL = URL(string: "https://www.apple.com/podcasts/feed/id1491111222")!
+    let previewPodcast = Podcast(feed: previewFeedURL)
+    let previewEpisode = Episode(
+        title: "Preview Episode",
+        url: previewFeedURL,
+        podcast: previewPodcast
+    )
+    let _: () = Player.shared.currentEpisode = previewEpisode
+
+    return PlayerControllView()
+        .modelContainer(for: PodcastSettings.self, inMemory: true, isAutosaveEnabled: true)
 }

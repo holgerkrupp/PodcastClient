@@ -46,6 +46,7 @@ final class PhoneWatchSyncController: NSObject {
 
         let playlistEntries = fetchPlaylistEntries(with: context)
         let inboxEpisodes = fetchInboxEpisodes(with: context)
+        let settings = fetchStandardSettings(with: context)
 
         var transferCandidates: [String: TransferCandidate] = [:]
         let playlist = playlistEntries.compactMap { entry -> WatchSyncEpisode? in
@@ -63,7 +64,9 @@ final class PhoneWatchSyncController: NSObject {
             snapshot: WatchSyncSnapshot(
                 generatedAt: .now,
                 playlist: playlist,
-                inbox: inbox
+                inbox: inbox,
+                skipBackSeconds: settings.skipBack.rawValue,
+                skipForwardSeconds: settings.skipForward.rawValue
             ),
             transferCandidates: transferCandidates
         )
@@ -89,6 +92,23 @@ final class PhoneWatchSyncController: NSObject {
         )
 
         return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private func fetchStandardSettings(with context: ModelContext) -> PodcastSettings {
+        let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
+        var descriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate { $0.title == defaultSettingsTitle }
+        )
+        descriptor.fetchLimit = 1
+
+        if let settings = try? context.fetch(descriptor).first {
+            return settings
+        }
+
+        let settings = PodcastSettings(defaultSettings: true)
+        context.insert(settings)
+        context.saveIfNeeded()
+        return settings
     }
 
     private func makeSyncEpisode(from episode: Episode) -> WatchSyncEpisode? {

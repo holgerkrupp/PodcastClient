@@ -248,7 +248,7 @@ struct EpisodeDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
                                     .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
                                     
-                    .blur(radius: 20)
+                    .blur(radius: 100)
                     .opacity(0.5)
             }
             .sheet(item: $shareURL) { identifiable in
@@ -394,7 +394,7 @@ private struct TranscriptionProgressView: View {
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 6)
                     if showsPercent {
-                        Text("\(Int((progressValue.clamped(to: 0...1)) * 100))%")
+                        Text("\(progressValue.clamped(to: 0...1), format: .percent.precision(.fractionLength(0)))")
                             .font(.caption2)
                             .monospacedDigit()
                             .foregroundStyle(.secondary)

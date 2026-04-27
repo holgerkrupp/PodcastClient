@@ -64,6 +64,22 @@ final class WatchPlaybackController: ObservableObject {
         String(format: "%.2gx", playbackRate)
     }
 
+    var skipBackSeconds: Int {
+        store?.snapshot.skipBackSeconds ?? 15
+    }
+
+    var skipForwardSeconds: Int {
+        store?.snapshot.skipForwardSeconds ?? 30
+    }
+
+    var skipBackSystemName: String {
+        "gobackward.\(skipBackSeconds)"
+    }
+
+    var skipForwardSystemName: String {
+        "goforward.\(skipForwardSeconds)"
+    }
+
     func isCurrentEpisode(_ episode: WatchSyncEpisode) -> Bool {
         currentEpisodeID == episode.episodeURL
     }
@@ -174,11 +190,11 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func skipBackward() {
-        seek(to: playPosition - 15)
+        seek(to: playPosition - Double(skipBackSeconds))
     }
 
     func skipForward() {
-        seek(to: playPosition + 30)
+        seek(to: playPosition + Double(skipForwardSeconds))
     }
 
     func skipToNextChapter() {

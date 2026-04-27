@@ -84,7 +84,7 @@ struct PlayerProgressSliderView: View {
                 )
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Playback position")
-                .accessibilityValue("\(Int((max(min((self.value - lower) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0)) * 100)) percent")
+                .accessibilityValue("\(max(min((self.value - lower) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0), format: .percent.precision(.fractionLength(0)))")
                 .accessibilityHint(allowTouch ? "Adjusts the current playback position" : "Playback scrubbing is disabled")
                 .accessibilityAdjustableAction { direction in
                     guard allowTouch else { return }
