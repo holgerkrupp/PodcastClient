@@ -817,13 +817,21 @@ actor EpisodeActor {
             : true
         let allowAutomaticOnDeviceFallback = automaticOnDeviceTranscriptionsEnabled
             && isConnectedToPower
-        try? await transcribe(url, allowOnDeviceFallback: allowAutomaticOnDeviceFallback)
+        try? await transcribe(
+            url,
+            allowOnDeviceFallback: allowAutomaticOnDeviceFallback,
+            origin: .automatic
+        )
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
     }
     
     // NEW: Delegate to TranscriptionManager
-    func transcribe(_ fileURL: URL, allowOnDeviceFallback: Bool = true) async throws {
+    func transcribe(
+        _ fileURL: URL,
+        allowOnDeviceFallback: Bool = true,
+        origin: TranscriptionStartOrigin = .manual
+    ) async throws {
         print("transcribe")
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
         guard let episodeURL = episode.url else { return }
@@ -856,7 +864,10 @@ actor EpisodeActor {
         }
 
         let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
-        _ = await transcriptionManager.enqueueTranscription(episodeURL: episodeURL)
+        _ = await transcriptionManager.enqueueTranscription(
+            episodeURL: episodeURL,
+            origin: origin
+        )
     }
 
     private func isDeviceConnectedToPower() async -> Bool {

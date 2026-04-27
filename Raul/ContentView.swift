@@ -147,6 +147,11 @@ struct ContentView: View {
             }
 
             guard url.scheme == "upnext" else { return }
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let playlistID = components.queryItems?.first(where: { $0.name == "playlistID" })?.value,
+               UUID(uuidString: playlistID) != nil {
+                selectedPlaylistID = playlistID
+            }
             selectedTab = .playlist
         }
         .sheet(isPresented: $incomingPodcastSubscription.isPresented, onDismiss: {

@@ -129,6 +129,7 @@ class AITranscripts {
     
     
     func transcribe() async throws -> [(range: CMTimeRange, text: String)]?{
+        try Task.checkCancellation()
        
         guard let audioFile = try? AVAudioFile(forReading: url) else {
              print("could not load audio file")
@@ -151,6 +152,7 @@ class AITranscripts {
              print(error)
             return nil
         }
+        try Task.checkCancellation()
         print("model ensured")
         await reportProgress(0.1, status: "Starting transcription…")
 
@@ -158,6 +160,7 @@ class AITranscripts {
         guard isInstalled else {
             return nil
         }
+        try Task.checkCancellation()
         assert(isInstalled, "Locale should be installed after ensureModel")
         
         
@@ -181,6 +184,7 @@ class AITranscripts {
             print("Warning: could not reserve locale \(locale). \(error)")
             // Optionally proceed if errors are non-fatal
         }
+        try Task.checkCancellation()
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         
@@ -204,6 +208,7 @@ class AITranscripts {
             await analyzer.cancelAndFinishNow()
         }
         print("4")
+        try Task.checkCancellation()
         await reportProgress(0.92, status: "Finalizing transcript…")
         let transcription = try await transcriptionFuture
         
@@ -276,6 +281,7 @@ class AITranscripts {
     ) async throws -> [(range: CMTimeRange, text: String)] {
         var results: [(range: CMTimeRange, text: String)] = []
         for try await result in transcriber.results {
+            try Task.checkCancellation()
             let splitSegments = Self.splitResult(
                 range: result.range,
                 rawText: result.text.description,

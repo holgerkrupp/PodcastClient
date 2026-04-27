@@ -21,6 +21,7 @@ struct PlayerControllView: View {
     @ScaledMetric(relativeTo: .body) private var mediaSectionHeight: CGFloat = 360
     @ScaledMetric(relativeTo: .body) private var transcriptCardHeight: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var mediaSectionSpacing: CGFloat = 12
+    var showPrimaryTransportControls: Bool = true
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
@@ -66,6 +67,7 @@ struct PlayerControllView: View {
                     
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .zIndex(3)
                 .sheet(isPresented: $showSpeedSetting, content: {
                     List{
                         Section(header: Label("Playback Speed", systemImage: "gauge.with.dots.needle.50percent")) {
@@ -282,92 +284,98 @@ struct PlayerControllView: View {
                 }
                 
                 
-                HStack{
-                    
-                    Spacer()
-                    
-                    Button(action:player.skipback){
-                        Label {
-                            Text("Skip Back")
-                        } icon: {
-                            Image(systemName: "15.arrow.trianglehead.counterclockwise")
-                                .resizable()
-                                .scaledToFit()
-                            
-                        }
-                        .labelStyle(.iconOnly)
-                        
-                    }
-                    .buttonStyle(.borderless)
-                    .frame(width: 30)
-                    .accessibilityLabel("Skip back 15 seconds")
-                    .accessibilityHint("Moves playback backward by 15 seconds")
-                    .accessibilityInputLabels([Text("Skip back"), Text("Back 15 seconds")])
-                    
-                    Spacer()
-                    Button(action: {
-                        if player.isPlaying {
-                            player.pause()
-                        } else {
-                            player.play()
-                        }
-                    }) {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                if showPrimaryTransportControls {
+                    PlayerPrimaryTransportControlsView(includeBookmark: true)
+                        .tint(.primary)
+                }
+
+                
+            }
+            .padding()
+        }
+    }
+}
+
+struct PlayerPrimaryTransportControlsView: View {
+    @Bindable private var player = Player.shared
+    var includeBookmark: Bool = false
+    @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 44
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: centerControlsSpacing) {
+                Button(action: player.skipback) {
+                    Label {
+                        Text("Skip Back")
+                    } icon: {
+                        Image(systemName: "15.arrow.trianglehead.counterclockwise")
                             .resizable()
                             .scaledToFit()
                     }
-                    .buttonStyle(.borderless)
-                    .frame(width: 30)
-                    .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
-                    .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
-                    .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
-                    
-                    
-                    Spacer()
-                    Button(action:player.skipforward){
-                        Label {
-                            Text("Skip Forward")
-                        } icon: {
-                            Image(systemName: "30.arrow.trianglehead.clockwise")
-                                .resizable()
-                                .scaledToFit()
-                            
-                        }
-                        .labelStyle(.iconOnly)
-                        
-                    }
-                    .buttonStyle(.borderless)
-                    .frame(width: 30)
-                    .accessibilityLabel("Skip forward 30 seconds")
-                    .accessibilityHint("Moves playback forward by 30 seconds")
-                    .accessibilityInputLabels([Text("Skip forward"), Text("Forward 30 seconds")])
+                    .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .frame(width: 30)
+                .accessibilityLabel("Skip back 15 seconds")
+                .accessibilityHint("Moves playback backward by 15 seconds")
+                .accessibilityInputLabels([Text("Skip back"), Text("Back 15 seconds")])
 
+                Button(action: {
+                    if player.isPlaying {
+                        player.pause()
+                    } else {
+                        player.play()
+                    }
+                }) {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .resizable()
+                        .scaledToFit()
+                }
+                .buttonStyle(.borderless)
+                .frame(width: 30)
+                .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+                .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
+                .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
+
+                Button(action: player.skipforward) {
+                    Label {
+                        Text("Skip Forward")
+                    } icon: {
+                        Image(systemName: "30.arrow.trianglehead.clockwise")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .frame(width: 30)
+                .accessibilityLabel("Skip forward 30 seconds")
+                .accessibilityHint("Moves playback forward by 30 seconds")
+                .accessibilityInputLabels([Text("Skip forward"), Text("Forward 30 seconds")])
+            }
+
+            if includeBookmark {
+                HStack {
                     Spacer()
-                    Button(action:player.createBookmark){
+                    Button(action: player.createBookmark) {
                         Label {
                             Text("Bookmark")
                         } icon: {
                             Image(systemName: "bookmark.fill")
                                 .resizable()
                                 .scaledToFit()
-                            
                         }
                         .labelStyle(.iconOnly)
-                        
                     }
                     .buttonStyle(.borderless)
                     .frame(height: 30)
                     .accessibilityLabel("Add bookmark")
                     .accessibilityHint("Saves the current playback position as a bookmark")
                     .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
-                    
                 }
-                .frame(height: 40)
-                .tint(.primary)
-
-                
             }
-            .padding()
         }
+        .frame(height: 40)
+        .zIndex(3)
     }
 }

@@ -302,7 +302,7 @@ actor PlaylistModelActor {
             await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
         }
         await restoreQueuedChapterImages(for: episodeURL)
-        await PlayNextWidgetSync.refresh(using: modelContainer)
+        await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
         WatchSyncCoordinator.refreshSoon()
     }
 
@@ -362,7 +362,7 @@ actor PlaylistModelActor {
         }
         await restoreQueuedChapterImages(for: episodeURL)
 
-        await PlayNextWidgetSync.refresh(using: modelContainer)
+        await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
         WatchSyncCoordinator.refreshSoon()
     }
 
@@ -420,7 +420,7 @@ actor PlaylistModelActor {
         }
         await restoreQueuedChapterImages(for: episodeURL)
 
-        await PlayNextWidgetSync.refresh(using: modelContainer)
+        await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
         WatchSyncCoordinator.refreshSoon()
     }
 
@@ -442,7 +442,7 @@ actor PlaylistModelActor {
             normalizeOrder()
             modelContext.saveIfNeeded()
             Task {
-                await PlayNextWidgetSync.refresh(using: modelContainer)
+                await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
                 WatchSyncCoordinator.refreshSoon()
             }
 
@@ -496,7 +496,7 @@ actor PlaylistModelActor {
             }
             normalizeOrder()
             Task {
-                await PlayNextWidgetSync.refresh(using: modelContainer)
+                await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
                 WatchSyncCoordinator.refreshSoon()
             }
         }
@@ -533,7 +533,7 @@ actor PlaylistModelActor {
         modelContext.saveIfNeeded()
 
         Task {
-            await PlayNextWidgetSync.refresh(using: modelContainer)
+            await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: playlists)
             WatchSyncCoordinator.refreshSoon()
         }
     }
