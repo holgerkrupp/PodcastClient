@@ -185,6 +185,8 @@ actor PodcastSettingsModelActor {
             let standardSettings = await standardSettings()
             newSettings.isEnabled = true
             newSettings.playbackSpeed = standardSettings.playbackSpeed
+            newSettings.skipForward = standardSettings.skipForward
+            newSettings.skipBack = standardSettings.skipBack
             newSettings.playnextPosition = standardSettings.playnextPosition
             newSettings.autoSkipKeywords = standardSettings.autoSkipKeywords
             newSettings.autoDownload = standardSettings.autoDownload
@@ -245,6 +247,24 @@ actor PodcastSettingsModelActor {
        //  await BasicLogger.shared.log("custom PlaybackSpeed: \(playbackSpeed.formatted())")
 
         return playbackSpeed
+    }
+
+    func getSkipForwardStep(for podcastFeed: URL?) async -> SkipSteps {
+        if let podcastFeed,
+           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipForward {
+            return customValue
+        }
+
+        return await standardSettings().skipForward
+    }
+
+    func getSkipBackStep(for podcastFeed: URL?) async -> SkipSteps {
+        if let podcastFeed,
+           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipBack {
+            return customValue
+        }
+
+        return await standardSettings().skipBack
     }
     
     func setPlaybackSpeed(for podcastFeed: URL?, to value: Float) async{

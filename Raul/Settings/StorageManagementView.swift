@@ -38,7 +38,7 @@ struct StorageManagementView: View {
                         ProgressView(value: loadingProgress, total: 1)
                             .progressViewStyle(.linear)
 
-                        Text("\(Int((loadingProgress * 100).rounded()))% complete")
+                        Text("\(loadingProgress, format: .percent.precision(.fractionLength(0))) complete")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
 

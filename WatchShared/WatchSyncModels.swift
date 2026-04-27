@@ -139,8 +139,47 @@ struct WatchSyncSnapshot: Codable, Sendable {
     let generatedAt: Date
     let playlist: [WatchSyncEpisode]
     let inbox: [WatchSyncEpisode]
+    let skipBackSeconds: Int
+    let skipForwardSeconds: Int
 
-    static let empty = WatchSyncSnapshot(generatedAt: .distantPast, playlist: [], inbox: [])
+    static let empty = WatchSyncSnapshot(
+        generatedAt: .distantPast,
+        playlist: [],
+        inbox: [],
+        skipBackSeconds: 15,
+        skipForwardSeconds: 30
+    )
+
+    init(
+        generatedAt: Date,
+        playlist: [WatchSyncEpisode],
+        inbox: [WatchSyncEpisode],
+        skipBackSeconds: Int = 15,
+        skipForwardSeconds: Int = 30
+    ) {
+        self.generatedAt = generatedAt
+        self.playlist = playlist
+        self.inbox = inbox
+        self.skipBackSeconds = skipBackSeconds
+        self.skipForwardSeconds = skipForwardSeconds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case generatedAt
+        case playlist
+        case inbox
+        case skipBackSeconds
+        case skipForwardSeconds
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try container.decode(Date.self, forKey: .generatedAt)
+        playlist = try container.decode([WatchSyncEpisode].self, forKey: .playlist)
+        inbox = try container.decode([WatchSyncEpisode].self, forKey: .inbox)
+        skipBackSeconds = try container.decodeIfPresent(Int.self, forKey: .skipBackSeconds) ?? 15
+        skipForwardSeconds = try container.decodeIfPresent(Int.self, forKey: .skipForwardSeconds) ?? 30
+    }
 }
 
 struct WatchStorageSettings: Codable, Hashable, Sendable {

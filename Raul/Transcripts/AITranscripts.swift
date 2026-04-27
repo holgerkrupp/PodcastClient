@@ -268,8 +268,8 @@ class AITranscripts {
 
         let fraction = min(max(endSeconds / audioDuration, 0), 1)
         let normalized = 0.1 + (fraction * 0.8)
-        let percent = Int(fraction * 100)
-        return (normalized, "Transcribing audio… \(percent)%")
+        let formattedPercent = fraction.formatted(.percent.precision(.fractionLength(0)))
+        return (normalized, String(localized: "Transcribing audio… \(formattedPercent)"))
     }
 
     private static func collectTranscriptionResults(

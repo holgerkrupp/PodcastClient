@@ -66,6 +66,8 @@ class Player {
     
     
     var playPosition: Double = 0.0
+    var skipForwardStep: SkipSteps = .thirty
+    var skipBackStep: SkipSteps = .fifteen
     
     
     var currentEpisode: Episode?
@@ -205,10 +207,12 @@ class Player {
             // print("received podcast settings change notification")
             Task { @MainActor in
                 self?.loadPlayBackSpeed()
+                self?.loadSkipDurations()
                 self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
                 if let lockscreenEnable = await self?.settingsActor?.getLockScreenSliderEnable() {
                     RemoteCommandCenter.shared.updateLockScreenScrubbableState(lockscreenEnable)
                 }
+                RemoteCommandCenter.shared.updateSkipIntervals()
                 
             }
         })
@@ -282,6 +286,15 @@ class Player {
                 playbackRate = savedPlaybackRate
 
             }
+        }
+    }
+
+    func loadSkipDurations() {
+        Task {
+            let podcastFeed = currentEpisode?.podcast?.feed
+            skipForwardStep = await settingsActor?.getSkipForwardStep(for: podcastFeed) ?? .thirty
+            skipBackStep = await settingsActor?.getSkipBackStep(for: podcastFeed) ?? .fifteen
+            RemoteCommandCenter.shared.updateSkipIntervals()
         }
     }
     
@@ -588,6 +601,7 @@ class Player {
 
         currentEpisode = episode
         currentEpisodeURL = episodeURL
+        loadSkipDurations()
         lastProgressSaveDate = Date()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
@@ -720,6 +734,7 @@ class Player {
     
     func play(){
         loadPlayBackSpeed()
+        loadSkipDurations()
         savePlayPosition(force: true)
         startPlaybackUpdates()
      //   startNowPlayingInfoUpdater()
@@ -770,12 +785,12 @@ class Player {
     }
     
     func skipback(){
-        jumpPlaypostion(by: -Double(15))
+        jumpPlaypostion(by: -skipBackStep.seconds)
         
     }
     
     func skipforward(){
-        jumpPlaypostion(by: Double(30))
+        jumpPlaypostion(by: skipForwardStep.seconds)
     }
     
      func jumpPlaypostion(by seconds:Double){

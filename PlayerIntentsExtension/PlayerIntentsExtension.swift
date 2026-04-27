@@ -47,7 +47,7 @@ struct PausePlaybackIntent: AppIntent {
 
 struct SkipForwardIntent: AppIntent {
     static let title: LocalizedStringResource = "Skip Forward"
-    static let description = IntentDescription("Skip forward by 30 seconds.")
+    static let description = IntentDescription("Skip forward by your configured duration.")
 
     func perform() async throws -> some IntentResult {
         await Player.shared.skipforward()
@@ -57,7 +57,7 @@ struct SkipForwardIntent: AppIntent {
 
 struct SkipBackwardIntent: AppIntent {
     static let title: LocalizedStringResource = "Skip Backward"
-    static let description = IntentDescription("Skip backward by 15 seconds.")
+    static let description = IntentDescription("Skip backward by your configured duration.")
 
     func perform() async throws -> some IntentResult {
         await Player.shared.skipback()
@@ -164,14 +164,14 @@ struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
             intent: SkipForwardIntent(),
             phrases: ["Skip forward in ${applicationName}", "Jump ahead in ${applicationName}"],
             shortTitle: "Forward",
-            systemImageName: "goforward.30"
+            systemImageName: "arrow.forward.circle"
         )
 
         AppShortcut(
             intent: SkipBackwardIntent(),
             phrases: ["Skip back in ${applicationName}", "Jump back in ${applicationName}"],
             shortTitle: "Back",
-            systemImageName: "gobackward.15"
+            systemImageName: "arrow.backward.circle"
         )
 
         AppShortcut(

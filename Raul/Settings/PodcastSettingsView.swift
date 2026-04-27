@@ -320,6 +320,8 @@ struct PodcastSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            skipDurationPickers(settings: settings)
+
             Stepper(
                 value: Binding(
                     get: { settings.archiveFileRetentionDaysClamped },
@@ -455,6 +457,8 @@ struct PodcastSettingsView: View {
             Text("This speed is used when playback starts. The player speed control also writes back here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            skipDurationPickers(settings: settings)
 
             Stepper(
                 value: Binding(
@@ -645,6 +649,43 @@ struct PodcastSettingsView: View {
         }
     }
 
+    @ViewBuilder
+    private func skipDurationPickers(settings: PodcastSettings) -> some View {
+        Picker(
+            "Skip back",
+            selection: Binding(
+                get: { settings.skipBack },
+                set: {
+                    settings.skipBack = $0
+                    saveAndNotify()
+                }
+            )
+        ) {
+            ForEach(SkipSteps.allCases, id: \.self) { step in
+                Label(step.settingsLabel, systemImage: step.triangleBackString).tag(step)
+            }
+        }
+
+        Picker(
+            "Skip forward",
+            selection: Binding(
+                get: { settings.skipForward },
+                set: {
+                    settings.skipForward = $0
+                    saveAndNotify()
+                }
+            )
+        ) {
+            ForEach(SkipSteps.allCases, id: \.self) { step in
+                Label(step.settingsLabel, systemImage: step.triangleForwardString).tag(step)
+            }
+        }
+
+        Text("These durations update the skip buttons, lock screen controls, CarPlay, shortcuts, and watch playback controls.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
     private var globalSettingsShortcutSection: some View {
         Section("Global Settings") {
             NavigationLink {
@@ -825,6 +866,7 @@ struct PodcastSettingsView: View {
 
     private func postSettingsDidChange() {
         NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+        WatchSyncCoordinator.refreshSoon()
     }
 
     private func markAutoDownloadPolicyReconciliationPending(trigger: String) {
@@ -1514,6 +1556,8 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         let settings = PodcastSettings(podcast: podcast)
         settings.isEnabled = true
         settings.playbackSpeed = globalSettings.playbackSpeed
+        settings.skipForward = globalSettings.skipForward
+        settings.skipBack = globalSettings.skipBack
         settings.playnextPosition = globalSettings.playnextPosition
         settings.autoSkipKeywords = globalSettings.autoSkipKeywords
         settings.autoDownload = globalSettings.autoDownload
