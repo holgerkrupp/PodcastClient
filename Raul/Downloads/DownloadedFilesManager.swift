@@ -3,7 +3,7 @@ import Observation
 
 
 @Observable
- class DownloadedFilesManager {
+class DownloadedFilesManager: @unchecked Sendable {
     private struct WeakObjectBox<Object: AnyObject>: @unchecked Sendable {
         weak var object: Object?
     }

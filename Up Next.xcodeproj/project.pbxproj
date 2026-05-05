@@ -20,6 +20,7 @@
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
 		48C7E5E72E10816D007D1CD3 /* SwipeActions in Frameworks */ = {isa = PBXBuildFile; productRef = 48C7E5E62E10816D007D1CD3 /* SwipeActions */; };
+		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; };
 /* End PBXBuildFile section */
@@ -85,6 +86,7 @@
 		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
 		487F5C6F2D9D4F0C00056D08 /* UpNext.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNext.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48B638D02F59999F00940B67 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		48E626F62FA0307A0045AC1C /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = /System/Library/Frameworks/AppIntents.framework; sourceTree = "<absolute>"; };
 		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -203,6 +205,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -240,6 +243,7 @@
 		487F5C962D9D59D000056D08 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				48E626F62FA0307A0045AC1C /* AppIntents.framework */,
 				4845F15A2E7D32980096FCA6 /* WidgetKit.framework */,
 				4845F15C2E7D32980096FCA6 /* SwiftUI.framework */,
 			);
@@ -673,7 +677,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 16;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -702,7 +706,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 16;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;

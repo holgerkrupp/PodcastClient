@@ -147,10 +147,9 @@ extension WaveformView {
             if let blockBuffer = CMSampleBufferGetDataBuffer(buffer) {
                 let length = CMBlockBufferGetDataLength(blockBuffer)
                 var data = Data(count: length)
-                data.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
+                _ = data.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
                     CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length, destination: bytes.baseAddress!)
                 }
-                let sampleCount = length/2
                 let int16Samples = data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> [Int16] in
                     let bufferPointer = ptr.bindMemory(to: Int16.self)
                     return Array(bufferPointer)

@@ -559,9 +559,33 @@ class Player {
         return (AVPlayerItem(url: remoteURL), .remote)
     }
 
+    private func shouldRequeueEpisodeOnUnload(_ episode: Episode, episodeURL: URL) async -> Bool {
+        if episode.metaData?.isArchived == true || episode.metaData?.status == .archived {
+            BasicLogger.shared.log("skip requeue on unload: archived episode \(episodeURL.absoluteString)")
+            return false
+        }
+
+        if episode.metaData?.isHistory == true || episode.metaData?.status == .history {
+            BasicLogger.shared.log("skip requeue on unload: history episode \(episodeURL.absoluteString)")
+            return false
+        }
+
+        if episode.metaData?.completionDate != nil {
+            BasicLogger.shared.log("skip requeue on unload: completed episode \(episodeURL.absoluteString)")
+            return false
+        }
+
+        let isCurrentlyQueued = (try? await playlistActor?.containsEpisodeURL(episodeURL)) ?? false
+        if isCurrentlyQueued == false {
+            BasicLogger.shared.log("skip requeue on unload: episode no longer queued \(episodeURL.absoluteString)")
+        }
+        return isCurrentlyQueued
+    }
+
     private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
         let episode = (currentEpisode?.url == episodeURL) ? currentEpisode : await fetchEpisode(with: episodeURL)
         guard let episode else { return }
+        let shouldRequeueUnfinishedEpisode = await shouldRequeueEpisodeOnUnload(episode, episodeURL: episodeURL)
         BasicLogger.shared.log(
             "unloadEpisode url=\(episodeURL.absoluteString) finishedPlayback=\(finishedPlayback) playProgress=\(episode.playProgress)"
         )
@@ -581,7 +605,7 @@ class Player {
         if finishedPlayback || episode.playProgress >= progressThreshold {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
             await episodeActor?.moveToHistory(episodeURL: episodeURL)
-        } else {
+        } else if shouldRequeueUnfinishedEpisode {
             try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
         }
     }

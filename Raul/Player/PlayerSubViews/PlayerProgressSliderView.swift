@@ -33,9 +33,11 @@ struct PlayerProgressSliderView: View {
             
             let maxProgress = player.maxPlayProgress ?? 0.0
             let maxPlayProgressVal = abs((maxProgress - lower) * scaleFactor + minValue)
+            let chapterMarkerPositions = chapterMarkerPositions(width: gr.size.width)
+            let trackShape = RoundedRectangle(cornerRadius: radius)
             
             ZStack {
-                RoundedRectangle(cornerRadius: radius)
+                trackShape
                 
                                .fill(.ultraThinMaterial)
                     .frame(width: gr.size.width, height: gr.size.height)
@@ -55,50 +57,79 @@ struct PlayerProgressSliderView: View {
                         .frame(width: sliderVal, height: gr.size.height)
                     Spacer()
                 }
-                .clipShape(
-                    RoundedRectangle(cornerRadius: radius)
-                        
-                        .size(CGSize(width: gr.size.width, height: gr.size.height))
-                )
-               
-                .gesture(
-                    
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in
-                            if allowTouch{
-                                if (abs(v.translation.width) < 0.1) {
-                                    self.lastCoordinateValue = sliderVal
-                                }
-                                if v.translation.width > 0 {
-                                    let nextCoordinateValue = min(maxValue, self.lastCoordinateValue + v.translation.width)
-                                    
-                                    self.value = ((nextCoordinateValue - minValue) / scaleFactor)  + lower
-                                } else {
-                                    let nextCoordinateValue = max(minValue, self.lastCoordinateValue + v.translation.width)
-                                    self.value = ((nextCoordinateValue - minValue) / scaleFactor) + lower
-                                }
-                            }else{
-                                // print("not allowed")
-                            }
-                        }
-                )
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Playback position")
-                .accessibilityValue("\(max(min((self.value - lower) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0), format: .percent.precision(.fractionLength(0)))")
-                .accessibilityHint(allowTouch ? "Adjusts the current playback position" : "Playback scrubbing is disabled")
-                .accessibilityAdjustableAction { direction in
-                    guard allowTouch else { return }
-                    let step = max((sliderRange.upperBound - sliderRange.lowerBound) / 20, 0.01)
-                    switch direction {
-                    case .increment:
-                        self.value = min(sliderRange.upperBound, self.value + step)
-                    case .decrement:
-                        self.value = max(sliderRange.lowerBound, self.value - step)
-                    @unknown default:
-                        break
+                .clipShape(trackShape)
+
+                ZStack {
+                    ForEach(Array(chapterMarkerPositions.enumerated()), id: \.offset) { _, xPosition in
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.25))
+                            .frame(width: 1.5, height: gr.size.height)
+                            .position(x: xPosition, y: gr.size.height / 2)
+                            .shadow(color: .black.opacity(0.25), radius: 0.5, x: 0, y: 0)
                     }
                 }
+                .frame(width: gr.size.width, height: gr.size.height)
+                .clipShape(trackShape)
             }
+            .contentShape(Rectangle())
+            .gesture(
+
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        if allowTouch{
+                            if (abs(v.translation.width) < 0.1) {
+                                self.lastCoordinateValue = sliderVal
+                            }
+                            if v.translation.width > 0 {
+                                let nextCoordinateValue = min(maxValue, self.lastCoordinateValue + v.translation.width)
+
+                                self.value = ((nextCoordinateValue - minValue) / scaleFactor)  + lower
+                            } else {
+                                let nextCoordinateValue = max(minValue, self.lastCoordinateValue + v.translation.width)
+                                self.value = ((nextCoordinateValue - minValue) / scaleFactor) + lower
+                            }
+                        }else{
+                            // print("not allowed")
+                        }
+                    }
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Playback position")
+            .accessibilityValue("\(max(min((self.value - lower) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0), format: .percent.precision(.fractionLength(0)))")
+            .accessibilityHint(allowTouch ? "Adjusts the current playback position" : "Playback scrubbing is disabled")
+            .accessibilityAdjustableAction { direction in
+                guard allowTouch else { return }
+                let step = max((sliderRange.upperBound - sliderRange.lowerBound) / 20, 0.01)
+                switch direction {
+                case .increment:
+                    self.value = min(sliderRange.upperBound, self.value + step)
+                case .decrement:
+                    self.value = max(sliderRange.lowerBound, self.value - step)
+                @unknown default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func chapterMarkerPositions(width: CGFloat) -> [CGFloat] {
+        guard width > 0,
+              let duration = player.currentEpisode?.duration,
+              duration > 0 else {
+            return []
+        }
+
+        let chapters = player.chapters ?? player.currentEpisode?.preferredChapters ?? []
+
+        return chapters.compactMap { chapter in
+            guard let start = chapter.start,
+                  start > 0,
+                  start < duration else {
+                return nil
+            }
+
+            let progress = min(max(start / duration, 0), 1)
+            return width * CGFloat(progress)
         }
     }
 }

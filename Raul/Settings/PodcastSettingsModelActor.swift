@@ -319,6 +319,10 @@ actor PodcastSettingsModelActor {
 
     }
 
+    func getTranscriptionsEnabled() async -> Bool {
+        await standardSettings().enableTranscriptions
+    }
+
     func getAutomaticOnDeviceTranscriptionsEnabled() async -> Bool {
         await standardSettings().enableAutomaticOnDeviceTranscriptions
     }
