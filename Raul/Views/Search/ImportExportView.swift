@@ -18,6 +18,52 @@ struct ImportExportView: View {
     @State private var importErrorMessage: String?
     @State private var exportErrorMessage: String?
 
+    private let applePodcastsShortcutURL = URL(string: "https://www.icloud.com/shortcuts/5e49239698c44e92baf94399df86b3f9")!
+
+    private let transferGuides = [
+        TransferGuide(
+            title: "Apple Podcasts",
+            icon: "apple.logo",
+            tint: .pink,
+            steps: [
+                "Install the Apple Podcasts to OPML shortcut.",
+                "Run it from Shortcuts to create an OPML file.",
+                "Return here and tap Import OPML."
+            ],
+            showsShortcutLink: true
+        ),
+        TransferGuide(
+            title: "Castro",
+            icon: "square.stack.3d.up.fill",
+            tint: .purple,
+            steps: [
+                "Open Castro Settings.",
+                "Go to User Data.",
+                "Tap Export Subscriptions and save the OPML file."
+            ]
+        ),
+        TransferGuide(
+            title: "Overcast",
+            icon: "cloud.fill",
+            tint: .orange,
+            steps: [
+                "Open Overcast Settings.",
+                "Tap Export OPML.",
+                "Save the file, then import it here."
+            ]
+        ),
+        TransferGuide(
+            title: "Pocket Casts",
+            icon: "p.circle.fill",
+            tint: .red,
+            steps: [
+                "Open Profile.",
+                "Open Settings.",
+                "Choose Import & Export OPML, then export your subscriptions."
+            ]
+        )
+    ]
+
     private var pendingPodcasts: [PodcastFeed] {
         newPodcasts
             .filter { !$0.existing && !$0.added }
@@ -144,6 +190,19 @@ struct ImportExportView: View {
                 Text("Actions")
             } footer: {
                 Text("Import from another app, review your feeds, then subscribe only to what is new.")
+            }
+
+            Section {
+                ForEach(transferGuides) { guide in
+                    transferGuideCard(guide)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
+                }
+            } header: {
+                Text("Import from Other Apps")
+            } footer: {
+                Text("OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app.")
             }
 
             if !newPodcasts.isEmpty {
@@ -323,6 +382,75 @@ struct ImportExportView: View {
         }
     }
 
+    private func transferGuideCard(_ guide: TransferGuide) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(guide.tint.opacity(0.18))
+                    Image(systemName: guide.icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(guide.tint)
+                }
+                .frame(width: 42, height: 42)
+
+                Text(guide.title)
+                    .font(.system(.headline, design: .rounded))
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(guide.steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(index + 1)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(guide.tint)
+                            .frame(width: 22, height: 22)
+                            .background(
+                                Circle()
+                                    .fill(guide.tint.opacity(0.14))
+                            )
+
+                        Text(step)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if guide.showsShortcutLink {
+                Link(destination: applePodcastsShortcutURL) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.grid.2x2.fill")
+                        Text("Install Apple Podcasts Shortcut")
+                        Spacer()
+                        Image(systemName: "arrow.up.forward")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(guide.tint)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(guide.tint.opacity(0.12))
+                    )
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(guide.tint.opacity(0.2), lineWidth: 1)
+        }
+    }
+
     private func previewStat(title: String, count: Int, tint: Color) -> some View {
         HStack(spacing: 6) {
             Circle()
@@ -389,6 +517,16 @@ struct ImportExportView: View {
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
         return fileURL
     }
+}
+
+private struct TransferGuide: Identifiable {
+    let title: String
+    let icon: String
+    let tint: Color
+    let steps: [String]
+    var showsShortcutLink = false
+
+    var id: String { title }
 }
 
 #Preview {

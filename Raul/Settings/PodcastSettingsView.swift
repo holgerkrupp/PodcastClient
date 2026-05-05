@@ -20,6 +20,7 @@ struct PodcastSettingsView: View {
     @State private var transcriptLineCount: Int = 0
     @State private var isDeletingTranscriptLines = false
     @State private var showDeleteTranscriptLinesConfirmation = false
+    @State private var showOnboarding = false
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
@@ -116,6 +117,9 @@ struct PodcastSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes stored transcript text from the database. Episode audio files and transcription history records are kept.")
+        }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView()
         }
     }
 
@@ -794,6 +798,18 @@ struct PodcastSettingsView: View {
 
     private var helpSection: some View {
         Section("Help") {
+            Button {
+                showOnboarding = true
+            } label: {
+                SettingsNavigationRow(
+                    title: "Onboarding",
+                    summary: "Subscriptions, Inbox, and playlists",
+                    detail: "Replay the first-run guide for the app's main listening workflow.",
+                    systemImage: "sparkles"
+                )
+            }
+            .buttonStyle(.plain)
+
             NavigationLink {
                 SettingsHelpView()
             } label: {

@@ -1747,6 +1747,9 @@
         }
       }
     },
+    "Getting Started" : {
+
+    },
     "Global Defaults" : {
       "localizations" : {
         "de" : {
@@ -1953,6 +1956,9 @@
         }
       }
     },
+    "Import from Other Apps" : {
+
+    },
     "Import Preview" : {
       "localizations" : {
         "de" : {
@@ -2022,6 +2028,9 @@
           }
         }
       }
+    },
+    "Install Apple Podcasts Shortcut" : {
+
     },
     "Installed Models" : {
       "localizations" : {
@@ -3353,6 +3362,9 @@
           }
         }
       }
+    },
+    "OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app." : {
+
     },
     "Overview" : {
       "localizations" : {
@@ -4948,6 +4960,9 @@
           }
         }
       }
+    },
+    "Start Listening" : {
+
     },
     "Start listening to see your summarized playback history here." : {
       "localizations" : {
