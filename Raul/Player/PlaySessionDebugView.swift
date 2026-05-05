@@ -28,9 +28,11 @@ private struct TopPodcastShareItem: Identifiable {
     var id: Int { rank }
 }
 
-private enum TopPodcastShareDesign {
+private enum TopPodcastShareDesign: CaseIterable, Identifiable {
     case podium
     case billboard
+
+    var id: Self { self }
 
     var title: String {
         switch self {
@@ -38,6 +40,33 @@ private enum TopPodcastShareDesign {
             return "Podium Top 3"
         case .billboard:
             return "Billboard Top 10"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .podium:
+            return "trophy"
+        case .billboard:
+            return "list.number"
+        }
+    }
+
+    var minimumItemCount: Int {
+        switch self {
+        case .podium:
+            return 3
+        case .billboard:
+            return 1
+        }
+    }
+
+    var itemLimit: Int {
+        switch self {
+        case .podium:
+            return 3
+        case .billboard:
+            return 10
         }
     }
 }
@@ -371,14 +400,14 @@ struct PlaySessionDebugView: View {
                             Button {
                                 shareTopPodcasts(as: .podium)
                             } label: {
-                                Label("Podium Top 3", systemImage: "trophy")
+                                Label(TopPodcastShareDesign.podium.title, systemImage: TopPodcastShareDesign.podium.systemImage)
                             }
                             .disabled(snapshot.podcastBreakdown.count < 3 || isPreparingPodcastShare)
 
                             Button {
                                 shareTopPodcasts(as: .billboard)
                             } label: {
-                                Label("Billboard Top 10", systemImage: "list.number")
+                                Label(TopPodcastShareDesign.billboard.title, systemImage: TopPodcastShareDesign.billboard.systemImage)
                             }
                             .disabled(isPreparingPodcastShare)
                         } label: {
@@ -464,6 +493,17 @@ struct PlaySessionDebugView: View {
             }
 
             Section("More Views") {
+                NavigationLink {
+                    TopPodcastShareGalleryView(
+                        rollups: snapshot.podcastBreakdown,
+                        periodLabel: selectedPeriodLabel,
+                        dateRangeLabel: selectedShareDateRangeLabel
+                    )
+                } label: {
+                    Label("Share Pictures", systemImage: "photo.on.rectangle.angled")
+                }
+                .disabled(snapshot.podcastBreakdown.isEmpty)
+
                 NavigationLink(destination: ListeningTimeByPodcastChart()) {
                     Label("Listening Time by Podcast", systemImage: "chart.pie")
                 }
@@ -731,54 +771,23 @@ struct PlaySessionDebugView: View {
     }
 
     private func shareTopPodcasts(as design: TopPodcastShareDesign) {
-        let limit = design == .podium ? 3 : 10
-        let rollups = Array(snapshot.podcastBreakdown.prefix(limit))
+        let rollups = Array(snapshot.podcastBreakdown.prefix(design.itemLimit))
         guard !rollups.isEmpty else { return }
 
         isPreparingPodcastShare = true
         Task {
-            var items: [TopPodcastShareItem] = []
-            items.reserveCapacity(rollups.count)
-
-            for (index, rollup) in rollups.enumerated() {
-                let coverImage: UIImage?
-                if let coverURL = rollup.coverURL {
-                    coverImage = await ImageLoaderAndCache.loadUIImage(from: coverURL)
-                } else {
-                    coverImage = nil
-                }
-
-                items.append(
-                    TopPodcastShareItem(
-                        rank: index + 1,
-                        podcastName: rollup.podcastName,
-                        totalSeconds: rollup.totalSeconds,
-                        coverImage: coverImage
-                    )
-                )
-            }
-
-            let renderedImage = renderTopPodcastShareImage(items: items, design: design)
-            podcastShareImage = renderedImage
-            showPodcastShareSheet = renderedImage != nil
-            isPreparingPodcastShare = false
-        }
-    }
-
-    @MainActor
-    private func renderTopPodcastShareImage(items: [TopPodcastShareItem], design: TopPodcastShareDesign) -> UIImage? {
-        let renderer = ImageRenderer(
-            content: TopPodcastShareCard(
+            let items = await topPodcastShareItems(from: rollups)
+            let renderedImage = renderTopPodcastShareImage(
                 items: items,
                 design: design,
                 periodLabel: selectedPeriodLabel,
                 dateRangeLabel: selectedShareDateRangeLabel,
                 durationFormatter: formatDuration
             )
-            .frame(width: 1080, height: 1350)
-        )
-        renderer.scale = 1
-        return renderer.uiImage
+            podcastShareImage = renderedImage
+            showPodcastShareSheet = renderedImage != nil
+            isPreparingPodcastShare = false
+        }
     }
 
     private func accumulateListening(
@@ -1222,6 +1231,238 @@ struct PlaySessionDebugView: View {
         let intensity = min(max(seconds / snapshot.heatMap.maxSeconds, 0), 1)
         return Color.accentColor.opacity(0.12 + intensity * 0.88)
     }
+}
+
+private struct TopPodcastShareGalleryView: View {
+    let rollups: [PodcastRollup]
+    let periodLabel: String
+    let dateRangeLabel: String
+
+    @State private var renderedImages: [TopPodcastShareDesign: UIImage] = [:]
+    @State private var selectedDesigns: Set<TopPodcastShareDesign> = []
+    @State private var shareImages: [UIImage] = []
+    @State private var showShareSheet = false
+    @State private var isRendering = false
+
+    private var availableDesigns: [TopPodcastShareDesign] {
+        TopPodcastShareDesign.allCases.filter { rollups.count >= $0.minimumItemCount }
+    }
+
+    private var renderSignature: String {
+        let rollupSignature = rollups.map { "\($0.id):\($0.totalSeconds)" }.joined(separator: "|")
+        return "\(periodLabel)|\(dateRangeLabel)|\(rollupSignature)"
+    }
+
+    var body: some View {
+        List {
+            if rollups.isEmpty {
+                ContentUnavailableView(
+                    "No Share Pictures",
+                    systemImage: "photo.on.rectangle.angled",
+                    description: Text("Top podcast share pictures are available when the statistics show all podcasts.")
+                )
+            } else {
+                Section {
+                    ForEach(availableDesigns) { design in
+                        TopPodcastSharePreviewRow(
+                            design: design,
+                            image: renderedImages[design],
+                            isSelected: selectedDesigns.contains(design),
+                            isRendering: isRendering
+                        ) {
+                            toggleSelection(for: design)
+                        } shareAction: {
+                            share(designs: [design])
+                        }
+                    }
+                } header: {
+                    Text("Designs")
+                } footer: {
+                    Text(dateRangeLabel)
+                }
+
+                Section {
+                    Button {
+                        share(designs: Array(selectedDesigns))
+                    } label: {
+                        Label(
+                            selectedDesigns.count <= 1 ? "Share Selected Image" : "Share Selected Images",
+                            systemImage: "square.and.arrow.up"
+                        )
+                    }
+                    .disabled(selectedDesigns.isEmpty || selectedDesigns.contains { renderedImages[$0] == nil })
+                }
+            }
+        }
+        .navigationTitle("Share Pictures")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: renderSignature) {
+            await renderPreviews()
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(activityItems: shareImages)
+        }
+    }
+
+    private func toggleSelection(for design: TopPodcastShareDesign) {
+        if selectedDesigns.contains(design) {
+            selectedDesigns.remove(design)
+        } else {
+            selectedDesigns.insert(design)
+        }
+    }
+
+    private func share(designs: [TopPodcastShareDesign]) {
+        let images = designs.compactMap { renderedImages[$0] }
+        guard !images.isEmpty else { return }
+        shareImages = images
+        showShareSheet = true
+    }
+
+    @MainActor
+    private func renderPreviews() async {
+        guard !rollups.isEmpty else {
+            renderedImages = [:]
+            selectedDesigns = []
+            return
+        }
+
+        isRendering = true
+        let neededDesigns = availableDesigns
+        let maxLimit = neededDesigns.map(\.itemLimit).max() ?? 0
+        let items = await topPodcastShareItems(from: Array(rollups.prefix(maxLimit)))
+
+        var images: [TopPodcastShareDesign: UIImage] = [:]
+        for design in neededDesigns {
+            let designItems = Array(items.prefix(design.itemLimit))
+            images[design] = renderTopPodcastShareImage(
+                items: designItems,
+                design: design,
+                periodLabel: periodLabel,
+                dateRangeLabel: dateRangeLabel,
+                durationFormatter: formatDuration
+            )
+        }
+
+        renderedImages = images
+        selectedDesigns = Set(neededDesigns)
+        isRendering = false
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        guard seconds > 0 else { return "0m" }
+        let totalSeconds = Int(seconds.rounded())
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m"
+    }
+}
+
+private struct TopPodcastSharePreviewRow: View {
+    let design: TopPodcastShareDesign
+    let image: UIImage?
+    let isSelected: Bool
+    let isRendering: Bool
+    let selectAction: () -> Void
+    let shareAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Label(design.title, systemImage: design.systemImage)
+                    .font(.headline)
+
+                Spacer()
+
+                Button(action: selectAction) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isSelected ? "Deselect \(design.title)" : "Select \(design.title)")
+
+                Button(action: shareAction) {
+                    Image(systemName: "square.and.arrow.up")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .disabled(image == nil)
+                .accessibilityLabel("Share \(design.title)")
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    ProgressView()
+                        .controlSize(.large)
+                }
+            }
+            .aspectRatio(1080 / 1350, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
+            )
+            .opacity(isRendering && image == nil ? 0.72 : 1)
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+private func topPodcastShareItems(from rollups: [PodcastRollup]) async -> [TopPodcastShareItem] {
+    var items: [TopPodcastShareItem] = []
+    items.reserveCapacity(rollups.count)
+
+    for (index, rollup) in rollups.enumerated() {
+        let coverImage: UIImage?
+        if let coverURL = rollup.coverURL {
+            coverImage = await ImageLoaderAndCache.loadUIImage(from: coverURL)
+        } else {
+            coverImage = nil
+        }
+
+        items.append(
+            TopPodcastShareItem(
+                rank: index + 1,
+                podcastName: rollup.podcastName,
+                totalSeconds: rollup.totalSeconds,
+                coverImage: coverImage
+            )
+        )
+    }
+
+    return items
+}
+
+@MainActor
+private func renderTopPodcastShareImage(
+    items: [TopPodcastShareItem],
+    design: TopPodcastShareDesign,
+    periodLabel: String,
+    dateRangeLabel: String,
+    durationFormatter: @escaping (Double) -> String
+) -> UIImage? {
+    let renderer = ImageRenderer(
+        content: TopPodcastShareCard(
+            items: items,
+            design: design,
+            periodLabel: periodLabel,
+            dateRangeLabel: dateRangeLabel,
+            durationFormatter: durationFormatter
+        )
+        .frame(width: 1080, height: 1350)
+    )
+    renderer.scale = 1
+    return renderer.uiImage
 }
 
 private struct TopPodcastShareCard: View {

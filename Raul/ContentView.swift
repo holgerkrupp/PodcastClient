@@ -23,11 +23,15 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var phase
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
+    @Query private var podcasts: [Podcast]
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
+    @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
     @State private var inboxCount: Int = 0
     @State private var selectedTab: RootTab = .playlist
+    @State private var showOnboarding: Bool = false
+    @State private var didEvaluateOnboardingLaunch = false
     @Bindable private var player = Player.shared
     
     @State private var search:String = ""
@@ -160,8 +164,24 @@ struct ContentView: View {
             IncomingPodcastSubscriptionView(controller: incomingPodcastSubscription)
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showOnboarding, onDismiss: {
+            didCompleteOnboarding = true
+        }) {
+            OnboardingView()
+                .interactiveDismissDisabled()
+        }
+        .onChange(of: subscribedPodcastCount) { _, _ in
+            evaluateOnboardingLaunchIfNeeded()
+        }
+        .onAppear {
+            evaluateOnboardingLaunchIfNeeded()
+        }
         
 
+    }
+
+    private var subscribedPodcastCount: Int {
+        podcasts.filter(\.isSubscribed).count
     }
     
     func setGoingToBackgroundDate() {
@@ -182,6 +202,20 @@ struct ContentView: View {
             BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
             CrashBreadcrumbs.shared.record("load_inbox_count_failed", details: error.localizedDescription)
             inboxCount = 0
+        }
+    }
+
+    private func evaluateOnboardingLaunchIfNeeded() {
+        guard didEvaluateOnboardingLaunch == false else { return }
+        didEvaluateOnboardingLaunch = true
+
+        if subscribedPodcastCount > 0 {
+            didCompleteOnboarding = true
+            return
+        }
+
+        if didCompleteOnboarding == false {
+            showOnboarding = true
         }
     }
         
