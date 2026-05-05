@@ -9,6 +9,19 @@ enum AudioClipExporter {
         case taskCancelled
     }
 
+    private final class UnsafeSendableBox<Value>: @unchecked Sendable {
+        let value: Value
+
+        init(_ value: Value) {
+            self.value = value
+        }
+    }
+
+    private final class FrameWritingState: @unchecked Sendable {
+        var currentFrame = 0
+        var didComplete = false
+    }
+
     // MARK: - Export Clip
     static func exportClipAsync(
         audioURL: URL,
@@ -59,8 +72,6 @@ enum AudioClipExporter {
         videoWriter.startWriting()
         videoWriter.startSession(atSourceTime: .zero)
 
-        // MARK: Precompute pixel buffer once
-        let buffer: CVPixelBuffer
         // Precompute static image template
         let template: UIImage
         if let cached = await PixelBufferCache.shared.template(for: coverImage, size: videoSize) {
@@ -74,30 +85,50 @@ enum AudioClipExporter {
 
 
         // MARK: Write video frames
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-            videoInput.requestMediaDataWhenReady(on: DispatchQueue.global(qos: .userInitiated)) {
-                var currentFrame = 0
-                while videoInput.isReadyForMoreMediaData && currentFrame < frameCount {
-                    autoreleasepool {
-                        let frameProgress = Double(currentFrame) / Double(frameCount)
-                        guard let buffer = createPixelBuffer(from: template, size: videoSize, progress: frameProgress, startTime: startTime, endTime: endTime, title: title) else { return }
-                        let time = CMTime(seconds: Double(currentFrame) / Double(fps), preferredTimescale: 600)
-                        if !adaptor.append(buffer, withPresentationTime: time) {
-                            continuation.resume(throwing: ExportError.failedToAppendFrame)
-                            return
+        let videoInputBox = UnsafeSendableBox(videoInput)
+        let adaptorBox = UnsafeSendableBox(adaptor)
+        let videoWriterBox = UnsafeSendableBox(videoWriter)
+        let state = FrameWritingState()
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            videoInputBox.value.requestMediaDataWhenReady(on: DispatchQueue.global(qos: .userInitiated)) {
+                guard !state.didComplete else { return }
+
+                while videoInputBox.value.isReadyForMoreMediaData && state.currentFrame < frameCount {
+                    let appendSucceeded = autoreleasepool {
+                        let frameProgress = Double(state.currentFrame) / Double(frameCount)
+                        guard let buffer = createPixelBuffer(from: template, size: videoSize, progress: frameProgress, startTime: startTime, endTime: endTime, title: title) else {
+                            return false
                         }
-                        currentFrame += 1
-                        progress(Double(currentFrame) / Double(frameCount))
+                        let time = CMTime(seconds: Double(state.currentFrame) / Double(fps), preferredTimescale: 600)
+                        guard adaptorBox.value.append(buffer, withPresentationTime: time) else {
+                            return false
+                        }
+                        state.currentFrame += 1
+                        progress(Double(state.currentFrame) / Double(frameCount))
+                        return true
+                    }
+
+                    guard appendSucceeded else {
+                        state.didComplete = true
+                        videoInputBox.value.markAsFinished()
+                        videoWriterBox.value.cancelWriting()
+                        continuation.resume(throwing: ExportError.failedToAppendFrame)
+                        return
                     }
                 }
-            
 
-                videoInput.markAsFinished()
-                videoWriter.finishWriting {
-                    if videoWriter.status == .completed {
-                        continuation.resume(returning: outputURL)
+                guard state.currentFrame >= frameCount else {
+                    return
+                }
+
+                state.didComplete = true
+                videoInputBox.value.markAsFinished()
+                videoWriterBox.value.finishWriting {
+                    if videoWriterBox.value.status == .completed {
+                        continuation.resume()
                     } else {
-                        continuation.resume(throwing: videoWriter.error ?? ExportError.failedToAppendFrame)
+                        continuation.resume(throwing: videoWriterBox.value.error ?? ExportError.failedToAppendFrame)
                     }
                 }
             }
@@ -315,17 +346,6 @@ enum AudioClipExporter {
         guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
             throw ExportError.failedToCreateWriter
         }
-        exporter.outputFileType = .mp4
-        exporter.outputURL = outputURL
-        try await withCheckedThrowingContinuation { cont in
-            exporter.exportAsynchronously {
-                if exporter.status == .completed {
-                    cont.resume(returning: ())
-                } else {
-                    cont.resume(throwing: exporter.error ?? ExportError.failedToCreateWriter)
-                }
-            }
-        }
+        try await exporter.export(to: outputURL, as: .mp4)
     }
 }
-

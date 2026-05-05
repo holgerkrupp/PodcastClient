@@ -125,8 +125,8 @@ actor PlaySessionTrackerActor {
         guard let episode = fetchEpisode(url: episodeURL) else { return }
 
         let now = Date()
-        let deviceModel = getDeviceModel()
-        let osVersion = getOSVersion()
+        let deviceModel = await getDeviceModel()
+        let osVersion = await getOSVersion()
 
         if let session = currentSession, session.episode?.url == episodeURL {
             // Continue existing session; maybe add new rate segment if rate changed
@@ -555,10 +555,9 @@ actor PlaySessionTrackerActor {
 
     // MARK: - Device Info Helpers
 
-    private func getDeviceModel() -> String {
+    private func getDeviceModel() async -> String {
 #if os(iOS)
-   
-        return UIDevice.current.model
+        return await MainActor.run { UIDevice.current.model }
 #elseif os(macOS)
         return "Mac"
 #else
@@ -566,10 +565,9 @@ actor PlaySessionTrackerActor {
 #endif
     }
 
-    private func getOSVersion() -> String {
+    private func getOSVersion() async -> String {
 #if os(iOS)
-    
-        return UIDevice.current.systemVersion
+        return await MainActor.run { UIDevice.current.systemVersion }
 #elseif os(macOS)
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"

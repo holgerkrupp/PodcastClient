@@ -808,6 +808,7 @@ actor EpisodeActor {
 
         await createChapters(url)
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
         let automaticOnDeviceTranscriptionsEnabled = await settingsActor
             .getAutomaticOnDeviceTranscriptionsEnabled()
         let automaticOnDeviceTranscriptionsRequireCharging = await settingsActor
@@ -817,11 +818,13 @@ actor EpisodeActor {
             : true
         let allowAutomaticOnDeviceFallback = automaticOnDeviceTranscriptionsEnabled
             && isConnectedToPower
-        try? await transcribe(
-            url,
-            allowOnDeviceFallback: allowAutomaticOnDeviceFallback,
-            origin: .automatic
-        )
+        if transcriptionsEnabled {
+            try? await transcribe(
+                url,
+                allowOnDeviceFallback: allowAutomaticOnDeviceFallback,
+                origin: .automatic
+            )
+        }
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon()
     }
@@ -835,6 +838,8 @@ actor EpisodeActor {
         print("transcribe")
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
         guard let episodeURL = episode.url else { return }
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        guard await settingsActor.getTranscriptionsEnabled() else { return }
 
         if episode.hasLoadedTranscript {
             await finalizeTranscriptChapters(for: episodeURL)
@@ -897,6 +902,8 @@ actor EpisodeActor {
     }
 
     func isReadyForAutomaticTranscription(episodeURL: URL) async -> Bool {
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        guard await settingsActor.getTranscriptionsEnabled() else { return false }
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
         guard episode.url != nil else { return false }
         guard episode.hasLoadedTranscript == false else { return false }
@@ -1804,6 +1811,10 @@ actor EpisodeActor {
         print("downloading transcript")
         guard let episode = modelContext.model(for: episodeID) as? Episode else {
             throw TranscriptError.episodeNotFound }
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
+        guard await settingsActor.getTranscriptionsEnabled() else {
+            throw TranscriptError.noTranscriptFileFound
+        }
         
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
             throw TranscriptError.transcriptionExists }
@@ -1902,6 +1913,30 @@ actor EpisodeActor {
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
         await finalizeTranscriptChapters(for: episodeURL)
+    }
+
+    func transcriptLineCount() async -> Int {
+        (try? modelContext.fetchCount(FetchDescriptor<TranscriptLineAndTime>())) ?? 0
+    }
+
+    @discardableResult
+    func deleteAllTranscriptLines() async -> Int {
+        let lines = (try? modelContext.fetch(FetchDescriptor<TranscriptLineAndTime>())) ?? []
+        guard lines.isEmpty == false else { return 0 }
+
+        let episodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+        for episode in episodes where episode.transcriptLines?.isEmpty == false {
+            episode.transcriptLines = nil
+            episode.refresh.toggle()
+        }
+
+        for line in lines {
+            modelContext.delete(line)
+        }
+
+        modelContext.saveIfNeeded()
+        WatchSyncCoordinator.refreshSoon()
+        return lines.count
     }
 
     func saveTranscriptionRecord(

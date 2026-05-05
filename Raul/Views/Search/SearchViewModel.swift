@@ -121,7 +121,7 @@ class PodcastSearchViewModel: ObservableObject {
         shouldPromptForBasicAuth = false
         
         Task {
-            guard var comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            guard let comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
                 self.authErrorMessage = "Invalid URL"
                 self.isLoading = false
                 return

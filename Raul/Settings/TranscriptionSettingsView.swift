@@ -33,6 +33,7 @@ struct TranscriptionSettingsView: View {
                             }
                         )
                     )
+                    .disabled(globalSettings.enableTranscriptions == false)
 
                     Toggle(
                         "Only while charging",
@@ -45,7 +46,7 @@ struct TranscriptionSettingsView: View {
                             }
                         )
                     )
-                    .disabled(globalSettings.enableAutomaticOnDeviceTranscriptions == false)
+                    .disabled(globalSettings.enableTranscriptions == false || globalSettings.enableAutomaticOnDeviceTranscriptions == false)
 
                     Stepper(
                         value: Binding(
@@ -64,6 +65,7 @@ struct TranscriptionSettingsView: View {
                                 .monospacedDigit()
                         }
                     }
+                    .disabled(globalSettings.enableTranscriptions == false)
                 }
                 LabeledContent("Engine") {
                     Text("Apple SpeechTranscriber")
@@ -77,10 +79,10 @@ struct TranscriptionSettingsView: View {
                 LabeledContent("Supported Models") {
                     Text(supportedLocales.isEmpty ? "Loading…" : "\(supportedLocales.count)")
                 }
-                Text("When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available, and the manual Transcribe button remains available even when this is off.")
+                Text("When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available. Manual transcription is still unaffected.")
+                Text("Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale.")

@@ -69,11 +69,13 @@ struct DownloadControllView: View {
             viewModel.observeDownload(for: episode)
             // Fallback: Check for ongoing download in DownloadManager if viewModel.item is nil
             if let url = episode.url {
-                if let item = DownloadManager.shared.getItem(for: url), item.isDownloading {
-                    // Set fallbackDownloadItem to this DownloadItem so progress UI can be shown if needed
-                    // Removed assignments to fallbackDownloadItem properties as per instructions
-                    // Set viewModel.item as well for better reactivity
-                    viewModel.item = item
+                Task {
+                    if let item = await DownloadManager.shared.getItem(for: url), item.isDownloading {
+                        // Set fallbackDownloadItem to this DownloadItem so progress UI can be shown if needed
+                        // Removed assignments to fallbackDownloadItem properties as per instructions
+                        // Set viewModel.item as well for better reactivity
+                        viewModel.item = item
+                    }
                 }
             }
         }

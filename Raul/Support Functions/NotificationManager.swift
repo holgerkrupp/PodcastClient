@@ -99,7 +99,7 @@ actor NotificationManager {
         )
 
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
+            if error != nil {
                 Task{
                    //  await BasicLogger.shared.log("🔕 Failed to schedule notification: \(error)")
                 }

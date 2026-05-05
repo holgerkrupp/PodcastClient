@@ -17,6 +17,9 @@ struct PodcastSettingsView: View {
     @State private var sideloadingAlertMessage: String?
     @State private var showSideloadingAlert = false
     @State private var hasPendingAutoDownloadReconciliation = false
+    @State private var transcriptLineCount: Int = 0
+    @State private var isDeletingTranscriptLines = false
+    @State private var showDeleteTranscriptLinesConfirmation = false
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
@@ -98,6 +101,21 @@ struct PodcastSettingsView: View {
         }
         .onDisappear {
             applyAutomaticDownloadPolicyIfNeededOnClose()
+        }
+        .task {
+            await refreshTranscriptLineCount()
+        }
+        .confirmationDialog(
+            "Delete all transcript lines?",
+            isPresented: $showDeleteTranscriptLinesConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete All Transcript Lines", role: .destructive) {
+                deleteAllTranscriptLines()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes stored transcript text from the database. Episode audio files and transcription history records are kept.")
         }
     }
 
@@ -410,6 +428,27 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private func transcriptionSection(settings: PodcastSettings) -> some View {
         Section("Transcriptions") {
+            Toggle(
+                "Save episode transcriptions",
+                isOn: Binding(
+                    get: { settings.enableTranscriptions },
+                    set: {
+                        settings.enableTranscriptions = $0
+                        saveAndNotify()
+                    }
+                )
+            )
+        
+            if settings.enableTranscriptions == false {
+                Button(role: .destructive) {
+                    showDeleteTranscriptLinesConfirmation = true
+                } label: {
+                    Label("Delete Transcript Data", systemImage: "trash")
+                }
+                .disabled(transcriptLineCount == 0 || isDeletingTranscriptLines)
+            }
+
+
             NavigationLink {
                 DeferredView {
                     TranscriptionSettingsView()
@@ -425,6 +464,10 @@ struct PodcastSettingsView: View {
             .simultaneousGesture(TapGesture().onEnded {
                 CrashBreadcrumbs.shared.record("open_transcription_settings")
             })
+
+            Text("When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -867,6 +910,22 @@ struct PodcastSettingsView: View {
     private func postSettingsDidChange() {
         NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
         WatchSyncCoordinator.refreshSoon()
+    }
+
+    private func refreshTranscriptLineCount() async {
+        transcriptLineCount = await EpisodeActor(modelContainer: context.container).transcriptLineCount()
+    }
+
+    private func deleteAllTranscriptLines() {
+        isDeletingTranscriptLines = true
+        let modelContainer = context.container
+        Task {
+            await EpisodeActor(modelContainer: modelContainer).deleteAllTranscriptLines()
+            await MainActor.run {
+                transcriptLineCount = 0
+                isDeletingTranscriptLines = false
+            }
+        }
     }
 
     private func markAutoDownloadPolicyReconciliationPending(trigger: String) {
@@ -1653,6 +1712,10 @@ private extension PodcastSettings {
     }
 
     var transcriptionSummary: String {
+        guard enableTranscriptions else {
+            return "Transcriptions off"
+        }
+
         guard enableAutomaticOnDeviceTranscriptions else {
             return "Automatic local fallback off"
         }

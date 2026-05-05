@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import UIKit
 
 private struct ListeningOverviewPoint: Identifiable {
     let date: Date
@@ -11,9 +12,34 @@ private struct ListeningOverviewPoint: Identifiable {
 
 private struct PodcastRollup: Identifiable {
     let podcastName: String
+    let podcastFeed: URL?
+    let coverURL: URL?
     let totalSeconds: Double
 
-    var id: String { podcastName }
+    var id: String { podcastFeed?.absoluteString ?? podcastName }
+}
+
+private struct TopPodcastShareItem: Identifiable {
+    let rank: Int
+    let podcastName: String
+    let totalSeconds: Double
+    let coverImage: UIImage?
+
+    var id: Int { rank }
+}
+
+private enum TopPodcastShareDesign {
+    case podium
+    case billboard
+
+    var title: String {
+        switch self {
+        case .podium:
+            return "Podium Top 3"
+        case .billboard:
+            return "Billboard Top 10"
+        }
+    }
 }
 
 private struct PeriodListeningTotal: Identifiable {
@@ -100,6 +126,9 @@ struct PlaySessionDebugView: View {
     @State private var snapshot = ListeningHistorySnapshot.empty
     @State private var isRebuildingAnalytics = false
     @State private var rebuildStatusMessage: String?
+    @State private var isPreparingPodcastShare = false
+    @State private var showPodcastShareSheet = false
+    @State private var podcastShareImage: UIImage?
 
     private let summaryGrid = [
         GridItem(.flexible(), spacing: 12),
@@ -125,6 +154,10 @@ struct PlaySessionDebugView: View {
 
     private var selectedPeriodLabel: String {
         periodLabel(for: selectedPeriodStart, period: selectedPeriod)
+    }
+
+    private var selectedShareDateRangeLabel: String {
+        periodDateRangeLabel(for: selectedPeriodStart, period: selectedPeriod)
     }
 
     private var canMoveToNextPeriod: Bool {
@@ -311,7 +344,7 @@ struct PlaySessionDebugView: View {
             }
 
             if selectedPodcastFeedString == nil && !snapshot.podcastBreakdown.isEmpty {
-                Section("Top Podcasts") {
+                Section {
                     let maxPodcastSeconds = snapshot.podcastBreakdown.first?.totalSeconds ?? 0
                     ForEach(snapshot.podcastBreakdown.prefix(8)) { rollup in
                         HStack(spacing: 12) {
@@ -329,6 +362,34 @@ struct PlaySessionDebugView: View {
                             )
                             .frame(width: 100)
                         }
+                    }
+                } header: {
+                    HStack {
+                        Text("Top Podcasts")
+                        Spacer()
+                        Menu {
+                            Button {
+                                shareTopPodcasts(as: .podium)
+                            } label: {
+                                Label("Podium Top 3", systemImage: "trophy")
+                            }
+                            .disabled(snapshot.podcastBreakdown.count < 3 || isPreparingPodcastShare)
+
+                            Button {
+                                shareTopPodcasts(as: .billboard)
+                            } label: {
+                                Label("Billboard Top 10", systemImage: "list.number")
+                            }
+                            .disabled(isPreparingPodcastShare)
+                        } label: {
+                            if isPreparingPodcastShare {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                        .accessibilityLabel("Share top podcasts")
                     }
                 }
             }
@@ -416,6 +477,11 @@ struct PlaySessionDebugView: View {
         .task(id: refreshSignature) {
             refreshSnapshot()
         }
+        .sheet(isPresented: $showPodcastShareSheet) {
+            if let podcastShareImage {
+                ShareSheet(activityItems: [podcastShareImage])
+            }
+        }
         .onChange(of: selectedPeriod) { _, newValue in
             selectedPeriodStart = periodStart(for: Date(), period: newValue)
         }
@@ -494,11 +560,13 @@ struct PlaySessionDebugView: View {
                 .reversed()
         )
 
-        let selectedPeriodSessions = sessionsInWindow
+        let selectedPeriodRawSessions = sessionsInWindow
             .filter { session in
                 guard let startTime = session.startTime else { return false }
                 return startTime >= selectedPeriodStart && startTime < selectedPeriodEnd
             }
+
+        let selectedPeriodSessions = selectedPeriodRawSessions
             .prefix(250)
             .map { session in
                 RecentListeningSession(
@@ -515,14 +583,66 @@ struct PlaySessionDebugView: View {
 
         let podcastBreakdown: [PodcastRollup]
         if selectedPodcastFeedString == nil {
-            podcastBreakdown = Dictionary(grouping: selectedPeriodSessions.compactMap { session -> (String, Double)? in
-                guard session.listenedSeconds > 0 else { return nil }
-                return (session.podcastName, session.listenedSeconds)
-            }, by: \.0)
-            .map { name, values in
-                PodcastRollup(podcastName: name, totalSeconds: values.reduce(0) { $0 + $1.1 })
+            let podcastCoversByFeed = Dictionary(
+                grouping: podcasts.compactMap { podcast -> (String, URL?)? in
+                    guard let feed = podcast.feed?.absoluteString else { return nil }
+                    return (feed, podcast.imageURL)
+                },
+                by: \.0
+            )
+            .mapValues { $0.first?.1 }
+
+            let podcastCoversByTitle = Dictionary(grouping: podcasts, by: \.title)
+                .mapValues { $0.first?.imageURL }
+
+            let selectedPeriodSummaries = fetchedSummaries.filter { summary in
+                guard let periodStart = summary.periodStart else { return false }
+                return isSamePeriodStart(periodStart, as: selectedPeriodStart, period: selectedPeriod)
             }
-            .sorted { $0.totalSeconds > $1.totalSeconds }
+
+            if !selectedPeriodSummaries.isEmpty {
+                podcastBreakdown = Dictionary(grouping: selectedPeriodSummaries.compactMap { summary -> (String, URL?, String, Double)? in
+                    let totalSeconds = summary.totalSeconds ?? 0
+                    guard totalSeconds > 0 else { return nil }
+                    let feed = summary.podcastFeed
+                    let feedKey = feed?.absoluteString ?? summary.podcastName ?? "Unknown Podcast"
+                    let displayName = summary.podcastName ?? podcasts.first(where: { $0.feed == feed })?.title ?? "Unknown Podcast"
+                    return (feedKey, feed, displayName, totalSeconds)
+                }, by: \.0)
+                .map { _, values in
+                    let first = values[0]
+                    let feed = first.1
+                    let name = first.2
+                    return PodcastRollup(
+                        podcastName: name,
+                        podcastFeed: feed,
+                        coverURL: feed.flatMap { podcastCoversByFeed[$0.absoluteString] ?? nil } ?? podcastCoversByTitle[name] ?? nil,
+                        totalSeconds: values.reduce(0) { $0 + $1.3 }
+                    )
+                }
+                .sorted { $0.totalSeconds > $1.totalSeconds }
+            } else {
+                podcastBreakdown = Dictionary(grouping: selectedPeriodRawSessions.compactMap { session -> (String, URL?, String, Double)? in
+                    let listenedSeconds = listenedSeconds(for: session)
+                    guard listenedSeconds > 0 else { return nil }
+                    let feed = session.episode?.podcast?.feed
+                    let name = session.podcastName ?? "Unknown Podcast"
+                    let key = feed?.absoluteString ?? name
+                    return (key, feed, name, listenedSeconds)
+                }, by: \.0)
+                .map { _, values in
+                    let first = values[0]
+                    let feed = first.1
+                    let name = first.2
+                    return PodcastRollup(
+                        podcastName: name,
+                        podcastFeed: feed,
+                        coverURL: feed.flatMap { podcastCoversByFeed[$0.absoluteString] ?? nil } ?? podcastCoversByTitle[name] ?? nil,
+                        totalSeconds: values.reduce(0) { $0 + $1.3 }
+                    )
+                }
+                .sorted { $0.totalSeconds > $1.totalSeconds }
+            }
         } else {
             podcastBreakdown = []
         }
@@ -610,6 +730,57 @@ struct PlaySessionDebugView: View {
         }
     }
 
+    private func shareTopPodcasts(as design: TopPodcastShareDesign) {
+        let limit = design == .podium ? 3 : 10
+        let rollups = Array(snapshot.podcastBreakdown.prefix(limit))
+        guard !rollups.isEmpty else { return }
+
+        isPreparingPodcastShare = true
+        Task {
+            var items: [TopPodcastShareItem] = []
+            items.reserveCapacity(rollups.count)
+
+            for (index, rollup) in rollups.enumerated() {
+                let coverImage: UIImage?
+                if let coverURL = rollup.coverURL {
+                    coverImage = await ImageLoaderAndCache.loadUIImage(from: coverURL)
+                } else {
+                    coverImage = nil
+                }
+
+                items.append(
+                    TopPodcastShareItem(
+                        rank: index + 1,
+                        podcastName: rollup.podcastName,
+                        totalSeconds: rollup.totalSeconds,
+                        coverImage: coverImage
+                    )
+                )
+            }
+
+            let renderedImage = renderTopPodcastShareImage(items: items, design: design)
+            podcastShareImage = renderedImage
+            showPodcastShareSheet = renderedImage != nil
+            isPreparingPodcastShare = false
+        }
+    }
+
+    @MainActor
+    private func renderTopPodcastShareImage(items: [TopPodcastShareItem], design: TopPodcastShareDesign) -> UIImage? {
+        let renderer = ImageRenderer(
+            content: TopPodcastShareCard(
+                items: items,
+                design: design,
+                periodLabel: selectedPeriodLabel,
+                dateRangeLabel: selectedShareDateRangeLabel,
+                durationFormatter: formatDuration
+            )
+            .frame(width: 1080, height: 1350)
+        )
+        renderer.scale = 1
+        return renderer.uiImage
+    }
+
     private func accumulateListening(
         seconds: Double,
         on date: Date,
@@ -651,38 +822,51 @@ struct PlaySessionDebugView: View {
     }
 
     private var listeningHeatMap: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let labelColumnWidth: CGFloat = 26
+        let columnSpacing: CGFloat = 8
+        let rowSpacing: CGFloat = 4
+        let headerHeight: CGFloat = 16
+        let cellHeight: CGFloat = 12
+        let mapHeight = headerHeight + rowSpacing + CGFloat(24) * cellHeight + CGFloat(23) * rowSpacing
+
+        return VStack(alignment: .leading, spacing: 10) {
             Text("Hour By Weekday")
                 .font(.subheadline.weight(.semibold))
 
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("")
-                        .font(.caption2)
-                        .frame(height: 16)
-                    ForEach(0..<24, id: \.self) { hour in
-                        Text(String(format: "%02d", hour))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(height: 12)
-                    }
-                }
+            GeometryReader { geometry in
+                let availableWidth = geometry.size.width - labelColumnWidth - CGFloat(7) * columnSpacing
+                let columnWidth = max(18, availableWidth / 7)
 
-                ForEach(Array(weekdayOrder.enumerated()), id: \.offset) { index, weekday in
-                    VStack(spacing: 4) {
-                        Text(weekdayLabels[index])
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(height: 16)
-
+                HStack(alignment: .top, spacing: columnSpacing) {
+                    VStack(alignment: .trailing, spacing: rowSpacing) {
+                        Text("")
+                            .font(.caption2)
+                            .frame(width: labelColumnWidth, height: headerHeight)
                         ForEach(0..<24, id: \.self) { hour in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(heatColor(for: snapshot.heatMap.seconds(weekday: weekday, hour: hour)))
-                                .frame(width: 22, height: 12)
+                            Text(String(format: "%02d", hour))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: labelColumnWidth, height: cellHeight, alignment: .trailing)
+                        }
+                    }
+
+                    ForEach(Array(weekdayOrder.enumerated()), id: \.offset) { index, weekday in
+                        VStack(spacing: rowSpacing) {
+                            Text(weekdayLabels[index])
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: columnWidth, height: headerHeight)
+
+                            ForEach(0..<24, id: \.self) { hour in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(heatColor(for: snapshot.heatMap.seconds(weekday: weekday, hour: hour)))
+                                    .frame(width: columnWidth, height: cellHeight)
+                            }
                         }
                     }
                 }
             }
+            .frame(height: mapHeight)
 
             HStack(spacing: 10) {
                 Text("Less")
@@ -748,6 +932,34 @@ struct PlaySessionDebugView: View {
         case .year:
             return date.formatted(.dateTime.year())
         }
+    }
+
+    private func periodDateRangeLabel(for date: Date, period: PlaySessionSummaryPeriod) -> String {
+        let calendar = Calendar.current
+        let start = periodStart(for: date, period: period)
+        let exclusivePeriodEnd = nextPeriodStart(from: start, period: period)
+        let inclusivePeriodEnd = calendar.date(byAdding: .day, value: -1, to: exclusivePeriodEnd) ?? exclusivePeriodEnd
+        let end = min(inclusivePeriodEnd, calendar.startOfDay(for: Date()))
+
+        if calendar.isDate(start, inSameDayAs: end) {
+            return localizedDateString(for: start)
+        }
+
+        let formatter = DateIntervalFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = .autoupdatingCurrent
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: start, to: end)
+    }
+
+    private func localizedDateString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = .autoupdatingCurrent
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
     }
 
     private func periodStart(for date: Date, period: PlaySessionSummaryPeriod) -> Date {
@@ -855,7 +1067,6 @@ struct PlaySessionDebugView: View {
         lookbackPeriods: Int
     ) -> [PlaySessionSummary] {
         let periodRawValue = period.rawValue
-        let fetchLimit = max(lookbackPeriods + 24, 48)
 
         let primary: [PlaySessionSummary] = {
             let predicate: Predicate<PlaySessionSummary>
@@ -879,7 +1090,6 @@ struct PlaySessionDebugView: View {
                 predicate: predicate,
                 sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
             )
-            descriptor.fetchLimit = fetchLimit
             return (try? modelContext.fetch(descriptor)) ?? []
         }()
 
@@ -890,7 +1100,6 @@ struct PlaySessionDebugView: View {
         var fallbackDescriptor = FetchDescriptor<PlaySessionSummary>(
             sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
         )
-        fallbackDescriptor.fetchLimit = fetchLimit * 3
         let fallback = (try? modelContext.fetch(fallbackDescriptor)) ?? []
         return fallback.filter { summary in
             guard
@@ -1012,6 +1221,241 @@ struct PlaySessionDebugView: View {
     private func heatColor(for seconds: Double) -> Color {
         let intensity = min(max(seconds / snapshot.heatMap.maxSeconds, 0), 1)
         return Color.accentColor.opacity(0.12 + intensity * 0.88)
+    }
+}
+
+private struct TopPodcastShareCard: View {
+    let items: [TopPodcastShareItem]
+    let design: TopPodcastShareDesign
+    let periodLabel: String
+    let dateRangeLabel: String
+    let durationFormatter: (Double) -> String
+
+    var body: some View {
+        Group {
+            switch design {
+            case .podium:
+                podiumCard
+            case .billboard:
+                billboardCard
+            }
+        }
+        .foregroundStyle(.white)
+    }
+
+    private var podiumCard: some View {
+        let podiumItems = [items[safe: 1], items[safe: 0], items[safe: 2]].compactMap(\.self)
+
+        return ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.04, green: 0.09, blue: 0.15),
+                    Color(red: 0.04, green: 0.18, blue: 0.22),
+                    Color(red: 0.47, green: 0.17, blue: 0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(alignment: .leading, spacing: 34) {
+                shareHeader(title: "Top Podcast Podium", subtitle: periodLabel)
+
+                HStack(alignment: .bottom, spacing: 28) {
+                    ForEach(podiumItems) { item in
+                        PodiumPodcastColumn(
+                            item: item,
+                            height: podiumHeight(for: item.rank),
+                            duration: durationFormatter(item.totalSeconds)
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 790, alignment: .bottom)
+
+                footer
+            }
+            .padding(70)
+        }
+    }
+
+    private var billboardCard: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.06, blue: 0.07),
+                    Color(red: 0.16, green: 0.12, blue: 0.09),
+                    Color(red: 0.64, green: 0.18, blue: 0.12)
+                ],
+                startPoint: .top,
+                endPoint: .bottomTrailing
+            )
+
+            VStack(alignment: .leading, spacing: 28) {
+                shareHeader(title: "Podcast Top 10", subtitle: periodLabel)
+
+                VStack(spacing: 14) {
+                    ForEach(items.prefix(10)) { item in
+                        BillboardPodcastRow(
+                            item: item,
+                            duration: durationFormatter(item.totalSeconds)
+                        )
+                    }
+                }
+
+                Spacer(minLength: 0)
+                footer
+            }
+            .padding(58)
+        }
+    }
+
+    private func shareHeader(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title.uppercased())
+                .font(.system(size: 78, weight: .black, design: .rounded))
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+            Text("Listening History • \(subtitle)")
+                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.78))
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Text("Up Next")
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+            Spacer()
+            Text(dateRangeLabel)
+                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.65))
+        }
+    }
+
+    private func podiumHeight(for rank: Int) -> CGFloat {
+        switch rank {
+        case 1:
+            return 360
+        case 2:
+            return 280
+        default:
+            return 220
+        }
+    }
+}
+
+private struct PodiumPodcastColumn: View {
+    let item: TopPodcastShareItem
+    let height: CGFloat
+    let duration: String
+
+    var body: some View {
+        VStack(spacing: 20) {
+            PodcastShareArtwork(image: item.coverImage, size: item.rank == 1 ? 250 : 210)
+                .shadow(color: .black.opacity(0.38), radius: 18, y: 16)
+
+            VStack(spacing: 8) {
+                Text(item.podcastName)
+                    .font(.system(size: item.rank == 1 ? 34 : 28, weight: .heavy, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.72)
+                Text(duration)
+                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.74))
+                    .monospacedDigit()
+            }
+            .frame(height: 120, alignment: .top)
+
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.white.opacity(item.rank == 1 ? 0.30 : 0.20))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(.white.opacity(0.18), lineWidth: 2)
+                    )
+                Text("#\(item.rank)")
+                    .font(.system(size: 72, weight: .black, design: .rounded))
+                    .padding(.top, 34)
+            }
+            .frame(height: height)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct BillboardPodcastRow: View {
+    let item: TopPodcastShareItem
+    let duration: String
+
+    var body: some View {
+        HStack(spacing: 22) {
+            Text("\(item.rank)")
+                .font(.system(size: 42, weight: .black, design: .rounded))
+                .monospacedDigit()
+                .frame(width: 62, alignment: .trailing)
+
+            PodcastShareArtwork(image: item.coverImage, size: 82)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.podcastName)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.76)
+                Text(duration)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.66))
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(.white.opacity(item.rank == 1 ? 0.20 : 0.12))
+        )
+    }
+}
+
+private struct PodcastShareArtwork: View {
+    let image: UIImage?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.95, green: 0.40, blue: 0.25),
+                            Color(red: 0.12, green: 0.55, blue: 0.62)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image(systemName: "waveform")
+                        .font(.system(size: size * 0.34, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.88))
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.white.opacity(0.2), lineWidth: 2)
+        )
+    }
+}
+
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

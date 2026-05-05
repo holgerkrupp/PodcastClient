@@ -316,6 +316,8 @@ struct PlayerPrimaryTransportControlsView: View {
                         .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+
                     .frame(width: 50)
                     .accessibilityLabel("Skip back \(player.skipBackStep.rawValue) seconds")
                     .accessibilityHint("Moves playback backward by \(player.skipBackStep.rawValue) seconds")
@@ -334,6 +336,8 @@ struct PlayerPrimaryTransportControlsView: View {
                             .padding(5)
                     }
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+
                     .frame(width: 80)
                     .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
                     .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
@@ -350,6 +354,8 @@ struct PlayerPrimaryTransportControlsView: View {
                         .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+
                     .frame(width: 50)
                     .accessibilityLabel("Skip forward \(player.skipForwardStep.rawValue) seconds")
                     .accessibilityHint("Moves playback forward by \(player.skipForwardStep.rawValue) seconds")
@@ -371,6 +377,8 @@ struct PlayerPrimaryTransportControlsView: View {
                             .labelStyle(.iconOnly)
                         }
                         .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+
                         .frame(height: 30)
                         .accessibilityLabel("Add bookmark")
                         .accessibilityHint("Saves the current playback position as a bookmark")

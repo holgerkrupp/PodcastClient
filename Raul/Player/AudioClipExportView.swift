@@ -356,16 +356,18 @@ struct AudioClipExportView: View {
     private func startProgressTimer() {
         stopProgressTimer()
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            guard let player = audioPlayer else {
-                playbackProgress = 0
-                stopProgressTimer()
-                return
-            }
-            let progress = player.currentTime - trimStart
-            if progress >= (trimEnd - trimStart) {
-                stopAudioPlayer()
-            } else {
-                playbackProgress = max(0, min(progress, trimEnd - trimStart))
+            Task { @MainActor in
+                guard let player = audioPlayer else {
+                    playbackProgress = 0
+                    stopProgressTimer()
+                    return
+                }
+                let progress = player.currentTime - trimStart
+                if progress >= (trimEnd - trimStart) {
+                    stopAudioPlayer()
+                } else {
+                    playbackProgress = max(0, min(progress, trimEnd - trimStart))
+                }
             }
         }
     }

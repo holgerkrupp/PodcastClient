@@ -84,9 +84,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         guard let task = urlToTask[url] else { return }
         await withCheckedContinuation { continuation in
             task.cancel { data in
-                if let data { self.resumeData[url] = data }
-                self.urlToTask[url] = nil
-                continuation.resume()
+                Task {
+                    await self.storeResumeData(data, for: url)
+                    continuation.resume()
+                }
             }
         }
     }
@@ -244,5 +245,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         urlToTask.removeValue(forKey: url)
         destinations.removeValue(forKey: url)
         resumeData.removeValue(forKey: url)
+    }
+
+    private func storeResumeData(_ data: Data?, for url: URL) {
+        if let data { resumeData[url] = data }
+        urlToTask[url] = nil
     }
 }

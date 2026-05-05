@@ -50,6 +50,7 @@ class PodcastSettings {
     var enableLockscreenSlider:Bool = true
     var enableInAppSlider:Bool = true
     var getContinuousPlay:Bool = true
+    var enableTranscriptions: Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
     /// Upper limit for each generated transcript snippet to improve playback alignment.
