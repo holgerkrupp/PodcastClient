@@ -652,7 +652,10 @@
         }
       }
     },
-    "Billboard Top 10" : {
+    "Background" : {
+
+    },
+    "Background changes are applied to every share picture preview and export." : {
 
     },
     "Bookmark" : {
@@ -845,6 +848,9 @@
         }
       }
     },
+    "Close" : {
+
+    },
     "Continue" : {
       "localizations" : {
         "de" : {
@@ -1014,6 +1020,9 @@
           }
         }
       }
+    },
+    "Customize" : {
+
     },
     "Database" : {
       "localizations" : {
@@ -1203,6 +1212,12 @@
           }
         }
       }
+    },
+    "Deselect %@" : {
+
+    },
+    "Designs" : {
+
     },
     "Done" : {
       "localizations" : {
@@ -2243,6 +2258,7 @@
       }
     },
     "Listening Heatmap" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2261,9 +2277,6 @@
           }
         }
       }
-    },
-    "Listening History • %@" : {
-
     },
     "Listening summary" : {
       "localizations" : {
@@ -2286,6 +2299,7 @@
       }
     },
     "Listening Time by Podcast" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2506,6 +2520,7 @@
       }
     },
     "More Views" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2622,6 +2637,9 @@
           }
         }
       }
+    },
+    "My Podcasts" : {
+
     },
     "Name" : {
       "localizations" : {
@@ -2953,6 +2971,9 @@
         }
       }
     },
+    "No Share Pictures" : {
+
+    },
     "No Storage Report" : {
       "localizations" : {
         "de" : {
@@ -3242,6 +3263,9 @@
           }
         }
       }
+    },
+    "Open Share Pictures" : {
+
     },
     "Open transcript" : {
       "localizations" : {
@@ -3846,6 +3870,9 @@
         }
       }
     },
+    "Podcast Year" : {
+
+    },
     "Podcast-attributed storage will appear here once content is stored locally." : {
       "localizations" : {
         "de" : {
@@ -3885,9 +3912,6 @@
           }
         }
       }
-    },
-    "Podium Top 3" : {
-
     },
     "Preset" : {
       "localizations" : {
@@ -4289,6 +4313,9 @@
         }
       }
     },
+    "Reset to Default" : {
+
+    },
     "Resume" : {
       "localizations" : {
         "de" : {
@@ -4492,6 +4519,9 @@
         }
       }
     },
+    "Select %@" : {
+
+    },
     "Select the segment to share" : {
       "localizations" : {
         "de" : {
@@ -4542,6 +4572,9 @@
         }
       }
     },
+    "Share %@" : {
+
+    },
     "Share audio clip" : {
       "localizations" : {
         "de" : {
@@ -4582,7 +4615,19 @@
         }
       }
     },
-    "Share top podcasts" : {
+    "Share Picture Title" : {
+
+    },
+    "Share Selected Image" : {
+
+    },
+    "Share Selected Images" : {
+
+    },
+    "Share Top Podcasts" : {
+
+    },
+    "Share your podcast year" : {
 
     },
     "Shorter snippets follow playback more closely and are better for word-level highlighting, but they create more transcript rows." : {
@@ -5340,12 +5385,28 @@
         }
       }
     },
+    "This title is used for every share picture preview and export." : {
+
+    },
+    "Title" : {
+
+    },
     "Title A–Z" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Titel A–Z"
+          }
+        }
+      }
+    },
+    "Title: %@ • Background: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Title: %1$@ • Background: %2$@"
           }
         }
       }
@@ -5359,6 +5420,9 @@
           }
         }
       }
+    },
+    "Top podcast share pictures are available when the statistics show all podcasts." : {
+
     },
     "Top Podcasts" : {
       "localizations" : {
@@ -5953,6 +6017,9 @@
           }
         }
       }
+    },
+    "Your %lld listening recap is ready. Open the share picture view to customize and export it." : {
+
     },
     "Your Inbox is empty" : {
       "localizations" : {
