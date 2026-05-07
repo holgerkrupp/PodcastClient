@@ -21,6 +21,11 @@ struct PodcastSettingsView: View {
     @State private var isDeletingTranscriptLines = false
     @State private var showDeleteTranscriptLinesConfirmation = false
     @State private var showOnboarding = false
+    @State private var showPodcastYearDebugUnavailableAlert = false
+    @State private var podcastYearDebugUnavailableMessage = "There is no yearly listening history with more than 10 hours yet."
+    @State private var showPodcastYearDebugShareGallery = false
+    @State private var podcastYearDebugShareGalleryStart = Date()
+    @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
@@ -120,6 +125,23 @@ struct PodcastSettingsView: View {
         }
         .sheet(isPresented: $showOnboarding) {
             OnboardingView()
+        }
+        .sheet(item: $podcastYearShareCoordinator.sheetRequest) { request in
+            PodcastYearShareSheet(request: request)
+        }
+        .sheet(isPresented: $showPodcastYearDebugShareGallery) {
+            NavigationStack {
+                StatisticsView(
+                    initialPeriod: .year,
+                    initialPeriodStart: podcastYearDebugShareGalleryStart,
+                    presentShareGalleryOnAppear: true
+                )
+            }
+        }
+        .alert("No Podcast Year Available", isPresented: $showPodcastYearDebugUnavailableAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(podcastYearDebugUnavailableMessage)
         }
     }
 
@@ -826,12 +848,35 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private var debugSection: some View {
         Section("Debug") {
+            Button {
+                let didPresent = podcastYearShareCoordinator.presentDebugSheetNow(modelContext: context)
+                if didPresent == false {
+                    podcastYearDebugUnavailableMessage = podcastYearShareCoordinator.debugAvailabilityReport(modelContext: context)
+                    podcastYearDebugShareGalleryStart = podcastYearShareGalleryStart()
+                    showPodcastYearDebugShareGallery = true
+                }
+            } label: {
+                SettingsNavigationRow(
+                    title: "Show Podcast Year Sheet",
+                    summary: "Share preview",
+                    detail: "Open the yearly share prompt now using the latest significant listening history.",
+                    systemImage: "calendar.badge.clock"
+                )
+            }
+            .buttonStyle(.plain)
+
             Button("Remove Duplicate Podcasts") {
                 Task {
                     await SubscriptionActor(modelContainer: context.container).cleanupDuplicates()
                 }
             }
         }
+    }
+
+    private func podcastYearShareGalleryStart() -> Date {
+        let calendar = Calendar.autoupdatingCurrent
+        let currentYear = calendar.component(.year, from: Date())
+        return calendar.date(from: DateComponents(year: currentYear - 1, month: 1, day: 1)) ?? Date()
     }
 
     private var aboutSection: some View {

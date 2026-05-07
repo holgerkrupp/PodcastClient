@@ -86,7 +86,7 @@ struct PodcastListView: View {
                     .font(.headline)
             }
 
-            NavigationLink(destination: PlaySessionDebugView()) {
+            NavigationLink(destination: StatisticsView()) {
                 Label("Listening History", systemImage: "waveform")
                     .font(.headline)
             }

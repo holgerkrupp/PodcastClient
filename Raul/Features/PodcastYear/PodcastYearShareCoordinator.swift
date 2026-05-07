@@ -28,6 +28,13 @@ struct PodcastYearPodcast: Identifiable {
     var id: Int { rank }
 }
 
+private struct PodcastYearRollup {
+    let key: String
+    let feed: URL?
+    let title: String
+    let totalSeconds: Double
+}
+
 @MainActor
 final class PodcastYearShareCoordinator: ObservableObject {
     @Published var sheetRequest: PodcastYearShareRequest?
@@ -38,6 +45,7 @@ final class PodcastYearShareCoordinator: ObservableObject {
     private let notificationIdentifier = "podcast-year-share-new-years-day"
     private let lastShownYearKey = "PodcastYearShare.lastShownYear"
     private let pendingNotificationTapKey = "PodcastYearShare.pendingNotificationTap"
+    private let significantListeningThreshold: TimeInterval = 10 * 60 * 60
 
     init(calendar: Calendar = .autoupdatingCurrent) {
         self.calendar = calendar
@@ -46,25 +54,80 @@ final class PodcastYearShareCoordinator: ObservableObject {
     func evaluateAppLaunch(modelContext: ModelContext) async {
         await presentPendingNotificationTapIfNeeded(modelContext: modelContext)
         presentOnNewYearsDayIfNeeded(modelContext: modelContext)
-        await scheduleNextNotificationIfNeeded()
+        await scheduleNextNotificationIfNeeded(modelContext: modelContext)
     }
 
     func evaluateAppBecameActive(modelContext: ModelContext) async {
         await presentPendingNotificationTapIfNeeded(modelContext: modelContext)
         presentOnNewYearsDayIfNeeded(modelContext: modelContext)
-        await scheduleNextNotificationIfNeeded()
+        await scheduleNextNotificationIfNeeded(modelContext: modelContext)
     }
 
     func handleOpenURL(_ url: URL, modelContext: ModelContext) async -> Bool {
         guard Self.isPodcastYearURL(url) else { return false }
         presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
-        await scheduleNextNotificationIfNeeded()
+        await scheduleNextNotificationIfNeeded(modelContext: modelContext)
         return true
     }
 
     func handleNotificationTap(modelContext: ModelContext) async {
         UserDefaults.standard.set(true, forKey: pendingNotificationTapKey)
         await presentPendingNotificationTapIfNeeded(modelContext: modelContext)
+    }
+
+    @discardableResult
+    func presentDebugSheetNow(modelContext: ModelContext) -> Bool {
+        for year in debugCandidateYears() {
+            if let request = makeRequest(for: year, modelContext: modelContext) {
+                sheetRequest = request
+                return true
+            }
+        }
+
+        return false
+    }
+
+    func debugAvailabilityReport(modelContext: ModelContext) -> String {
+        var lines = [
+            "There is no yearly listening history with more than 10 hours yet.",
+            "",
+            "Debug totals seen by Podcast Year:"
+        ]
+
+        for year in debugCandidateYears() {
+            guard
+                let periodStart = calendar.date(from: DateComponents(year: year, month: 1, day: 1)),
+                let periodEnd = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1))
+            else { continue }
+
+            let hourlyTotal = fetchListeningStatRollups(
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                modelContext: modelContext
+            )
+            .reduce(0) { $0 + $1.totalSeconds }
+
+            let summaryTotals = PlaySessionSummaryPeriod.allCases.map { period in
+                let total = fetchSummaryRollups(
+                    period: period,
+                    periodStart: periodStart,
+                    modelContext: modelContext
+                )
+                .reduce(0) { $0 + $1.totalSeconds }
+                return "\(period.rawValue): \(formatDebugHours(total))"
+            }
+            .joined(separator: ", ")
+
+            let rawSessionTotal = fetchRawSessionTotal(
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                modelContext: modelContext
+            )
+
+            lines.append("\(year): hourly \(formatDebugHours(hourlyTotal)), raw \(formatDebugHours(rawSessionTotal)), \(summaryTotals)")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     nonisolated static func isPodcastYearURL(_ url: URL) -> Bool {
@@ -100,25 +163,20 @@ final class PodcastYearShareCoordinator: ObservableObject {
             let periodEnd = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1))
         else { return nil }
 
-        let periodKind = PlaySessionSummaryPeriod.year.rawValue
-        let summaryDescriptor = FetchDescriptor<PlaySessionSummary>(
-            predicate: #Predicate<PlaySessionSummary> { summary in
-                summary.periodKind == periodKind
-            },
-            sortBy: [SortDescriptor(\.totalSeconds, order: .reverse)]
+        let statRollups = fetchListeningStatRollups(
+            periodStart: periodStart,
+            periodEnd: periodEnd,
+            modelContext: modelContext
         )
-        let summaries = ((try? modelContext.fetch(summaryDescriptor)) ?? [])
-            .filter { summary in
-                guard
-                    let summaryStart = summary.periodStart,
-                    summary.podcastFeed != nil,
-                    (summary.totalSeconds ?? 0) > 0
-                else { return false }
+        let summaryRollups = statRollups.isEmpty ? fetchSummaryRollups(
+            periodStart: periodStart,
+            modelContext: modelContext
+        ) : []
+        let rollups = statRollups.isEmpty ? summaryRollups : statRollups
 
-                return calendar.isDate(summaryStart, equalTo: periodStart, toGranularity: .day)
-            }
-
-        guard summaries.isEmpty == false else { return nil }
+        guard rollups.isEmpty == false else { return nil }
+        let totalSeconds = rollups.reduce(0) { $0 + $1.totalSeconds }
+        guard totalSeconds > significantListeningThreshold else { return nil }
 
         let podcasts = (try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? []
         let coverURLsByFeed = Dictionary(
@@ -130,16 +188,19 @@ final class PodcastYearShareCoordinator: ObservableObject {
         )
         .mapValues { $0.first?.1 ?? nil }
 
-        let requestPodcasts = summaries
-            .sorted { ($0.totalSeconds ?? 0) > ($1.totalSeconds ?? 0) }
+        let coverURLsByTitle = Dictionary(grouping: podcasts, by: \.title)
+            .mapValues { $0.first?.imageURL }
+
+        let requestPodcasts = rollups
+            .sorted { $0.totalSeconds > $1.totalSeconds }
             .enumerated()
-            .map { index, summary in
-                let feedString = summary.podcastFeed?.absoluteString
+            .map { index, rollup in
+                let feedString = rollup.feed?.absoluteString
                 return PodcastYearPodcast(
                     rank: index + 1,
-                    title: summary.podcastName ?? "Podcast",
-                    totalSeconds: summary.totalSeconds ?? 0,
-                    coverURL: feedString.flatMap { coverURLsByFeed[$0] } ?? nil
+                    title: rollup.title,
+                    totalSeconds: rollup.totalSeconds,
+                    coverURL: feedString.flatMap { coverURLsByFeed[$0] } ?? coverURLsByTitle[rollup.title] ?? nil
                 )
             }
 
@@ -151,13 +212,14 @@ final class PodcastYearShareCoordinator: ObservableObject {
         )
     }
 
-    private func scheduleNextNotificationIfNeeded() async {
+    private func scheduleNextNotificationIfNeeded(modelContext: ModelContext) async {
         let now = Date()
         guard let scheduled = nextNotificationDate(after: now) else { return }
         let wrappedYear = wrappedYear(for: scheduled)
 
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
         guard lastShownYear != wrappedYear else { return }
+        guard makeRequest(for: wrappedYear, modelContext: modelContext) != nil else { return }
 
         let status = await notificationAuthorizationStatus()
         switch status {
@@ -210,6 +272,172 @@ final class PodcastYearShareCoordinator: ObservableObject {
         calendar.component(.year, from: date) - 1
     }
 
+    private func fetchListeningStatRollups(
+        periodStart: Date,
+        periodEnd: Date,
+        modelContext: ModelContext
+    ) -> [PodcastYearRollup] {
+        let predicate = #Predicate<ListeningStat> { stat in
+            stat.startOfHour != nil
+            && stat.startOfHour! >= periodStart
+            && stat.startOfHour! < periodEnd
+        }
+        let descriptor = FetchDescriptor<ListeningStat>(predicate: predicate)
+        let stats = ((try? modelContext.fetch(descriptor)) ?? [])
+            .filter { ($0.totalSeconds ?? 0) > 0 }
+
+        return Dictionary(grouping: stats.compactMap { stat -> PodcastYearRollup? in
+            let totalSeconds = stat.totalSeconds ?? 0
+            guard totalSeconds > 0 else { return nil }
+            let title = stat.podcastName ?? "Podcast"
+            let key = stat.podcastFeed?.absoluteString ?? title
+            return PodcastYearRollup(
+                key: key,
+                feed: stat.podcastFeed,
+                title: title,
+                totalSeconds: totalSeconds
+            )
+        }, by: \.key)
+        .map { _, values in
+            let first = values[0]
+            return PodcastYearRollup(
+                key: first.key,
+                feed: first.feed,
+                title: first.title,
+                totalSeconds: values.reduce(0) { $0 + $1.totalSeconds }
+            )
+        }
+    }
+
+    private func fetchSummaryRollups(
+        periodStart: Date,
+        modelContext: ModelContext
+    ) -> [PodcastYearRollup] {
+        for period in [PlaySessionSummaryPeriod.year, .month, .week, .day] {
+            let rollups = fetchSummaryRollups(
+                period: period,
+                periodStart: periodStart,
+                modelContext: modelContext
+            )
+            if rollups.isEmpty == false {
+                return rollups
+            }
+        }
+
+        return []
+    }
+
+    private func fetchSummaryRollups(
+        period: PlaySessionSummaryPeriod,
+        periodStart: Date,
+        modelContext: ModelContext
+    ) -> [PodcastYearRollup] {
+        guard let periodEnd = calendar.date(byAdding: .year, value: 1, to: periodStart) else {
+            return []
+        }
+
+        let periodKind = period.rawValue
+        let descriptor = FetchDescriptor<PlaySessionSummary>(
+            predicate: #Predicate<PlaySessionSummary> { summary in
+                summary.periodKind == periodKind
+                && summary.periodStart != nil
+                && summary.periodStart! >= periodStart
+                && summary.periodStart! < periodEnd
+            },
+            sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
+        )
+        let primary = (try? modelContext.fetch(descriptor)) ?? []
+        let summaries = (primary.isEmpty ? fetchSummaryFallback(periodKind: periodKind, periodStart: periodStart, periodEnd: periodEnd, modelContext: modelContext) : primary)
+            .filter { summary in
+                guard
+                    let summaryStart = summary.periodStart,
+                    (summary.totalSeconds ?? 0) > 0
+                else { return false }
+
+                if period == .year {
+                    return calendar.isDate(summaryStart, equalTo: periodStart, toGranularity: .day)
+                }
+
+                return true
+            }
+
+        return Dictionary(grouping: summaries.compactMap { summary -> PodcastYearRollup? in
+            let totalSeconds = summary.totalSeconds ?? 0
+            guard totalSeconds > 0 else { return nil }
+            let title = summary.podcastName ?? "Podcast"
+            let key = summary.podcastFeed?.absoluteString ?? title
+            return PodcastYearRollup(
+                key: key,
+                feed: summary.podcastFeed,
+                title: title,
+                totalSeconds: totalSeconds
+            )
+        }, by: \.key)
+        .map { _, values in
+            let first = values[0]
+            return PodcastYearRollup(
+                key: first.key,
+                feed: first.feed,
+                title: first.title,
+                totalSeconds: values.reduce(0) { $0 + $1.totalSeconds }
+            )
+        }
+    }
+
+    private func fetchSummaryFallback(
+        periodKind: String,
+        periodStart: Date,
+        periodEnd: Date,
+        modelContext: ModelContext
+    ) -> [PlaySessionSummary] {
+        let descriptor = FetchDescriptor<PlaySessionSummary>(
+            sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
+        )
+        let summaries = (try? modelContext.fetch(descriptor)) ?? []
+
+        return summaries.filter { summary in
+            guard
+                summary.periodKind == periodKind,
+                let summaryStart = summary.periodStart,
+                summaryStart >= periodStart,
+                summaryStart < periodEnd
+            else { return false }
+
+            return true
+        }
+    }
+
+    private func fetchRawSessionTotal(
+        periodStart: Date,
+        periodEnd: Date,
+        modelContext: ModelContext
+    ) -> Double {
+        let descriptor = FetchDescriptor<PlaySession>(
+            predicate: #Predicate<PlaySession> { session in
+                session.startTime != nil
+                && session.startTime! >= periodStart
+                && session.startTime! < periodEnd
+            }
+        )
+        let sessions = (try? modelContext.fetch(descriptor)) ?? []
+
+        return sessions.reduce(0) { total, session in
+            guard let start = session.startTime else { return total }
+            let end = session.endTime ?? start
+            return total + max(0, end.timeIntervalSince(start))
+        }
+    }
+
+    private func formatDebugHours(_ seconds: Double) -> String {
+        let hours = seconds / 3600
+        return String(format: "%.1fh", hours)
+    }
+
+    private func debugCandidateYears() -> [Int] {
+        let currentYear = calendar.component(.year, from: Date())
+        return (1...5).map { currentYear - $0 }
+    }
+
     private var lastShownYear: Int? {
         get {
             let value = UserDefaults.standard.integer(forKey: lastShownYearKey)
@@ -249,7 +477,7 @@ struct PodcastYearShareSheet: View {
                     }
 
                     NavigationLink {
-                        PlaySessionDebugView(
+                        StatisticsView(
                             initialPeriod: .year,
                             initialPeriodStart: request.periodStart,
                             presentShareGalleryOnAppear: true

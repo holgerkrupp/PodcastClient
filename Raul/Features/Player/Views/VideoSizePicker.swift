@@ -34,6 +34,13 @@ struct VideoSizePicker: View {
     }
     
     @State private var selectedOption: VideoSizeOption = .square
+
+    private func option(for size: CGSize) -> VideoSizeOption {
+        if abs(size.width - size.height) < 1 {
+            return .square
+        }
+        return size.width > size.height ? .widescreen : .portrait
+    }
     
     var body: some View {
         Picker("Video Size", selection: $selectedOption) {
@@ -49,8 +56,14 @@ struct VideoSizePicker: View {
             }
         }
         .pickerStyle(SegmentedPickerStyle())
+        .onAppear {
+            selectedOption = option(for: videoSize)
+        }
         .onChange(of: selectedOption) {
             videoSize = selectedOption.size
+        }
+        .onChange(of: videoSize) {
+            selectedOption = option(for: videoSize)
         }
     }
 }
