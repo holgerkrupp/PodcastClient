@@ -228,6 +228,9 @@
         }
       }
     },
+    "+%lld more" : {
+
+    },
     "Accessibility" : {
       "localizations" : {
         "de" : {
@@ -547,6 +550,9 @@
           }
         }
       }
+    },
+    "Aspect Ratio" : {
+
     },
     "at %@" : {
       "localizations" : {
@@ -1212,9 +1218,6 @@
           }
         }
       }
-    },
-    "Deselect %@" : {
-
     },
     "Designs" : {
 
@@ -2881,6 +2884,9 @@
         }
       }
     },
+    "No Podcast Year Available" : {
+
+    },
     "No Podcasts" : {
       "localizations" : {
         "de" : {
@@ -4519,9 +4525,6 @@
         }
       }
     },
-    "Select %@" : {
-
-    },
     "Select the segment to share" : {
       "localizations" : {
         "de" : {
@@ -4571,9 +4574,6 @@
           }
         }
       }
-    },
-    "Share %@" : {
-
     },
     "Share audio clip" : {
       "localizations" : {
@@ -5239,6 +5239,9 @@
         }
       }
     },
+    "The selected ratio is applied to every share picture preview and export." : {
+
+    },
     "These chapter rules could not be loaded." : {
       "localizations" : {
         "de" : {
@@ -5443,6 +5446,9 @@
           }
         }
       }
+    },
+    "total listening time" : {
+
     },
     "Total Listening Time per Podcast" : {
       "localizations" : {

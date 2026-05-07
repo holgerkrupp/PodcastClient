@@ -54,6 +54,25 @@ private struct TopPodcastShareStats {
     }
 }
 
+private enum TopPodcastShareAspect {
+    static let defaultVideoSize = CGSize(width: 720, height: 1280)
+
+    static func renderSize(for videoSize: CGSize) -> CGSize {
+        if abs(videoSize.width - videoSize.height) < 1 {
+            return CGSize(width: 1080, height: 1080)
+        }
+        if videoSize.width > videoSize.height {
+            return CGSize(width: 1920, height: 1080)
+        }
+        return CGSize(width: 1080, height: 1920)
+    }
+
+    static func aspectRatio(for videoSize: CGSize) -> CGFloat {
+        let size = renderSize(for: videoSize)
+        return size.width / max(size.height, 1)
+    }
+}
+
 private enum TopPodcastShareBackground: String, CaseIterable, Identifiable {
     case current
     case stripes
@@ -98,6 +117,8 @@ private enum TopPodcastShareDesign: CaseIterable, Identifiable {
     case coverGrid
     case coverCollage
     case coverCloud
+    case horizontalBars
+    case pieChart
     case statistics
 
     var id: Self { self }
@@ -109,11 +130,15 @@ private enum TopPodcastShareDesign: CaseIterable, Identifiable {
         case .billboard:
             return "Billboard Top 10"
         case .coverGrid:
-            return "Cover Grid Top 9"
+            return "Cover Grid"
         case .coverCollage:
             return "Cover Collage"
         case .coverCloud:
             return "Cover Cloud"
+        case .horizontalBars:
+            return "Playtime Bars"
+        case .pieChart:
+            return "Playtime Pie"
         case .statistics:
             return "Stats Wrapped"
         }
@@ -131,6 +156,10 @@ private enum TopPodcastShareDesign: CaseIterable, Identifiable {
             return "rectangle.3.group"
         case .coverCloud:
             return "square.stack.3d.up"
+        case .horizontalBars:
+            return "chart.bar.xaxis"
+        case .pieChart:
+            return "chart.pie"
         case .statistics:
             return "sparkles"
         }
@@ -148,6 +177,10 @@ private enum TopPodcastShareDesign: CaseIterable, Identifiable {
             return 5
         case .coverCloud:
             return 1
+        case .horizontalBars:
+            return 1
+        case .pieChart:
+            return 1
         case .statistics:
             return 1
         }
@@ -164,11 +197,13 @@ private enum TopPodcastShareDesign: CaseIterable, Identifiable {
         case .billboard:
             return 10
         case .coverGrid:
-            return 9
+            return 12
         case .coverCollage:
             return 13
         case .coverCloud:
             return Int.max
+        case .horizontalBars, .pieChart:
+            return 10
         case .statistics:
             return 1
         }
@@ -249,7 +284,7 @@ private struct ListeningHistorySnapshot {
     let isUsingSummaryTotals: Bool
 }
 
-struct PlaySessionDebugView: View {
+struct StatisticsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
@@ -934,6 +969,7 @@ struct PlaySessionDebugView: View {
                 totalListeningSeconds: totalListeningSeconds,
                 shareTitle: "My Podcasts",
                 background: .current,
+                renderSize: TopPodcastShareAspect.renderSize(for: TopPodcastShareAspect.defaultVideoSize),
                 stats: selectedShareStats,
                 durationFormatter: formatDuration
             )
@@ -1433,11 +1469,14 @@ private struct TopPodcastShareGalleryView: View {
 
     @State private var renderedImages: [TopPodcastShareDesign: UIImage] = [:]
     @State private var selectedDesigns: Set<TopPodcastShareDesign> = []
-    @State private var shareImages: [UIImage] = []
+    @State private var shareActivityItems: [Any] = []
+    @State private var shareTempFileURLs: [URL] = []
+    @State private var shareSheetID = UUID()
     @State private var showShareSheet = false
     @State private var isRendering = false
     @State private var shareTitle = "My Podcasts"
     @State private var selectedBackground: TopPodcastShareBackground = .current
+    @State private var selectedVideoSize = TopPodcastShareAspect.defaultVideoSize
 
     private var availableDesigns: [TopPodcastShareDesign] {
         TopPodcastShareDesign.allCases.filter { rollups.count >= $0.minimumItemCount }
@@ -1450,7 +1489,26 @@ private struct TopPodcastShareGalleryView: View {
 
     private var renderSignature: String {
         let rollupSignature = rollups.map { "\($0.id):\($0.totalSeconds)" }.joined(separator: "|")
-        return "\(effectiveShareTitle)|\(selectedBackground.rawValue)|\(periodLabel)|\(dateRangeLabel)|\(stats.renderSignature)|\(rollupSignature)"
+        return "\(effectiveShareTitle)|\(selectedBackground.rawValue)|\(selectedVideoSize.width)x\(selectedVideoSize.height)|\(periodLabel)|\(dateRangeLabel)|\(stats.renderSignature)|\(rollupSignature)"
+    }
+
+    private var renderSize: CGSize {
+        TopPodcastShareAspect.renderSize(for: selectedVideoSize)
+    }
+
+    private var previewAspectRatio: CGFloat {
+        TopPodcastShareAspect.aspectRatio(for: selectedVideoSize)
+    }
+
+    private var shareDesignGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: 12),
+            GridItem(.flexible(), spacing: 12)
+        ]
+    }
+
+    private var canShareSelectedDesigns: Bool {
+        selectedDesigns.isEmpty == false && selectedDesigns.contains { renderedImages[$0] == nil } == false
     }
 
     var body: some View {
@@ -1466,7 +1524,8 @@ private struct TopPodcastShareGalleryView: View {
                     NavigationLink {
                         TopPodcastShareCustomizeView(
                             title: $shareTitle,
-                            selectedBackground: $selectedBackground
+                            selectedBackground: $selectedBackground,
+                            selectedVideoSize: $selectedVideoSize
                         )
                     } label: {
                         Label("Customize", systemImage: "slider.horizontal.3")
@@ -1476,44 +1535,49 @@ private struct TopPodcastShareGalleryView: View {
                 }
 
                 Section {
-                    ForEach(availableDesigns) { design in
-                        TopPodcastSharePreviewRow(
-                            design: design,
-                            image: renderedImages[design],
-                            isSelected: selectedDesigns.contains(design),
-                            isRendering: isRendering
-                        ) {
-                            toggleSelection(for: design)
-                        } shareAction: {
-                            share(designs: [design])
+                    LazyVGrid(columns: shareDesignGridColumns, spacing: 12) {
+                        ForEach(availableDesigns) { design in
+                            TopPodcastSharePreviewTile(
+                                design: design,
+                                image: renderedImages[design],
+                                aspectRatio: previewAspectRatio,
+                                isSelected: selectedDesigns.contains(design),
+                                isRendering: isRendering
+                            ) {
+                                toggleSelection(for: design)
+                            } shareAction: {
+                                share(designs: [design])
+                            }
                         }
                     }
+                    .padding(.vertical, 4)
                 } header: {
                     Text("Designs")
                 } footer: {
                     Text(dateRangeLabel)
                 }
-
-                Section {
-                    Button {
-                        share(designs: Array(selectedDesigns))
-                    } label: {
-                        Label(
-                            selectedDesigns.count <= 1 ? "Share Selected Image" : "Share Selected Images",
-                            systemImage: "square.and.arrow.up"
-                        )
-                    }
-                    .disabled(selectedDesigns.isEmpty || selectedDesigns.contains { renderedImages[$0] == nil })
-                }
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             }
         }
         .navigationTitle("Share Top Podcasts")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    share(designs: Array(selectedDesigns))
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(canShareSelectedDesigns == false)
+                .accessibilityLabel(selectedDesigns.count <= 1 ? "Share Selected Image" : "Share Selected Images")
+            }
+        }
         .task(id: renderSignature) {
             await renderPreviews()
         }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(activityItems: shareImages)
+        .sheet(isPresented: $showShareSheet, onDismiss: cleanUpShareTemporaryFiles) {
+            ShareSheet(activityItems: shareActivityItems)
+                .id(shareSheetID)
         }
     }
 
@@ -1526,10 +1590,62 @@ private struct TopPodcastShareGalleryView: View {
     }
 
     private func share(designs: [TopPodcastShareDesign]) {
-        let images = designs.compactMap { renderedImages[$0] }
-        guard !images.isEmpty else { return }
-        shareImages = images
+        let items = designs.compactMap { design -> (TopPodcastShareDesign, UIImage)? in
+            guard let image = renderedImages[design] else { return nil }
+            return (design, image)
+        }
+        guard !items.isEmpty else { return }
+
+        if let fileURLs = writeShareImagesToTemporaryFiles(items) {
+            shareTempFileURLs = fileURLs
+            shareActivityItems = fileURLs
+        } else {
+            shareTempFileURLs = []
+            shareActivityItems = items.map(\.1)
+        }
+        shareSheetID = UUID()
         showShareSheet = true
+    }
+
+    private func writeShareImagesToTemporaryFiles(_ items: [(TopPodcastShareDesign, UIImage)]) -> [URL]? {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("UpNextSharePics", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            return try items.enumerated().map { index, item in
+                guard let data = item.1.pngData() else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                let filename = "\(index + 1)-\(shareFilenameComponent(for: item.0)).png"
+                let url = directory.appendingPathComponent(filename)
+                try data.write(to: url, options: .atomic)
+                return url
+            }
+        } catch {
+            try? fileManager.removeItem(at: directory)
+            return nil
+        }
+    }
+
+    private func shareFilenameComponent(for design: TopPodcastShareDesign) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let words = design.title
+            .lowercased()
+            .components(separatedBy: allowed.inverted)
+            .filter { !$0.isEmpty }
+        return words.joined(separator: "-")
+    }
+
+    private func cleanUpShareTemporaryFiles() {
+        let directories = Set(shareTempFileURLs.map { $0.deletingLastPathComponent() })
+        for directory in directories {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        shareTempFileURLs = []
+        shareActivityItems = []
     }
 
     @MainActor
@@ -1562,13 +1678,14 @@ private struct TopPodcastShareGalleryView: View {
                 totalListeningSeconds: totalListeningSeconds,
                 shareTitle: effectiveShareTitle,
                 background: selectedBackground,
+                renderSize: renderSize,
                 stats: stats,
                 durationFormatter: formatDuration
             )
         }
 
         renderedImages = images
-        selectedDesigns = Set(neededDesigns)
+        selectedDesigns = selectedDesigns.intersection(Set(neededDesigns))
         isRendering = false
     }
 
@@ -1587,6 +1704,7 @@ private struct TopPodcastShareGalleryView: View {
 private struct TopPodcastShareCustomizeView: View {
     @Binding var title: String
     @Binding var selectedBackground: TopPodcastShareBackground
+    @Binding var selectedVideoSize: CGSize
 
     var body: some View {
         Form {
@@ -1602,6 +1720,14 @@ private struct TopPodcastShareCustomizeView: View {
                 Text("Share Picture Title")
             } footer: {
                 Text("This title is used for every share picture preview and export.")
+            }
+
+            Section {
+                VideoSizePicker(videoSize: $selectedVideoSize)
+            } header: {
+                Text("Aspect Ratio")
+            } footer: {
+                Text("The selected ratio is applied to every share picture preview and export.")
             }
 
             Section {
@@ -1661,7 +1787,7 @@ private struct TopPodcastShareBackgroundPreview: View {
     let background: TopPodcastShareBackground
 
     var body: some View {
-        ZStack {
+        return ZStack {
             switch background {
             case .current:
                 LinearGradient(
@@ -1697,60 +1823,78 @@ private struct TopPodcastShareBackgroundPreview: View {
     }
 }
 
-private struct TopPodcastSharePreviewRow: View {
+private struct TopPodcastSharePreviewTile: View {
     let design: TopPodcastShareDesign
     let image: UIImage?
+    let aspectRatio: CGFloat
     let isSelected: Bool
     let isRendering: Bool
     let selectAction: () -> Void
     let shareAction: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Label(design.title, systemImage: design.systemImage)
-                    .font(.headline)
+    private var accessibilityLabelText: String {
+        isSelected ? "Deselect \(design.title)" : "Select \(design.title)"
+    }
 
-                Spacer()
+    private func shareIfImageIsReady() {
+        guard image != nil else { return }
+        shareAction()
+    }
 
-                Button(action: selectAction) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .imageScale(.large)
+    private var previewContent: some View {
+        return ZStack {
+            VStack(spacing: 0) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        ProgressView()
+                            .controlSize(.regular)
+                    }
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(isSelected ? "Deselect \(design.title)" : "Select \(design.title)")
-
-                Button(action: shareAction) {
-                    Image(systemName: "square.and.arrow.up")
-                        .imageScale(.large)
-                }
-                .buttonStyle(.borderless)
-                .disabled(image == nil)
-                .accessibilityLabel("Share \(design.title)")
+                .aspectRatio(aspectRatio, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .opacity(isRendering && image == nil ? 0.72 : 1)
             }
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                } else {
-                    ProgressView()
-                        .controlSize(.large)
-                }
-            }
-            .aspectRatio(1080 / 1350, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
-            )
-            .opacity(isRendering && image == nil ? 0.72 : 1)
         }
-        .padding(.vertical, 8)
+    }
+
+    private var selectionStrokeColor: Color {
+        isSelected ? Color.accentColor : Color.secondary.opacity(0.18)
+    }
+
+    private var selectionStrokeWidth: CGFloat {
+        isSelected ? 3 : 1
+    }
+
+    private var tileBackgroundColor: Color {
+        isSelected ? Color.accentColor.opacity(0.15) : Color(uiColor: .tertiarySystemGroupedBackground)
+    }
+
+    var body: some View {
+        previewContent
+        .padding(8)
+        .background(
+            tileBackgroundColor,
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(selectionStrokeColor, lineWidth: selectionStrokeWidth)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onTapGesture(perform: selectAction)
+        .onLongPressGesture(minimumDuration: 0.45, perform: shareIfImageIsReady)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            selectAction()
+        }
     }
 }
 
@@ -1788,6 +1932,7 @@ private func renderTopPodcastShareImage(
     totalListeningSeconds: Double,
     shareTitle: String,
     background: TopPodcastShareBackground,
+    renderSize: CGSize,
     stats: TopPodcastShareStats,
     durationFormatter: @escaping (Double) -> String
 ) -> UIImage? {
@@ -1800,10 +1945,11 @@ private func renderTopPodcastShareImage(
             totalListeningSeconds: totalListeningSeconds,
             shareTitle: shareTitle,
             background: background,
+            renderSize: renderSize,
             stats: stats,
             durationFormatter: durationFormatter
         )
-        .frame(width: 1080, height: 1350)
+        .frame(width: renderSize.width, height: renderSize.height)
     )
     renderer.scale = 1
     return renderer.uiImage
@@ -1817,6 +1963,7 @@ private struct TopPodcastShareCard: View {
     let totalListeningSeconds: Double
     let shareTitle: String
     let background: TopPodcastShareBackground
+    let renderSize: CGSize
     let stats: TopPodcastShareStats
     let durationFormatter: (Double) -> String
 
@@ -1833,6 +1980,10 @@ private struct TopPodcastShareCard: View {
                 coverCollageCard
             case .coverCloud:
                 coverCloudCard
+            case .horizontalBars:
+                horizontalBarsCard
+            case .pieChart:
+                pieChartCard
             case .statistics:
                 statisticsCard
             }
@@ -1854,6 +2005,52 @@ private struct TopPodcastShareCard: View {
 
     private var artworkShadowColor: Color {
         background.isLight ? .black.opacity(0.18) : .black.opacity(0.34)
+    }
+
+    private var isLandscape: Bool {
+        renderSize.width > renderSize.height
+    }
+
+    private var isSquare: Bool {
+        abs(renderSize.width - renderSize.height) < 1
+    }
+
+    private var layoutScale: CGFloat {
+        if isLandscape {
+            return 0.64
+        }
+        if isSquare {
+            return 0.76
+        }
+        return 1
+    }
+
+    private func scaled(_ value: CGFloat, minimum: CGFloat = 0) -> CGFloat {
+        max(value * layoutScale, minimum)
+    }
+
+    private func cardPadding(_ value: CGFloat) -> CGFloat {
+        max(value * layoutScale, isLandscape ? 34 : 42)
+    }
+
+    private var gridColumnCount: Int {
+        if isLandscape {
+            return 6
+        }
+        if isSquare {
+            return 4
+        }
+        return 3
+    }
+
+    private var gridItemCount: Int {
+        if isLandscape {
+            return min(items.count, 12)
+        }
+        if isSquare {
+            return min(items.count, 12)
+        }
+        return min(items.count, 12)
     }
 
     @ViewBuilder
@@ -1901,32 +2098,37 @@ private struct TopPodcastShareCard: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 34) {
+            VStack(alignment: .leading, spacing: scaled(34, minimum: 18)) {
                 shareHeader(title: shareTitle, subtitle: periodLabel)
 
-                HStack(alignment: .bottom, spacing: 28) {
+                HStack(alignment: .bottom, spacing: scaled(28, minimum: 14)) {
                     ForEach(podiumItems) { item in
                         PodiumPodcastColumn(
                             item: item,
-                            height: podiumHeight(for: item.rank),
+                            height: scaled(podiumHeight(for: item.rank), minimum: 120),
                             duration: durationFormatter(item.totalSeconds),
                             durationColor: secondaryTextColor,
                             podiumFillColor: primaryTextColor.opacity(item.rank == 1 ? 0.30 : 0.20),
                             podiumStrokeColor: primaryTextColor.opacity(0.18),
-                            artworkShadowColor: artworkShadowColor
+                            artworkShadowColor: artworkShadowColor,
+                            scale: layoutScale
                         )
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 790, alignment: .bottom)
+                .frame(maxWidth: .infinity, minHeight: scaled(790, minimum: 300), alignment: .bottom)
 
+                Spacer(minLength: 0)
                 footer
             }
-            .padding(70)
+            .padding(cardPadding(70))
         }
     }
 
     private var billboardCard: some View {
-        ZStack {
+        let rowScale: CGFloat = isLandscape ? 0.54 : (isSquare ? 0.64 : 1)
+        let rowSpacing: CGFloat = isLandscape ? 6 : (isSquare ? 7 : 14)
+
+        return ZStack {
             shareBackground {
                 LinearGradient(
                     colors: [
@@ -1939,16 +2141,17 @@ private struct TopPodcastShareCard: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: scaled(28, minimum: 12)) {
                 shareHeader(title: shareTitle, subtitle: periodLabel)
 
-                VStack(spacing: 14) {
+                VStack(spacing: rowSpacing) {
                     ForEach(items.prefix(10)) { item in
                         BillboardPodcastRow(
                             item: item,
                             duration: durationFormatter(item.totalSeconds),
                             durationColor: secondaryTextColor,
-                            rowBackgroundColor: primaryTextColor.opacity(item.rank == 1 ? 0.20 : 0.12)
+                            rowBackgroundColor: primaryTextColor.opacity(item.rank == 1 ? 0.20 : 0.12),
+                            scale: rowScale
                         )
                     }
                 }
@@ -1956,12 +2159,14 @@ private struct TopPodcastShareCard: View {
                 Spacer(minLength: 0)
                 footer
             }
-            .padding(58)
+            .padding(cardPadding(58))
         }
     }
 
     private var coverGridCard: some View {
-        ZStack {
+        let gridItems = Array(items.prefix(gridItemCount))
+
+        return ZStack {
             shareBackground {
                 LinearGradient(
                     colors: [
@@ -1974,34 +2179,26 @@ private struct TopPodcastShareCard: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 36) {
+            VStack(alignment: .leading, spacing: scaled(36, minimum: 18)) {
                 shareHeader(title: shareTitle, subtitle: periodLabel)
 
-                LazyVGrid(
-                    columns: Array(repeating: GridItem(.flexible(), spacing: 22), count: 3),
-                    spacing: 22
-                ) {
-                    ForEach(items.prefix(9)) { item in
-                        PodcastShareArtwork(image: item.coverImage, size: 280)
-                            .shadow(color: artworkShadowColor, radius: 14, y: 10)
-                    }
-                }
-                .frame(maxWidth: .infinity)
+                CoverGridLayout(
+                    items: gridItems,
+                    columns: gridColumnCount,
+                    spacing: scaled(22, minimum: 10),
+                    shadowColor: artworkShadowColor
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 Spacer(minLength: 0)
 
                 footer
             }
-            .padding(64)
+            .padding(cardPadding(64))
         }
     }
 
     private var coverCollageCard: some View {
-        let topItems = Array(items.prefix(2))
-        let middleItems = Array(items.dropFirst(2).prefix(3))
-        let firstSmallRow = items.count >= 9 ? Array(items.dropFirst(5).prefix(4)) : []
-        let secondSmallRow = items.count >= 13 ? Array(items.dropFirst(9).prefix(4)) : []
-
         return ZStack {
             shareBackground {
                 LinearGradient(
@@ -2015,50 +2212,73 @@ private struct TopPodcastShareCard: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: scaled(26, minimum: 12)) {
                 shareHeader(title: shareTitle, subtitle: periodLabel)
 
-                HStack(spacing: 30) {
-                    ForEach(topItems) { item in
-                        PodcastShareArtwork(image: item.coverImage, size: 330)
-                            .shadow(color: artworkShadowColor, radius: 14, y: 10)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-
-                HStack(spacing: 24) {
-                    ForEach(middleItems) { item in
-                        PodcastShareArtwork(image: item.coverImage, size: 220)
-                            .shadow(color: artworkShadowColor, radius: 14, y: 10)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-
-                if !firstSmallRow.isEmpty {
-                    HStack(spacing: 18) {
-                        ForEach(firstSmallRow) { item in
-                            PodcastShareArtwork(image: item.coverImage, size: 160)
-                                .shadow(color: artworkShadowColor, radius: 14, y: 10)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
-                if !secondSmallRow.isEmpty {
-                    HStack(spacing: 18) {
-                        ForEach(secondSmallRow) { item in
-                            PodcastShareArtwork(image: item.coverImage, size: 160)
-                                .shadow(color: artworkShadowColor, radius: 14, y: 10)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                if isLandscape {
+                    landscapeCoverCollageContent
+                } else if isSquare {
+                    squareCoverCollageContent
+                } else {
+                    portraitCoverCollageContent
                 }
 
                 Spacer(minLength: 0)
                 footer
             }
-            .padding(60)
+            .padding(cardPadding(60))
         }
+    }
+
+    private var portraitCoverCollageContent: some View {
+        let heroItem = items.first
+        let secondRow = Array(items.dropFirst().prefix(2))
+        let thirdRow = Array(items.dropFirst(3).prefix(3))
+        let bottomRow = Array(items.dropFirst(6).prefix(4))
+
+        return VStack(spacing: scaled(26, minimum: 12)) {
+            if let heroItem {
+                PodcastShareArtwork(image: heroItem.coverImage, size: scaled(500, minimum: 260))
+                    .shadow(color: artworkShadowColor, radius: 18, y: 14)
+                    .frame(maxWidth: .infinity)
+            }
+
+            coverCollageRow(secondRow, size: scaled(260, minimum: 120), spacing: scaled(26, minimum: 10))
+            coverCollageRow(thirdRow, size: scaled(190, minimum: 92), spacing: scaled(20, minimum: 8))
+
+            if !bottomRow.isEmpty {
+                coverCollageRow(bottomRow, size: scaled(145, minimum: 68), spacing: scaled(16, minimum: 7))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var squareCoverCollageContent: some View {
+        let topItems = Array(items.prefix(2))
+        let middleItems = Array(items.dropFirst(2).prefix(3))
+        let bottomItems = Array(items.dropFirst(5).prefix(4))
+
+        return VStack(spacing: scaled(22, minimum: 10)) {
+            coverCollageRow(topItems, size: scaled(300, minimum: 150), spacing: scaled(28, minimum: 12))
+            coverCollageRow(middleItems, size: scaled(205, minimum: 104), spacing: scaled(22, minimum: 9))
+            coverCollageRow(bottomItems, size: scaled(150, minimum: 76), spacing: scaled(16, minimum: 7))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private var landscapeCoverCollageContent: some View {
+        CoverCollageLandscapeLayout(items: Array(items.prefix(12)), shadowColor: artworkShadowColor)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func coverCollageRow(_ rowItems: [TopPodcastShareItem], size: CGFloat, spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            ForEach(rowItems) { item in
+                PodcastShareArtwork(image: item.coverImage, size: size)
+                    .shadow(color: artworkShadowColor, radius: 14, y: 10)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var coverCloudCard: some View {
@@ -2075,16 +2295,16 @@ private struct TopPodcastShareCard: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: scaled(26, minimum: 14)) {
                 shareHeader(title: shareTitle, subtitle: periodLabel)
 
                 CoverCloudLayout(items: items, shadowColor: artworkShadowColor)
-                    .frame(maxWidth: .infinity, minHeight: 800)
+                    .frame(maxWidth: .infinity, minHeight: scaled(800, minimum: 300))
 
                 Spacer(minLength: 0)
                 footer
             }
-            .padding(60)
+            .padding(cardPadding(60))
         }
     }
 
@@ -2102,50 +2322,158 @@ private struct TopPodcastShareCard: View {
                 )
             }
 
-            VStack(spacing: 0) {
-                VStack(spacing: 16) {
-                    Text(shareTitle)
-                        .font(.system(size: 62, weight: .heavy, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.74)
+            VStack(alignment: .leading, spacing: scaled(28, minimum: 12)) {
+                shareHeader(title: shareTitle, subtitle: periodLabel)
 
-                    Text(periodLabel)
-                        .font(.system(size: 42, weight: .bold, design: .rounded))
-                        .foregroundStyle(secondaryTextColor)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                .padding(.top, 18)
+                statisticsContent
 
-                Spacer(minLength: 28)
-
-                VStack(spacing: 28) {
-                    wrappedStat(label: "Top Podcast", value: stats.topPodcastName)
-                    wrappedStat(label: "Top Podcast Listening Time", value: stats.topPodcastListeningTime)
-                    wrappedStat(label: "Total Listening Time", value: stats.totalListeningTime)
-                    wrappedStat(label: "Podcasts Listened", value: formattedCount(stats.podcastCount))
-                    wrappedStat(label: "Listening Sessions", value: formattedCount(stats.listeningSessionCount))
-                    wrappedStat(label: "Busiest Day", value: stats.busiestDayLabel)
-                    wrappedStat(label: "Busiest Hour", value: stats.busiestHourLabel)
-                }
-
-                Spacer(minLength: 32)
+                Spacer(minLength: 0)
 
                 footer
             }
-            .padding(72)
+            .padding(cardPadding(64))
+        }
+    }
+
+    @ViewBuilder
+    private var statisticsContent: some View {
+        if isLandscape {
+            HStack(alignment: .center, spacing: 34) {
+                statisticsHero
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+                LazyVGrid(columns: statisticsGridColumns, alignment: .leading, spacing: 18) {
+                    wrappedStat(label: "Top Podcast", value: stats.topPodcastName)
+                    wrappedStat(label: "Top Podcast Time", value: stats.topPodcastListeningTime)
+                    wrappedStat(label: "Podcasts", value: formattedCount(stats.podcastCount))
+                    wrappedStat(label: "Sessions", value: formattedCount(stats.listeningSessionCount))
+                    wrappedStat(label: "Busiest Day", value: stats.busiestDayLabel)
+                    wrappedStat(label: "Busiest Hour", value: stats.busiestHourLabel)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(alignment: .leading, spacing: scaled(24, minimum: 10)) {
+                statisticsHero
+
+                LazyVGrid(columns: statisticsGridColumns, alignment: .leading, spacing: scaled(18, minimum: 8)) {
+                    wrappedStat(label: "Top Podcast", value: stats.topPodcastName)
+                    wrappedStat(label: "Top Podcast Time", value: stats.topPodcastListeningTime)
+                    wrappedStat(label: "Podcasts", value: formattedCount(stats.podcastCount))
+                    wrappedStat(label: "Sessions", value: formattedCount(stats.listeningSessionCount))
+                    wrappedStat(label: "Busiest Day", value: stats.busiestDayLabel)
+                    wrappedStat(label: "Busiest Hour", value: stats.busiestHourLabel)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+    }
+
+    private var statisticsHero: some View {
+        VStack(alignment: .leading, spacing: scaled(8, minimum: 4)) {
+            Text(stats.totalListeningTime)
+                .font(.system(size: statisticsHeroFontSize, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+                .monospacedDigit()
+            Text("total listening time")
+                .font(.system(size: isLandscape ? 30 : scaled(28, minimum: 18), weight: .bold, design: .rounded))
+                .foregroundStyle(secondaryTextColor)
+                .textCase(.uppercase)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var horizontalBarsCard: some View {
+        let chartItems = Array(items.prefix(horizontalBarItemLimit))
+        let chartTotalSeconds = max(totalListeningSeconds, chartItems.reduce(0) { $0 + $1.totalSeconds }, 1)
+
+        return ZStack {
+            shareBackground {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.03, green: 0.08, blue: 0.11),
+                        Color(red: 0.07, green: 0.20, blue: 0.22),
+                        Color(red: 0.35, green: 0.18, blue: 0.30)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+
+            VStack(alignment: .leading, spacing: scaled(34, minimum: 16)) {
+                shareHeader(title: shareTitle, subtitle: periodLabel)
+
+                VStack(spacing: scaled(18, minimum: 8)) {
+                    ForEach(chartItems) { item in
+                        PodcastShareBarRow(
+                            item: item,
+                            duration: durationFormatter(item.totalSeconds),
+                            totalSeconds: chartTotalSeconds,
+                            textColor: primaryTextColor,
+                            secondaryTextColor: secondaryTextColor,
+                            trackColor: primaryTextColor.opacity(background.isLight ? 0.10 : 0.16),
+                            barColor: primaryTextColor.opacity(background.isLight ? 0.68 : 0.72),
+                            artworkShadowColor: artworkShadowColor,
+                            scale: horizontalBarScale
+                        )
+                    }
+                }
+
+                Spacer(minLength: 0)
+                footer
+            }
+            .padding(cardPadding(58))
+        }
+    }
+
+    private var pieChartCard: some View {
+        let chartItems = Array(items.prefix(10))
+
+        return ZStack {
+            shareBackground {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.05, green: 0.06, blue: 0.10),
+                        Color(red: 0.12, green: 0.13, blue: 0.23),
+                        Color(red: 0.45, green: 0.20, blue: 0.21)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+
+            VStack(alignment: .leading, spacing: scaled(34, minimum: 16)) {
+                shareHeader(title: shareTitle, subtitle: periodLabel)
+
+                PodcastSharePieChart(
+                    items: chartItems,
+                    totalListeningSeconds: totalListeningSeconds,
+                    durationFormatter: durationFormatter,
+                    textColor: primaryTextColor,
+                    secondaryTextColor: secondaryTextColor,
+                    otherColor: primaryTextColor.opacity(background.isLight ? 0.16 : 0.24),
+                    legendPlacement: isLandscape ? .trailing : .bottom,
+                    scale: layoutScale
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Spacer(minLength: 0)
+                footer
+            }
+            .padding(cardPadding(58))
         }
     }
 
     private func shareHeader(title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: scaled(12, minimum: 6)) {
             Text(title)
-                .font(.system(size: 78, weight: .black, design: .rounded))
+                .font(.system(size: scaled(78, minimum: 42), weight: .black, design: .rounded))
                 .lineLimit(2)
                 .minimumScaleFactor(0.72)
             Text(subtitle)
-                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .font(.system(size: scaled(42, minimum: 24), weight: .bold, design: .rounded))
                 .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -2153,17 +2481,56 @@ private struct TopPodcastShareCard: View {
     }
 
     private func wrappedStat(label: String, value: String) -> some View {
-        VStack(spacing: 7) {
+        VStack(alignment: .leading, spacing: scaled(7, minimum: 3)) {
             Text(label)
-                .font(.system(size: 19, weight: .medium, design: .rounded))
+                .font(.system(size: scaled(22, minimum: 14), weight: .medium, design: .rounded))
                 .foregroundStyle(tertiaryTextColor)
             Text(value)
-                .font(.system(size: 30, weight: .heavy, design: .rounded))
-                .multilineTextAlignment(.center)
+                .font(.system(size: scaled(34, minimum: 20), weight: .heavy, design: .rounded))
+                .multilineTextAlignment(.leading)
                 .lineLimit(2)
                 .minimumScaleFactor(0.66)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, scaled(20, minimum: 10))
+        .padding(.vertical, scaled(16, minimum: 8))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(primaryTextColor.opacity(background.isLight ? 0.08 : 0.11))
+        )
+    }
+
+    private var statisticsGridColumns: [GridItem] {
+        let columnCount = isLandscape ? 2 : (isSquare ? 2 : 1)
+        let spacing: CGFloat = isLandscape ? 18 : scaled(16, minimum: 8)
+        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: columnCount)
+    }
+
+    private var statisticsHeroFontSize: CGFloat {
+        if isLandscape {
+            return 112
+        }
+        return scaled(96, minimum: 44)
+    }
+
+    private var horizontalBarItemLimit: Int {
+        if isSquare {
+            return 7
+        }
+        if isLandscape {
+            return 6
+        }
+        return 10
+    }
+
+    private var horizontalBarScale: CGFloat {
+        if isSquare {
+            return 0.54
+        }
+        if isLandscape {
+            return 0.50
+        }
+        return layoutScale
     }
 
     private func formattedCount(_ count: Int) -> String {
@@ -2174,18 +2541,18 @@ private struct TopPodcastShareCard: View {
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: scaled(8, minimum: 4)) {
             HStack {
                 Text("Up Next")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: scaled(30, minimum: 18), weight: .bold, design: .rounded))
                 Spacer()
                 Text(dateRangeLabel)
-                    .font(.system(size: 24, weight: .medium, design: .rounded))
+                    .font(.system(size: scaled(24, minimum: 15), weight: .medium, design: .rounded))
                     .foregroundStyle(tertiaryTextColor)
             }
 
             Text(totalListeningLine)
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .font(.system(size: scaled(24, minimum: 15), weight: .semibold, design: .rounded))
                 .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -2354,6 +2721,93 @@ private struct CoverCloudPlacement: Identifiable {
     var id: Int { item.id }
 }
 
+private struct CoverGridLayout: View {
+    let items: [TopPodcastShareItem]
+    let columns: Int
+    let spacing: CGFloat
+    let shadowColor: Color
+
+    var body: some View {
+        GeometryReader { geometry in
+            let columnCount = max(columns, 1)
+            let rowCount = max(Int(ceil(Double(items.count) / Double(columnCount))), 1)
+            let availableWidth = max(geometry.size.width - CGFloat(columnCount - 1) * spacing, 1)
+            let availableHeight = max(geometry.size.height - CGFloat(rowCount - 1) * spacing, 1)
+            let coverSize = min(
+                availableWidth / CGFloat(columnCount),
+                availableHeight / CGFloat(rowCount)
+            )
+            let gridWidth = coverSize * CGFloat(columnCount) + spacing * CGFloat(columnCount - 1)
+            let gridHeight = coverSize * CGFloat(rowCount) + spacing * CGFloat(rowCount - 1)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.fixed(coverSize), spacing: spacing), count: columnCount),
+                spacing: spacing
+            ) {
+                ForEach(items) { item in
+                    PodcastShareArtwork(image: item.coverImage, size: coverSize)
+                        .shadow(color: shadowColor, radius: 14, y: 10)
+                }
+            }
+            .frame(width: gridWidth, height: gridHeight)
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+        }
+    }
+}
+
+private struct CoverCollageLandscapeLayout: View {
+    let items: [TopPodcastShareItem]
+    let shadowColor: Color
+
+    var body: some View {
+        GeometryReader { geometry in
+            let canvas = geometry.size
+            let featuredItems = Array(items.prefix(4))
+            let lowerItems = Array(items.dropFirst(4).prefix(8))
+            let featuredSpacing = max(canvas.width * 0.018, 18)
+            let lowerSpacing = max(canvas.width * 0.012, 12)
+            let rowSpacing = max(canvas.height * 0.055, 22)
+            let featuredSize = rowCoverSize(
+                itemCount: featuredItems.count,
+                spacing: featuredSpacing,
+                maxWidth: canvas.width,
+                maxHeight: canvas.height * (lowerItems.isEmpty ? 0.82 : 0.56)
+            )
+            let lowerSize = rowCoverSize(
+                itemCount: lowerItems.count,
+                spacing: lowerSpacing,
+                maxWidth: canvas.width,
+                maxHeight: canvas.height * 0.32
+            )
+
+            VStack(spacing: rowSpacing) {
+                artworkRow(featuredItems, size: featuredSize, spacing: featuredSpacing, shadowRadius: 18)
+
+                if !lowerItems.isEmpty {
+                    artworkRow(lowerItems, size: lowerSize, spacing: lowerSpacing, shadowRadius: 14)
+                }
+            }
+            .frame(width: canvas.width, height: canvas.height)
+        }
+    }
+
+    private func rowCoverSize(itemCount: Int, spacing: CGFloat, maxWidth: CGFloat, maxHeight: CGFloat) -> CGFloat {
+        guard itemCount > 0 else { return 1 }
+        let availableWidth = maxWidth - CGFloat(itemCount - 1) * spacing
+        return max(1, min(availableWidth / CGFloat(itemCount), maxHeight))
+    }
+
+    private func artworkRow(_ rowItems: [TopPodcastShareItem], size: CGFloat, spacing: CGFloat, shadowRadius: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            ForEach(rowItems) { item in
+                PodcastShareArtwork(image: item.coverImage, size: size)
+                    .shadow(color: shadowColor, radius: shadowRadius, y: shadowRadius * 0.72)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 private struct PodiumPodcastColumn: View {
     let item: TopPodcastShareItem
     let height: CGFloat
@@ -2362,24 +2816,25 @@ private struct PodiumPodcastColumn: View {
     let podiumFillColor: Color
     let podiumStrokeColor: Color
     let artworkShadowColor: Color
+    let scale: CGFloat
 
     var body: some View {
-        VStack(spacing: 20) {
-            PodcastShareArtwork(image: item.coverImage, size: item.rank == 1 ? 250 : 210)
+        VStack(spacing: 20 * scale) {
+            PodcastShareArtwork(image: item.coverImage, size: (item.rank == 1 ? 250 : 210) * scale)
                 .shadow(color: artworkShadowColor, radius: 18, y: 16)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 8 * scale) {
                 Text(item.podcastName)
-                    .font(.system(size: item.rank == 1 ? 34 : 28, weight: .heavy, design: .rounded))
+                    .font(.system(size: (item.rank == 1 ? 34 : 28) * scale, weight: .heavy, design: .rounded))
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                     .minimumScaleFactor(0.72)
                 Text(duration)
-                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .font(.system(size: 24 * scale, weight: .semibold, design: .rounded))
                     .foregroundStyle(durationColor)
                     .monospacedDigit()
             }
-            .frame(height: 120, alignment: .top)
+            .frame(height: 120 * scale, alignment: .top)
 
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -2389,8 +2844,8 @@ private struct PodiumPodcastColumn: View {
                             .stroke(podiumStrokeColor, lineWidth: 2)
                     )
                 Text("#\(item.rank)")
-                    .font(.system(size: 72, weight: .black, design: .rounded))
-                    .padding(.top, 34)
+                    .font(.system(size: 72 * scale, weight: .black, design: .rounded))
+                    .padding(.top, 34 * scale)
             }
             .frame(height: height)
         }
@@ -2403,35 +2858,330 @@ private struct BillboardPodcastRow: View {
     let duration: String
     let durationColor: Color
     let rowBackgroundColor: Color
+    let scale: CGFloat
 
     var body: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 22 * scale) {
             Text("\(item.rank)")
-                .font(.system(size: 42, weight: .black, design: .rounded))
+                .font(.system(size: 42 * scale, weight: .black, design: .rounded))
                 .monospacedDigit()
-                .frame(width: 62, alignment: .trailing)
+                .frame(width: 62 * scale, alignment: .trailing)
 
-            PodcastShareArtwork(image: item.coverImage, size: 82)
+            PodcastShareArtwork(image: item.coverImage, size: 82 * scale)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 6 * scale) {
                 Text(item.podcastName)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: 30 * scale, weight: .bold, design: .rounded))
                     .lineLimit(2)
                     .minimumScaleFactor(0.76)
                 Text(duration)
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .font(.system(size: 22 * scale, weight: .semibold, design: .rounded))
                     .foregroundStyle(durationColor)
                     .monospacedDigit()
             }
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 24 * scale)
+        .padding(.vertical, 16 * scale)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(rowBackgroundColor)
         )
+    }
+}
+
+private struct PodcastShareBarRow: View {
+    let item: TopPodcastShareItem
+    let duration: String
+    let totalSeconds: Double
+    let textColor: Color
+    let secondaryTextColor: Color
+    let trackColor: Color
+    let barColor: Color
+    let artworkShadowColor: Color
+    let scale: CGFloat
+
+    private var progress: CGFloat {
+        CGFloat(min(max(item.totalSeconds / max(totalSeconds, 1), 0), 1))
+    }
+
+    var body: some View {
+        HStack(spacing: 18 * scale) {
+            PodcastShareArtwork(image: item.coverImage, size: 76 * scale)
+                .shadow(color: artworkShadowColor, radius: 8, y: 5)
+
+            VStack(alignment: .leading, spacing: 10 * scale) {
+                HStack(alignment: .firstTextBaseline, spacing: 12 * scale) {
+                    Text(item.podcastName)
+                        .font(.system(size: 27 * scale, weight: .heavy, design: .rounded))
+                        .foregroundStyle(textColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    Spacer(minLength: 0)
+
+                    Text(duration)
+                        .font(.system(size: 22 * scale, weight: .bold, design: .rounded))
+                        .foregroundStyle(secondaryTextColor)
+                        .monospacedDigit()
+                }
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(trackColor)
+
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(barColor)
+                            .frame(width: max(geometry.size.width * progress, 8))
+                    }
+                }
+                .frame(height: max(28 * scale, 12))
+            }
+        }
+        .padding(16 * scale)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(textColor.opacity(0.10))
+        )
+    }
+}
+
+private struct PodcastSharePieChart: View {
+    enum LegendPlacement {
+        case trailing
+        case bottom
+    }
+
+    let items: [TopPodcastShareItem]
+    let totalListeningSeconds: Double
+    let durationFormatter: (Double) -> String
+    let textColor: Color
+    let secondaryTextColor: Color
+    let otherColor: Color
+    let legendPlacement: LegendPlacement
+    let scale: CGFloat
+
+    private var segments: [PodcastSharePieSegment] {
+        let totalSeconds = max(totalListeningSeconds, items.reduce(0) { $0 + $1.totalSeconds }, 1)
+        var startAngle = -90.0
+        var result: [PodcastSharePieSegment] = []
+
+        for item in items where item.totalSeconds > 0 {
+            let sweep = max(item.totalSeconds / totalSeconds * 360, 0)
+            guard sweep > 0 else { continue }
+            result.append(
+                PodcastSharePieSegment(
+                    id: item.id,
+                    item: item,
+                    title: item.podcastName,
+                    seconds: item.totalSeconds,
+                    startAngle: startAngle,
+                    endAngle: startAngle + sweep,
+                    color: .clear
+                )
+            )
+            startAngle += sweep
+        }
+
+        let displayedSeconds = items.reduce(0) { $0 + $1.totalSeconds }
+        let otherSeconds = max(totalSeconds - displayedSeconds, 0)
+        if otherSeconds > totalSeconds * 0.002 {
+            result.append(
+                PodcastSharePieSegment(
+                    id: -1,
+                    item: nil,
+                    title: "Other",
+                    seconds: otherSeconds,
+                    startAngle: startAngle,
+                    endAngle: 270,
+                    color: otherColor
+                )
+            )
+        }
+
+        return result
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            if legendPlacement == .trailing {
+                let chartSize = min(geometry.size.height * 0.92, geometry.size.width * 0.40)
+                let leadingInset = max(geometry.size.width * 0.12, 110 * scale)
+                let trailingInset = max(geometry.size.width * 0.04, 30 * scale)
+
+                HStack(spacing: 34 * scale) {
+                    Spacer(minLength: leadingInset)
+                    pie(size: chartSize)
+                    legend
+                    Spacer(minLength: trailingInset)
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+            } else {
+                let chartSize = min(geometry.size.height * 0.62, geometry.size.width * 0.88)
+
+                VStack(spacing: 24 * scale) {
+                    pie(size: chartSize)
+                    legend
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+            }
+        }
+    }
+
+    private func pie(size: CGFloat) -> some View {
+        ZStack {
+            ForEach(segments) { segment in
+                PodcastSharePieSlice(segment: segment, size: size)
+            }
+
+            Circle()
+                .stroke(textColor.opacity(0.24), lineWidth: 3)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: .black.opacity(0.22), radius: 18, y: 12)
+    }
+
+    private var legend: some View {
+        Group {
+            if legendPlacement == .trailing {
+                VStack(alignment: .leading, spacing: 15 * scale) {
+                    legendRows(limit: 7)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 18 * scale), count: 2),
+                    alignment: .leading,
+                    spacing: 12 * scale
+                ) {
+                    legendRows(limit: 6)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func legendRows(limit: Int) -> some View {
+        ForEach(segments.prefix(limit)) { segment in
+            PodcastSharePieLegendRow(
+                segment: segment,
+                duration: durationFormatter(segment.seconds),
+                textColor: textColor,
+                secondaryTextColor: secondaryTextColor,
+                otherColor: otherColor,
+                scale: scale
+            )
+        }
+
+        if segments.count > limit {
+            Text("+\(segments.count - limit) more")
+                .font(.system(size: 22 * scale, weight: .bold, design: .rounded))
+                .foregroundStyle(secondaryTextColor)
+        }
+    }
+}
+
+private struct PodcastSharePieSegment: Identifiable {
+    let id: Int
+    let item: TopPodcastShareItem?
+    let title: String
+    let seconds: Double
+    let startAngle: Double
+    let endAngle: Double
+    let color: Color
+}
+
+private struct PodcastSharePieSlice: View {
+    let segment: PodcastSharePieSegment
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let image = segment.item?.coverImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(sliceShape)
+            } else {
+                sliceShape
+                    .fill(segment.color)
+            }
+
+            sliceShape
+                .stroke(.white.opacity(0.30), lineWidth: 3)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private var sliceShape: PodcastSharePieSliceShape {
+        PodcastSharePieSliceShape(startAngle: segment.startAngle, endAngle: segment.endAngle)
+    }
+}
+
+private struct PodcastSharePieLegendRow: View {
+    let segment: PodcastSharePieSegment
+    let duration: String
+    let textColor: Color
+    let secondaryTextColor: Color
+    let otherColor: Color
+    let scale: CGFloat
+
+    var body: some View {
+        HStack(spacing: 12 * scale) {
+            ZStack {
+                if let image = segment.item?.coverImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    otherColor
+                }
+            }
+            .frame(width: 42 * scale, height: 42 * scale)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(0.22), lineWidth: 1)
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(segment.title)
+                    .font(.system(size: 23 * scale, weight: .heavy, design: .rounded))
+                    .foregroundStyle(textColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text(duration)
+                    .font(.system(size: 19 * scale, weight: .bold, design: .rounded))
+                    .foregroundStyle(secondaryTextColor)
+                    .monospacedDigit()
+            }
+        }
+    }
+}
+
+private struct PodcastSharePieSliceShape: Shape {
+    let startAngle: Double
+    let endAngle: Double
+
+    func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        var path = Path()
+        path.move(to: center)
+        path.addArc(
+            center: center,
+            radius: radius,
+            startAngle: .degrees(startAngle),
+            endAngle: .degrees(endAngle),
+            clockwise: false
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -2478,6 +3228,6 @@ private extension Collection {
 
 #Preview {
     NavigationStack {
-        PlaySessionDebugView()
+        StatisticsView()
     }
 }
