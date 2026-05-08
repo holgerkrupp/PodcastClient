@@ -292,8 +292,6 @@ struct StatisticsView: View {
     @State private var selectedPeriodStart = Calendar.current.startOfDay(for: Date())
     @State private var selectedPodcastFeedString: String? = nil
     @State private var snapshot = ListeningHistorySnapshot.empty
-    @State private var isRebuildingAnalytics = false
-    @State private var rebuildStatusMessage: String?
     @State private var isPreparingPodcastShare = false
     @State private var showPodcastShareSheet = false
     @State private var podcastShareImage: UIImage?
@@ -423,31 +421,6 @@ struct StatisticsView: View {
                     .disabled(!canMoveToNextPeriod)
                 }
 
-                HStack(spacing: 10) {
-                    Button {
-                        rebuildAnalytics()
-                    } label: {
-                        Label(
-                            isRebuildingAnalytics ? "Rebuilding…" : "Rebuild Analytics",
-                            systemImage: "arrow.clockwise.circle"
-                        )
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isRebuildingAnalytics)
-
-                    if isRebuildingAnalytics {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
-                    Spacer(minLength: 0)
-                }
-
-                if let rebuildStatusMessage {
-                    Text(rebuildStatusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             Section{
@@ -504,13 +477,7 @@ struct StatisticsView: View {
                             x: .value("Period", point.date),
                             y: .value("Listening", point.totalSeconds)
                         )
-                        .foregroundStyle(.accent.opacity(0.18))
-
-                        LineMark(
-                            x: .value("Period", point.date),
-                            y: .value("Listening", point.totalSeconds)
-                        )
-                        .foregroundStyle(.accent)
+                        .foregroundStyle(.accent.opacity(0.28))
                         .interpolationMethod(.catmullRom)
                     }
                     .chartYAxis {
@@ -618,37 +585,24 @@ struct StatisticsView: View {
                         description: Text("No listening sessions in this \(selectedPeriodSingular.lowercased()).")
                     )
                 } else {
-                    ForEach(snapshot.selectedPeriodSessions) { session in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .top) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(session.episodeTitle)
-                                        .font(.headline)
-                                    Text(session.podcastName)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Text(formatDuration(session.listenedSeconds))
-                                    .font(.subheadline.weight(.semibold))
-                                    .monospacedDigit()
-                            }
+                    ForEach(snapshot.selectedPeriodSessions.prefix(15)) { session in
+                        RecentListeningSessionRow(session: session)
+                    }
 
-                            HStack {
-                                Text(session.startTime, format: .dateTime.month().day().hour().minute())
-                                Spacer()
-                                Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                            if let startPosition = session.startPosition, let endPosition = session.endPosition {
-                                Text("From \(formatTimestamp(startPosition)) to \(formatTimestamp(endPosition))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    if snapshot.selectedPeriodSessions.count > 15 {
+                        NavigationLink {
+                            ListeningSessionsListView(
+                                sessions: snapshot.selectedPeriodSessions,
+                                title: "\(selectedPeriodSingular) Sessions",
+                                subtitle: selectedShareDateRangeLabel
+                            )
+                        } label: {
+                            Label(
+                                "Show All Play Sessions",
+                                systemImage: "list.bullet.rectangle"
+                            )
+                            .badge(snapshot.selectedPeriodSessions.count)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
             }
@@ -656,19 +610,34 @@ struct StatisticsView: View {
             if !snapshot.groupedTotals.isEmpty {
                 Section("Recent \(selectedPeriod.title)") {
                     ForEach(snapshot.groupedTotals.prefix(24)) { item in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(periodLabel(for: item.start, period: selectedPeriod))
+                        Button {
+                            selectedPeriodStart = periodStart(for: item.start, period: selectedPeriod)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(periodLabel(for: item.start, period: selectedPeriod))
+                                        .font(.headline)
+                                    Text(snapshot.selectedPodcastTitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(formatDuration(item.totalSeconds))
                                     .font(.headline)
-                                Text(snapshot.selectedPodcastTitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+
+                                if isSamePeriodStart(item.start, as: selectedPeriodStart, period: selectedPeriod) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.accent)
+                                } else {
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
-                            Spacer()
-                            Text(formatDuration(item.totalSeconds))
-                                .font(.headline)
-                                .monospacedDigit()
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -781,7 +750,6 @@ struct StatisticsView: View {
             }
 
         let selectedPeriodSessions = selectedPeriodRawSessions
-            .prefix(250)
             .map { session in
                 RecentListeningSession(
                     id: session.id?.uuidString ?? "\(session.startTime?.timeIntervalSinceReferenceDate ?? 0)-\(session.podcastName ?? "unknown")",
@@ -869,9 +837,16 @@ struct StatisticsView: View {
         var secondsByWeekday = Dictionary(uniqueKeysWithValues: weekdayOrder.map { ($0, Array(repeating: 0.0, count: 24)) })
         let calendar = Calendar.current
 
+        let listeningHabitsStart = selectedPeriod == .day
+            ? periodStart(for: selectedPeriodStart, period: .week)
+            : selectedPeriodStart
+        let listeningHabitsEnd = selectedPeriod == .day
+            ? nextPeriodStart(from: listeningHabitsStart, period: .week)
+            : selectedPeriodEnd
+
         let listeningStatsInPeriod = fetchListeningStatsInPeriod(
-            selectedPeriodStart: selectedPeriodStart,
-            selectedPeriodEnd: selectedPeriodEnd,
+            selectedPeriodStart: listeningHabitsStart,
+            selectedPeriodEnd: listeningHabitsEnd,
             selectedPodcastFeedString: selectedPodcastFeedString,
             selectedPodcastURL: selectedPodcastURL
         )
@@ -888,11 +863,18 @@ struct StatisticsView: View {
                 )
             }
         } else {
-            for session in selectedPeriodSessions {
-                guard session.listenedSeconds > 0 else { continue }
+            let listeningHabitSessions = fetchSessionsInWindow(
+                overviewStart: listeningHabitsStart,
+                selectedPeriodEnd: listeningHabitsEnd,
+                selectedPodcastFeedString: selectedPodcastFeedString
+            )
+
+            for session in listeningHabitSessions {
+                let listenedSeconds = listenedSeconds(for: session)
+                guard listenedSeconds > 0, let startTime = session.startTime else { continue }
                 accumulateListening(
-                    seconds: session.listenedSeconds,
-                    on: session.startTime,
+                    seconds: listenedSeconds,
+                    on: startTime,
                     calendar: calendar,
                     weekdaySeconds: &weekdaySeconds,
                     secondsByWeekday: &secondsByWeekday
@@ -933,22 +915,6 @@ struct StatisticsView: View {
         guard snapshot.podcastBreakdown.isEmpty == false else { return }
         didPresentInitialShareGallery = true
         showInitialShareGallery = true
-    }
-
-    private func rebuildAnalytics() {
-        guard !isRebuildingAnalytics else { return }
-        isRebuildingAnalytics = true
-        rebuildStatusMessage = nil
-
-        let container = modelContext.container
-        Task.detached(priority: .utility) {
-            await PlaySessionTrackerActor(modelContainer: container).rebuildListeningStats()
-            await MainActor.run {
-                isRebuildingAnalytics = false
-                rebuildStatusMessage = "Analytics rebuilt."
-                refreshSnapshot()
-            }
-        }
     }
 
     private func shareTopPodcasts(as design: TopPodcastShareDesign) {
@@ -1458,6 +1424,86 @@ struct StatisticsView: View {
     private func heatColor(for seconds: Double) -> Color {
         let intensity = min(max(seconds / snapshot.heatMap.maxSeconds, 0), 1)
         return Color.accentColor.opacity(0.12 + intensity * 0.88)
+    }
+}
+
+private struct RecentListeningSessionRow: View {
+    let session: RecentListeningSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.episodeTitle)
+                        .font(.headline)
+                    Text(session.podcastName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(Self.formatDuration(session.listenedSeconds))
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            HStack {
+                Text(session.startTime, format: .dateTime.month().day().hour().minute())
+                Spacer()
+                Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let startPosition = session.startPosition, let endPosition = session.endPosition {
+                Text("From \(Self.formatTimestamp(startPosition)) to \(Self.formatTimestamp(endPosition))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private static func formatTimestamp(_ seconds: Double) -> String {
+        let totalSeconds = Int(seconds.rounded())
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let remainingSeconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%02d:%02d:%02d", hours, minutes, remainingSeconds)
+        }
+        return String(format: "%02d:%02d", minutes, remainingSeconds)
+    }
+
+    private static func formatDuration(_ seconds: Double) -> String {
+        guard seconds > 0 else { return "0m" }
+        let totalSeconds = Int(seconds.rounded())
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m"
+    }
+}
+
+private struct ListeningSessionsListView: View {
+    let sessions: [RecentListeningSession]
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(sessions) { session in
+                    RecentListeningSessionRow(session: session)
+                }
+            } header: {
+                Text(subtitle)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

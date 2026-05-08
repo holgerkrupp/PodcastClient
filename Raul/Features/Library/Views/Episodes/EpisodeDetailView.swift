@@ -207,7 +207,7 @@ struct EpisodeDetailView: View {
                     HStack{
                         if let episodeLink = episode.link {
                             Link(destination: episodeLink) {
-                                Label("Open in Browser", systemImage: "safari")
+                                Label("Open", systemImage: "link")
                             }
                             .buttonStyle(.glass(.clear))
                         }
@@ -226,7 +226,7 @@ struct EpisodeDetailView: View {
                     
                     SocialView(socials: episode.social)
                         .padding()
-                    PeopleView(people: episode.people)
+                    PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
                         .padding()
                     PodcastNamespaceMetadataView(optionalTags: episode.optionalTags)
                         .padding()
@@ -280,6 +280,17 @@ struct EpisodeDetailView: View {
 
     private var canGenerateTranscriptChapters: Bool {
         episode.transcriptLines?.isEmpty == false
+    }
+
+    private var fallbackAuthor: String? {
+        guard episode.people.isEmpty else { return nil }
+        guard let author = episode.author?.trimmingCharacters(in: .whitespacesAndNewlines),
+              author.isEmpty == false,
+              author != episode.podcast?.author
+        else {
+            return nil
+        }
+        return author
     }
 
     @MainActor

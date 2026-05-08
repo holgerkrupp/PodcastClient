@@ -114,7 +114,25 @@ struct PodcastDetailView: View {
                                     .font(.headline)
                                     .lineLimit(2)
                             }
+
+                            Spacer(minLength: 8)
+
+                            if let podcastLink = podcast.link {
+                                Link(destination: podcastLink) {
+                                    Image(systemName: "link")
+                                        .imageScale(.medium)
+                                }
+                                .buttonStyle(.glass(.clear))
+                                .accessibilityLabel("Open podcast website")
+                            }
                         }
+
+                        let metadataChips = PodcastDetailMetadataChipsView(podcast: podcast)
+                        if metadataChips.hasContent {
+                            metadataChips
+                                .padding(.top, 4)
+                        }
+
                         if podcast.funding.count > 0 {
                             HStack{
                                 ForEach(podcast.funding ) { fund in
@@ -156,13 +174,6 @@ struct PodcastDetailView: View {
                                 .padding()
                             
                             
-                        }
-                        if let podcastLink = podcast.link {
-                            Link(destination: podcastLink) {
-                                Label("Open in Browser", systemImage: "safari")
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityRemoveTraits(.isButton)
                         }
 
                         Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {

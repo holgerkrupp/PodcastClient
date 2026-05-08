@@ -13,10 +13,29 @@ struct NamespaceDisplayItem: Identifiable {
     let id: String
     let key: String
     let title: String
+    let iconName: String
     let secondaryText: String?
     let links: [URL]
     let detailCount: Int
     let nodes: [NamespaceNode]
+
+    var displayText: String {
+        if let secondaryText = secondaryText?.trimmingCharacters(in: .whitespacesAndNewlines),
+           secondaryText.isEmpty == false {
+            return secondaryText
+        }
+        return title
+    }
+
+    var accessibilityLabel: String {
+        links.isEmpty ? displayText : "\(displayText), opens link"
+    }
+}
+
+private extension NamespaceNode {
+    func childValue(named localName: String) -> String? {
+        children.first { NamespaceMetadataMapper.localTagName(from: $0.name) == localName }?.value
+    }
 }
 
 struct PodcastNamespaceMetadataView: View {
@@ -29,11 +48,9 @@ struct PodcastNamespaceMetadataView: View {
 
     var body: some View {
         if let section, section.hasContent {
-            VStack(alignment: .leading, spacing: 12) {
-            
-
+            VStack(alignment: .leading, spacing: 10) {
                 if section.inlineItems.isEmpty == false {
-                    VStack(alignment: .leading, spacing: 10) {
+                    FlowRows(spacing: 8) {
                         ForEach(section.inlineItems) { item in
                             NamespaceInlineItemView(item: item)
                         }
@@ -49,10 +66,11 @@ struct PodcastNamespaceMetadataView: View {
                         }
                         .padding(.top, 8)
                     } label: {
-                        Text("More Metadata")
-                            .font(.subheadline.weight(.semibold))
+                        Label("\(section.fallbackItems.count) more", systemImage: "ellipsis.circle")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
                     }
-                    .tint(.primary)
+                    .tint(.secondary)
                 }
             }
             
@@ -64,32 +82,16 @@ private struct NamespaceInlineItemView: View {
     let item: NamespaceDisplayItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(item.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 8)
-                if item.detailCount > 0 {
-                    Text("\(item.detailCount) details")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        if let destination = item.links.first {
+            Link(destination: destination) {
+                NamespaceChipContent(item: item, showsLinkIcon: true)
             }
-
-            if let secondaryText = item.secondaryText, secondaryText.isEmpty == false {
-                if item.links.isEmpty == false {
-                    NamespaceURLRow(urls: item.links, baseLabel: NamespaceMetadataMapper.linkButtonLabel(forTag: secondaryText))
-                }else{
-                    Text(secondaryText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.accessibilityLabel)
+        } else {
+            NamespaceChipContent(item: item, showsLinkIcon: false)
+                .accessibilityLabel(item.accessibilityLabel)
         }
-       
     }
 }
 
@@ -98,8 +100,8 @@ private struct NamespaceFallbackGroupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(item.title)
-                .font(.subheadline.weight(.semibold))
+            Label(item.title, systemImage: item.iconName)
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(.primary)
 
             ForEach(Array(item.nodes.enumerated()), id: \.offset) { index, node in
@@ -107,6 +109,39 @@ private struct NamespaceFallbackGroupView: View {
             }
         }
        
+    }
+}
+
+private struct NamespaceChipContent: View {
+    let item: NamespaceDisplayItem
+    let showsLinkIcon: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: item.iconName)
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+
+            Text(item.displayText)
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            if showsLinkIcon {
+                Image(systemName: "link")
+                    .imageScale(.small)
+                    .foregroundStyle(.tint)
+            }
+
+            if item.links.count > 1 {
+                Text("+\(item.links.count - 1)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 }
 
@@ -158,8 +193,12 @@ private struct NamespaceNodeContentView: View {
     let title: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-          
+        VStack(alignment: .leading, spacing: 4) {
+            if title.isEmpty == false {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.primary)
+            }
             NamespaceNodeValueAndAttributesView(node: node)
         }
         
@@ -181,6 +220,7 @@ private struct NamespaceNodeValueAndAttributesView: View {
             .filter { key, value in
                 key.isEmpty == false &&
                 value.isEmpty == false &&
+                NamespaceMetadataMapper.isLowValueAttribute(key) == false &&
                 NamespaceMetadataMapper.url(from: value) == nil
             }
             .sorted { lhs, rhs in
@@ -206,12 +246,9 @@ private struct NamespaceNodeValueAndAttributesView: View {
             }
 
             if nonURLAttributes.isEmpty == false {
-                VStack(alignment: .leading, spacing: 4) {
+                FlowRows(spacing: 6) {
                     ForEach(Array(nonURLAttributes.enumerated()), id: \.offset) { _, item in
-                        Text("\(NamespaceMetadataMapper.shortAttributeLabel(for: item.0)): \(item.1)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        NamespaceAttributePill(key: item.0, value: item.1)
                     }
                 }
             }
@@ -223,6 +260,26 @@ private struct NamespaceNodeValueAndAttributesView: View {
     }
 }
 
+private struct NamespaceAttributePill: View {
+    let key: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: NamespaceMetadataMapper.iconName(forAttribute: key))
+                .imageScale(.small)
+            Text(NamespaceMetadataMapper.attributeDisplayText(key: key, value: value))
+                .lineLimit(1)
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(.thinMaterial, in: Capsule())
+        .textSelection(.enabled)
+    }
+}
+
 private struct NamespaceURLRow: View {
     let urls: [URL]
     let baseLabel: String
@@ -231,11 +288,17 @@ private struct NamespaceURLRow: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(Array(urls.enumerated()), id: \.element.absoluteString) { index, url in
-                    let labelText = urls.count > 1 ? "\(baseLabel) \(index + 1)" : baseLabel
                     Link(destination: url) {
-                        Label(labelText, systemImage: "link")
+                        Label {
+                            if urls.count > 1 {
+                                Text("\(index + 1)")
+                            }
+                        } icon: {
+                            Image(systemName: "link")
+                        }
                     }
                     .buttonStyle(.glass(.clear))
+                    .accessibilityLabel(url.host(percentEncoded: false) ?? baseLabel)
                 }
             }
         }
@@ -253,7 +316,6 @@ private enum NamespaceMetadataMapper {
         "license",
         "liveItem",
         "location",
-        "locked",
         "medium",
         "podroll",
         "publisher",
@@ -291,7 +353,8 @@ private enum NamespaceMetadataMapper {
                     id: "inline-\(key)-\(index)",
                     key: key,
                     title: compactTitle(for: key),
-                    secondaryText: preferredSecondaryText(from: node),
+                    iconName: iconName(forTag: key),
+                    secondaryText: preferredSecondaryText(from: node, key: key),
                     links: extractURLs(from: node),
                     detailCount: descendantCount(of: node.children),
                     nodes: [node]
@@ -306,6 +369,7 @@ private enum NamespaceMetadataMapper {
                 id: "fallback-\(key)",
                 key: key,
                 title: compactTitle(for: key),
+                iconName: iconName(forTag: key),
                 secondaryText: nil,
                 links: [],
                 detailCount: nodes.reduce(0) { $0 + descendantCount(of: $1.children) },
@@ -326,6 +390,7 @@ private enum NamespaceMetadataMapper {
                 id: "fallback-unknown-\(key)",
                 key: key,
                 title: compactTitle(for: key),
+                iconName: iconName(forTag: key),
                 secondaryText: nil,
                 links: [],
                 detailCount: nodes.reduce(0) { $0 + descendantCount(of: $1.children) },
@@ -340,7 +405,80 @@ private enum NamespaceMetadataMapper {
         return section.hasContent ? section : nil
     }
 
-    static func preferredSecondaryText(from node: NamespaceNode) -> String? {
+    static func preferredSecondaryText(from node: NamespaceNode, key: String? = nil) -> String? {
+        let localKey = key.map(localTagName) ?? localTagName(from: node.name)
+
+        switch localKey {
+        case "episode":
+            return joinedValues([
+                labeledValue("Episode", node.attributes["number"] ?? node.value),
+                labeledValue("Season", node.attributes["season"]),
+                humanizedValue(node.attributes["display"] ?? node.attributes["type"])
+            ])
+        case "season":
+            return joinedValues([
+                labeledValue("Season", node.value ?? node.attributes["number"]),
+                node.attributes["name"]
+            ])
+        case "license":
+            return node.value ?? node.attributes["name"] ?? node.attributes["type"]
+        case "location":
+            return node.value ?? node.attributes["name"] ?? node.attributes["geo"]
+        case "medium":
+            return humanizedValue(node.value ?? node.attributes["type"])
+        case "block":
+            return booleanText(node.value)
+        case "liveItem":
+            return joinedValues([
+                humanizedValue(node.attributes["status"]),
+                node.childValue(named: "start").flatMap(shortDateText),
+                node.childValue(named: "end").flatMap(shortDateText)
+            ])
+        case "trailer":
+            return joinedValues([
+                node.attributes["title"],
+                labeledValue("Season", node.attributes["season"]),
+                node.attributes["pubdate"].flatMap(shortDateText)
+            ])
+        case "soundbite":
+            return joinedValues([
+                secondsText(node.attributes["startTime"]),
+                durationText(node.attributes["duration"])
+            ])
+        case "alternateEnclosure":
+            return joinedValues([
+                mediaTypeText(node.attributes["type"]),
+                byteCountText(node.attributes["length"]),
+                node.attributes["bitrate"].flatMap { "\($0) bps" }
+            ])
+        case "publisher":
+            return node.value ?? node.attributes["name"] ?? node.attributes["guid"]
+        case "remoteItem":
+            return joinedValues([
+                node.attributes["title"],
+                humanizedValue(node.attributes["medium"]),
+                shortenedIdentifier(node.attributes["feedGuid"]),
+                shortenedIdentifier(node.attributes["itemGuid"])
+            ])
+        case "chat":
+            return joinedValues([
+                humanizedValue(node.attributes["protocol"]),
+                node.attributes["accountId"]
+            ])
+        case "contentLink", "source":
+            return joinedValues([
+                humanizedValue(node.attributes["rel"]),
+                mediaTypeText(node.attributes["type"] ?? node.attributes["contentType"])
+            ])
+        case "image", "images":
+            return mediaTypeText(node.attributes["type"]) ?? "Artwork"
+        case "podroll":
+            let count = max(node.children.count, 1)
+            return count == 1 ? "Recommended show" : "\(count) recommended shows"
+        default:
+            break
+        }
+
         let trimmedValue = node.value?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let trimmedValue, trimmedValue.isEmpty == false {
             return trimmedValue
@@ -399,20 +537,46 @@ private enum NamespaceMetadataMapper {
 
     static func compactTitle(for qualifiedTag: String) -> String {
         switch localTagName(from: qualifiedTag) {
-        case "episode", "season":
+        case "episode":
             return "Episode"
-        case "chat", "contentLink", "source", "remoteItem", "podroll":
-            return "Links"
-        case "alternateEnclosure", "soundbite", "trailer", "liveItem":
-            return "Media"
+        case "season":
+            return "Season"
+        case "chat":
+            return "Chat"
+        case "contentLink":
+            return "Notes"
+        case "source":
+            return "Source"
+        case "remoteItem":
+            return "Related"
+        case "podroll":
+            return "Podroll"
+        case "alternateEnclosure":
+            return "Alternate Audio"
+        case "soundbite":
+            return "Soundbite"
+        case "trailer":
+            return "Trailer"
+        case "liveItem":
+            return "Live"
         case "image", "images":
             return "Artwork"
-        case "value", "valueRecipient", "valueTimeSplit":
+        case "value":
             return "Value"
-        case "block", "locked", "podping", "updateFrequency", "medium":
+        case "valueRecipient":
+            return "Recipient"
+        case "valueTimeSplit":
+            return "Split"
+        case "block", "podping", "updateFrequency":
             return "Feed"
+        case "medium":
+            return "Medium"
         case "license", "integrity", "txt":
             return "Policy"
+        case "location":
+            return "Location"
+        case "publisher":
+            return "Publisher"
         default:
             return humanizedTagName(from: qualifiedTag)
         }
@@ -445,10 +609,55 @@ private enum NamespaceMetadataMapper {
         "\(compactTitle(for: qualifiedTag))"
     }
 
+    static func iconName(forTag qualifiedTag: String) -> String {
+        switch localTagName(from: qualifiedTag) {
+        case "alternateEnclosure", "source":
+            return "waveform"
+        case "block":
+            return "eye.slash"
+        case "chat":
+            return "bubble.left.and.bubble.right"
+        case "contentLink":
+            return "doc.text"
+        case "episode":
+            return "number"
+        case "image", "images":
+            return "photo"
+        case "integrity":
+            return "checkmark.shield"
+        case "license":
+            return "doc.badge.gearshape"
+        case "liveItem":
+            return "dot.radiowaves.left.and.right"
+        case "location":
+            return "mappin.and.ellipse"
+        case "medium":
+            return "rectangle.stack"
+        case "podping", "updateFrequency":
+            return "arrow.triangle.2.circlepath"
+        case "podroll", "remoteItem":
+            return "rectangle.connected.to.line.below"
+        case "publisher":
+            return "building.2"
+        case "season":
+            return "square.stack.3d.up"
+        case "soundbite":
+            return "waveform.badge.magnifyingglass"
+        case "trailer":
+            return "play.rectangle"
+        case "txt":
+            return "text.badge.checkmark"
+        case "value", "valueRecipient", "valueTimeSplit":
+            return "bolt.circle"
+        default:
+            return "info.circle"
+        }
+    }
+
     static func shortAttributeLabel(for key: String) -> String {
         switch key.lowercased() {
         case "href", "url", "uri":
-            return "Link"
+            return ""
         case "feedguid":
             return "Feed"
         case "itemguid":
@@ -464,6 +673,137 @@ private enum NamespaceMetadataMapper {
         default:
             return humanizedTagName(from: key)
         }
+    }
+
+    static func iconName(forAttribute key: String) -> String {
+        switch key.lowercased() {
+        case "type", "contenttype", "medium", "protocol", "method":
+            return "tag"
+        case "length", "duration", "starttime", "endtime":
+            return "timer"
+        case "season", "number":
+            return "number"
+        case "owner", "accountid", "name":
+            return "person"
+        case "split", "remotepercentage", "suggested":
+            return "percent"
+        case "feedguid", "itemguid", "guid", "address":
+            return "number.square"
+        case "status", "default", "complete", "usespodping":
+            return "checkmark.circle"
+        default:
+            return "info.circle"
+        }
+    }
+
+    static func attributeDisplayText(key: String, value: String) -> String {
+        switch key.lowercased() {
+        case "type", "contenttype":
+            return mediaTypeText(value) ?? value
+        case "duration":
+            return durationText(value) ?? value
+        case "starttime":
+            return secondsText(value) ?? value
+        case "length":
+            return byteCountText(value) ?? value
+        case "feedguid", "itemguid", "guid", "address":
+            return shortenedIdentifier(value) ?? value
+        case "default", "complete", "usespodping":
+            return "\(humanizedTagName(from: key)): \(booleanText(value) ?? value)"
+        default:
+            let label = shortAttributeLabel(for: key)
+            return label.isEmpty ? value : "\(label): \(value)"
+        }
+    }
+
+    static func isLowValueAttribute(_ key: String) -> Bool {
+        switch key.lowercased() {
+        case "href", "url", "uri", "feedurl", "accounturl":
+            return true
+        default:
+            return false
+        }
+    }
+
+    static func joinedValues(_ values: [String?]) -> String? {
+        let compacted = values.compactMap { value -> String? in
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed?.isEmpty == false ? trimmed : nil
+        }
+        return compacted.isEmpty ? nil : compacted.joined(separator: " • ")
+    }
+
+    static func labeledValue(_ label: String, _ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.isEmpty == false else {
+            return nil
+        }
+        return "\(label) \(value)"
+    }
+
+    static func humanizedValue(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.isEmpty == false else {
+            return nil
+        }
+        return humanizedTagName(from: value)
+    }
+
+    static func booleanText(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), value.isEmpty == false else {
+            return nil
+        }
+        switch value {
+        case "yes", "true", "1":
+            return "Yes"
+        case "no", "false", "0":
+            return "No"
+        default:
+            return nil
+        }
+    }
+
+    static func mediaTypeText(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.isEmpty == false else {
+            return nil
+        }
+        if value.contains("/") {
+            return value
+                .split(separator: "/")
+                .last
+                .map(String.init)?
+                .uppercased()
+        }
+        return humanizedTagName(from: value)
+    }
+
+    static func byteCountText(_ value: String?) -> String? {
+        guard let value, let bytes = Int64(value) else { return nil }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    static func secondsText(_ value: String?) -> String? {
+        guard let value, let seconds = Double(value) else { return nil }
+        return Duration.seconds(seconds).formatted(.units(width: .narrow))
+    }
+
+    static func durationText(_ value: String?) -> String? {
+        secondsText(value)
+    }
+
+    static func shortDateText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) {
+            return date.formatted(date: .abbreviated, time: .shortened)
+        }
+        return value
+    }
+
+    static func shortenedIdentifier(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), value.isEmpty == false else {
+            return nil
+        }
+        guard value.count > 14 else { return value }
+        return "\(value.prefix(6))...\(value.suffix(4))"
     }
 
     private static func mergedItems(_ items: [NamespaceDisplayItem], idPrefix: String) -> [NamespaceDisplayItem] {
@@ -485,6 +825,7 @@ private enum NamespaceMetadataMapper {
                 id: "\(idPrefix)-\(slug(from: title))",
                 key: bucket.map(\.key).joined(separator: ","),
                 title: title,
+                iconName: bucket.first?.iconName ?? "info.circle",
                 secondaryText: mergedSecondaryText(from: bucket),
                 links: uniqueURLs(from: bucket.flatMap(\.links)),
                 detailCount: bucket.reduce(0) { $0 + $1.detailCount },
@@ -551,7 +892,6 @@ private extension PodcastNamespaceOptionalTags {
         assign("license", license)
         assign("liveItem", liveItem)
         assign("location", location)
-        assign("locked", locked)
         assign("medium", medium)
         assign("podping", podping)
         assign("podroll", podroll)

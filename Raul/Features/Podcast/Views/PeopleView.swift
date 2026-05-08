@@ -4,16 +4,26 @@ import SwiftUI
 
 struct PeopleView: View {
     let people: [PersonInfo]
+    let fallbackAuthor: String?
     let spacing: CGFloat
 
-    init(people: [PersonInfo], spacing: CGFloat = 8) {
+    init(people: [PersonInfo], fallbackAuthor: String? = nil, spacing: CGFloat = 8) {
         self.people = people
+        self.fallbackAuthor = fallbackAuthor
         self.spacing = spacing
     }
 
     private var displayPeople: [PersonInfo] {
-        // Keep order as-is; if you want ordering (e.g., by role), change here
-        people
+        guard people.isEmpty else {
+            return people
+        }
+
+        if let fallbackAuthor = fallbackAuthor?.trimmingCharacters(in: .whitespacesAndNewlines),
+           fallbackAuthor.isEmpty == false {
+            return [PersonInfo(name: fallbackAuthor, role: "author", href: nil, img: nil)]
+        }
+
+        return people
     }
 
     var body: some View {
