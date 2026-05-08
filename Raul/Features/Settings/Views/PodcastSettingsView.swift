@@ -25,6 +25,8 @@ struct PodcastSettingsView: View {
     @State private var podcastYearDebugUnavailableMessage = "There is no yearly listening history with more than 10 hours yet."
     @State private var showPodcastYearDebugShareGallery = false
     @State private var podcastYearDebugShareGalleryStart = Date()
+    @State private var isRebuildingAnalytics = false
+    @State private var rebuildAnalyticsStatusMessage: String?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
@@ -815,6 +817,33 @@ struct PodcastSettingsView: View {
                     systemImage: "externaldrive"
                 )
             }
+
+            Button {
+                rebuildAnalytics()
+            } label: {
+                SettingsNavigationRow(
+                    title: isRebuildingAnalytics ? "Rebuilding Analytics" : "Rebuild Analytics",
+                    summary: "Listening history summaries",
+                    detail: "Recalculate hourly listening stats and period summaries from recorded play sessions.",
+                    systemImage: "arrow.clockwise.circle"
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isRebuildingAnalytics)
+
+            if isRebuildingAnalytics {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Rebuilding analytics…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let rebuildAnalyticsStatusMessage {
+                Text(rebuildAnalyticsStatusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -985,6 +1014,21 @@ struct PodcastSettingsView: View {
             await MainActor.run {
                 transcriptLineCount = 0
                 isDeletingTranscriptLines = false
+            }
+        }
+    }
+
+    private func rebuildAnalytics() {
+        guard !isRebuildingAnalytics else { return }
+        isRebuildingAnalytics = true
+        rebuildAnalyticsStatusMessage = nil
+
+        let modelContainer = context.container
+        Task.detached(priority: .utility) {
+            await PlaySessionTrackerActor(modelContainer: modelContainer).rebuildListeningStats()
+            await MainActor.run {
+                isRebuildingAnalytics = false
+                rebuildAnalyticsStatusMessage = "Analytics rebuilt."
             }
         }
     }

@@ -44,6 +44,7 @@ struct EpisodeRowView: View {
         let hasTranscript = episode.externalFiles.contains(where: { $0.category == .transcript }) || (episode.transcriptLines?.isEmpty == false)
         let hasBookmarks = episode.bookmarks?.isEmpty == false
         let progress = max(0.0, min(1.0, episode.maxPlayProgress))
+        let episodeTypeBadgeText = badgeText(for: episode.type)
 
         ZStack {
             CoverImageView(episode: episode)
@@ -56,19 +57,34 @@ struct EpisodeRowView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
-                    ZStack(alignment: .topTrailing) {
+                    ZStack {
                         CoverImageView(episode: episode)
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
+
+                        if let episodeTypeBadgeText {
+                            Text(episodeTypeBadgeText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .padding(6)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .accessibilityLabel("Episode type: \(episodeTypeBadgeText)")
+                        }
 
                         if hasBookmarks {
                             Image(systemName: "bookmark.fill")
                                 .font(.title2)
                                 .foregroundStyle(.accent)
                                 .padding(8)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                                 .accessibilityLabel("Has bookmarks")
                         }
                     }
+                    .frame(width: artworkSize, height: artworkSize)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .top) {
@@ -180,6 +196,17 @@ struct EpisodeRowView: View {
                 
             }
 
+    }
+
+    private func badgeText(for type: EpisodeType?) -> String? {
+        switch type {
+        case .trailer:
+            return "Trailer"
+        case .bonus:
+            return "Bonus"
+        case .full, .unknown, nil:
+            return nil
+        }
     }
     
 
