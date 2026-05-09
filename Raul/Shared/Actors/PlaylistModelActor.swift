@@ -132,6 +132,10 @@ actor PlaylistModelActor {
         try orderedEpisodes().compactMap(\.url)
     }
 
+    public func firstEpisodeURL() throws -> URL? {
+        try orderedEpisodes().compactMap(\.url).first
+    }
+
     func nextEpisodeURL() throws -> URL? {
         try orderedEpisodes().dropFirst().compactMap(\.url).first
     }

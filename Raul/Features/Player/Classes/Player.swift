@@ -625,13 +625,24 @@ class Player {
 
         currentEpisode = episode
         currentEpisodeURL = episodeURL
+        if playDirectly {
+            if currentEpisode?.metaData == nil {
+                let metadata = EpisodeMetaData()
+                metadata.episode = currentEpisode
+                currentEpisode?.metaData = metadata
+            }
+            currentEpisode?.metaData?.lastPlayed = Date()
+            await episodeActor?.setLastPlayed(episodeURL: episodeURL)
+        }
         loadSkipDurations()
         lastProgressSaveDate = Date()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
         updateChapters()
 
-        try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
+        if (try? await playlistActor?.firstEpisodeURL()) != episodeURL {
+            try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
+        }
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
 
         guard let playback = playbackItem(for: episode) else { return }

@@ -16,7 +16,14 @@ final class PhoneWatchSyncController: NSObject {
         let transferCandidates: [String: TransferCandidate]
     }
 
+    private struct PlaylistSelection {
+        let selectedPlaylist: Playlist
+        let manualPlaylists: [Playlist]
+        let defaultPlaylistID: UUID?
+    }
+
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
+    private let defaults = UserDefaults.standard
 
     private var lastStorageReport: WatchStorageReport?
     private var pendingTransferEpisodeIDs: Set<String> = []
@@ -44,9 +51,11 @@ final class PhoneWatchSyncController: NSObject {
         let container = ModelContainerManager.shared.container
         let context = ModelContext(container)
 
-        let playlistEntries = fetchPlaylistEntries(with: context)
+        let selection = resolvePlaylistSelection(with: context)
+        let playlistEntries = selection.selectedPlaylist.ordered
         let inboxEpisodes = fetchInboxEpisodes(with: context)
         let settings = fetchStandardSettings(with: context)
+        let watchPlaylists = makeSyncPlaylists(from: selection)
 
         var transferCandidates: [String: TransferCandidate] = [:]
         let playlist = playlistEntries.compactMap { entry -> WatchSyncEpisode? in
@@ -65,6 +74,9 @@ final class PhoneWatchSyncController: NSObject {
                 generatedAt: .now,
                 playlist: playlist,
                 inbox: inbox,
+                playlists: watchPlaylists,
+                selectedPlaylistID: selection.selectedPlaylist.id.uuidString,
+                selectedPlaylistTitle: selection.selectedPlaylist.displayTitle,
                 skipBackSeconds: settings.skipBack.rawValue,
                 skipForwardSeconds: settings.skipForward.rawValue
             ),
@@ -72,15 +84,42 @@ final class PhoneWatchSyncController: NSObject {
         )
     }
 
-    private func fetchPlaylistEntries(with context: ModelContext) -> [PlaylistEntry] {
-        let descriptor = FetchDescriptor<PlaylistEntry>(
-            predicate: #Predicate<PlaylistEntry> { entry in
-                entry.playlist?.title == "de.holgerkrupp.podbay.queue"
-            },
-            sortBy: [SortDescriptor(\.order)]
-        )
+    private func resolvePlaylistSelection(with context: ModelContext) -> PlaylistSelection {
+        let defaultPlaylist = Playlist.ensureDefaultQueue(in: context)
+        let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? [defaultPlaylist]
+        let manualPlaylists = Playlist.manualVisibleSorted(allPlaylists)
+        let fallbackPlaylist = manualPlaylists.first(where: { $0.id == defaultPlaylist.id })
+            ?? manualPlaylists.first
+            ?? defaultPlaylist
 
-        return (try? context.fetch(descriptor)) ?? []
+        let storedPlaylistID = Playlist.resolvePlaylistID(
+            from: defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        )
+        let selectedPlaylist = storedPlaylistID.flatMap { selectedID in
+            manualPlaylists.first(where: { $0.id == selectedID })
+        } ?? fallbackPlaylist
+
+        if defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID) != selectedPlaylist.id.uuidString {
+            defaults.set(selectedPlaylist.id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        }
+
+        return PlaylistSelection(
+            selectedPlaylist: selectedPlaylist,
+            manualPlaylists: manualPlaylists.isEmpty ? [selectedPlaylist] : manualPlaylists,
+            defaultPlaylistID: defaultPlaylist.id
+        )
+    }
+
+    private func makeSyncPlaylists(from selection: PlaylistSelection) -> [WatchSyncPlaylist] {
+        selection.manualPlaylists.map { playlist in
+            WatchSyncPlaylist(
+                id: playlist.id.uuidString,
+                title: playlist.displayTitle,
+                symbolName: playlist.displaySymbolName,
+                isSelected: playlist.id == selection.selectedPlaylist.id,
+                isDefault: playlist.id == selection.defaultPlaylistID
+            )
+        }
     }
 
     private func fetchInboxEpisodes(with context: ModelContext) -> [Episode] {
@@ -265,13 +304,47 @@ final class PhoneWatchSyncController: NSObject {
 
         case .queueEpisodeAtFront:
             guard let episodeURLString = command.episodeURL,
-                  let episodeURL = URL(string: episodeURLString),
-                  let playlistActor = try? PlaylistModelActor(modelContainer: ModelContainerManager.shared.container)
+                  let episodeURL = URL(string: episodeURLString)
             else {
                 return
             }
 
-            try? await playlistActor.add(episodeURL: episodeURL, to: .front)
+            let context = ModelContext(ModelContainerManager.shared.container)
+            let selection = resolvePlaylistSelection(with: context)
+            let requestedPlaylistID = Playlist.resolvePlaylistID(from: command.playlistID)
+            let resolvedPlaylistID = requestedPlaylistID.flatMap { playlistID in
+                selection.manualPlaylists.first(where: { $0.id == playlistID })?.id
+            } ?? selection.selectedPlaylist.id
+
+            guard let playlistActor = try? PlaylistModelActor(
+                modelContainer: ModelContainerManager.shared.container,
+                playlistID: resolvedPlaylistID
+            ) else {
+                return
+            }
+
+            switch command.position ?? .front {
+            case .front:
+                try? await playlistActor.insert(episodeURL: episodeURL, after: Player.shared.currentEpisodeURL)
+            case .end:
+                try? await playlistActor.add(episodeURL: episodeURL, to: .end)
+            }
+            await refreshSnapshotAndTransfers()
+
+        case .selectPlaylist:
+            guard let playlistID = Playlist.resolvePlaylistID(from: command.playlistID) else {
+                await refreshSnapshotAndTransfers()
+                return
+            }
+
+            let context = ModelContext(ModelContainerManager.shared.container)
+            let selection = resolvePlaylistSelection(with: context)
+            guard selection.manualPlaylists.contains(where: { $0.id == playlistID }) else {
+                await refreshSnapshotAndTransfers()
+                return
+            }
+
+            defaults.set(playlistID.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
             await refreshSnapshotAndTransfers()
 
         case .syncPlaybackProgress:

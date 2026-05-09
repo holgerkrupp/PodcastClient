@@ -43,6 +43,10 @@ actor PodcastModelActor {
         }
 
         modelContext.saveIfNeeded()
+        await SubscriptionManifestSync.publishCurrentSubscriptions(
+            modelContainer: modelContainer,
+            allowEmpty: isSubscribed == false
+        )
     }
 
     
@@ -193,6 +197,7 @@ actor PodcastModelActor {
         if let newURL = status?.newURL, newURL != feedURL, status?.statusCode == 301 {
             freshPodcast.feed = newURL
             modelContext.saveIfNeeded()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         }
         
         await setFeedUpdated(freshMeta.persistentModelID, to: nil)
@@ -243,6 +248,80 @@ actor PodcastModelActor {
         let reachable = await feedURL.absoluteString.reachabilityStatus()
         if let newURL = reachable?.finalURL, newURL != feedURL{
             podcast.feed = newURL
+            modelContext.saveIfNeeded()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
+        }
+    }
+
+    func bootstrapPodcast(
+        _ podcastFeed: URL,
+        maximumEpisodes: Int
+    ) async throws -> Bool {
+        try Task.checkCancellation()
+        guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
+        guard let feedURL = podcast.feed else { return false }
+
+        let podcastIDRef = podcast.persistentModelID
+        var metaIDRef = podcast.metaData?.persistentModelID
+
+        if podcast.metaData == nil {
+            let meta = PodcastMetaData()
+            modelContext.insert(meta)
+            podcast.metaData = meta
+            modelContext.saveIfNeeded()
+            metaIDRef = meta.persistentModelID
+        }
+
+        if let metaIDRef,
+           let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+            freshMeta.message = "Restoring subscription ..."
+            freshMeta.isUpdating = true
+        }
+        if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+            freshPodcast.message = "Restoring subscription ..."
+        }
+        modelContext.saveIfNeeded()
+
+        do {
+            let page = try await PodcastParser.fetchPage(from: feedURL, maximumEpisodes: maximumEpisodes)
+            try Task.checkCancellation()
+
+            guard
+                let metaIDRef,
+                let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
+                let finalPodcast = modelContext.model(for: podcastIDRef) as? Podcast
+            else {
+                return false
+            }
+
+            var partialPodcast = page.parsedFeed
+            partialPodcast["episodes"] = page.episodes.map(\.rawEpisodeData)
+
+            try await updateDetails(
+                finalPodcast,
+                fullPodcast: partialPodcast,
+                silent: true
+            )
+
+            finalPodcast.message = nil
+            finalMeta.message = nil
+            finalMeta.isUpdating = false
+            finalMeta.feedUpdated = true
+            await updateLastRefresh(for: finalMeta.persistentModelID)
+            modelContext.saveIfNeeded()
+            return true
+        } catch {
+            if let metaIDRef,
+               let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                failedMeta.isUpdating = false
+                failedMeta.message = nil
+                failedMeta.feedUpdateCheckDate = Date()
+            }
+            if let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                failedPodcast.message = nil
+            }
+            modelContext.saveIfNeeded()
+            throw error
         }
     }
 
@@ -575,10 +654,12 @@ actor PodcastModelActor {
             metaData.isSubscribed = true
             metaData.subscriptionDate = Date()
             modelContext.saveIfNeeded()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
 
             await reportProgress(SubscriptionProgressUpdate(0.18, "Refreshing existing podcast"), using: progress)
             _ = try await updatePodcast(feed, force: true, silent: true, progress: progress)
             existingPodcast.message = nil
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
             return existingPodcast.persistentModelID
         }
         
@@ -588,6 +669,7 @@ actor PodcastModelActor {
         let podcast = Podcast(feed: feedURL)
         modelContext.insert(podcast)
         modelContext.saveIfNeeded()
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         await reportProgress(SubscriptionProgressUpdate(0.16, "Creating podcast record"), using: progress)
         if let feed = podcast.feed {
         do {
@@ -595,6 +677,7 @@ actor PodcastModelActor {
                 _ = try await updatePodcast(feed, force: true, silent: true, progress: progress)
                 podcast.message = nil
                 await reportProgress(SubscriptionProgressUpdate(0.98, "Finalizing subscription"), using: progress)
+                await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
             
         } catch {
             // print("Could not update podcast: \(error)")
@@ -666,6 +749,10 @@ actor PodcastModelActor {
         }
         modelContext.delete(podcast)
         modelContext.saveIfNeeded()
+        await SubscriptionManifestSync.publishCurrentSubscriptions(
+            modelContainer: modelContainer,
+            allowEmpty: true
+        )
     }
     
     func refreshAllPodcasts() async throws {

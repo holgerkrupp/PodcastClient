@@ -21,7 +21,7 @@ struct WatchRootView: View {
         case .nowPlaying:
             return "Now Playing"
         case .upNext:
-            return "Up Next"
+            return store.selectedPlaylistTitle
         case .inbox:
             return "Inbox"
         }
@@ -48,6 +48,10 @@ struct WatchRootView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if selectedPage == .upNext {
+                    ToolbarItem(placement: .topBarLeading) {
+                        WatchPlaylistMenu()
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             isShowingSettings = true
@@ -113,6 +117,32 @@ struct WatchRootView: View {
     }
 }
 
+private struct WatchPlaylistMenu: View {
+    @EnvironmentObject private var store: WatchSyncStore
+    @State private var isShowingPicker = false
+
+    var body: some View {
+        Button {
+            isShowingPicker = true
+        } label: {
+            Image(systemName: "list.bullet")
+                .foregroundStyle(.white)
+        }
+        .disabled(store.playlists.isEmpty)
+        .confirmationDialog("Playlist", isPresented: $isShowingPicker, titleVisibility: .visible) {
+            ForEach(store.playlists) { playlist in
+                Button(playlist.isSelected ? "\(playlist.title) (Selected)" : playlist.title) {
+                    store.selectPlaylist(playlist)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .accessibilityLabel("Playlist")
+        .accessibilityValue(store.selectedPlaylistTitle)
+        .accessibilityHint("Choose which playlist appears on the watch")
+    }
+}
+
 private struct WatchPlaylistPage: View {
     @EnvironmentObject private var store: WatchSyncStore
     @EnvironmentObject private var playback: WatchPlaybackController
@@ -138,8 +168,8 @@ private struct WatchPlaylistPage: View {
                     if store.playlist.isEmpty {
                         WatchEmptyState(
                             systemName: "text.line.first.and.arrowtriangle.forward",
-                            title: "Up Next is empty",
-                            detail: "Refresh from the phone to pull in the latest queue."
+                            title: "\(store.selectedPlaylistTitle) is empty",
+                            detail: "Refresh from the phone to pull in the latest playlist."
                         ) {
                             store.requestSnapshot()
                         }
@@ -377,7 +407,7 @@ private struct WatchInboxPage: View {
                                 .font(.headline)
                                 .foregroundStyle(.white)
 
-                            Text("Pull new episodes from the phone, then send the ones you want straight into Up Next.")
+                            Text("Pull new episodes from the phone, then send the ones you want into \(store.selectedPlaylistTitle).")
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.78))
 
@@ -443,11 +473,15 @@ private struct WatchInboxCard: View {
                     }
                 }
 
-                Button(episode.resolvedAudioURL == nil ? "Add to Up Next" : "Queue + Download") {
+                Button {
                     store.queueEpisode(episode, downloadAfterQueue: episode.resolvedAudioURL != nil)
+                } label: {
+                    Text(episode.resolvedAudioURL == nil ? "Add to \(store.selectedPlaylistTitle)" : "Queue + Download")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 .buttonStyle(WatchCapsuleButtonStyle(accent: .orange))
-                .accessibilityHint("Adds this episode to your queue and downloads it when available")
+                .accessibilityHint("Adds this episode to \(store.selectedPlaylistTitle) and downloads it when available")
             }
         }
     }

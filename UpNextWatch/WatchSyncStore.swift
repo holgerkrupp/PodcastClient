@@ -41,6 +41,18 @@ final class WatchSyncStore: NSObject, ObservableObject {
         snapshot.playlist
     }
 
+    var playlists: [WatchSyncPlaylist] {
+        snapshot.playlists
+    }
+
+    var selectedPlaylistID: String? {
+        snapshot.selectedPlaylistID
+    }
+
+    var selectedPlaylistTitle: String {
+        snapshot.selectedPlaylistTitle
+    }
+
     var inbox: [WatchSyncEpisode] {
         snapshot.inbox
     }
@@ -93,11 +105,24 @@ final class WatchSyncStore: NSObject, ObservableObject {
         send(command: WatchCommand(kind: .refreshInbox), preferImmediateDelivery: true)
     }
 
+    func selectPlaylist(_ playlist: WatchSyncPlaylist) {
+        optimisticallySelectPlaylist(playlist)
+        send(
+            command: WatchCommand(
+                kind: .selectPlaylist,
+                playlistID: playlist.id
+            ),
+            preferImmediateDelivery: true
+        )
+    }
+
     func queueEpisode(_ episode: WatchSyncEpisode, downloadAfterQueue: Bool) {
         optimisticallyQueueEpisode(episode)
         send(command: WatchCommand(
             kind: .queueEpisodeAtFront,
-            episodeURL: episode.episodeURL
+            episodeURL: episode.episodeURL,
+            playlistID: selectedPlaylistID,
+            position: .front
         ))
 
         if downloadAfterQueue {
@@ -257,6 +282,9 @@ final class WatchSyncStore: NSObject, ObservableObject {
             generatedAt: snapshot.generatedAt,
             playlist: playlist,
             inbox: inbox,
+            playlists: snapshot.playlists,
+            selectedPlaylistID: snapshot.selectedPlaylistID,
+            selectedPlaylistTitle: snapshot.selectedPlaylistTitle,
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds
         )
@@ -300,6 +328,33 @@ final class WatchSyncStore: NSObject, ObservableObject {
             generatedAt: .now,
             playlist: updatedPlaylist,
             inbox: updatedInbox,
+            playlists: snapshot.playlists,
+            selectedPlaylistID: snapshot.selectedPlaylistID,
+            selectedPlaylistTitle: snapshot.selectedPlaylistTitle,
+            skipBackSeconds: snapshot.skipBackSeconds,
+            skipForwardSeconds: snapshot.skipForwardSeconds
+        )
+        persistSnapshot()
+    }
+
+    private func optimisticallySelectPlaylist(_ playlist: WatchSyncPlaylist) {
+        let updatedPlaylists = snapshot.playlists.map { candidate in
+            WatchSyncPlaylist(
+                id: candidate.id,
+                title: candidate.title,
+                symbolName: candidate.symbolName,
+                isSelected: candidate.id == playlist.id,
+                isDefault: candidate.isDefault
+            )
+        }
+
+        snapshot = WatchSyncSnapshot(
+            generatedAt: .now,
+            playlist: snapshot.playlist,
+            inbox: snapshot.inbox,
+            playlists: updatedPlaylists,
+            selectedPlaylistID: playlist.id,
+            selectedPlaylistTitle: playlist.title,
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds
         )
@@ -371,7 +426,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             }
         }
 
-        // Any file that is no longer in Up Next should be removed from the watch.
+        // Any file that is no longer in the selected playlist should be removed from the watch.
         for episodeID in Array(downloadedFiles.keys) {
             if playlistIDSet.contains(episodeID) == false {
                 removeDownloadedFile(forEpisodeID: episodeID)
