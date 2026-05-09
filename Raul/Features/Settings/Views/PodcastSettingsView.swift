@@ -27,6 +27,10 @@ struct PodcastSettingsView: View {
     @State private var podcastYearDebugShareGalleryStart = Date()
     @State private var isRebuildingAnalytics = false
     @State private var rebuildAnalyticsStatusMessage: String?
+    @State private var selectedAppIconID = AlternateAppIcon.primaryID
+    @State private var isChangingAppIcon = false
+    @State private var appIconErrorMessage: String?
+    @State private var showAppIconError = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
@@ -145,6 +149,11 @@ struct PodcastSettingsView: View {
         } message: {
             Text(podcastYearDebugUnavailableMessage)
         }
+        .alert("Unable to Change App Icon", isPresented: $showAppIconError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(appIconErrorMessage ?? "Please try again.")
+        }
     }
 
     private var settingsList: some View {
@@ -162,6 +171,7 @@ struct PodcastSettingsView: View {
 
                     if podcast == nil {
                         globalDefaultsSection(settings: effectiveSettings)
+                        appearanceSection
                         appControlsSection(settings: globalSettings)
                         transcriptionSection(settings: globalSettings)
                         sideloadingSection
@@ -260,6 +270,31 @@ struct PodcastSettingsView: View {
                  : "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            NavigationLink {
+                AppIconSelectionView(
+                    selectedAppIconID: $selectedAppIconID,
+                    isChangingAppIcon: isChangingAppIcon,
+                    onSelect: changeAppIcon
+                )
+            } label: {
+                SettingsNavigationRow(
+                    title: "App Icon",
+                    summary: AlternateAppIcon(id: selectedAppIconID)?.title ?? "Classic",
+                    detail: UIApplication.shared.supportsAlternateIcons
+                        ? "Choose the Home Screen icon used for Up Next on this device."
+                        : "This device does not support alternate app icons.",
+                    systemImage: "app"
+                )
+            }
+            .disabled(isChangingAppIcon || UIApplication.shared.supportsAlternateIcons == false)
+        }
+        .task {
+            selectedAppIconID = AlternateAppIcon.currentIdentifier
         }
     }
 
@@ -802,6 +837,17 @@ struct PodcastSettingsView: View {
                 )
             }
             .buttonStyle(.plain)
+
+            NavigationLink {
+                SettingsShortcutsIntegrationView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Shortcuts & Automations",
+                    summary: "Refresh podcasts and generate share images",
+                    detail: "See practical automation recipes for Apple Shortcuts, including alarm-based refreshes and monthly share images.",
+                    systemImage: "square.stack.3d.up.badge.automatic"
+                )
+            }
         }
     }
 
@@ -1033,6 +1079,33 @@ struct PodcastSettingsView: View {
         }
     }
 
+    private func changeAppIcon(to identifier: String) {
+        guard UIApplication.shared.supportsAlternateIcons else { return }
+        guard let icon = AlternateAppIcon(id: identifier) else {
+            selectedAppIconID = AlternateAppIcon.currentIdentifier
+            return
+        }
+
+        isChangingAppIcon = true
+
+        Task {
+            do {
+                try await UIApplication.shared.setAlternateIconName(icon.iconName)
+                await MainActor.run {
+                    selectedAppIconID = AlternateAppIcon.currentIdentifier
+                    isChangingAppIcon = false
+                }
+            } catch {
+                await MainActor.run {
+                    selectedAppIconID = AlternateAppIcon.currentIdentifier
+                    appIconErrorMessage = error.localizedDescription
+                    showAppIconError = true
+                    isChangingAppIcon = false
+                }
+            }
+        }
+    }
+
     private func markAutoDownloadPolicyReconciliationPending(trigger: String) {
         hasPendingAutoDownloadReconciliation = true
         if let podcastFeed = podcast?.feed {
@@ -1075,6 +1148,183 @@ struct PodcastSettingsView: View {
                     BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy feed=\(feed.absoluteString)")
                 }
                 await episodeActor.applyAutomaticDownloadPolicy(for: feed)
+            }
+        }
+    }
+}
+
+private struct AlternateAppIcon: Identifiable, Hashable {
+    let id: String
+    let iconName: String?
+    let title: String
+    let systemImage: String
+    let previewAssetName: String
+    let previewColors: [Color]
+
+    static let primaryID = "primary"
+
+    static let allCases: [AlternateAppIcon] = [
+        AlternateAppIcon(id: primaryID, iconName: nil, title: "6 Colors", systemImage: "app", previewAssetName: "6Colors", previewColors: [.green, .yellow]),
+        AlternateAppIcon(id: "AppIcon-green", iconName: "AppIcon-green", title: "Green", systemImage: "circle.fill", previewAssetName: "green", previewColors: [.green, .mint]),
+        AlternateAppIcon(id: "AppIcon-yellow", iconName: "AppIcon-yellow", title: "Yellow", systemImage: "circle.fill", previewAssetName: "yellow", previewColors: [.green, .yellow]),
+        AlternateAppIcon(id: "AppIcon-orange", iconName: "AppIcon-orange", title: "Orange", systemImage: "circle.fill", previewAssetName: "orange", previewColors: [.green, .orange]),
+        AlternateAppIcon(id: "AppIcon-red", iconName: "AppIcon-red", title: "Red", systemImage: "circle.fill", previewAssetName: "red", previewColors: [.orange, .red]),
+        AlternateAppIcon(id: "AppIcon-purple", iconName: "AppIcon-purple", title: "Purple", systemImage: "circle.fill", previewAssetName: "purple", previewColors: [.blue, .purple]),
+        AlternateAppIcon(id: "AppIcon-blue", iconName: "AppIcon-blue", title: "Blue", systemImage: "circle.fill", previewAssetName: "blue", previewColors: [.cyan, .blue])
+    ]
+
+    @MainActor
+    static var currentIdentifier: String {
+        UIApplication.shared.alternateIconName ?? primaryID
+    }
+
+    init?(id: String) {
+        guard let icon = Self.allCases.first(where: { $0.id == id }) else { return nil }
+        self = icon
+    }
+
+    private init(id: String, iconName: String?, title: String, systemImage: String, previewAssetName: String, previewColors: [Color]) {
+        self.id = id
+        self.iconName = iconName
+        self.title = title
+        self.systemImage = systemImage
+        self.previewAssetName = previewAssetName
+        self.previewColors = previewColors
+    }
+}
+
+private struct AppIconSelectionView: View {
+    @Binding var selectedAppIconID: String
+
+    let isChangingAppIcon: Bool
+    let onSelect: (String) -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 112, maximum: 150), spacing: 16)
+    ]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(AlternateAppIcon.allCases) { icon in
+                    AppIconSelectionTile(
+                        icon: icon,
+                        isSelected: icon.id == selectedAppIconID,
+                        isChanging: isChangingAppIcon && icon.id == selectedAppIconID
+                    ) {
+                        guard icon.id != selectedAppIconID else { return }
+                        selectedAppIconID = icon.id
+                        onSelect(icon.id)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+        }
+        .navigationTitle("App Icon")
+        .navigationBarTitleDisplayMode(.inline)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .task {
+            selectedAppIconID = AlternateAppIcon.currentIdentifier
+        }
+    }
+}
+
+private struct AppIconSelectionTile: View {
+    let icon: AlternateAppIcon
+    let isSelected: Bool
+    let isChanging: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                ZStack(alignment: .topTrailing) {
+                    AppIconPreview(icon: icon)
+                        .frame(width: 82, height: 82)
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, Color.accentColor)
+                            .background(Circle().fill(Color(uiColor: .systemBackground)))
+                            .offset(x: 5, y: -5)
+                    }
+
+                    if isChanging {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(.black.opacity(0.25))
+                        ProgressView()
+                            .tint(.white)
+                    }
+                }
+                .frame(width: 82, height: 82)
+
+                Text(icon.title)
+                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isSelected ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(icon.title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+private struct AppIconPreview: View {
+    let icon: AlternateAppIcon
+
+    var body: some View {
+        Image(icon.previewAssetName)
+            .resizable()
+            .scaledToFill()
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+    }
+
+    private var fallbackPreview: some View {
+        ZStack {
+            LinearGradient(
+                colors: icon.previewColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Image(systemName: "play.fill")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+        }
+    }
+}
+
+private extension UIApplication {
+    func setAlternateIconName(_ alternateIconName: String?) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            setAlternateIconName(alternateIconName) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
             }
         }
     }
@@ -1133,7 +1383,7 @@ private struct SettingsNavigationRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(title)
+                    Text(LocalizedStringKey(title))
                         .foregroundStyle(.primary)
 
                     if let source {
@@ -1141,12 +1391,12 @@ private struct SettingsNavigationRow: View {
                     }
                 }
 
-                Text(summary)
+                Text(LocalizedStringKey(summary))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
 
-                Text(detail)
+                Text(LocalizedStringKey(detail))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
@@ -1178,7 +1428,7 @@ struct SettingsHelpView: View {
             }
 
             Section("Siri & Shortcuts Intents") {
-                Text("Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, and Remove Current From Up Next.")
+                Text("Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image.")
                 Text("In Apple Shortcuts, search for Up Next to add these actions to personal automations.")
                 Text("For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"")
             }
@@ -1192,6 +1442,118 @@ struct SettingsHelpView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("Using Up Next")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct SettingsShortcutsIntegrationView: View {
+    private let shortcutsURL = URL(string: "shortcuts://")!
+
+    var body: some View {
+        List {
+            Section {
+                Text("Up Next actions are available in Apple Shortcuts. Search for “Up Next” when adding an action to a shortcut or personal automation.")
+
+                Link(destination: shortcutsURL) {
+                    Label("Open Shortcuts", systemImage: "arrow.up.forward.app")
+                }
+            } header: {
+                Text("Apple Shortcuts")
+            }
+
+            AutomationRecipeView(
+                title: "Refresh Podcasts When an Alarm Stops",
+                systemImage: "alarm",
+                summary: "Use this when you want fresh episodes waiting after your morning alarm.",
+                steps: [
+                    "Open Shortcuts and switch to Automation.",
+                    "Create a new Personal Automation.",
+                    "Choose Alarm, then select Goes Off and the alarm you use.",
+                    "Add the Up Next action Refresh Podcasts.",
+                    "Turn off Ask Before Running if you want this to happen quietly."
+                ]
+            )
+
+            AutomationRecipeView(
+                title: "Create Last Month’s Share Image",
+                systemImage: "calendar.badge.plus",
+                summary: "Run this on the first day of each month to create an image for the previous month.",
+                steps: [
+                    "Open Shortcuts and switch to Automation.",
+                    "Create a new Personal Automation.",
+                    "Choose Time of Day, set it to monthly, and select day 1.",
+                    "Add the Up Next action Generate Podcast Share Image.",
+                    "Set Period to Month and When to Previous Period.",
+                    "Set Background to Automatic for Period.",
+                    "Choose the design and aspect ratio you want, then add Save File, Save to Photo Album, or Share."
+                ]
+            )
+
+            Section("Automatic Backgrounds") {
+                Text("Automatic for Period picks the background from the data period, not from the day the shortcut runs. A shortcut running on 1 June with Previous Period uses May’s background.")
+                Text("For yearly images, Automatic for Period uses the New Year background. For day, week, and month images, it uses the month containing the listening history.")
+            }
+
+            Section("Useful Outputs") {
+                Text("Generate Podcast Share Image returns a PNG file. Shortcuts can pass that file to Save File, Save to Photo Album, Messages, Mail, or Share Sheet.")
+                Text("To create multiple designs, add the Generate Podcast Share Image action more than once with different design values.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Shortcuts")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct AutomationRecipeView: View {
+    let title: String
+    let systemImage: String
+    let summary: String
+    let steps: [String]
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                Label {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(LocalizedStringKey(title))
+                            .font(.headline)
+                        Text(LocalizedStringKey(summary))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                        AutomationStepRow(number: index + 1, text: step)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct AutomationStepRow: View {
+    let number: Int
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(number)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Color.accentColor))
+
+            Text(LocalizedStringKey(text))
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
