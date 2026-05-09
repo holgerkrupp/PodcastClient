@@ -290,6 +290,9 @@
         }
       }
     },
+    "45 Gradient" : {
+
+    },
     "Accessibility" : {
       "localizations" : {
         "de" : {
@@ -346,6 +349,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Regel hinzufügen"
+          }
+        }
+      }
+    },
+    "Add the Up Next action Generate Podcast Share Image." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge die Up Next Aktion „Podcast-Teilen-Bild erstellen“ hinzu."
+          }
+        }
+      }
+    },
+    "Add the Up Next action Refresh Podcasts." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge die Up Next Aktion „Podcasts aktualisieren“ hinzu."
           }
         }
       }
@@ -490,6 +515,22 @@
         }
       }
     },
+    "App Icon" : {
+
+    },
+    "Appearance" : {
+
+    },
+    "Apple Shortcuts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Kurzbefehle"
+          }
+        }
+      }
+    },
     "Apple SpeechTranscriber" : {
       "localizations" : {
         "de" : {
@@ -519,6 +560,9 @@
           }
         }
       }
+    },
+    "April" : {
+
     },
     "Archive" : {
       "localizations" : {
@@ -630,6 +674,9 @@
         }
       }
     },
+    "August" : {
+
+    },
     "Authentication Required" : {
       "localizations" : {
         "de" : {
@@ -660,12 +707,42 @@
         }
       }
     },
+    "Automatic Backgrounds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatische Hintergründe"
+          }
+        }
+      }
+    },
     "Automatic Chapter Filtering" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatische Kapitelfilterung"
+          }
+        }
+      }
+    },
+    "Automatic for Period" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch für Zeitraum"
+          }
+        }
+      }
+    },
+    "Automatic for Period picks the background from the data period, not from the day the shortcut runs. A shortcut running on 1 June with Previous Period uses May’s background." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch für Zeitraum wählt den Hintergrund aus dem Datenzeitraum, nicht vom Tag, an dem der Kurzbefehl läuft. Ein Kurzbefehl am 1. Juni mit Vorheriger Zeitraum nutzt den Mai-Hintergrund."
           }
         }
       }
@@ -681,6 +758,7 @@
       }
     },
     "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, and Remove Current From Up Next." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -689,6 +767,9 @@
           }
         }
       }
+    },
+    "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image." : {
+
     },
     "Back" : {
       "localizations" : {
@@ -751,6 +832,12 @@
         }
       }
     },
+    "Billboard Top 10" : {
+
+    },
+    "Black" : {
+
+    },
     "Bookmark" : {
       "localizations" : {
         "de" : {
@@ -780,6 +867,9 @@
           }
         }
       }
+    },
+    "Boring" : {
+
     },
     "Browse by Category" : {
       "localizations" : {
@@ -851,6 +941,9 @@
         }
       }
     },
+    "Carnival" : {
+
+    },
     "Chapter %@" : {
       "localizations" : {
         "de" : {
@@ -921,6 +1014,27 @@
         }
       }
     },
+    "Check subscribed podcast feeds for new episodes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abonnierte Podcast-Feeds auf neue Episoden prüfen."
+          }
+        }
+      }
+    },
+    "Choose Alarm, then select Goes Off and the alarm you use." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle Wecker, dann „Wird beendet“ und den gewünschten Wecker."
+          }
+        }
+      }
+    },
     "Choose an audio output device" : {
       "localizations" : {
         "de" : {
@@ -940,6 +1054,31 @@
           }
         }
       }
+    },
+    "Choose the design and aspect ratio you want, then add Save File, Save to Photo Album, or Share." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle Design und Seitenverhältnis und füge dann Datei sichern, Im Fotoalbum sichern oder Teilen hinzu."
+          }
+        }
+      }
+    },
+    "Choose Time of Day, set it to monthly, and select day 1." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle Tageszeit, stelle monatlich ein und wähle Tag 1."
+          }
+        }
+      }
+    },
+    "Christmas" : {
+
     },
     "Close" : {
       "localizations" : {
@@ -1001,6 +1140,15 @@
         }
       }
     },
+    "Cover Cloud" : {
+
+    },
+    "Cover Collage" : {
+
+    },
+    "Cover Grid" : {
+
+    },
     "Create" : {
       "localizations" : {
         "de" : {
@@ -1021,12 +1169,44 @@
         }
       }
     },
+    "Create a new Personal Automation." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstelle eine neue persönliche Automation."
+          }
+        }
+      }
+    },
+    "Create a podcast listening statistics share image and return it as a PNG file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstellt ein Teilen-Bild aus der Podcast-Hörstatistik und gibt es als PNG-Datei zurück."
+          }
+        }
+      }
+    },
     "Create audio clip" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Audioclip erstellen"
+          }
+        }
+      }
+    },
+    "Create Last Month’s Share Image" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen-Bild für letzten Monat erstellen"
           }
         }
       }
@@ -1047,6 +1227,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erstellt in Buxtehude von"
+          }
+        }
+      }
+    },
+    "Created podcast share image." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Bild erstellt."
           }
         }
       }
@@ -1087,6 +1277,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktuelles Kapitel"
+          }
+        }
+      }
+    },
+    "Current Period" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktueller Zeitraum"
           }
         }
       }
@@ -1181,6 +1381,16 @@
         }
       }
     },
+    "Day" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag"
+          }
+        }
+      }
+    },
     "Debug" : {
       "localizations" : {
         "de" : {
@@ -1190,6 +1400,9 @@
           }
         }
       }
+    },
+    "December" : {
+
     },
     "Default" : {
       "localizations" : {
@@ -1341,6 +1554,9 @@
         }
       }
     },
+    "Design" : {
+
+    },
     "Designs" : {
       "localizations" : {
         "de" : {
@@ -1350,6 +1566,9 @@
           }
         }
       }
+    },
+    "Diwali" : {
+
     },
     "Done" : {
       "localizations" : {
@@ -1490,6 +1709,12 @@
           }
         }
       }
+    },
+    "Easter" : {
+
+    },
+    "Eid al-Fitr" : {
+
     },
     "Enable Notifications" : {
       "localizations" : {
@@ -1681,6 +1906,9 @@
         }
       }
     },
+    "February" : {
+
+    },
     "Fetches new episodes and reloads your inbox" : {
       "localizations" : {
         "de" : {
@@ -1841,6 +2069,16 @@
         }
       }
     },
+    "For yearly images, Automatic for Period uses the New Year background. For day, week, and month images, it uses the month containing the listening history." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Jahresbilder nutzt Automatisch für Zeitraum den Neujahrs-Hintergrund. Für Tages-, Wochen- und Monatsbilder wird der Monat der Hörhistorie verwendet."
+          }
+        }
+      }
+    },
     "Forward" : {
       "localizations" : {
         "de" : {
@@ -1908,6 +2146,26 @@
         }
       }
     },
+    "Generate Podcast Share Image" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Bild erstellen"
+          }
+        }
+      }
+    },
+    "Generate Podcast Share Image returns a PNG file. Shortcuts can pass that file to Save File, Save to Photo Album, Messages, Mail, or Share Sheet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Bild erstellen gibt eine PNG-Datei zurück. Kurzbefehle kann diese Datei an Datei sichern, Im Fotoalbum sichern, Nachrichten, Mail oder das Teilen-Menü übergeben."
+          }
+        }
+      }
+    },
     "Get the source code" : {
       "localizations" : {
         "de" : {
@@ -1957,6 +2215,12 @@
           }
         }
       }
+    },
+    "Halloween" : {
+
+    },
+    "Hanukkah" : {
+
     },
     "Has bookmarks" : {
       "localizations" : {
@@ -2063,6 +2327,9 @@
           }
         }
       }
+    },
+    "Holi" : {
+
     },
     "Hot Podcasts" : {
       "localizations" : {
@@ -2244,6 +2511,12 @@
         }
       }
     },
+    "January" : {
+
+    },
+    "July" : {
+
+    },
     "Jump to chapter %@" : {
       "localizations" : {
         "de" : {
@@ -2273,6 +2546,9 @@
           }
         }
       }
+    },
+    "June" : {
+
     },
     "Keep available" : {
       "localizations" : {
@@ -2320,6 +2596,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stichwort oder Ausdruck"
+          }
+        }
+      }
+    },
+    "Landscape" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Querformat"
           }
         }
       }
@@ -2576,6 +2862,9 @@
         }
       }
     },
+    "Lunar New Year" : {
+
+    },
     "Maintenance" : {
       "localizations" : {
         "de" : {
@@ -2585,6 +2874,9 @@
           }
         }
       }
+    },
+    "March" : {
+
     },
     "Marks all episodes in this podcast as archived" : {
       "localizations" : {
@@ -2646,6 +2938,12 @@
         }
       }
     },
+    "May" : {
+
+    },
+    "Midsummer" : {
+
+    },
     "Mini player, %@" : {
       "localizations" : {
         "de" : {
@@ -2662,6 +2960,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle sind sprachspezifische Sprachressourcen auf dem Gerät. Die App verwendet nach Möglichkeit die Sprache der Episode und greift andernfalls auf das aktuelle Gebietsschema des Geräts zurück."
+          }
+        }
+      }
+    },
+    "Month" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monat"
           }
         }
       }
@@ -2919,6 +3227,9 @@
           }
         }
       }
+    },
+    "New Year" : {
+
     },
     "Newest First" : {
       "localizations" : {
@@ -3260,6 +3571,9 @@
         }
       }
     },
+    "November" : {
+
+    },
     "Now Playing" : {
       "localizations" : {
         "de" : {
@@ -3279,6 +3593,9 @@
           }
         }
       }
+    },
+    "October" : {
+
     },
     "Off" : {
       "localizations" : {
@@ -3506,6 +3823,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Teilen-Bilder öffnen"
+          }
+        }
+      }
+    },
+    "Open Shortcuts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurzbefehle öffnen"
+          }
+        }
+      }
+    },
+    "Open Shortcuts and switch to Automation." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne Kurzbefehle und wechsle zu Automation."
           }
         }
       }
@@ -4030,6 +4368,12 @@
         }
       }
     },
+    "Playtime Bars" : {
+
+    },
+    "Playtime Pie" : {
+
+    },
     "Podcast" : {
       "localizations" : {
         "de" : {
@@ -4056,6 +4400,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcast-spezifische Anpassungen"
+          }
+        }
+      }
+    },
+    "Podcast refresh started." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Aktualisierung gestartet."
           }
         }
       }
@@ -4106,6 +4460,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcast-Einstellungen"
+          }
+        }
+      }
+    },
+    "Podcast Share Aspect Ratio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Seitenverhältnis"
+          }
+        }
+      }
+    },
+    "Podcast Share Background" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Hintergrund"
+          }
+        }
+      }
+    },
+    "Podcast Share Design" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Design"
+          }
+        }
+      }
+    },
+    "Podcast Share Period" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Zeitraum"
+          }
+        }
+      }
+    },
+    "Podcast Share Timing" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Teilen-Zeitpunkt"
           }
         }
       }
@@ -4170,6 +4574,19 @@
         }
       }
     },
+    "Podium Top 3" : {
+
+    },
+    "Portrait" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hochformat"
+          }
+        }
+      }
+    },
     "Preset" : {
       "localizations" : {
         "de" : {
@@ -4216,6 +4633,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorheriges Kapitel"
+          }
+        }
+      }
+    },
+    "Previous Period" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorheriger Zeitraum"
           }
         }
       }
@@ -4269,6 +4696,12 @@
           }
         }
       }
+    },
+    "Rainbow" : {
+
+    },
+    "Ramadan" : {
+
     },
     "Ready to Subscribe (%lld)" : {
       "localizations" : {
@@ -4408,6 +4841,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcasts aktualisieren"
+          }
+        }
+      }
+    },
+    "Refresh Podcasts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts aktualisieren"
+          }
+        }
+      }
+    },
+    "Refresh podcasts and generate share images" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts aktualisieren und Teilen-Bilder erstellen"
+          }
+        }
+      }
+    },
+    "Refresh Podcasts When an Alarm Stops" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts aktualisieren, wenn ein Wecker stoppt"
           }
         }
       }
@@ -4652,6 +5117,17 @@
         }
       }
     },
+    "Run this on the first day of each month to create an image for the previous month." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Führe dies am ersten Tag jedes Monats aus, um ein Bild für den vorherigen Monat zu erstellen."
+          }
+        }
+      }
+    },
     "Save episode transcriptions" : {
       "localizations" : {
         "de" : {
@@ -4802,6 +5278,17 @@
         }
       }
     },
+    "See practical automation recipes for Apple Shortcuts, including alarm-based refreshes and monthly share images." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Praktische Automationen für Apple Kurzbefehle, inklusive Aktualisierung nach dem Wecker und monatlicher Teilen-Bilder."
+          }
+        }
+      }
+    },
     "Select the segment to share" : {
       "localizations" : {
         "de" : {
@@ -4818,6 +5305,31 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auswahl"
+          }
+        }
+      }
+    },
+    "September" : {
+
+    },
+    "Set Background to Automatic for Period." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setze Hintergrund auf Automatisch für Zeitraum."
+          }
+        }
+      }
+    },
+    "Set Period to Month and When to Previous Period." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setze Zeitraum auf Monat und Wann auf Vorheriger Zeitraum."
           }
         }
       }
@@ -4892,6 +5404,9 @@
         }
       }
     },
+    "Share Image" : {
+
+    },
     "Share Picture Title" : {
       "localizations" : {
         "de" : {
@@ -4938,6 +5453,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Teile dein Podcast-Jahr"
+          }
+        }
+      }
+    },
+    "Shortcuts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurzbefehle"
+          }
+        }
+      }
+    },
+    "Shortcuts & Automations" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurzbefehle & Automationen"
           }
         }
       }
@@ -5356,6 +5892,16 @@
         }
       }
     },
+    "Square" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quadratisch"
+          }
+        }
+      }
+    },
     "Start Listening" : {
       "localizations" : {
         "de" : {
@@ -5445,6 +5991,9 @@
           }
         }
       }
+    },
+    "Stats Wrapped" : {
+
     },
     "Stop after this episode" : {
       "localizations" : {
@@ -5822,6 +6371,16 @@
         }
       }
     },
+    "To create multiple designs, add the Generate Podcast Share Image action more than once with different design values." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um mehrere Designs zu erstellen, füge die Aktion Podcast-Teilen-Bild erstellen mehrfach mit unterschiedlichen Designs hinzu."
+          }
+        }
+      }
+    },
     "Top podcast share pictures are available when the statistics show all podcasts." : {
       "localizations" : {
         "de" : {
@@ -5982,6 +6541,17 @@
         }
       }
     },
+    "Turn off Ask Before Running if you want this to happen quietly." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktiviere „Vor Ausführen bestätigen“, wenn es automatisch im Hintergrund passieren soll."
+          }
+        }
+      }
+    },
     "Turn off to skip this chapter" : {
       "localizations" : {
         "de" : {
@@ -6001,6 +6571,9 @@
           }
         }
       }
+    },
+    "Unable to Change App Icon" : {
+
     },
     "Unable to Enable Sideloading" : {
       "localizations" : {
@@ -6058,6 +6631,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Als Nächstes"
+          }
+        }
+      }
+    },
+    "Up Next actions are available in Apple Shortcuts. Search for “Up Next” when adding an action to a shortcut or personal automation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next Aktionen sind in Apple Kurzbefehle verfügbar. Suche beim Hinzufügen einer Aktion zu einem Kurzbefehl oder einer persönlichen Automation nach „Up Next“."
           }
         }
       }
@@ -6223,6 +6806,27 @@
         }
       }
     },
+    "Use this when you want fresh episodes waiting after your morning alarm." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze dies, wenn nach deinem Morgenwecker neue Episoden bereitstehen sollen."
+          }
+        }
+      }
+    },
+    "Useful Outputs" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nützliche Ausgaben"
+          }
+        }
+      }
+    },
     "Username" : {
       "localizations" : {
         "de" : {
@@ -6293,6 +6897,16 @@
         }
       }
     },
+    "Week" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Woche"
+          }
+        }
+      }
+    },
     "Weekday" : {
       "localizations" : {
         "de" : {
@@ -6332,6 +6946,9 @@
           }
         }
       }
+    },
+    "When" : {
+
     },
     "When an episode finishes, continuous playback can automatically start the next item from Up Next." : {
       "localizations" : {
@@ -6414,6 +7031,9 @@
         }
       }
     },
+    "White" : {
+
+    },
     "Will be skipped" : {
       "localizations" : {
         "de" : {
@@ -6430,6 +7050,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y-Achse: Hörzeit pro %@."
+          }
+        }
+      }
+    },
+    "Year" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jahr"
           }
         }
       }
