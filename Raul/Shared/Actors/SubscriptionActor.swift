@@ -116,6 +116,7 @@ actor SubscriptionActor:NSObject{
             }
             
         }
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
     }
     
     func subscribe(all newPodcasts: [PodcastFeed]) async {
@@ -142,6 +143,13 @@ actor SubscriptionActor:NSObject{
                let existingPodcast = existingPodcasts.first {
                 // Already exists, maybe update some basic properties from feedData if needed
                 existingPodcast.title = podcastFeed.title ?? existingPodcast.title
+                let metadata = existingPodcast.metaData ?? PodcastMetaData()
+                if existingPodcast.metaData == nil {
+                    modelContext.insert(metadata)
+                    existingPodcast.metaData = metadata
+                }
+                metadata.isSubscribed = true
+                metadata.subscriptionDate = Date()
                 // existingPodcast.message = nil
                 
                 
@@ -162,6 +170,7 @@ actor SubscriptionActor:NSObject{
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
         modelContext.saveIfNeeded()
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         
         do{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
@@ -171,6 +180,7 @@ actor SubscriptionActor:NSObject{
                     _ = try await worker.updatePodcast(feed, force: true, silent: true)
                 }
             }
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         }catch{
             print("could not refresh podcasts")
         }
@@ -199,6 +209,16 @@ actor SubscriptionActor:NSObject{
 
                 guard let survivor = sortedGroup.first else { continue }
                 let duplicates = sortedGroup.dropFirst()
+                let shouldRemainSubscribed = sortedGroup.contains { $0.metaData?.isSubscribed != false }
+                if shouldRemainSubscribed {
+                    let metaData = survivor.metaData ?? PodcastMetaData()
+                    if survivor.metaData == nil {
+                        modelContext.insert(metaData)
+                        survivor.metaData = metaData
+                    }
+                    metaData.isSubscribed = true
+                    metaData.subscriptionDate = metaData.subscriptionDate ?? Date()
+                }
 
                 // 4. Delete the duplicates
                 for duplicate in duplicates {
@@ -214,6 +234,7 @@ actor SubscriptionActor:NSObject{
 
             // 5. Save context
             modelContext.saveIfNeeded()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
             print("Duplicate cleanup complete. Deletions saved.")
         } catch {
             print("Error during duplicate cleanup: \(error)")
@@ -228,6 +249,10 @@ actor SubscriptionActor:NSObject{
                 modelContext.delete(podcast)
             }
             try modelContext.save()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(
+                modelContainer: modelContainer,
+                allowEmpty: true
+            )
         } catch {
             print("Failed to delete all podcasts: \(error)")
         }

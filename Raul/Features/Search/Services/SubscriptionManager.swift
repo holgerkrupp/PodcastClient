@@ -134,6 +134,7 @@ actor SubscriptionManager:NSObject{
                 print(error)
             }
         }
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
     }
 
     func addToLibrary(
@@ -170,6 +171,10 @@ actor SubscriptionManager:NSObject{
         }
 
         modelContext.saveIfNeeded()
+        await SubscriptionManifestSync.publishCurrentSubscriptions(
+            modelContainer: modelContainer,
+            allowEmpty: subscribe == false
+        )
 
         if let progress {
             await progress(
@@ -197,6 +202,10 @@ actor SubscriptionManager:NSObject{
 
                 await progress(SubscriptionProgressUpdate(update.fractionCompleted, message))
             }
+            await SubscriptionManifestSync.publishCurrentSubscriptions(
+                modelContainer: modelContainer,
+                allowEmpty: subscribe == false
+            )
         }
 
         if subscribe == false {
@@ -204,6 +213,10 @@ actor SubscriptionManager:NSObject{
             metadata.isSubscribed = false
             metadata.subscriptionDate = nil
             modelContext.saveIfNeeded()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(
+                modelContainer: modelContainer,
+                allowEmpty: true
+            )
         }
 
         return podcast.persistentModelID
@@ -328,8 +341,9 @@ actor SubscriptionManager:NSObject{
                let existingPodcast = existingPodcasts.first, let existinURL = existingPodcast.feed {
                 // Already exists, maybe update some basic properties from feedData if needed
                 existingPodcast.title = podcastFeed.title ?? existingPodcast.title
-                existingPodcast.metaData?.isSubscribed = true
-                existingPodcast.metaData?.subscriptionDate = Date()
+                let metadata = ensureMetadata(for: existingPodcast)
+                metadata.isSubscribed = true
+                metadata.subscriptionDate = Date()
                 // existingPodcast.message = nil
                 
                 newPodcastFeeds.insert(existinURL)
@@ -349,6 +363,7 @@ actor SubscriptionManager:NSObject{
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
         modelContext.saveIfNeeded()
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         
         do{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
@@ -366,6 +381,7 @@ actor SubscriptionManager:NSObject{
             if let progress {
                 await progress(SubscriptionProgressUpdate(1.0, "Subscription complete"))
             }
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         }catch{
             print("could not refresh podcasts")
         }
@@ -379,6 +395,10 @@ actor SubscriptionManager:NSObject{
                 modelContext.delete(podcast)
             }
             try modelContext.save()
+            await SubscriptionManifestSync.publishCurrentSubscriptions(
+                modelContainer: modelContainer,
+                allowEmpty: true
+            )
         } catch {
             print("Failed to delete all podcasts: \(error)")
         }

@@ -53,6 +53,67 @@ actor PodcastSettingsModelActor {
         defaults.set(true, forKey: Self.includeArchivedEpisodesMigrationKey)
     }
 
+    private func defaultQueueID() -> UUID {
+        let defaultQueueTitle = Playlist.defaultQueueTitle
+        let descriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.title == defaultQueueTitle }
+        )
+
+        if let playlist = try? modelContext.fetch(descriptor).first {
+            var changed = false
+            if playlist.deleteable {
+                playlist.deleteable = false
+                changed = true
+            }
+            if playlist.hidden {
+                playlist.hidden = false
+                changed = true
+            }
+            if playlist.kind != .manual {
+                playlist.kind = .manual
+                changed = true
+            }
+            if playlist.sortIndex != 0 {
+                playlist.sortIndex = 0
+                changed = true
+            }
+            if playlist.symbolName.isEmpty || playlist.symbolName == Playlist.defaultManualSymbolName {
+                playlist.symbolName = Playlist.defaultQueueSymbolName
+                changed = true
+            }
+            if playlist.smartFilter != nil {
+                playlist.smartFilter = nil
+                changed = true
+            }
+            if changed {
+                modelContext.saveIfNeeded()
+            }
+            return playlist.id
+        }
+
+        let defaultQueueDisplayName = Playlist.defaultQueueDisplayName
+        let legacyDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.title == defaultQueueDisplayName }
+        )
+
+        if let legacyPlaylist = try? modelContext.fetch(legacyDescriptor).first {
+            legacyPlaylist.title = Playlist.defaultQueueTitle
+            legacyPlaylist.deleteable = false
+            legacyPlaylist.hidden = false
+            legacyPlaylist.kind = .manual
+            legacyPlaylist.sortIndex = 0
+            legacyPlaylist.symbolName = Playlist.defaultQueueSymbolName
+            legacyPlaylist.smartFilter = nil
+            modelContext.saveIfNeeded()
+            return legacyPlaylist.id
+        }
+
+        let playlist = Playlist()
+        modelContext.insert(playlist)
+        modelContext.saveIfNeeded()
+        return playlist.id
+    }
+
     func ensureStandardSettingsExists() async {
         _ = await standardSettings()
     }
@@ -60,7 +121,7 @@ actor PodcastSettingsModelActor {
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
     func standardSettings() async -> PodcastSettings {
         migrateAutoDownloadIncludeArchivedSettingIfNeeded()
-        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
+        let defaultPlaylistID = defaultQueueID()
         let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
         var descriptor = FetchDescriptor<PodcastSettings>(
             predicate: #Predicate { $0.title == defaultSettingsTitle }
@@ -68,14 +129,14 @@ actor PodcastSettingsModelActor {
         descriptor.fetchLimit = 1
         if let result = try? modelContext.fetch(descriptor).first {
             if result.defaultPlaylistID == nil {
-                result.defaultPlaylistID = defaultPlaylist.id
+                result.defaultPlaylistID = defaultPlaylistID
                 modelContext.saveIfNeeded()
             }
             return result
         } else {
             let newDefaultSettings = PodcastSettings()
             newDefaultSettings.title = defaultSettingsTitle
-            newDefaultSettings.defaultPlaylistID = defaultPlaylist.id
+            newDefaultSettings.defaultPlaylistID = defaultPlaylistID
             modelContext.insert(newDefaultSettings)
             modelContext.saveIfNeeded()
             return newDefaultSettings
@@ -413,10 +474,10 @@ actor PodcastSettingsModelActor {
 
         var didMutateSettings = false
 
-        let ensuredDefaultQueue = Playlist.ensureDefaultQueue(in: modelContext)
-        var resolvedGlobalPlaylistID = globalSettings.defaultPlaylistID ?? ensuredDefaultQueue.id
+        let ensuredDefaultQueueID = defaultQueueID()
+        var resolvedGlobalPlaylistID = globalSettings.defaultPlaylistID ?? ensuredDefaultQueueID
         if manualPlaylistExists(id: resolvedGlobalPlaylistID) == false {
-            resolvedGlobalPlaylistID = ensuredDefaultQueue.id
+            resolvedGlobalPlaylistID = ensuredDefaultQueueID
             await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.absoluteString) action=fallback-default-queue")
         }
         if globalSettings.defaultPlaylistID != resolvedGlobalPlaylistID {

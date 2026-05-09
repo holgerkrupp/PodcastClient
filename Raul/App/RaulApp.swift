@@ -44,6 +44,11 @@ struct RaulApp: App {
                         CrashBreadcrumbs.shared.record("root_view_on_appear")
                         let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
                         Task {
+                            await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
+                                modelContainer: modelContainerManager.container
+                            )
+                        }
+                        Task {
                             await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
                         }
                         Task {
