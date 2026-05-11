@@ -212,6 +212,15 @@ struct EpisodeDetailView: View {
                             .buttonStyle(.glass(.clear))
                         }
                         Spacer()
+#if DEBUG
+                        NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
+                            Image(systemName: "ladybug")
+                                .imageScale(.small)
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .accessibilityLabel("Episode debug metadata")
+                        Spacer()
+#endif
                         if let url = episode.deeplinks?.first ?? episode.link {
                             ShareLink(item: url) {
                                 Label("Share", systemImage: "square.and.arrow.up")

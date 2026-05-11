@@ -104,8 +104,12 @@ struct ImportExportView: View {
                 ) { result in
                     switch result {
                     case .success(let file):
+                        let modelContainer = context.container
+                        let fileURL = file.absoluteURL
                         Task {
-                            let imported = await SubscriptionManager(modelContainer: context.container).read(file: file.absoluteURL) ?? []
+                            let imported = await Task.detached(priority: .utility) {
+                                await SubscriptionManager(modelContainer: modelContainer).read(file: fileURL) ?? []
+                            }.value
                             await MainActor.run {
                                 importErrorMessage = nil
                                 newPodcasts = imported
@@ -478,8 +482,11 @@ struct ImportExportView: View {
 
     private func subscribePendingPodcasts() {
         let toSubscribe = pendingPodcasts
+        let modelContainer = context.container
         Task {
-            await SubscriptionManager(modelContainer: context.container).subscribe(all: toSubscribe)
+            await Task.detached(priority: .utility) {
+                await SubscriptionManager(modelContainer: modelContainer).subscribe(all: toSubscribe)
+            }.value
         }
     }
 
@@ -494,8 +501,11 @@ struct ImportExportView: View {
         }
 
         do {
-            let manager = SubscriptionManager(modelContainer: context.container)
-            let opml = await manager.generateOPML()
+            let modelContainer = context.container
+            let opml = await Task.detached(priority: .utility) {
+                let manager = SubscriptionManager(modelContainer: modelContainer)
+                return await manager.generateOPML()
+            }.value
             let generatedFile = try saveToTemporaryFile(content: opml, fileName: "Podcasts.opml")
             await MainActor.run {
                 fileURL = generatedFile

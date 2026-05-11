@@ -125,6 +125,15 @@ struct PodcastDetailView: View {
                                 .buttonStyle(.glass(.clear))
                                 .accessibilityLabel("Open podcast website")
                             }
+#if DEBUG
+                            NavigationLink(destination: PodcastDebugMetadataView(podcast: podcast)) {
+                                Image(systemName: "ladybug")
+                                    .imageScale(.small)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Podcast debug metadata")
+#endif
                         }
 
                         let metadataChips = PodcastDetailMetadataChipsView(podcast: podcast)

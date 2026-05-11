@@ -230,6 +230,7 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
+        episode.metaData?.isInbox = false
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
@@ -364,8 +365,10 @@ actor EpisodeActor {
         }
         
         modelContext.saveIfNeeded()
-        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-        WatchSyncCoordinator.refreshSoon()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            WatchSyncCoordinator.refreshSoon()
+        }
 
         for podcastFeed in podcastFeeds {
             await logAutoDownload("trigger/move-to-history applying-policy feed=\(podcastFeed.absoluteString)")
@@ -2127,3 +2130,4 @@ private struct JSONChapter: Decodable {
     let img: String?
     let url: String?
 }
+

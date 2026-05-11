@@ -640,11 +640,6 @@ class Player {
 
         updateChapters()
 
-        if (try? await playlistActor?.firstEpisodeURL()) != episodeURL {
-            try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
-        }
-        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
-
         guard let playback = playbackItem(for: episode) else { return }
         currentPlaybackSource = playback.source
         let item = playback.item
@@ -674,6 +669,10 @@ class Player {
         }
 
         await engine.replaceCurrentItem(with: item)
+        if (try? await playlistActor?.containsEpisodeURL(episodeURL)) != true {
+            try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
+        }
+        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
 
         BasicLogger.shared.log(
             "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
