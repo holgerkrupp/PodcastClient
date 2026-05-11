@@ -5,6 +5,7 @@ import BasicLogger
 
 struct PodcastSettingsView: View {
     static let defaultSettingsFilter = #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
+    static let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
 
     @Environment(\.modelContext) private var context
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
@@ -923,6 +924,17 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private var debugSection: some View {
         Section("Debug") {
+            NavigationLink {
+                AppDebugMetadataView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "App Debug Metadata",
+                    summary: "Refresh dates, counts, playback, settings, and storage paths",
+                    detail: "Open an app-wide diagnostics view with live SwiftData and runtime metadata.",
+                    systemImage: "ladybug"
+                )
+            }
+
             Button {
                 let didPresent = podcastYearShareCoordinator.presentDebugSheetNow(modelContext: context)
                 if didPresent == false {

@@ -44,6 +44,16 @@ struct PlayerView: View {
                                                      //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                                                     }
                                                     Spacer()
+#if DEBUG
+                                                    NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
+                                                        Image(systemName: "ladybug")
+                                                            .imageScale(.small)
+                                                    }
+                                                    .buttonStyle(.glass(.clear))
+                                                    .frame(height: 30)
+                                                    .accessibilityLabel("Episode debug metadata")
+                                                    Spacer()
+#endif
 
                                                     Button(action: {
                                                         showClipExport = true
@@ -115,8 +125,19 @@ struct PlayerView: View {
                                     }
                                    
                                 } else {
-                                    PlayerControllView()
-                                        .padding()
+                                    VStack(spacing: 0) {
+                                        PlayerControllView()
+                                            .padding()
+#if DEBUG
+                                        NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
+                                            Image(systemName: "ladybug")
+                                                .imageScale(.small)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Episode debug metadata")
+#endif
+                                    }
                                 }
                             }
                             

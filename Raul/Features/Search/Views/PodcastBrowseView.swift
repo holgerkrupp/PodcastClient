@@ -78,7 +78,11 @@ final class PodcastBrowseViewModel: ObservableObject {
         }
 
         do {
-            _ = try await SubscriptionManager(modelContainer: modelContainer).addToLibrary(podcastFeed, subscribe: true)
+            let modelContainer = modelContainer
+            let podcastFeed = podcastFeed
+            _ = try await Task.detached(priority: .utility) {
+                try await SubscriptionManager(modelContainer: modelContainer).addToLibrary(podcastFeed, subscribe: true)
+            }.value
             podcastFeed.existing = true
             isSubscribed = true
             errorMessage = nil

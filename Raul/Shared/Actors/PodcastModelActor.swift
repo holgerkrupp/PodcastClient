@@ -141,6 +141,23 @@ actor PodcastModelActor {
         episode.refreshFeedExternalFiles(from: episodeData)
         modelContext.saveIfNeeded()
     }
+
+    private func suppressFromInbox(
+        _ episode: Episode,
+        reason: EpisodeSystemSuppressionReason
+    ) {
+        if episode.metaData == nil {
+            let metadata = EpisodeMetaData()
+            metadata.episode = episode
+            episode.metaData = metadata
+        }
+
+        episode.metaData?.isArchived = false
+        episode.metaData?.isInbox = false
+        episode.metaData?.status = nil
+        episode.metaData?.archivedAt = nil
+        episode.metaData?.systemSuppressionReason = reason
+    }
     
 
     
@@ -579,29 +596,25 @@ actor PodcastModelActor {
 
                 print("newly created")
                 modelContext.insert(episode)
-                modelContext.saveIfNeeded()
 
                 let episodeActor = EpisodeActor(modelContainer: modelContainer)
                 if silent == false {
                     print("NOT SILENT")
                     if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7) {
                         print("episode is old")
-                        await episodeActor.suppressEpisodeFromInbox(
-                            episode.url,
-                            reason: .backCatalogImport
-                        )
+                        suppressFromInbox(episode, reason: .backCatalogImport)
+                        modelContext.saveIfNeeded()
                     } else {
                         print("episode is new")
                         if let episodeURL = episode.url {
+                            modelContext.saveIfNeeded()
                             await episodeActor.processAfterCreation(episodeURL: episodeURL)
                         }
                     }
                 } else {
                     print("SILENT")
-                    await episodeActor.suppressEpisodeFromInbox(
-                        episode.url,
-                        reason: .backCatalogImport
-                    )
+                    suppressFromInbox(episode, reason: .backCatalogImport)
+                    modelContext.saveIfNeeded()
                 }
             }
 
