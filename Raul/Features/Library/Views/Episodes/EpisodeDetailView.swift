@@ -108,6 +108,10 @@ struct EpisodeDetailView: View {
                             }
                         }
                     }
+                    PodcastValueSplitView(
+                        optionalTags: episode.optionalTags,
+                        funding: episode.funding.isEmpty ? episode.podcast?.funding ?? [] : episode.funding
+                    )
                     GlassEffectContainer(spacing: 20.0) {
                         HStack{
                             NavigationLink(destination: BookmarkListView(episode: episode)) {
@@ -237,7 +241,7 @@ struct EpisodeDetailView: View {
                         .padding()
                     PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
                         .padding()
-                    PodcastNamespaceMetadataView(optionalTags: episode.optionalTags)
+                    PodcastNamespaceMetadataView(optionalTags: episode.optionalTags, hidesRenderableValueBlocks: true)
                         .padding()
                     
                     RichText(html: episode.content ?? episode.desc ?? "")
@@ -245,7 +249,7 @@ struct EpisodeDetailView: View {
                         .backgroundColor(.transparent)
                         .padding()
                     
-                    if episode.preferredChapters.count > 1 {
+                    if episode.hasDisplayableChaptersOrSoundbites {
                         ChapterListView(episode: episode)
                     }
                 }

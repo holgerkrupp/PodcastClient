@@ -11,6 +11,7 @@ class Player {
     private enum PlaybackSource {
         case local
         case remote
+        case liveRemote
     }
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
     private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
@@ -460,6 +461,7 @@ class Player {
 
     func saveCurrentPlaybackState(force: Bool = false) async {
         guard let currentEpisodeURL else { return }
+        guard currentPlaybackSource != .liveRemote else { return }
 
         let currentPlayPosition = sanitizedPosition(playPosition)
         let currentChapterProgress = chapterProgress
@@ -486,6 +488,7 @@ class Player {
 
     func captureCurrentPlaybackStateFromEngine(force: Bool = true) async {
         guard currentEpisodeURL != nil else { return }
+        guard currentPlaybackSource != .liveRemote else { return }
 
         playPosition = sanitizedPosition(await engine.currentTime())
         if currentEpisode?.chapters?.isEmpty == false {
@@ -696,6 +699,48 @@ class Player {
             play()
         }
     }
+
+    func playLiveStream(
+        url: URL,
+        title: String,
+        podcastTitle: String,
+        artworkURL: URL?,
+        link: URL?
+    ) async {
+        if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
+            await unloadEpisode(episodeURL: currentEpisodeURL)
+        } else {
+            stopPlaybackUpdates()
+        }
+
+        let liveEpisode = Episode(
+            guid: url.absoluteString,
+            title: title,
+            publishDate: nil,
+            url: url,
+            podcast: nil,
+            duration: nil,
+            author: podcastTitle
+        )
+        liveEpisode.imageURL = artworkURL
+        liveEpisode.link = link
+
+        currentEpisode = liveEpisode
+        currentEpisodeURL = url
+        currentPlaybackSource = .liveRemote
+        currentChapter = nil
+        chapterProgress = nil
+        nextChapter = nil
+        chapters = []
+        playPosition = 0
+        lastProgressSaveDate = .distantPast
+
+        await engine.replaceCurrentItem(with: AVPlayerItem(url: url))
+        setupStaticNowPlayingInfo()
+        await updateNowPlayingCover()
+        play()
+        isPlayerSheetPresented = true
+    }
     
     var coverImage: some View{
         if let playing = currentEpisode{
@@ -787,13 +832,13 @@ class Player {
             await engine.setRate(rate)
             
             // New session tracking integration: start or update the play session
-            if let currentEpisodeURL {
+            if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
                 await playSessionTracker.startOrUpdateSession(episodeURL: currentEpisodeURL, position: position, rate: rate, appVersion: appVersion)
             }
         }
 
        
-        if let episodeURL =  currentEpisode?.url{
+        if let episodeURL =  currentEpisode?.url, currentPlaybackSource != .liveRemote {
             Task {
                 await self.episodeActor?.addplaybackStartTimes(episodeURL: episodeURL, date: Date())
             }
@@ -812,7 +857,7 @@ class Player {
             await captureCurrentPlaybackStateFromEngine(force: true)
 
             // New session tracking integration: pause the play session
-            if currentEpisode != nil {
+            if currentEpisode != nil, currentPlaybackSource != .liveRemote {
                 await playSessionTracker.pauseSession(at: playPosition)
             }
         }

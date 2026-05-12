@@ -53,11 +53,28 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
     }
 }
 
+private enum ChapterListTab: String, CaseIterable, Identifiable {
+    case chapters
+    case soundbites
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chapters:
+            "Chapters"
+        case .soundbites:
+            "Soundbites"
+        }
+    }
+}
+
 struct ChapterListView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var player = Player.shared
 
     @Bindable var episode: Episode
+    @State private var selectedTab: ChapterListTab = .chapters
 
 #if DEBUG
     @AppStorage("ChapterListView.debugChapterSource") private var debugChapterSourceRaw = ChapterDisplaySelection.automatic.rawValue
@@ -78,11 +95,32 @@ struct ChapterListView: View {
             })
     }
 
+    private var sortedSoundbites: [Marker] {
+        episode.soundbitesForDisplay
+    }
+
+    private var displayedMarkers: [Marker] {
+        switch selectedTab {
+        case .chapters:
+            sortedChapters
+        case .soundbites:
+            sortedSoundbites
+        }
+    }
+
+    private var hasSoundbites: Bool {
+        sortedSoundbites.isEmpty == false
+    }
+
     private var currentDisplayedChapter: Marker? {
-        sortedChapters.last(where: { ($0.start ?? 0) <= player.playPosition })
+        displayedMarkers.last(where: { ($0.start ?? 0) <= player.playPosition })
     }
 
     private var emptyStateText: String {
+        if selectedTab == .soundbites {
+            return "No soundbites to display"
+        }
+
         if selectedChapterSource == .automatic {
             return "No chapters to display"
         } else {
@@ -105,13 +143,26 @@ struct ChapterListView: View {
                 debugControls
 #endif
 
-                if sortedChapters.isEmpty {
+                if hasSoundbites {
+                    Picker("Marker type", selection: $selectedTab) {
+                        ForEach(ChapterListTab.allCases) { tab in
+                            Text(tab.title)
+                                .tag(tab)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                    .accessibilityLabel("Chapter list tab")
+                }
+
+                if displayedMarkers.isEmpty {
                     Text(emptyStateText)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding()
                 } else {
-                    ForEach(sortedChapters, id: \.id) { chapter in
+                    ForEach(displayedMarkers, id: \.id) { chapter in
                         let isCurrentChapter = chapter.id == currentDisplayedChapter?.id
                         let backgroundProgress = chapterBackgroundProgress(for: chapter)
 
@@ -123,9 +174,14 @@ struct ChapterListView: View {
                                 .animation(reduceMotion ? nil : .easeInOut, value: backgroundProgress)
 
                             VStack {
-                                ChapterRowView(chapter: chapter, isCurrentChapter: isCurrentChapter)
+                                ChapterRowView(
+                                    chapter: chapter,
+                                    isCurrentChapter: isCurrentChapter,
+                                    markerLabel: selectedTab == .soundbites ? "soundbite" : "chapter",
+                                    showsPlayToggle: selectedTab != .soundbites
+                                )
                                     .padding()
-                                if chapter.id != sortedChapters.last?.id {
+                                if chapter.id != displayedMarkers.last?.id {
                                     Divider()
                                 }
                             }
@@ -133,13 +189,18 @@ struct ChapterListView: View {
                     }
                 }
 
-                if let chapterInfo = sortedChapters.first?.type.desc {
+                if let chapterInfo = displayedMarkers.first?.type.desc {
                     Spacer()
                     Text(chapterInfo)
                         .font(.caption)
                         .foregroundStyle(.primary)
                         .padding()
                 }
+            }
+        }
+        .onAppear {
+            if sortedChapters.isEmpty, hasSoundbites {
+                selectedTab = .soundbites
             }
         }
     }
@@ -188,11 +249,11 @@ struct ChapterListView: View {
             return end
         }
 
-        guard let chapterIndex = sortedChapters.firstIndex(where: { $0.id == chapter.id }) else {
+        guard let chapterIndex = displayedMarkers.firstIndex(where: { $0.id == chapter.id }) else {
             return episode.duration ?? chapter.start ?? 0
         }
 
-        if let nextChapter = sortedChapters.dropFirst(chapterIndex + 1).first,
+        if let nextChapter = displayedMarkers.dropFirst(chapterIndex + 1).first,
            let nextStart = nextChapter.start {
             return nextStart
         }

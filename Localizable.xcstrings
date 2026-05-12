@@ -67,6 +67,16 @@
         }
       }
     },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
     "%@ complete" : {
       "localizations" : {
         "de" : {
@@ -504,6 +514,9 @@
           }
         }
       }
+    },
+    "Alternative Feeds" : {
+
     },
     "App Controls" : {
       "localizations" : {
@@ -945,6 +958,7 @@
 
     },
     "Chapter %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -973,6 +987,9 @@
           }
         }
       }
+    },
+    "Chapter list tab" : {
+
     },
     "Chapter Rules" : {
       "localizations" : {
@@ -1590,7 +1607,11 @@
         }
       }
     },
+    "Double tap to jump playback to this %@" : {
+
+    },
     "Double tap to jump playback to this chapter" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2517,7 +2538,18 @@
     "July" : {
 
     },
+    "Jump to %@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Jump to %1$@ %2$@"
+          }
+        }
+      }
+    },
     "Jump to chapter %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2782,6 +2814,12 @@
         }
       }
     },
+    "Live notification" : {
+
+    },
+    "Live Now: %@" : {
+
+    },
     "Loading categories..." : {
       "localizations" : {
         "de" : {
@@ -2876,6 +2914,9 @@
       }
     },
     "March" : {
+
+    },
+    "Marker type" : {
 
     },
     "Marks all episodes in this podcast as archived" : {
@@ -3571,6 +3612,9 @@
         }
       }
     },
+    "Notify Me: %@" : {
+
+    },
     "November" : {
 
     },
@@ -3747,6 +3791,9 @@
         }
       }
     },
+    "Open Live Page" : {
+
+    },
     "Open Notification Settings" : {
       "localizations" : {
         "de" : {
@@ -3776,6 +3823,9 @@
           }
         }
       }
+    },
+    "Open podcast trailers" : {
+
     },
     "Open podcast website" : {
       "localizations" : {
@@ -4108,6 +4158,16 @@
         }
       }
     },
+    "Play %@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Play %1$@ %2$@"
+          }
+        }
+      }
+    },
     "Play caption" : {
       "localizations" : {
         "de" : {
@@ -4139,6 +4199,7 @@
       }
     },
     "Play chapter %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4188,6 +4249,9 @@
         }
       }
     },
+    "Play Live Stream" : {
+
+    },
     "Play Next" : {
       "localizations" : {
         "de" : {
@@ -4207,6 +4271,9 @@
           }
         }
       }
+    },
+    "Play podcast trailer" : {
+
     },
     "Play the next episode from your Up Next queue." : {
       "localizations" : {
@@ -6075,6 +6142,9 @@
         }
       }
     },
+    "Subscribe to Alternative Feed" : {
+
+    },
     "Subscribed" : {
       "localizations" : {
         "de" : {
@@ -6105,6 +6175,9 @@
         }
       }
     },
+    "Support" : {
+
+    },
     "Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open." : {
       "localizations" : {
         "de" : {
@@ -6124,6 +6197,9 @@
           }
         }
       }
+    },
+    "Switch Alternative Feed" : {
+
     },
     "The currently playing episode is kept pinned at the top while playback is active." : {
       "localizations" : {
@@ -6440,6 +6516,9 @@
           }
         }
       }
+    },
+    "Trailers" : {
+
     },
     "Transcribe" : {
       "localizations" : {

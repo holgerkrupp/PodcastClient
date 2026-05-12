@@ -75,6 +75,22 @@ struct PersonInfo: Codable, Hashable, Identifiable {
     var img: URL?
 }
 
+struct PodcastAlternativeFeed: Codable, Hashable, Identifiable, Sendable {
+    var id: URL { url }
+
+    var url: URL
+    var title: String?
+    var type: String?
+
+    var displayTitle: String {
+        if let title, title.isEmpty == false {
+            return title
+        }
+
+        return url.absoluteString.removingPercentEncoding ?? url.absoluteString
+    }
+}
+
 @Model
 final class Podcast: Identifiable {
     var title: String = "Loading..."
@@ -95,6 +111,7 @@ final class Podcast: Identifiable {
     var funding: [FundingInfo] = [] // See also: Episode.funding
     var social: [SocialInfo] = []
     var people: [PersonInfo] = []
+    var alternativeFeeds: [PodcastAlternativeFeed] = []
     var optionalTags: PodcastNamespaceOptionalTags?
     
     @Transient var message: String?
@@ -121,10 +138,16 @@ final class Podcast: Identifiable {
             self.desc = feedData.description
             self.author = feedData.artist
             self.imageURL = feedData.artworkURL
+            self.link = feedData.link
+            self.copyright = feedData.copyright
+            self.funding = feedData.funding
+            self.social = feedData.social
+            self.people = feedData.people
+            self.alternativeFeeds = feedData.alternativeFeeds
+            self.optionalTags = feedData.optionalTags
             self.metaData = PodcastMetaData()
             self.settings = PodcastSettings()
-            // The other fields (like episodes, funding, etc.) can be populated later
-            // during the network update.
+            // Episodes are populated later during the network update.
         }
     
     var isSubscribed: Bool {

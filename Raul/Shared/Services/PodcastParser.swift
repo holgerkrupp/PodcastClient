@@ -44,10 +44,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     // RFC 5005 paged feed support URLs
     var selfFeedURL: String?
+    var selfFeedTitle: String?
     var nextPageURL: String?
     var prevPageURL: String?
     var firstPageURL: String?
     var lastPageURL: String?
+    var alternativeFeedArray = [[String: String]]()
     
     var podcastFundingArray = [[String: String]]()
     var episodeFundingArray = [[String: String]]()
@@ -139,10 +141,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
         externalFilesArray.removeAll()
         
         selfFeedURL = nil
+        selfFeedTitle = nil
         nextPageURL = nil
         prevPageURL = nil
         firstPageURL = nil
         lastPageURL = nil
+        alternativeFeedArray.removeAll()
         
         podcastFundingArray.removeAll()
         episodeFundingArray.removeAll()
@@ -168,11 +172,25 @@ class PodcastParser:NSObject, XMLParserDelegate{
         currentElement = qName ?? elementName
         
         // RFC 5005 paged feed support handling of atom:link rels
-        if currentElement == "atom:link" {
+        if currentElement == "atom:link" || currentElement == "link" {
             if let rel = attributeDict["rel"], let href = attributeDict["href"] {
                 switch rel {
                 case "self":
-                    selfFeedURL = href
+                    if isHeader {
+                        selfFeedURL = href
+                        selfFeedTitle = attributeDict["title"]
+                    }
+                case "alternate":
+                    if isHeader {
+                        var alternativeFeed = ["url": href]
+                        if let title = attributeDict["title"] {
+                            alternativeFeed["title"] = title
+                        }
+                        if let type = attributeDict["type"] {
+                            alternativeFeed["type"] = type
+                        }
+                        alternativeFeedArray.append(alternativeFeed)
+                    }
                 case "next":
                     nextPageURL = href
                 case "prev":
@@ -459,6 +477,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
         if let selfFeedURL {
             podcastDictArr.updateValue(selfFeedURL, forKey: "selfURL")
         }
+        if let selfFeedTitle {
+            podcastDictArr.updateValue(selfFeedTitle, forKey: "selfTitle")
+        }
+        if alternativeFeedArray.isEmpty == false {
+            podcastDictArr.updateValue(alternativeFeedArray, forKey: "alternativeFeeds")
+        }
         if !podcastFundingArray.isEmpty {
             podcastDictArr.updateValue(podcastFundingArray, forKey: "funding")
         }
@@ -533,6 +557,12 @@ extension PodcastParser {
             parsedFeed["episodes"] = parser.episodesArray
             if let selfFeedURL = parser.selfFeedURL {
                 parsedFeed["selfURL"] = selfFeedURL
+            }
+            if let selfFeedTitle = parser.selfFeedTitle {
+                parsedFeed["selfTitle"] = selfFeedTitle
+            }
+            if parser.alternativeFeedArray.isEmpty == false {
+                parsedFeed["alternativeFeeds"] = parser.alternativeFeedArray
             }
             if !parser.podcastFundingArray.isEmpty {
                 parsedFeed["funding"] = parser.podcastFundingArray

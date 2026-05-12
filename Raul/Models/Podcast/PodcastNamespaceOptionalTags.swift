@@ -19,6 +19,55 @@ struct NamespaceNode: Codable, Hashable {
     }
 }
 
+struct PodcastTrailer: Hashable, Identifiable {
+    let id: String
+    let title: String
+    let url: URL
+    let publishDate: Date?
+    let season: String?
+    let length: Int?
+    let type: String?
+
+    var displayTitle: String {
+        if let season {
+            return "Season \(season): \(title)"
+        }
+
+        return title
+    }
+
+    init?(node: NamespaceNode, baseURL: URL?) {
+        guard Self.localName(from: node.name) == "trailer",
+              let urlString = Self.trimmed(node.attributes["url"]),
+              let url = URL(string: urlString, relativeTo: baseURL)?.absoluteURL
+        else {
+            return nil
+        }
+
+        let title = Self.trimmed(node.value) ?? "Podcast Trailer"
+        let season = Self.trimmed(node.attributes["season"])
+        self.id = [season, url.absoluteString].compactMap { $0 }.joined(separator: "-")
+        self.title = title
+        self.url = url
+        self.publishDate = Self.trimmed(node.attributes["pubdate"]).flatMap(Date.dateFromRFC1123)
+        self.season = season
+        self.length = Self.trimmed(node.attributes["length"]).flatMap(Int.init)
+        self.type = Self.trimmed(node.attributes["type"])
+    }
+
+    private static func trimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    private static func localName(from qualifiedName: String) -> String {
+        if qualifiedName.hasPrefix("podcast:") {
+            return String(qualifiedName.dropFirst("podcast:".count))
+        }
+        return qualifiedName
+    }
+}
+
 struct PodcastNamespaceOptionalTags: Codable, Hashable {
     var alternateEnclosure: [NamespaceNode]?
     var block: [NamespaceNode]?
@@ -159,6 +208,23 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable {
         default:
             break
         }
+    }
+
+    func podcastTrailers(baseURL: URL?) -> [PodcastTrailer] {
+        (trailer ?? [])
+            .compactMap { PodcastTrailer(node: $0, baseURL: baseURL) }
+            .sorted { lhs, rhs in
+                switch (lhs.publishDate, rhs.publishDate) {
+                case let (lhsDate?, rhsDate?):
+                    return lhsDate > rhsDate
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                case (.none, .none):
+                    return lhs.displayTitle.localizedCaseInsensitiveCompare(rhs.displayTitle) == .orderedAscending
+                }
+            }
     }
 
     private static func localName(from qualifiedName: String) -> String {

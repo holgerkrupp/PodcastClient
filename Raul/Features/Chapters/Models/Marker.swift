@@ -20,6 +20,7 @@ enum MarkerType: String, Codable, Comparable, Sendable{
     case mp3
     case ai
     case bookmark
+    case soundbite
     
     var desc:String{
         
@@ -38,6 +39,8 @@ enum MarkerType: String, Codable, Comparable, Sendable{
             ""
         case .bookmark:
             "Bookmarks can be created when listening to an episode."
+        case .soundbite:
+            "Soundbites have been extracted from the feed following the Podcast Namespace soundbite specification."
 
         }
         

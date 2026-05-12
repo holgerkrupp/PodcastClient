@@ -243,6 +243,28 @@ class EpisodeDownloadStatus{
         chaptersForDisplay()
     }
 
+    @Transient var soundbitesForDisplay: [Marker] {
+        let storedSoundbites = (chapters ?? [])
+            .filter { $0.type == .soundbite }
+            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+
+        if storedSoundbites.isEmpty == false {
+            return storedSoundbites
+        }
+
+        return (optionalTags?.soundbite ?? [])
+            .compactMap { node -> Marker? in
+                guard let marker = soundbiteMarker(from: node) else { return nil }
+                marker.episode = self
+                return marker
+            }
+            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+
+    @Transient var hasDisplayableChaptersOrSoundbites: Bool {
+        preferredChapters.count > 1 || soundbitesForDisplay.isEmpty == false
+    }
+
     init(
         guid:String? = nil,
         title: String,
@@ -392,6 +414,8 @@ class EpisodeDownloadStatus{
         } else {
             self.optionalTags = nil
         }
+
+        refreshSoundbitesFromOptionalTags()
         
         if self.metaData == nil {
             let metadata = EpisodeMetaData()
@@ -428,7 +452,67 @@ class EpisodeDownloadStatus{
         let updatedOptionalTags = (parsedOptionalTags?.isEmpty == false) ? parsedOptionalTags : nil
         guard updatedOptionalTags != optionalTags else { return }
         optionalTags = updatedOptionalTags
+        refreshSoundbitesFromOptionalTags()
         refresh.toggle()
+    }
+
+    private func refreshSoundbitesFromOptionalTags() {
+        if chapters == nil {
+            chapters = []
+        }
+
+        chapters?.removeAll { $0.type == .soundbite }
+
+        let soundbiteMarkers = optionalTags?.soundbite?.compactMap { soundbiteMarker(from: $0) } ?? []
+        guard soundbiteMarkers.isEmpty == false else { return }
+
+        for marker in soundbiteMarkers {
+            marker.episode = self
+            chapters?.append(marker)
+        }
+
+        chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+
+    private func soundbiteMarker(from node: NamespaceNode) -> Marker? {
+        guard let start = soundbiteTimeValue(from: node, keys: ["startTime", "start"]) else {
+            return nil
+        }
+
+        let title = soundbiteTitle(from: node)
+        guard title.isEmpty == false else { return nil }
+
+        let duration = soundbiteTimeValue(from: node, keys: ["duration"])
+        let marker = Marker(start: start, title: title, type: .soundbite, duration: duration)
+        return marker
+    }
+
+    private func soundbiteTitle(from node: NamespaceNode) -> String {
+        if let title = node.attributes["title"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           title.isEmpty == false {
+            return title
+        }
+
+        return node.value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func soundbiteTimeValue(from node: NamespaceNode, keys: [String]) -> Double? {
+        for key in keys {
+            guard let rawValue = node.attributes[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  rawValue.isEmpty == false else {
+                continue
+            }
+
+            if let seconds = Double(rawValue) {
+                return seconds
+            }
+
+            if let seconds = rawValue.durationAsSeconds {
+                return seconds
+            }
+        }
+
+        return nil
     }
     
 

@@ -10,6 +10,19 @@ import Combine
 import SwiftUI
 import BasicLogger
 
+enum NotificationSchedulingError: LocalizedError {
+    case denied
+    case invalidDate
+
+    var errorDescription: String? {
+        switch self {
+        case .denied:
+            return "Notifications are disabled for Raul."
+        case .invalidDate:
+            return "The live event start time has already passed."
+        }
+    }
+}
 
 @MainActor
 class NotificationPermissionViewModel: ObservableObject {
@@ -109,6 +122,48 @@ actor NotificationManager {
                 }
             }
         }
+    }
+
+    func scheduleNotification(
+        identifier: String,
+        title: String,
+        body: String,
+        date: Date,
+        userInfo: [AnyHashable: Any] = [:]
+    ) async throws {
+        guard date > Date() else {
+            throw NotificationSchedulingError.invalidDate
+        }
+
+        let status = await getAuthorizationStatus()
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            break
+        case .notDetermined:
+            guard await requestAuthorization() else {
+                throw NotificationSchedulingError.denied
+            }
+        case .denied:
+            throw NotificationSchedulingError.denied
+        @unknown default:
+            throw NotificationSchedulingError.denied
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.userInfo = userInfo
+
+        let dateComponents = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: date
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        try await UNUserNotificationCenter.current().add(request)
     }
 }
 

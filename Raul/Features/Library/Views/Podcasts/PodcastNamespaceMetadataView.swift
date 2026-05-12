@@ -38,12 +38,276 @@ private extension NamespaceNode {
     }
 }
 
+struct PodcastValueSplitView: View {
+    let optionalTags: PodcastNamespaceOptionalTags?
+    let funding: [FundingInfo]
+
+    private var blocks: [PodcastValueBlock] {
+        PodcastValueBlock.blocks(from: optionalTags)
+    }
+
+    var body: some View {
+        if blocks.isEmpty == false {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(blocks) { block in
+                    PodcastValueBlockView(block: block, funding: funding)
+                }
+            }
+        }
+    }
+}
+
+private struct PodcastValueBlockView: View {
+    let block: PodcastValueBlock
+    let funding: [FundingInfo]
+
+    private var subtitle: String {
+        let method = [block.type, block.method]
+            .compactMap { value -> String? in
+                guard let value, value.isEmpty == false else { return nil }
+                return NamespaceMetadataMapper.humanizedTagName(from: value)
+            }
+            .joined(separator: " • ")
+
+        if let suggested = block.suggested, suggested.isEmpty == false {
+            return method.isEmpty ? "Suggested \(suggested)" : "\(method) • Suggested \(suggested)"
+        }
+
+        return method.isEmpty ? "Streaming value split" : method
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+               
+                Spacer(minLength: 8)
+                PodcastValuePaymentAction(funding: funding)
+            }
+
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            PodcastValueSegmentedBar(recipients: block.recipients)
+                .frame(height: 8)
+                .clipShape(Capsule())
+
+            FlowRows(spacing: 6) {
+                ForEach(block.recipients) { recipient in
+                    PodcastValueRecipientLegend(recipient: recipient)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct PodcastValuePaymentAction: View {
+    let funding: [FundingInfo]
+
+    var body: some View {
+        if funding.count == 1, let fund = funding.first {
+            Link(destination: fund.url) {
+                Label(fund.label, systemImage: "bolt.heart")
+                    .labelStyle(.titleAndIcon)
+            }
+            .font(.caption.weight(.medium))
+            .buttonStyle(.glass(.clear))
+        } else if funding.count > 1 {
+            Menu {
+                ForEach(funding) { fund in
+                    Link(destination: fund.url) {
+                        Label(fund.label, systemImage: "bolt.heart")
+                    }
+                }
+            } label: {
+                Label("Support", systemImage: "bolt.heart")
+            }
+            .font(.caption.weight(.medium))
+            .buttonStyle(.glass(.clear))
+        }
+    }
+}
+
+private struct PodcastValueSegmentedBar: View {
+    let recipients: [PodcastValueRecipient]
+
+    var body: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 2) {
+                ForEach(recipients) { recipient in
+                    Capsule()
+                        .fill(recipient.color)
+                        .frame(width: max(proxy.size.width * recipient.percentage, 2))
+                }
+            }
+        }
+        .background(.quaternary, in: Capsule())
+    }
+}
+
+private struct PodcastValueRecipientLegend: View {
+    let recipient: PodcastValueRecipient
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(recipient.color)
+                .frame(width: 7, height: 7)
+
+            Text(recipient.legendText)
+                .lineLimit(1)
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(.thinMaterial, in: Capsule())
+        .accessibilityLabel(recipient.accessibilityText)
+    }
+}
+
+private struct PodcastValueBlock: Identifiable {
+    let id: String
+    let type: String?
+    let method: String?
+    let suggested: String?
+    let recipients: [PodcastValueRecipient]
+
+    static func blocks(from optionalTags: PodcastNamespaceOptionalTags?) -> [PodcastValueBlock] {
+        guard let nodes = optionalTags?.value else { return [] }
+        return blocks(from: nodes)
+    }
+
+    static func blocks(from nodes: [NamespaceNode]) -> [PodcastValueBlock] {
+        nodes.enumerated().compactMap { index, node in
+            block(from: node, index: index)
+        }
+    }
+
+    static func isRenderable(_ node: NamespaceNode) -> Bool {
+        block(from: node, index: 0) != nil
+    }
+
+    private static func block(from node: NamespaceNode, index: Int) -> PodcastValueBlock? {
+        let recipientNodes = node.children.filter {
+            NamespaceMetadataMapper.localTagName(from: $0.name) == "valueRecipient"
+        }
+
+        guard recipientNodes.isEmpty == false else { return nil }
+
+        let parsedRecipients = recipientNodes.enumerated().compactMap { recipientIndex, node -> ParsedPodcastValueRecipient? in
+            let rawSplit = node.attributes["split"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let split = rawSplit.flatMap(Double.init)
+
+            if recipientNodes.count == 1, split == nil {
+                return ParsedPodcastValueRecipient(node: node, index: recipientIndex, split: 100)
+            }
+
+            guard let split, split > 0 else { return nil }
+            return ParsedPodcastValueRecipient(node: node, index: recipientIndex, split: split)
+        }
+
+        let totalSplit = parsedRecipients.reduce(0) { $0 + $1.split }
+        guard totalSplit > 0 else { return nil }
+
+        let recipients = parsedRecipients.map { parsed in
+            PodcastValueRecipient(
+                index: parsed.index,
+                name: parsed.name,
+                split: parsed.split,
+                percentage: parsed.split / totalSplit,
+                isFee: parsed.isFee
+            )
+        }
+
+        return PodcastValueBlock(
+            id: "value-\(index)",
+            type: trimmed(node.attributes["type"]),
+            method: trimmed(node.attributes["method"]),
+            suggested: trimmed(node.attributes["suggested"]),
+            recipients: recipients
+        )
+    }
+
+    private static func trimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
+private struct ParsedPodcastValueRecipient {
+    let node: NamespaceNode
+    let index: Int
+    let split: Double
+
+    var name: String {
+        let trimmed = node.attributes["name"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, trimmed.isEmpty == false else {
+            return "Recipient \(index + 1)"
+        }
+        return trimmed
+    }
+
+    var isFee: Bool {
+        switch node.attributes["fee"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "true", "yes", "1":
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+private struct PodcastValueRecipient: Identifiable {
+    let id: Int
+    let name: String
+    let split: Double
+    let percentage: Double
+    let isFee: Bool
+
+    init(index: Int, name: String, split: Double, percentage: Double, isFee: Bool) {
+        self.id = index
+        self.name = name
+        self.split = split
+        self.percentage = percentage
+        self.isFee = isFee
+    }
+
+    var color: Color {
+        let palette: [Color] = [.accentColor, .green, .orange, .pink, .cyan, .indigo, .teal]
+        return palette[id % palette.count]
+    }
+
+    var legendText: String {
+        let feeText = isFee ? " Fee" : ""
+        return "\(name)\(feeText) \(percentageText)"
+    }
+
+    var accessibilityText: String {
+        let feeText = isFee ? " fee" : ""
+        return "\(name)\(feeText), \(percentageText) of value split"
+    }
+
+    private var percentageText: String {
+        percentage.formatted(.percent.precision(.fractionLength(0...1)))
+    }
+}
+
 struct PodcastNamespaceMetadataView: View {
     let optionalTags: PodcastNamespaceOptionalTags?
+    var hidesRenderableValueBlocks: Bool = false
     @State private var showMoreMetadata: Bool = false
 
     private var section: NamespaceDisplaySection? {
-        NamespaceMetadataMapper.makeSection(from: optionalTags)
+        NamespaceMetadataMapper.makeSection(
+            from: optionalTags,
+            hidesRenderableValueBlocks: hidesRenderableValueBlocks
+        )
     }
 
     var body: some View {
@@ -337,7 +601,10 @@ private enum NamespaceMetadataMapper {
         "valueTimeSplit"
     ]
 
-    static func makeSection(from optionalTags: PodcastNamespaceOptionalTags?) -> NamespaceDisplaySection? {
+    static func makeSection(
+        from optionalTags: PodcastNamespaceOptionalTags?,
+        hidesRenderableValueBlocks: Bool = false
+    ) -> NamespaceDisplaySection? {
         guard let optionalTags, optionalTags.isEmpty == false else {
             return nil
         }
@@ -365,6 +632,13 @@ private enum NamespaceMetadataMapper {
 
         for key in fallbackOnlyTagOrder {
             guard let nodes = tagNodes[key], nodes.isEmpty == false else { continue }
+            let visibleNodes: [NamespaceNode]
+            if key == "value", hidesRenderableValueBlocks {
+                visibleNodes = nodes.filter { PodcastValueBlock.isRenderable($0) == false }
+            } else {
+                visibleNodes = nodes
+            }
+            guard visibleNodes.isEmpty == false else { continue }
             let item = NamespaceDisplayItem(
                 id: "fallback-\(key)",
                 key: key,
@@ -372,8 +646,8 @@ private enum NamespaceMetadataMapper {
                 iconName: iconName(forTag: key),
                 secondaryText: nil,
                 links: [],
-                detailCount: nodes.reduce(0) { $0 + descendantCount(of: $1.children) },
-                nodes: nodes
+                detailCount: visibleNodes.reduce(0) { $0 + descendantCount(of: $1.children) },
+                nodes: visibleNodes
             )
             rawFallbackItems.append(item)
         }
@@ -436,7 +710,7 @@ private enum NamespaceMetadataMapper {
             ])
         case "trailer":
             return joinedValues([
-                node.attributes["title"],
+                node.value,
                 labeledValue("Season", node.attributes["season"]),
                 node.attributes["pubdate"].flatMap(shortDateText)
             ])
@@ -939,7 +1213,39 @@ private extension PodcastNamespaceOptionalTags {
     }
 }
 
+#Preview("Value Split Single") {
+    PodcastValueSplitView(optionalTags: NamespacePreviewData.valueSplitSingle, funding: NamespacePreviewData.previewFunding)
+        .padding()
+}
+
+#Preview("Value Split 80/20") {
+    PodcastValueSplitView(optionalTags: NamespacePreviewData.valueSplitEightyTwenty, funding: NamespacePreviewData.previewFunding)
+        .padding()
+}
+
+#Preview("Value Split Shares") {
+    PodcastValueSplitView(optionalTags: NamespacePreviewData.valueSplitWeightedShares, funding: NamespacePreviewData.previewFunding)
+        .padding()
+}
+
+#Preview("Value Split Fee") {
+    PodcastValueSplitView(optionalTags: NamespacePreviewData.valueSplitWithFee, funding: NamespacePreviewData.previewFunding)
+        .padding()
+}
+
+#Preview("Value Split No Funding") {
+    PodcastValueSplitView(optionalTags: NamespacePreviewData.valueSplitEightyTwenty, funding: [])
+        .padding()
+}
+
 private enum NamespacePreviewData {
+    static var previewFunding: [FundingInfo] {
+        [
+            FundingInfo(url: URL(string: "https://example.com/support")!, label: "Support"),
+            FundingInfo(url: URL(string: "https://example.com/membership")!, label: "Membership")
+        ]
+    }
+
     static var inlineOnly: PodcastNamespaceOptionalTags {
         var tags = PodcastNamespaceOptionalTags.empty
         tags.alternateEnclosure = [NamespaceNode(name: "podcast:alternateEnclosure", attributes: ["type": "audio/mpeg", "length": "123456", "default": "true"])]
@@ -1250,6 +1556,70 @@ private enum NamespacePreviewData {
             )
         ]
 
+        return tags
+    }
+
+    static var valueSplitSingle: PodcastNamespaceOptionalTags {
+        valueTags([
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Host", "address": "03abc"]
+            )
+        ])
+    }
+
+    static var valueSplitEightyTwenty: PodcastNamespaceOptionalTags {
+        valueTags([
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Host", "address": "03abc", "split": "80"]
+            ),
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Producer", "address": "03def", "split": "20"]
+            )
+        ])
+    }
+
+    static var valueSplitWeightedShares: PodcastNamespaceOptionalTags {
+        valueTags([
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Host", "address": "03abc", "split": "190"]
+            ),
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Co-Host", "address": "03def", "split": "152"]
+            ),
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Producer", "address": "03ghi", "split": "38"]
+            )
+        ])
+    }
+
+    static var valueSplitWithFee: PodcastNamespaceOptionalTags {
+        valueTags([
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Host", "address": "03abc", "split": "90"]
+            ),
+            NamespaceNode(
+                name: "podcast:valueRecipient",
+                attributes: ["name": "Hosting", "address": "03def", "split": "10", "fee": "true"]
+            )
+        ])
+    }
+
+    private static func valueTags(_ recipients: [NamespaceNode]) -> PodcastNamespaceOptionalTags {
+        var tags = PodcastNamespaceOptionalTags.empty
+        tags.value = [
+            NamespaceNode(
+                name: "podcast:value",
+                attributes: ["type": "lightning", "method": "keysend", "suggested": "0.00000005000"],
+                children: recipients
+            )
+        ]
         return tags
     }
 }

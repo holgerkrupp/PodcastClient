@@ -91,6 +91,19 @@ final class PodcastBrowseViewModel: ObservableObject {
         }
     }
 
+    func loadAlternativeFeed(_ alternativeFeed: PodcastAlternativeFeed) async {
+        guard isLoading == false, isSubscribing == false else { return }
+
+        let replacementFeed = PodcastFeed(
+            url: alternativeFeed.url,
+            title: alternativeFeed.title,
+            source: podcastFeed.source,
+            fetchMetadataIfNeeded: false
+        )
+        podcastFeed = replacementFeed
+        await reload()
+    }
+
     private func loadMoreEpisodesIfNeeded() async {
         guard isLoadingMore == false else { return }
         if currentPageIsPartial, let currentPageDocument {
@@ -181,6 +194,9 @@ struct PodcastBrowseView: View {
                     isSubscribing: viewModel.isSubscribing,
                     subscribeAction: {
                         await viewModel.subscribe()
+                    },
+                    alternativeFeedAction: { alternativeFeed in
+                        await viewModel.loadAlternativeFeed(alternativeFeed)
                     }
                 )
                     .listRowSeparator(.hidden)
@@ -288,7 +304,12 @@ private struct PodcastBrowseHeaderView: View {
     let isSubscribed: Bool
     let isSubscribing: Bool
     let subscribeAction: () async -> Void
+    let alternativeFeedAction: (PodcastAlternativeFeed) async -> Void
     @Environment(\.deviceUIStyle) var style
+
+    private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
+        feed.alternativeFeeds.filter { $0.url != feed.url }
+    }
 
     private var lastUpdatedText: String? {
         feed.lastRelease?.formatted(date: .numeric, time: .shortened)
@@ -351,6 +372,8 @@ private struct PodcastBrowseHeaderView: View {
                 }
             }
 
+            PodcastValueSplitView(optionalTags: feed.optionalTags, funding: feed.funding)
+
             if let copyright = feed.copyright, copyright.isEmpty == false {
                 Text(copyright)
                     .font(.caption)
@@ -367,7 +390,7 @@ private struct PodcastBrowseHeaderView: View {
             }
 
             if let optionalTags = feed.optionalTags {
-                PodcastNamespaceMetadataView(optionalTags: optionalTags)
+                PodcastNamespaceMetadataView(optionalTags: optionalTags, hidesRenderableValueBlocks: true)
                     .padding()
             }
 
@@ -383,6 +406,24 @@ private struct PodcastBrowseHeaderView: View {
                     Label("Open in Browser", systemImage: "safari")
                 }
                 .buttonStyle(.glass(.clear))
+            }
+
+            if availableAlternativeFeeds.isEmpty == false {
+                Menu {
+                    ForEach(availableAlternativeFeeds) { alternativeFeed in
+                        Button {
+                            Task {
+                                await alternativeFeedAction(alternativeFeed)
+                            }
+                        } label: {
+                            Label(alternativeFeed.displayTitle, systemImage: "dot.radiowaves.left.and.right")
+                        }
+                    }
+                } label: {
+                    Label("Subscribe to Alternative Feed", systemImage: "arrow.triangle.branch")
+                }
+                .buttonStyle(.glass(.clear))
+                .disabled(isSubscribing)
             }
 
             Button {

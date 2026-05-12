@@ -9,6 +9,17 @@ import SwiftData
 import Foundation
 import BasicLogger
 
+enum PodcastFeedSwitchError: LocalizedError {
+    case feedAlreadyExists
+
+    var errorDescription: String? {
+        switch self {
+        case .feedAlreadyExists:
+            return "Another podcast already uses this feed URL."
+        }
+    }
+}
+
 @ModelActor
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
@@ -47,6 +58,32 @@ actor PodcastModelActor {
             modelContainer: modelContainer,
             allowEmpty: isSubscribed == false
         )
+    }
+
+    func switchPodcastFeed(
+        _ podcastID: PersistentIdentifier,
+        to alternativeFeed: PodcastAlternativeFeed,
+        progress: SubscriptionProgressHandler? = nil
+    ) async throws {
+        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        let metaData = ensureMetadata(for: podcast)
+        let alternativeFeedURL: URL? = alternativeFeed.url
+        let existingDescriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feed == alternativeFeedURL }
+        )
+
+        if let existingPodcast = try? modelContext.fetch(existingDescriptor).first,
+           existingPodcast.persistentModelID != podcastID {
+            throw PodcastFeedSwitchError.feedAlreadyExists
+        }
+
+        podcast.feed = alternativeFeed.url
+        metaData.feedUpdated = nil
+        metaData.feedUpdateCheckDate = nil
+        modelContext.saveIfNeeded()
+
+        _ = try await updatePodcast(alternativeFeed.url, force: true, silent: true, progress: progress)
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
     }
 
     
@@ -545,6 +582,27 @@ actor PodcastModelActor {
             podcast.people = peopleArr
         }
 
+        if let alternativeFeeds = fullPodcast["alternativeFeeds"] as? [[String: String]] {
+            var seen = Set<URL>()
+            podcast.alternativeFeeds = alternativeFeeds.compactMap { dict in
+                guard
+                    let urlString = dict["url"],
+                    let url = URL(string: urlString, relativeTo: podcast.feed)?.absoluteURL,
+                    seen.insert(url).inserted
+                else { return nil }
+
+                return PodcastAlternativeFeed(
+                    url: url,
+                    title: dict["title"],
+                    type: dict["type"]
+                )
+            }
+        } else if let alternativeFeeds = fullPodcast["alternativeFeeds"] as? [PodcastAlternativeFeed] {
+            podcast.alternativeFeeds = alternativeFeeds
+        } else {
+            podcast.alternativeFeeds = []
+        }
+
         if let optionalTags = fullPodcast["optionalTags"] as? PodcastNamespaceOptionalTags,
            optionalTags.isEmpty == false {
             podcast.optionalTags = optionalTags
@@ -576,6 +634,7 @@ actor PodcastModelActor {
                 if let existingEpisode = podcast.episodes?.first(where: {
                     ($0.guid != nil && $0.guid == episodeIdentifier) || ($0.url != nil && $0.url == candidateEpisodeURL)
                 }) {
+                    existingEpisode.update(from: episodeData)
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
                     existingEpisode.refreshOptionalTags(from: episodeData)
                     modelContext.saveIfNeeded()
