@@ -37,6 +37,7 @@ actor SubscriptionManager:NSObject{
         if let artworkURL = podcastFeed.artworkURL {
             podcast.imageURL = artworkURL
         }
+        podcast.alternativeFeeds = podcastFeed.alternativeFeeds
     }
     
      func fetchData() {

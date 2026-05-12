@@ -31,6 +31,7 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     var funding: [FundingInfo] = []
     var social: [SocialInfo] = []
     var people: [PersonInfo] = []
+    var alternativeFeeds: [PodcastAlternativeFeed] = []
     var optionalTags: PodcastNamespaceOptionalTags?
 
     // Optional metadata restored from OPML custom attributes.
@@ -192,6 +193,27 @@ class PodcastFeed: Hashable, @unchecked Sendable {
             }
         } else if let peopleArray = parsedFeed["people"] as? [PersonInfo] {
             people = peopleArray
+        }
+
+        if let parsedAlternativeFeeds = parsedFeed["alternativeFeeds"] as? [[String: String]] {
+            var seen = Set<URL>()
+            alternativeFeeds = parsedAlternativeFeeds.compactMap { dict in
+                guard
+                    let urlString = dict["url"],
+                    let url = URL(string: urlString, relativeTo: fallbackURL ?? self.url)?.absoluteURL,
+                    seen.insert(url).inserted
+                else { return nil }
+
+                return PodcastAlternativeFeed(
+                    url: url,
+                    title: dict["title"],
+                    type: dict["type"]
+                )
+            }
+        } else if let parsedAlternativeFeeds = parsedFeed["alternativeFeeds"] as? [PodcastAlternativeFeed] {
+            alternativeFeeds = parsedAlternativeFeeds
+        } else {
+            alternativeFeeds = []
         }
 
         if let optionalTags = parsedFeed["optionalTags"] as? PodcastNamespaceOptionalTags,

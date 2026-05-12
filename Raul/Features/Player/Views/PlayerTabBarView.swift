@@ -26,7 +26,7 @@ struct PlayerTabBarView: View {
 */
     var body: some View {
         if let episode = player.currentEpisode {
-            let podcastTitle = episode.displayPodcastTitle ?? "Podcast"
+            let podcastTitle = episode.displayPodcastTitle ?? episode.author ?? "Podcast"
 
             ZStack(alignment: .leading) {
                 MiniPlayerProgressBackground()

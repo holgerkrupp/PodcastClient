@@ -11,6 +11,8 @@ struct ChapterRowView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Bindable var chapter: Marker
     var isCurrentChapter: Bool? = nil
+    var markerLabel: String = "chapter"
+    var showsPlayToggle: Bool = true
     var player = Player.shared
 
     private var resolvedIsCurrentChapter: Bool {
@@ -72,17 +74,19 @@ struct ChapterRowView: View {
                         .monospacedDigit()
                    
                 }
-                Toggle("Play Chapter", isOn: Binding(
-                    get: { chapter.shouldPlay },
-                    set: { newValue in
-                        chapter.shouldPlay = newValue
-                        
-                    }
-                ))
-                .toggleStyle(SkipChapter())
-                .accessibilityLabel("Play chapter")
-                .accessibilityHint("Turn off to skip this chapter automatically")
-                .accessibilityInputLabels([Text("Play chapter"), Text("Skip chapter")])
+                if showsPlayToggle {
+                    Toggle("Play Chapter", isOn: Binding(
+                        get: { chapter.shouldPlay },
+                        set: { newValue in
+                            chapter.shouldPlay = newValue
+                            
+                        }
+                    ))
+                    .toggleStyle(SkipChapter())
+                    .accessibilityLabel("Play chapter")
+                    .accessibilityHint("Turn off to skip this chapter automatically")
+                    .accessibilityInputLabels([Text("Play chapter"), Text("Skip chapter")])
+                }
                 
             }
             .padding(.horizontal)
@@ -92,10 +96,10 @@ struct ChapterRowView: View {
                 }
             }
             .accessibilityAddTraits(.isButton)
-            .accessibilityHint("Double tap to jump playback to this chapter")
-            .accessibilityInputLabels([Text("Play chapter \(chapter.title)"), Text("Jump to chapter \(chapter.title)")])
-            .accessibilityLabel("Chapter \(chapter.title)")
-            .accessibilityValue(chapter.shouldPlay ? "Enabled" : "Skipped")
+            .accessibilityHint("Double tap to jump playback to this \(markerLabel)")
+            .accessibilityInputLabels([Text("Play \(markerLabel) \(chapter.title)"), Text("Jump to \(markerLabel) \(chapter.title)")])
+            .accessibilityLabel("\(markerLabel.capitalized) \(chapter.title)")
+            .accessibilityValue(showsPlayToggle ? (chapter.shouldPlay ? "Enabled" : "Skipped") : "")
             .accessibilityAction {
                 Task {
                     await player.skipTo(chapter: chapter)
