@@ -241,7 +241,11 @@ struct EpisodeDetailView: View {
                         .padding()
                     PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
                         .padding()
-                    PodcastNamespaceMetadataView(optionalTags: episode.optionalTags, hidesRenderableValueBlocks: true)
+                    PodcastNamespaceMetadataView(
+                        optionalTags: episode.optionalTags,
+                        title: "Episode Metadata",
+                        hidesRenderableValueBlocks: true
+                    )
                         .padding()
                     
                     RichText(html: episode.content ?? episode.desc ?? "")

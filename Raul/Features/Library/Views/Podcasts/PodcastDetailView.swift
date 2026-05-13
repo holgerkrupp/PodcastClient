@@ -234,7 +234,11 @@ struct PodcastDetailView: View {
                             .padding()
                         PeopleView(people: podcast.people)
                             .padding()
-                        PodcastNamespaceMetadataView(optionalTags: podcast.optionalTags, hidesRenderableValueBlocks: true)
+                        PodcastNamespaceMetadataView(
+                            optionalTags: podcast.optionalTags,
+                            title: "Podcast Metadata",
+                            hidesRenderableValueBlocks: true
+                        )
                             .padding()
                         if let desc = podcast.desc {
                             RichText(html: desc)

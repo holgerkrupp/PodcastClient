@@ -1471,7 +1471,7 @@ struct StatisticsView: View {
                     && summary.periodStart! < selectedPeriodEnd
                 }
             }
-            var descriptor = FetchDescriptor<PlaySessionSummary>(
+            let descriptor = FetchDescriptor<PlaySessionSummary>(
                 predicate: predicate,
                 sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
             )
@@ -1482,7 +1482,7 @@ struct StatisticsView: View {
             return primary
         }
 
-        var fallbackDescriptor = FetchDescriptor<PlaySessionSummary>(
+        let fallbackDescriptor = FetchDescriptor<PlaySessionSummary>(
             sortBy: [SortDescriptor(\.periodStart, order: .reverse)]
         )
         let fallback = (try? modelContext.fetch(fallbackDescriptor)) ?? []

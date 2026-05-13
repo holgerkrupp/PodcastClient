@@ -255,6 +255,7 @@
       }
     },
     "%lld more" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2980,6 +2981,9 @@
       }
     },
     "May" : {
+
+    },
+    "Metadata Details" : {
 
     },
     "Midsummer" : {
