@@ -1,11 +1,15 @@
 import SwiftUI
 
 struct NamespaceDisplaySection {
-    let inlineItems: [NamespaceDisplayItem]
-    let fallbackItems: [NamespaceDisplayItem]
+    let summaryItems: [NamespaceDisplayItem]
+    let detailItems: [NamespaceDisplayItem]
 
     var hasContent: Bool {
-        inlineItems.isEmpty == false || fallbackItems.isEmpty == false
+        summaryItems.isEmpty == false || detailItems.isEmpty == false
+    }
+
+    var hasDetails: Bool {
+        detailItems.isEmpty == false
     }
 }
 
@@ -300,8 +304,8 @@ private struct PodcastValueRecipient: Identifiable {
 
 struct PodcastNamespaceMetadataView: View {
     let optionalTags: PodcastNamespaceOptionalTags?
+    var title: String = "Metadata"
     var hidesRenderableValueBlocks: Bool = false
-    @State private var showMoreMetadata: Bool = false
 
     private var section: NamespaceDisplaySection? {
         NamespaceMetadataMapper.makeSection(
@@ -313,32 +317,45 @@ struct PodcastNamespaceMetadataView: View {
     var body: some View {
         if let section, section.hasContent {
             VStack(alignment: .leading, spacing: 10) {
-                if section.inlineItems.isEmpty == false {
+                if section.summaryItems.isEmpty == false {
                     FlowRows(spacing: 8) {
-                        ForEach(section.inlineItems) { item in
+                        ForEach(section.summaryItems) { item in
                             NamespaceInlineItemView(item: item)
                         }
                     }
                 }
 
-                if section.fallbackItems.isEmpty == false {
-                    DisclosureGroup(isExpanded: $showMoreMetadata) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(section.fallbackItems) { item in
-                                NamespaceFallbackGroupView(item: item)
-                            }
-                        }
-                        .padding(.top, 8)
+                if section.hasDetails {
+                    NavigationLink {
+                        PodcastNamespaceMetadataDetailView(title: title, items: section.detailItems)
                     } label: {
-                        Label("\(section.fallbackItems.count) more", systemImage: "ellipsis.circle")
+                        Label("Metadata Details", systemImage: "info.circle")
                             .font(.footnote.weight(.medium))
-                            .foregroundStyle(.secondary)
                     }
-                    .tint(.secondary)
+                    .buttonStyle(.glass(.clear))
                 }
             }
             
         }
+    }
+}
+
+private struct PodcastNamespaceMetadataDetailView: View {
+    let title: String
+    let items: [NamespaceDisplayItem]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(items) { item in
+                    NamespaceFallbackGroupView(item: item)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -352,6 +369,7 @@ private struct NamespaceInlineItemView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(item.accessibilityLabel)
+       //     .background(.ultraThinMaterial, in: Capsule())
         } else {
             NamespaceChipContent(item: item, showsLinkIcon: false)
                 .accessibilityLabel(item.accessibilityLabel)
@@ -405,7 +423,7 @@ private struct NamespaceChipContent: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
+      //  .background(.ultraThinMaterial, in: Capsule())
     }
 }
 
@@ -570,27 +588,29 @@ private struct NamespaceURLRow: View {
 }
 
 private enum NamespaceMetadataMapper {
-    static let integratedTagOrder: [String] = [
-        "alternateEnclosure",
-        "block",
+    static let summaryTagOrder: [String] = [
         "chat",
         "contentLink",
+        "season",
         "episode",
         "image",
         "license",
         "liveItem",
         "location",
-        "medium",
         "podroll",
         "publisher",
-        "remoteItem",
-        "season",
+    
         "soundbite",
-        "source",
+        
         "trailer"
     ]
 
-    static let fallbackOnlyTagOrder: [String] = [
+    static let detailOnlyTagOrder: [String] = [
+        "remoteItem",
+        "alternateEnclosure",
+        "source",
+        "block",
+        "medium",
         "images",
         "integrity",
         "podping",
@@ -599,6 +619,7 @@ private enum NamespaceMetadataMapper {
         "value",
         "valueRecipient",
         "valueTimeSplit"
+        
     ]
 
     static func makeSection(
@@ -610,58 +631,21 @@ private enum NamespaceMetadataMapper {
         }
 
         let tagNodes = optionalTags.tagNodesByKey
-        var rawInlineItems: [NamespaceDisplayItem] = []
-        var rawFallbackItems: [NamespaceDisplayItem] = []
+        var rawSummaryItems: [NamespaceDisplayItem] = []
+        var rawDetailItems: [NamespaceDisplayItem] = []
 
-        for key in integratedTagOrder {
+        for key in summaryTagOrder {
             guard let nodes = tagNodes[key], nodes.isEmpty == false else { continue }
             for (index, node) in nodes.enumerated() {
-                let item = NamespaceDisplayItem(
-                    id: "inline-\(key)-\(index)",
-                    key: key,
-                    title: compactTitle(for: key),
-                    iconName: iconName(forTag: key),
-                    secondaryText: preferredSecondaryText(from: node, key: key),
-                    links: extractURLs(from: node),
-                    detailCount: descendantCount(of: node.children),
-                    nodes: [node]
-                )
-                rawInlineItems.append(item)
+                guard let item = summaryItem(for: node, key: key, index: index) else { continue }
+                rawSummaryItems.append(item)
             }
         }
 
-        for key in fallbackOnlyTagOrder {
-            guard let nodes = tagNodes[key], nodes.isEmpty == false else { continue }
-            let visibleNodes: [NamespaceNode]
-            if key == "value", hidesRenderableValueBlocks {
-                visibleNodes = nodes.filter { PodcastValueBlock.isRenderable($0) == false }
-            } else {
-                visibleNodes = nodes
-            }
-            guard visibleNodes.isEmpty == false else { continue }
-            let item = NamespaceDisplayItem(
-                id: "fallback-\(key)",
-                key: key,
-                title: compactTitle(for: key),
-                iconName: iconName(forTag: key),
-                secondaryText: nil,
-                links: [],
-                detailCount: visibleNodes.reduce(0) { $0 + descendantCount(of: $1.children) },
-                nodes: visibleNodes
-            )
-            rawFallbackItems.append(item)
-        }
-
-        // Future-proofing: if parser starts storing new keys, expose them in fallback.
-        let knownKeys = Set(integratedTagOrder + fallbackOnlyTagOrder)
-        let unknownKeys = tagNodes.keys
-            .filter { knownKeys.contains($0) == false }
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-
-        for key in unknownKeys {
+        for key in orderedDetailKeys(from: tagNodes) {
             guard let nodes = tagNodes[key], nodes.isEmpty == false else { continue }
             let item = NamespaceDisplayItem(
-                id: "fallback-unknown-\(key)",
+                id: "detail-\(key)",
                 key: key,
                 title: compactTitle(for: key),
                 iconName: iconName(forTag: key),
@@ -670,13 +654,55 @@ private enum NamespaceMetadataMapper {
                 detailCount: nodes.reduce(0) { $0 + descendantCount(of: $1.children) },
                 nodes: nodes
             )
-            rawFallbackItems.append(item)
+            rawDetailItems.append(item)
         }
 
-        let inlineItems = mergedItems(rawInlineItems, idPrefix: "inline")
-        let fallbackItems = mergedItems(rawFallbackItems, idPrefix: "fallback")
-        let section = NamespaceDisplaySection(inlineItems: inlineItems, fallbackItems: fallbackItems)
+        let summaryItems = mergedItems(rawSummaryItems, idPrefix: "summary")
+        let detailItems = mergedItems(rawDetailItems, idPrefix: "detail")
+        let section = NamespaceDisplaySection(summaryItems: summaryItems, detailItems: detailItems)
         return section.hasContent ? section : nil
+    }
+
+    private static func summaryItem(for node: NamespaceNode, key: String, index: Int) -> NamespaceDisplayItem? {
+        if key == "value", PodcastValueBlock.isRenderable(node) {
+            return nil
+        }
+
+        let secondaryText = preferredSecondaryText(from: node, key: key)
+        let links = extractURLs(from: node)
+        let hasText = secondaryText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        guard links.isEmpty == false || hasText else {
+            return nil
+        }
+
+        return NamespaceDisplayItem(
+            id: "summary-\(key)-\(index)",
+            key: key,
+            title: compactTitle(for: key),
+            iconName: iconName(forTag: key),
+            secondaryText: secondaryText,
+            links: links,
+            detailCount: descendantCount(of: node.children),
+            nodes: [node]
+        )
+    }
+
+    private static func orderedDetailKeys(from tagNodes: [String: [NamespaceNode]]) -> [String] {
+        let preferredOrder = summaryTagOrder + detailOnlyTagOrder
+        var orderedKeys: [String] = []
+        var seen = Set<String>()
+
+        for key in preferredOrder where tagNodes[key]?.isEmpty == false {
+            if seen.insert(key).inserted {
+                orderedKeys.append(key)
+            }
+        }
+
+        let unknownKeys = tagNodes.keys
+            .filter { seen.contains($0) == false }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
+        return orderedKeys + unknownKeys
     }
 
     static func preferredSecondaryText(from node: NamespaceNode, key: String? = nil) -> String? {
@@ -686,8 +712,11 @@ private enum NamespaceMetadataMapper {
         case "episode":
             return joinedValues([
                 labeledValue("Episode", node.attributes["number"] ?? node.value),
-                labeledValue("Season", node.attributes["season"]),
+                labeledValue("Season", node.attributes["season"])
+                
+                ,
                 humanizedValue(node.attributes["display"] ?? node.attributes["type"])
+                 
             ])
         case "season":
             return joinedValues([
@@ -1186,30 +1215,54 @@ private extension PodcastNamespaceOptionalTags {
 }
 
 #Preview("Namespace Inline Only") {
-    ScrollView {
-        PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.inlineOnly)
-            .padding()
+    NavigationStack {
+        ScrollView {
+            PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.inlineOnly)
+                .padding()
+        }
     }
 }
 
-#Preview("Namespace Fallback Only") {
-    ScrollView {
-        PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.fallbackOnly)
-            .padding()
+#Preview("Namespace Technical Details Only") {
+    NavigationStack {
+        ScrollView {
+            PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.technicalOnly)
+                .padding()
+        }
     }
 }
 
 #Preview("Namespace Mixed + Nested") {
-    ScrollView {
-        PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.mixedNested)
-            .padding()
+    NavigationStack {
+        ScrollView {
+            PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.mixedNested)
+                .padding()
+        }
     }
 }
 
 #Preview("Namespace Everything (All Tags)") {
-    ScrollView {
-        PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.allInOne)
+    NavigationStack {
+        ScrollView {
+            PodcastNamespaceMetadataView(optionalTags: NamespacePreviewData.allInOne)
+                .padding()
+        }
+    }
+}
+
+#Preview("Value Split With Metadata Details") {
+    NavigationStack {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                PodcastValueSplitView(optionalTags: NamespacePreviewData.fallbackOnly, funding: NamespacePreviewData.previewFunding)
+                PodcastNamespaceMetadataView(
+                    optionalTags: NamespacePreviewData.fallbackOnly,
+                    title: "Podcast Metadata",
+                    hidesRenderableValueBlocks: true
+                )
+            }
             .padding()
+        }
     }
 }
 
@@ -1275,6 +1328,22 @@ private enum NamespacePreviewData {
         ]
         tags.updateFrequency = [NamespaceNode(name: "podcast:updateFrequency", value: "weekly")]
         tags.txt = [NamespaceNode(name: "podcast:txt", value: "verify=abcd-1234")]
+        return tags
+    }
+
+    static var technicalOnly: PodcastNamespaceOptionalTags {
+        var tags = PodcastNamespaceOptionalTags.empty
+        tags.block = [NamespaceNode(name: "podcast:block", value: "yes")]
+        tags.medium = [NamespaceNode(name: "podcast:medium", value: "podcast")]
+        tags.integrity = [
+            NamespaceNode(
+                name: "podcast:integrity",
+                attributes: ["type": "sri", "value": "sha384-preview"]
+            )
+        ]
+        tags.podping = [NamespaceNode(name: "podcast:podping", attributes: ["usesPodping": "true"])]
+        tags.txt = [NamespaceNode(name: "podcast:txt", value: "verify=abcd-1234")]
+        tags.updateFrequency = [NamespaceNode(name: "podcast:updateFrequency", value: "weekly")]
         return tags
     }
 

@@ -390,7 +390,11 @@ private struct PodcastBrowseHeaderView: View {
             }
 
             if let optionalTags = feed.optionalTags {
-                PodcastNamespaceMetadataView(optionalTags: optionalTags, hidesRenderableValueBlocks: true)
+                PodcastNamespaceMetadataView(
+                    optionalTags: optionalTags,
+                    title: "Podcast Metadata",
+                    hidesRenderableValueBlocks: true
+                )
                     .padding()
             }
 

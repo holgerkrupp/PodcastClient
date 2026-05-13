@@ -672,9 +672,9 @@ class Player {
         }
 
         await engine.replaceCurrentItem(with: item)
-        if (try? await playlistActor?.containsEpisodeURL(episodeURL)) != true {
-            try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
-        }
+        try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
+        
+        
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
 
         BasicLogger.shared.log(

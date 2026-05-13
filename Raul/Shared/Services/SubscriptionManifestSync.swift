@@ -78,7 +78,7 @@ enum SubscriptionManifestSync {
             for _ in 0..<min(bootstrapConcurrency, feeds.count) {
                 guard let feed = iterator.next() else { break }
                 group.addTask {
-                    try? await PodcastModelActor(modelContainer: modelContainer)
+                    _ = try? await PodcastModelActor(modelContainer: modelContainer)
                         .bootstrapPodcast(feed, maximumEpisodes: bootstrapEpisodeLimit)
                 }
             }
@@ -86,7 +86,7 @@ enum SubscriptionManifestSync {
             while await group.next() != nil {
                 guard let feed = iterator.next() else { continue }
                 group.addTask {
-                    try? await PodcastModelActor(modelContainer: modelContainer)
+                    _ =  try? await PodcastModelActor(modelContainer: modelContainer)
                         .bootstrapPodcast(feed, maximumEpisodes: bootstrapEpisodeLimit)
                 }
             }
