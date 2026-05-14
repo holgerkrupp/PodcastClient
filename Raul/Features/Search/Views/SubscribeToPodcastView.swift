@@ -14,9 +14,11 @@ struct SubscribeToPodcastView: View {
     @Query private var allPodcasts: [Podcast]
     @Bindable var newPodcastFeed: PodcastFeed
     private let previewPodcast: Podcast
+    private let showsBrowseNavigationLink: Bool
 
-    init(newPodcastFeed: PodcastFeed) {
+    init(newPodcastFeed: PodcastFeed, showsBrowseNavigationLink: Bool = true) {
         self.newPodcastFeed = newPodcastFeed
+        self.showsBrowseNavigationLink = showsBrowseNavigationLink
         let previewPodcast = Podcast(from: newPodcastFeed)
         previewPodcast.metaData?.isSubscribed = false
         previewPodcast.metaData?.subscriptionDate = nil
@@ -46,7 +48,7 @@ struct SubscribeToPodcastView: View {
             ZStack {
                 PodcastRowView(podcast: displayedPodcast)
 
-                if newPodcastFeed.url != nil {
+                if showsBrowseNavigationLink, newPodcastFeed.url != nil {
                     NavigationLink(destination: PodcastBrowseView(feed: newPodcastFeed, modelContainer: modelContext.container)) {
                         EmptyView()
                     }

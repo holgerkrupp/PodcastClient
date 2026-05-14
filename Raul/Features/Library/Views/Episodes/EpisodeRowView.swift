@@ -150,6 +150,7 @@ struct EpisodeRowView: View {
                 Rectangle()
                     .fill(.thinMaterial)
             )
+            
         }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .overlay(alignment: .bottomLeading) {

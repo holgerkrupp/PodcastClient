@@ -25,13 +25,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		C0D3A0012FAD000100000001 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 487F5C672D9D4F0C00056D08 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 487F5C6E2D9D4F0C00056D08;
-			remoteInfo = UpNext;
-		};
 		A1B2C3082F00000100000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 487F5C672D9D4F0C00056D08 /* Project object */;
@@ -45,6 +38,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = B1C2D3062F10000100000001;
 			remoteInfo = UpNextWatch;
+		};
+		C0D3A0012FAD000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 487F5C672D9D4F0C00056D08 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 487F5C6E2D9D4F0C00056D08;
+			remoteInfo = UpNext;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -92,9 +92,9 @@
 		487F5C6F2D9D4F0C00056D08 /* UpNext.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNext.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48B638D02F59999F00940B67 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		48E626F62FA0307A0045AC1C /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = /System/Library/Frameworks/AppIntents.framework; sourceTree = "<absolute>"; };
-		C0D3A0022FAD000100000001 /* UpNextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UpNextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0D3A0022FAD000100000001 /* UpNextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UpNextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -202,13 +202,6 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		C0D3A0062FAD000100000001 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		487F5C6C2D9D4F0C00056D08 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -236,6 +229,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0D3A0062FAD000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -343,29 +343,6 @@
 			productReference = A1B2C3022F00000100000001 /* PlayNextWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		C0D3A0042FAD000100000001 /* UpNextTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = C0D3A0092FAD000100000001 /* Build configuration list for PBXNativeTarget "UpNextTests" */;
-			buildPhases = (
-				C0D3A0052FAD000100000001 /* Sources */,
-				C0D3A0062FAD000100000001 /* Frameworks */,
-				C0D3A0072FAD000100000001 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				C0D3A0082FAD000100000001 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				C0D3A0032FAD000100000001 /* UpNextTests */,
-			);
-			name = UpNextTests;
-			packageProductDependencies = (
-			);
-			productName = UpNextTests;
-			productReference = C0D3A0022FAD000100000001 /* UpNextTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 		B1C2D3062F10000100000001 /* UpNextWatch */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B1C2D30F2F10000100000001 /* Build configuration list for PBXNativeTarget "UpNextWatch" */;
@@ -389,6 +366,29 @@
 			productReference = B1C2D3022F10000100000001 /* UpNextWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C0D3A0042FAD000100000001 /* UpNextTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0D3A0092FAD000100000001 /* Build configuration list for PBXNativeTarget "UpNextTests" */;
+			buildPhases = (
+				C0D3A0052FAD000100000001 /* Sources */,
+				C0D3A0062FAD000100000001 /* Frameworks */,
+				C0D3A0072FAD000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0D3A0082FAD000100000001 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C0D3A0032FAD000100000001 /* UpNextTests */,
+			);
+			name = UpNextTests;
+			packageProductDependencies = (
+			);
+			productName = UpNextTests;
+			productReference = C0D3A0022FAD000100000001 /* UpNextTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -402,15 +402,15 @@
 					487F5C6E2D9D4F0C00056D08 = {
 						CreatedOnToolsVersion = 16.2;
 					};
-					C0D3A0042FAD000100000001 = {
-						CreatedOnToolsVersion = 16.2;
-						TestTargetID = 487F5C6E2D9D4F0C00056D08;
-					};
 					A1B2C3062F00000100000001 = {
 						CreatedOnToolsVersion = 16.2;
 					};
 					B1C2D3062F10000100000001 = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					C0D3A0042FAD000100000001 = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = 487F5C6E2D9D4F0C00056D08;
 					};
 				};
 			};
@@ -447,13 +447,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C0D3A0072FAD000100000001 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		487F5C6D2D9D4F0C00056D08 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -479,16 +472,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXResourcesBuildPhase section */
-
-/* Begin PBXSourcesBuildPhase section */
-		C0D3A0052FAD000100000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
+		C0D3A0072FAD000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
 		487F5C6B2D9D4F0C00056D08 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -510,14 +503,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0D3A0052FAD000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		C0D3A0082FAD000100000001 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 487F5C6E2D9D4F0C00056D08 /* UpNext */;
-			targetProxy = C0D3A0012FAD000100000001 /* PBXContainerItemProxy */;
-		};
 		A1B2C3072F00000100000001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A1B2C3062F00000100000001 /* PlayNextWidget */;
@@ -527,6 +522,11 @@
 			isa = PBXTargetDependency;
 			target = B1C2D3062F10000100000001 /* UpNextWatch */;
 			targetProxy = B1C2D3012F10000100000001 /* PBXContainerItemProxy */;
+		};
+		C0D3A0082FAD000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 487F5C6E2D9D4F0C00056D08 /* UpNext */;
+			targetProxy = C0D3A0012FAD000100000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

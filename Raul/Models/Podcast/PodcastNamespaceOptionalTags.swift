@@ -68,6 +68,80 @@ struct PodcastTrailer: Hashable, Identifiable {
     }
 }
 
+struct PodcastPodrollItem: Hashable, Identifiable, Sendable {
+    let id: String
+    let title: String?
+    let feedURL: URL?
+    let feedGUID: String?
+    let itemGUID: String?
+    let medium: String?
+
+    var displayTitle: String {
+        if let title, title.isEmpty == false {
+            return title
+        }
+
+        if let feedURL {
+            return feedURL.absoluteString.removingPercentEncoding ?? feedURL.absoluteString
+        }
+
+        if let feedGUID, feedGUID.isEmpty == false {
+            return feedGUID
+        }
+
+        return "Recommended Podcast"
+    }
+
+    var hasResolvableFeed: Bool {
+        feedURL != nil
+    }
+
+    init?(node: NamespaceNode, baseURL: URL?) {
+        guard Self.localName(from: node.name) == "remoteItem" else {
+            return nil
+        }
+
+        let title = Self.trimmed(node.attribute(named: "title"))
+        let feedGUID = Self.trimmed(node.attribute(named: "feedGuid"))
+        let itemGUID = Self.trimmed(node.attribute(named: "itemGuid"))
+        let medium = Self.trimmed(node.attribute(named: "medium"))
+        let feedURL = Self.trimmed(node.attribute(named: "feedUrl"))
+            .flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL }
+
+        guard title != nil || feedGUID != nil || feedURL != nil else {
+            return nil
+        }
+
+        self.id = feedURL?.absoluteString ?? feedGUID ?? title ?? UUID().uuidString
+        self.title = title
+        self.feedURL = feedURL
+        self.feedGUID = feedGUID
+        self.itemGUID = itemGUID
+        self.medium = medium
+    }
+
+    func podcastFeed(fetchMetadataIfNeeded: Bool) -> PodcastFeed {
+        PodcastFeed(
+            url: feedURL,
+            title: displayTitle,
+            source: nil,
+            fetchMetadataIfNeeded: fetchMetadataIfNeeded
+        )
+    }
+
+    private static func trimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    private static func localName(from qualifiedName: String) -> String {
+        if qualifiedName.hasPrefix("podcast:") {
+            return String(qualifiedName.dropFirst("podcast:".count))
+        }
+        return qualifiedName
+    }
+}
+
 struct PodcastNamespaceOptionalTags: Codable, Hashable {
     var alternateEnclosure: [NamespaceNode]?
     var block: [NamespaceNode]?
@@ -227,10 +301,26 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable {
             }
     }
 
+    func podcastPodrollItems(baseURL: URL?) -> [PodcastPodrollItem] {
+        return (podroll ?? [])
+            .flatMap { podrollNode in
+                podrollNode.children.filter { Self.localName(from: $0.name) == "remoteItem" }
+            }
+            .compactMap { PodcastPodrollItem(node: $0, baseURL: baseURL) }
+    }
+
     private static func localName(from qualifiedName: String) -> String {
         if qualifiedName.hasPrefix("podcast:") {
             return String(qualifiedName.dropFirst("podcast:".count))
         }
         return qualifiedName
+    }
+}
+
+private extension NamespaceNode {
+    func attribute(named requestedName: String) -> String? {
+        attributes.first { key, _ in
+            key.caseInsensitiveCompare(requestedName) == .orderedSame
+        }?.value
     }
 }

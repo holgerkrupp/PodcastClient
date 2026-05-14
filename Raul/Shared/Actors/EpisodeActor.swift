@@ -1701,11 +1701,24 @@ actor EpisodeActor {
     }
     
     
-    enum TranscriptError: Error {
+    enum TranscriptError: LocalizedError {
         case transcriptionExists
         case noTranscriptFileFound
         case episodeNotFound
         case decodingFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .transcriptionExists:
+                return "This episode already has transcript lines."
+            case .noTranscriptFileFound:
+                return "No supported transcript file was found for this episode."
+            case .episodeNotFound:
+                return "The episode could not be found."
+            case .decodingFailed:
+                return "The transcript file could not be downloaded or decoded."
+            }
+        }
     }
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async throws {
