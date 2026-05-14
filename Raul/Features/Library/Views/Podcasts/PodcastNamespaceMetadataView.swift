@@ -306,6 +306,7 @@ struct PodcastNamespaceMetadataView: View {
     let optionalTags: PodcastNamespaceOptionalTags?
     var title: String = "Metadata"
     var hidesRenderableValueBlocks: Bool = false
+    @State private var showDetails = false
 
     private var section: NamespaceDisplaySection? {
         NamespaceMetadataMapper.makeSection(
@@ -326,13 +327,18 @@ struct PodcastNamespaceMetadataView: View {
                 }
 
                 if section.hasDetails {
-                    NavigationLink {
-                        PodcastNamespaceMetadataDetailView(title: title, items: section.detailItems)
+                    Button {
+                        showDetails = true
                     } label: {
                         Label("Metadata Details", systemImage: "info.circle")
                             .font(.footnote.weight(.medium))
                     }
                     .buttonStyle(.glass(.clear))
+                    .sheet(isPresented: $showDetails) {
+                        NavigationStack {
+                            PodcastNamespaceMetadataDetailView(title: title, items: section.detailItems)
+                        }
+                    }
                 }
             }
             

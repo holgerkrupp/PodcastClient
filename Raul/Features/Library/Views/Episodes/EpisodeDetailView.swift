@@ -271,6 +271,23 @@ struct EpisodeDetailView: View {
             .sheet(item: $shareURL) { identifiable in
                 ShareLink(item: identifiable.url) { Text("Share Episode") }
             }
+            .alert(
+                "Transcript Error",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { isPresented in
+                        if isPresented == false {
+                            errorMessage = nil
+                        }
+                    }
+                )
+            ) {
+                Button("OK", role: .cancel) {
+                    errorMessage = nil
+                }
+            } message: {
+                Text(errorMessage ?? "")
+            }
             .sheet(isPresented: $showTranscriptSheet) {
                 NavigationStack {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
@@ -312,6 +329,8 @@ struct EpisodeDetailView: View {
 
     @MainActor
     private func openTranscript() async {
+        errorMessage = nil
+
         if episode.transcriptLines?.isEmpty == false {
             showTranscriptSheet = true
             return
@@ -322,8 +341,7 @@ struct EpisodeDetailView: View {
         defer { isLoadingTranscript = false }
 
         do {
-            let actor = EpisodeActor(modelContainer: context.container)
-            try await actor.downloadTranscript(episode.persistentModelID)
+            try await downloadLinkedTranscriptIntoCurrentContext()
             showTranscriptSheet = episode.transcriptLines?.isEmpty == false
             if showTranscriptSheet == false {
                 errorMessage = "The transcript file could not be loaded."
@@ -331,6 +349,113 @@ struct EpisodeDetailView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func downloadLinkedTranscriptIntoCurrentContext() async throws {
+        let settingsActor = PodcastSettingsModelActor(modelContainer: context.container)
+        guard await settingsActor.getTranscriptionsEnabled() else {
+            throw EpisodeActor.TranscriptError.noTranscriptFileFound
+        }
+
+        guard let transcriptFile = bestTranscriptFile(in: episode.externalFiles.filter({ $0.category == .transcript })),
+              let transcriptURL = URL(string: transcriptFile.url) else {
+            throw EpisodeActor.TranscriptError.noTranscriptFileFound
+        }
+
+        guard let transcriptText = await downloadStringFile(url: transcriptURL) else {
+            throw EpisodeActor.TranscriptError.decodingFailed
+        }
+
+        let lines = decodeTranscriptLines(transcriptText)
+        guard lines.isEmpty == false else {
+            throw EpisodeActor.TranscriptError.decodingFailed
+        }
+
+        episode.transcriptLines = lines
+        episode.refresh.toggle()
+        context.saveIfNeeded()
+
+        if let episodeURL = episode.url {
+            _ = await EpisodeActor(modelContainer: context.container).regenerateTranscriptChapters(for: episodeURL)
+        }
+    }
+
+    private func bestTranscriptFile(in files: [ExternalFile]) -> ExternalFile? {
+        let preferredTypes = [
+            "text/vtt",
+            "text/webvtt",
+            "application/vtt",
+            "application/x-subrip",
+            "text/srt",
+            "application/json",
+            "text/json",
+            "text/plain"
+        ]
+
+        if let fileByType = files.first(where: { file in
+            guard let type = file.fileType?.lowercased() else { return false }
+            return preferredTypes.contains { type.contains($0) }
+        }) {
+            return fileByType
+        }
+
+        if let vttByExtension = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "vtt" }) {
+            return vttByExtension
+        }
+        if let srtByExtension = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "srt" }) {
+            return srtByExtension
+        }
+        if let jsonByExtension = files.first(where: { URL(string: $0.url)?.pathExtension.lowercased() == "json" }) {
+            return jsonByExtension
+        }
+
+        return files.first
+    }
+
+    private func downloadStringFile(url: URL) async -> String? {
+        var resolvedURL = url
+
+        do {
+            let status = try await resolvedURL.status()
+            switch status?.statusCode {
+            case 200:
+                break
+            case 404:
+                return nil
+            case 410:
+                if let newURL = status?.newURL {
+                    resolvedURL = newURL
+                }
+            default:
+                break
+            }
+
+            let (data, _) = try await URLSession(configuration: .default).data(from: resolvedURL)
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            return nil
+        }
+    }
+
+    private func decodeTranscriptLines(_ transcriptText: String) -> [TranscriptLineAndTime] {
+        TranscriptDecoder(transcriptText).transcriptLines
+            .map { line in
+                TranscriptLineAndTime(
+                    speaker: line.speaker,
+                    text: line.text,
+                    startTime: line.startTime,
+                    endTime: line.endTime
+                )
+            }
+            .sorted {
+                if $0.startTime != $1.startTime {
+                    return $0.startTime < $1.startTime
+                }
+                let leftEnd = $0.endTime ?? .greatestFiniteMagnitude
+                let rightEnd = $1.endTime ?? .greatestFiniteMagnitude
+                return leftEnd < rightEnd
+            }
     }
 
     @MainActor

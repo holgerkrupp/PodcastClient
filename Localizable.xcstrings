@@ -506,6 +506,9 @@
         }
       }
     },
+    "Allow live event notifications" : {
+
+    },
     "Already in Library (%lld)" : {
       "localizations" : {
         "de" : {
@@ -1931,6 +1934,9 @@
     "February" : {
 
     },
+    "Feed URL unavailable" : {
+
+    },
     "Fetches new episodes and reloads your inbox" : {
       "localizations" : {
         "de" : {
@@ -2815,7 +2821,19 @@
         }
       }
     },
+    "Live event information supported" : {
+
+    },
+    "Live event information unavailable" : {
+
+    },
+    "Live event notifications" : {
+
+    },
     "Live notification" : {
+
+    },
+    "Live Notifications" : {
 
     },
     "Live Now: %@" : {
@@ -3705,6 +3723,9 @@
         }
       }
     },
+    "Open %@" : {
+
+    },
     "Open captions" : {
       "localizations" : {
         "de" : {
@@ -3840,6 +3861,9 @@
           }
         }
       }
+    },
+    "Open podroll" : {
+
     },
     "Open settings" : {
       "localizations" : {
@@ -4021,6 +4045,9 @@
           }
         }
       }
+    },
+    "Opens this podcasts details screen" : {
+
     },
     "OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app." : {
       "localizations" : {
@@ -4646,6 +4673,9 @@
       }
     },
     "Podium Top 3" : {
+
+    },
+    "Podroll" : {
 
     },
     "Portrait" : {
@@ -5689,6 +5719,9 @@
         }
       }
     },
+    "Shows podcasts recommended by this podcast" : {
+
+    },
     "Shows the transcript panel below the artwork" : {
       "localizations" : {
         "de" : {
@@ -6315,6 +6348,9 @@
         }
       }
     },
+    "This podcast currently does not support Live event information." : {
+
+    },
     "This podcast currently has no standalone files stored outside the database." : {
       "localizations" : {
         "de" : {
@@ -6334,6 +6370,9 @@
           }
         }
       }
+    },
+    "This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting." : {
+
     },
     "This removes downloaded media and cache files, but keeps your SwiftData database, subscriptions, and playback history." : {
       "localizations" : {
@@ -6573,6 +6612,9 @@
           }
         }
       }
+    },
+    "Transcript Error" : {
+
     },
     "Transcript Lines" : {
       "localizations" : {
@@ -7094,6 +7136,9 @@
         }
       }
     },
+    "When this is off, no podcast can schedule notifications for podcast:liveItem events." : {
+
+    },
     "When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast." : {
       "localizations" : {
         "de" : {
@@ -7103,6 +7148,9 @@
           }
         }
       }
+    },
+    "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast." : {
+
     },
     "When you usually listen" : {
       "localizations" : {

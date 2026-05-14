@@ -81,6 +81,10 @@ struct PodcastSettingsView: View {
         podcast != nil && activeCustomSettings != nil
     }
 
+    private var podcastSupportsLiveItems: Bool {
+        podcast?.optionalTags?.liveItem?.isEmpty == false
+    }
+
     private var podcastsUsingCustomSettings: [Podcast] {
         podcasts.filter { $0.settings?.isEnabled == true }
     }
@@ -174,6 +178,7 @@ struct PodcastSettingsView: View {
                         globalDefaultsSection(settings: effectiveSettings)
                         appearanceSection
                         appControlsSection(settings: globalSettings)
+                        liveNotificationsSection(settings: globalSettings, isGlobal: true)
                         transcriptionSection(settings: globalSettings)
                         sideloadingSection
                         podcastManagementSection
@@ -188,6 +193,7 @@ struct PodcastSettingsView: View {
                         if isPodcastCustomSettingsActive {
                             podcastCustomizationSection(settings: effectiveSettings)
                         }
+                        podcastLiveNotificationsSection(settings: effectiveSettings)
                         globalSettingsShortcutSection
                     }
                 } else {
@@ -532,6 +538,72 @@ struct PodcastSettingsView: View {
             Text("When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func liveNotificationsSection(settings: PodcastSettings, isGlobal: Bool) -> some View {
+        Section("Live Notifications") {
+            Toggle(
+                isGlobal ? "Allow live event notifications" : "Live event notifications",
+                isOn: Binding(
+                    get: { settings.enableLiveItemNotifications },
+                    set: { newValue in
+                        settings.enableLiveItemNotifications = newValue
+                        saveAndNotify()
+
+                        if newValue == false {
+                            removePendingLiveNotifications()
+                        }
+                    }
+                )
+            )
+
+            Text(isGlobal
+                 ? "When this is off, no podcast can schedule notifications for podcast:liveItem events."
+                 : "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func podcastLiveNotificationsSection(settings: PodcastSettings) -> some View {
+        Section("Live Notifications") {
+            if podcastSupportsLiveItems {
+                if isPodcastCustomSettingsActive {
+                    Toggle(
+                        "Live event notifications",
+                        isOn: Binding(
+                            get: { settings.enableLiveItemNotifications },
+                            set: { newValue in
+                                settings.enableLiveItemNotifications = newValue
+                                saveAndNotify()
+
+                                if newValue == false {
+                                    removePendingLiveNotifications()
+                                }
+                            }
+                        )
+                    )
+
+                    Text("When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Live event information supported", systemImage: "dot.radiowaves.left.and.right")
+
+                    Text("This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Label("Live event information unavailable", systemImage: "info.circle")
+
+                Text("This podcast currently does not support Live event information.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -1052,6 +1124,13 @@ struct PodcastSettingsView: View {
         postSettingsDidChange()
         if autoDownloadPolicyChanged {
             markAutoDownloadPolicyReconciliationPending(trigger: "settings-change")
+        }
+    }
+
+    private func removePendingLiveNotifications() {
+        let feed = podcast?.feed
+        Task {
+            await NotificationManager().removePendingLiveNotifications(podcastFeed: feed)
         }
     }
 
@@ -2090,6 +2169,9 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
     if let settings = podcast.settings {
         settings.isEnabled = true
         settings.podcast = podcast
+        if settings.title == nil || settings.title?.isEmpty == true {
+            settings.title = podcast.title
+        }
     } else {
         let settings = PodcastSettings(podcast: podcast)
         settings.isEnabled = true
@@ -2105,6 +2187,7 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         settings.autoDownloadIncludesArchivedEpisodes = globalSettings.autoDownloadIncludesArchivedEpisodes
         settings.defaultPlaylistID = globalSettings.defaultPlaylistID
         settings.archiveFileRetentionDays = globalSettings.archiveFileRetentionDays
+        settings.enableLiveItemNotifications = globalSettings.enableLiveItemNotifications
         context.insert(settings)
         podcast.settings = settings
     }

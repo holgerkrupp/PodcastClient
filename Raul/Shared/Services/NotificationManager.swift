@@ -13,6 +13,7 @@ import BasicLogger
 enum NotificationSchedulingError: LocalizedError {
     case denied
     case invalidDate
+    case liveNotificationsDisabled
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum NotificationSchedulingError: LocalizedError {
             return "Notifications are disabled for Raul."
         case .invalidDate:
             return "The live event start time has already passed."
+        case .liveNotificationsDisabled:
+            return "Live event notifications are turned off in settings."
         }
     }
 }
@@ -47,6 +50,7 @@ class NotificationPermissionViewModel: ObservableObject {
 }
 
 actor NotificationManager {
+    private static let liveNotificationPrefix = "podcast-live-"
     
     func requestAuthorizationIfUndetermined() async {
         if await getAuthorizationStatus() == .notDetermined {
@@ -165,6 +169,29 @@ actor NotificationManager {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
         try await UNUserNotificationCenter.current().add(request)
     }
+
+    func liveNotificationIdentifier(podcastFeed: URL?, podcastTitle: String, liveItemID: String) -> String {
+        "\(Self.liveNotificationPrefix)\(podcastFeed?.absoluteString ?? podcastTitle)-\(liveItemID)".stableNotificationIdentifier
+    }
+
+    func removePendingLiveNotifications(podcastFeed: URL? = nil) async {
+        let requests = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        let podcastPrefix = podcastFeed.map {
+            "\(Self.liveNotificationPrefix)\($0.absoluteString)-".stableNotificationIdentifier
+        }
+
+        let identifiers = requests
+            .map(\.identifier)
+            .filter { identifier in
+                if let podcastPrefix {
+                    return identifier.hasPrefix(podcastPrefix)
+                }
+                return identifier.hasPrefix(Self.liveNotificationPrefix)
+            }
+
+        guard identifiers.isEmpty == false else { return }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
 }
 
 
@@ -196,6 +223,13 @@ struct NotificationSettingsView: View {
         .onAppear {
             viewModel.refreshPermissionStatus()
         }
+    }
+}
+
+extension String {
+    var stableNotificationIdentifier: String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        return unicodeScalars.map { allowed.contains($0) ? Character($0).description : "-" }.joined()
     }
 }
 

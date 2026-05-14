@@ -51,8 +51,11 @@ struct PodcastDetailView: View {
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
+    @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
 
     @State private var showSettings: Bool = false
+    @State private var showPodroll: Bool = false
+    @State private var showDebugMetadata: Bool = false
     @State private var liveNotificationMessage: String?
     @AppStorage("EpisodeSortOption") private var sortOptionRawValue: String = EpisodeSortOption.newestFirst.rawValue
     private var sortOption: EpisodeSortOption {
@@ -76,6 +79,10 @@ struct PodcastDetailView: View {
         podcast.optionalTags?.podcastTrailers(baseURL: podcast.feed) ?? []
     }
 
+    private var podrollItems: [PodcastPodrollItem] {
+        podcast.optionalTags?.podcastPodrollItems(baseURL: podcast.feed) ?? []
+    }
+
     private var liveItems: [PodcastLiveItem] {
         podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
     }
@@ -91,6 +98,18 @@ struct PodcastDetailView: View {
             }
             .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
             .first
+    }
+
+    private var liveItemNotificationsEnabled: Bool {
+        guard defaultSettings.first?.enableLiveItemNotifications != false else {
+            return false
+        }
+
+        guard podcast.settings?.isEnabled == true else {
+            return true
+        }
+
+        return podcast.settings?.enableLiveItemNotifications != false
     }
 
     private var isLiveNotificationPresented: Binding<Bool> {
@@ -164,7 +183,9 @@ struct PodcastDetailView: View {
                                 .accessibilityLabel("Open podcast website")
                             }
 #if DEBUG
-                            NavigationLink(destination: PodcastDebugMetadataView(podcast: podcast)) {
+                            Button {
+                                showDebugMetadata = true
+                            } label: {
                                 Image(systemName: "ladybug")
                                     .imageScale(.small)
                                     .foregroundStyle(.secondary)
@@ -180,10 +201,11 @@ struct PodcastDetailView: View {
                                 .padding(.top, 4)
                         }
 
-                        if currentLiveItem != nil || nextLiveItem != nil {
+                        if currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled) {
                             PodcastLiveItemControlsView(
                                 currentLiveItem: currentLiveItem,
                                 nextLiveItem: nextLiveItem,
+                                liveItemNotificationsEnabled: liveItemNotificationsEnabled,
                                 podcastTitle: podcast.title,
                                 artworkURL: podcast.imageURL
                             ) { liveItem in
@@ -199,6 +221,17 @@ struct PodcastDetailView: View {
                             podcastTitle: podcast.title,
                             artworkURL: podcast.imageURL
                         )
+
+                        if podrollItems.isEmpty == false {
+                            Button {
+                                showPodroll = true
+                            } label: {
+                                Label("Podroll", systemImage: "rectangle.connected.to.line.below")
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .accessibilityLabel("Open podroll")
+                            .accessibilityHint("Shows podcasts recommended by this podcast")
+                        }
 
                         if podcast.funding.count > 0 {
                             HStack{
@@ -413,6 +446,17 @@ struct PodcastDetailView: View {
                 applyEpisodeFilters()
             }
             .navigationTitle(podcast.title)
+            .navigationDestination(isPresented: $showPodroll) {
+                PodcastPodrollView(
+                    podcastTitle: podcast.title,
+                    items: podrollItems
+                )
+            }
+#if DEBUG
+            .navigationDestination(isPresented: $showDebugMetadata) {
+                PodcastDebugMetadataView(podcast: podcast)
+            }
+#endif
             .refreshable {
                 Task{
                     await refreshEpisodes()
@@ -636,8 +680,18 @@ struct PodcastDetailView: View {
         guard let start = liveItem.start else { return }
 
         do {
-            try await NotificationManager().scheduleNotification(
-                identifier: "podcast-live-\(podcast.feed?.absoluteString ?? podcast.title)-\(liveItem.id)".stableNotificationIdentifier,
+            guard await PodcastSettingsModelActor(modelContainer: modelContext.container)
+                .getLiveItemNotificationsEnabled(for: podcast.feed) else {
+                throw NotificationSchedulingError.liveNotificationsDisabled
+            }
+
+            let notificationManager = NotificationManager()
+            try await notificationManager.scheduleNotification(
+                identifier: await notificationManager.liveNotificationIdentifier(
+                    podcastFeed: podcast.feed,
+                    podcastTitle: podcast.title,
+                    liveItemID: liveItem.id
+                ),
                 title: podcast.title,
                 body: "\(liveItem.title) starts now.",
                 date: start,
@@ -663,6 +717,7 @@ private struct PodcastLiveItemControlsView: View {
 
     let currentLiveItem: PodcastLiveItem?
     let nextLiveItem: PodcastLiveItem?
+    let liveItemNotificationsEnabled: Bool
     let podcastTitle: String
     let artworkURL: URL?
     let scheduleNotification: (PodcastLiveItem) -> Void
@@ -679,7 +734,7 @@ private struct PodcastLiveItemControlsView: View {
                 .buttonStyle(.glass(.clear))
             }
 
-            if let nextLiveItem, let start = nextLiveItem.start {
+            if liveItemNotificationsEnabled, let nextLiveItem, let start = nextLiveItem.start {
                 Button {
                     scheduleNotification(nextLiveItem)
                 } label: {
@@ -841,13 +896,6 @@ private extension NamespaceNode {
         }
 
         return nil
-    }
-}
-
-private extension String {
-    var stableNotificationIdentifier: String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        return unicodeScalars.map { allowed.contains($0) ? Character($0).description : "-" }.joined()
     }
 }
 

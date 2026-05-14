@@ -241,6 +241,10 @@ actor PodcastSettingsModelActor {
         if let settings = existingSettings {
             settings.isEnabled = true
             podcast.settings = settings
+            if settings.title == nil || settings.title?.isEmpty == true {
+                settings.title = podcast.title
+            }
+            settings.podcast = podcast
         } else {
             let newSettings = PodcastSettings(podcast: podcast)
             let standardSettings = await standardSettings()
@@ -257,6 +261,7 @@ actor PodcastSettingsModelActor {
             newSettings.autoDownloadIncludesArchivedEpisodes = standardSettings.autoDownloadIncludesArchivedEpisodes
             newSettings.defaultPlaylistID = standardSettings.defaultPlaylistID
             newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
+            newSettings.enableLiveItemNotifications = standardSettings.enableLiveItemNotifications
             modelContext.insert(newSettings)
             podcast.settings = newSettings
         }
@@ -395,6 +400,21 @@ actor PodcastSettingsModelActor {
     func getTranscriptionMaxSnippetDurationSeconds() async -> Double {
         let configuredValue = await standardSettings().transcriptionMaxSnippetDurationSeconds
         return min(max(configuredValue, 0.4), 8.0)
+    }
+
+    func getLiveItemNotificationsEnabled(for podcastFeed: URL?) async -> Bool {
+        let globalSettings = await standardSettings()
+        guard globalSettings.enableLiveItemNotifications else {
+            return false
+        }
+
+        guard let podcastFeed,
+              let customSettings = await fetchPodcastSettings(for: podcastFeed),
+              customSettings.isEnabled else {
+            return true
+        }
+
+        return customSettings.enableLiveItemNotifications
     }
 
     func getArchiveFileRetentionDays(for podcastFeed: URL?) async -> Int {

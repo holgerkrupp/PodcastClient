@@ -53,6 +53,7 @@ class PodcastSettings {
     var enableTranscriptions: Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
+    var enableLiveItemNotifications: Bool = true
     /// Upper limit for each generated transcript snippet to improve playback alignment.
     var transcriptionMaxSnippetDurationSeconds: Double = 1.2
 
@@ -73,6 +74,7 @@ class PodcastSettings {
     init(podcast: Podcast){
         title = podcast.title
         self.podcast = podcast
+        isEnabled = false
         // print("INIT SETTINGS WITH: \(podcast.title) - \(podcast.id)")
     }
     
