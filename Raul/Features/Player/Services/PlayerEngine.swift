@@ -14,7 +14,7 @@ enum PlaybackInterruptionEvent {
 }
 
 actor PlayerEngine {
-    private var avPlayer = AVPlayer()
+    let avPlayer = AVPlayer()
     private let session = AVAudioSession.sharedInstance()
     private var interruptionHandler: (@Sendable (PlaybackInterruptionEvent) -> Void)?
     private var interruptionObserver: NSObjectProtocol?
@@ -24,7 +24,6 @@ actor PlayerEngine {
 
 
      init() {
-        avPlayer = AVPlayer()
         do{
             try session.setCategory(.playback, mode: .spokenAudio)
            

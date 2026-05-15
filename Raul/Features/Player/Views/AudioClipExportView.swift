@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import AVKit
 
 struct AudioClipExportView: View {
     @Environment(\.dismiss) private var dismiss
@@ -12,6 +13,7 @@ struct AudioClipExportView: View {
     @State private var coverImage: UIImage?
     @State private var waveformSamples: [Float] = []
     @State private var audioPlayer: AVAudioPlayer?
+    @State private var videoPlayer: AVPlayer?
     @State private var playbackProgress: Double = 0
     @State private var audioDelegate: AudioPlayerDelegateWrapper?
     @State private var showPreviewUnavailableAlert = false
@@ -21,6 +23,7 @@ struct AudioClipExportView: View {
     var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
+    var isVideo: Bool = false
     let coverImageURL: URL? // The primary image URL to use as video background
     let fallbackCoverImageURL: URL? // The fallback image URL if primary fails
     let playPosition: Double // The center position for +/- 30s
@@ -48,10 +51,17 @@ struct AudioClipExportView: View {
                     Spacer()
                     VStack(spacing: 16) {
                         
-                           VideoSizePicker(videoSize: $videoSize)
+                        if isVideo == false {
+                            VideoSizePicker(videoSize: $videoSize)
+                        }
                         
                         Group {
-                            if let previewImage {
+                            if isVideo, let videoPlayer {
+                                VideoClipPreviewPlayerView(player: videoPlayer)
+                                    .aspectRatio(contentMode: .fit)
+                                    .background(Color.black)
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            } else if let previewImage {
                                 Image(uiImage: previewImage)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
@@ -67,7 +77,10 @@ struct AudioClipExportView: View {
                                 }
                             }
                         }
-                        .frame(width: 300, height: 300)
+                        .frame(
+                            width: previewWidth(for: geometry.size),
+                            height: previewHeight(for: geometry.size)
+                        )
                         .onChange(of: coverImage) { updatePreviewImage() }
                         .onChange(of: trimStart) { updatePreviewImage() }
                         .onChange(of: trimEnd) { updatePreviewImage() }
@@ -121,8 +134,8 @@ struct AudioClipExportView: View {
                                         togglePreview()
                                     } label: {
                                         Label(
-                                            audioPlayer?.isPlaying == true ? "Pause" : "Preview",
-                                            systemImage: audioPlayer?.isPlaying == true ? "pause.fill" : "play.fill"
+                                            isPreviewPlaying ? "Pause" : "Preview",
+                                            systemImage: isPreviewPlaying ? "pause.fill" : "play.fill"
                                         )
                                         .frame(maxWidth: .infinity)
                                     }
@@ -174,7 +187,7 @@ struct AudioClipExportView: View {
                 .alert("Preview unavailable", isPresented: $showPreviewUnavailableAlert) {
                     Button("OK", role: .cancel) {}
                 } message: {
-                    Text("Preview is only available for downloaded audio files.")
+                    Text("Preview is only available for downloaded media files.")
                 }
                 .onAppear {
                     Player.shared.pause()
@@ -197,6 +210,9 @@ struct AudioClipExportView: View {
                         waveformSamples = await WaveformView.extractSamples(from: audioURL, in: trimRange)
                         if waveformSamples.allSatisfy({ $0 < 0.07 }) {
                             waveformSamples = Array(repeating: 0.5, count: 480)
+                        }
+                        if isVideo {
+                            setupVideoPreviewPlayer()
                         }
                         updatePreviewImage()
                     }
@@ -253,6 +269,21 @@ struct AudioClipExportView: View {
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+
+    private func previewWidth(for containerSize: CGSize) -> CGFloat {
+        if isVideo {
+            return min(containerSize.width - 32, 620)
+        }
+        return 300
+    }
+
+    private func previewHeight(for containerSize: CGSize) -> CGFloat {
+        if isVideo {
+            let width = previewWidth(for: containerSize)
+            return min(width * 9 / 16, containerSize.height * 0.38)
+        }
+        return 300
+    }
     
     private func pixelBufferToUIImage(_ buffer: CVPixelBuffer) -> UIImage? {
         let ciImage = CIImage(cvPixelBuffer: buffer)
@@ -264,6 +295,11 @@ struct AudioClipExportView: View {
     }
     
     private func updatePreviewImage() {
+        if isVideo {
+            previewImage = nil
+            return
+        }
+
         guard let coverImage else {
             previewImage = nil
             return
@@ -281,18 +317,33 @@ struct AudioClipExportView: View {
 
         Task {
             do {
-                let url = try await AudioClipExporter.exportClipAsync(
-                    audioURL: audioURL,
-                    title: title,
-                    coverImage: coverImage ?? UIImage(),
-                    startTime: trimStart,
-                    endTime: trimEnd,
-                    fps: 30,
-                    videoSize: videoSize
-                ) { progress in
-                    Task{
-                        await MainActor.run {
-                            self.exportProgress = progress
+                let url: URL
+                if isVideo {
+                    url = try await AudioClipExporter.exportVideoClipAsync(
+                        videoURL: audioURL,
+                        startTime: trimStart,
+                        endTime: trimEnd
+                    ) { progress in
+                        Task {
+                            await MainActor.run {
+                                self.exportProgress = progress
+                            }
+                        }
+                    }
+                } else {
+                    url = try await AudioClipExporter.exportClipAsync(
+                        audioURL: audioURL,
+                        title: title,
+                        coverImage: coverImage ?? UIImage(),
+                        startTime: trimStart,
+                        endTime: trimEnd,
+                        fps: 30,
+                        videoSize: videoSize
+                    ) { progress in
+                        Task{
+                            await MainActor.run {
+                                self.exportProgress = progress
+                            }
                         }
                     }
                 }
@@ -312,7 +363,19 @@ struct AudioClipExportView: View {
         }
     }
     
+    private var isPreviewPlaying: Bool {
+        if isVideo {
+            return videoPlayer?.rate ?? 0 > 0
+        }
+        return audioPlayer?.isPlaying == true
+    }
+
     private func togglePreview() {
+        if isVideo {
+            toggleVideoPreview()
+            return
+        }
+
         if !audioURL.isFileURL {
             showPreviewUnavailableAlert = true
             return
@@ -322,6 +385,44 @@ struct AudioClipExportView: View {
         } else {
             startAudioPlayer()
         }
+    }
+
+    private func setupVideoPreviewPlayer() {
+        let player = AVPlayer(url: audioURL)
+        player.actionAtItemEnd = .pause
+        videoPlayer = player
+        seekVideoPreview(to: trimStart)
+    }
+
+    private func toggleVideoPreview() {
+        guard let player = videoPlayer else {
+            setupVideoPreviewPlayer()
+            videoPlayer?.play()
+            startProgressTimer()
+            return
+        }
+
+        if player.rate > 0 {
+            stopVideoPreview()
+        } else {
+            seekVideoPreview(to: trimStart + playbackProgress)
+            player.play()
+            startProgressTimer()
+        }
+    }
+
+    private func seekVideoPreview(to time: Double) {
+        let clampedTime = time.clamped(to: trimStart...trimEnd)
+        videoPlayer?.seek(
+            to: CMTime(seconds: clampedTime, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        )
+    }
+
+    private func stopVideoPreview() {
+        videoPlayer?.pause()
+        stopProgressTimer()
     }
     
     private func startAudioPlayer() {
@@ -347,6 +448,7 @@ struct AudioClipExportView: View {
     private func stopAudioPlayer() {
         audioPlayer?.stop()
         audioPlayer = nil
+        stopVideoPreview()
        // playbackProgress = 0
         stopProgressTimer()
         audioDelegate = nil
@@ -357,6 +459,24 @@ struct AudioClipExportView: View {
         stopProgressTimer()
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
             Task { @MainActor in
+                if isVideo {
+                    guard let player = videoPlayer else {
+                        playbackProgress = 0
+                        stopProgressTimer()
+                        return
+                    }
+
+                    let progress = player.currentTime().seconds - trimStart
+                    if progress >= (trimEnd - trimStart) {
+                        playbackProgress = max(0, trimEnd - trimStart)
+                        stopVideoPreview()
+                        seekVideoPreview(to: trimStart)
+                    } else {
+                        playbackProgress = max(0, min(progress, trimEnd - trimStart))
+                    }
+                    return
+                }
+
                 guard let player = audioPlayer else {
                     playbackProgress = 0
                     stopProgressTimer()
@@ -374,6 +494,24 @@ struct AudioClipExportView: View {
     private func stopProgressTimer() {
         progressTimer?.invalidate()
         progressTimer = nil
+    }
+}
+
+private struct VideoClipPreviewPlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.showsPlaybackControls = false
+        controller.videoGravity = .resizeAspect
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player {
+            controller.player = player
+        }
     }
 }
 

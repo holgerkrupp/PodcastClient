@@ -961,6 +961,12 @@
     "Carnival" : {
 
     },
+    "Changes the current episode between the audio enclosure and alternate video stream" : {
+
+    },
+    "Changes this episode between the audio enclosure and alternate video stream" : {
+
+    },
     "Chapter %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4709,6 +4715,7 @@
       }
     },
     "Preview is only available for downloaded audio files." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4717,6 +4724,9 @@
           }
         }
       }
+    },
+    "Preview is only available for downloaded media files." : {
+
     },
     "Preview unavailable" : {
       "localizations" : {
@@ -6236,6 +6246,18 @@
       }
     },
     "Switch Alternative Feed" : {
+
+    },
+    "Switch to audio" : {
+
+    },
+    "Switch to Audio" : {
+
+    },
+    "Switch to video" : {
+
+    },
+    "Switch to Video" : {
 
     },
     "The currently playing episode is kept pinned at the top while playback is active." : {

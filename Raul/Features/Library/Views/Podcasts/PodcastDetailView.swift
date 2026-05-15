@@ -626,7 +626,8 @@ struct PodcastDetailView: View {
                 
             } catch {
                 await MainActor.run {
-                    errorMessage = "Failed to refresh episodes: \(error.localizedDescription)"
+                    let nsError = error as NSError
+                    errorMessage = "Failed to refresh episodes: \(error.localizedDescription) (\(nsError.domain) \(nsError.code))"
                 }
             }
             

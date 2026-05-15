@@ -38,6 +38,114 @@ enum EpisodeType: String, Codable{
     case full, trailer, bonus, unknown
 }
 
+enum EpisodeMedia {
+    struct AlternateVideo: Hashable {
+        let url: URL
+        let mimeType: String?
+        let title: String?
+    }
+
+    static func isVideo(url: URL?, mimeType: String?) -> Bool {
+        if let mimeType = mimeType?.lowercased() {
+            if mimeType.hasPrefix("video/") {
+                return true
+            }
+
+            if mimeType.contains("mpegurl") || mimeType.contains("vnd.apple.mpegurl") {
+                return true
+            }
+        }
+
+        let pathExtension = url?.pathExtension.lowercased()
+        return pathExtension == "mp4" || pathExtension == "m3u8"
+    }
+
+    static func isPlayable(url: URL?, mimeType: String?) -> Bool {
+        if let mimeType = mimeType?.lowercased() {
+            if mimeType.hasPrefix("audio/") || mimeType.hasPrefix("video/") {
+                return true
+            }
+
+            if mimeType.contains("mpegurl") || mimeType.contains("vnd.apple.mpegurl") {
+                return true
+            }
+        }
+
+        guard let pathExtension = url?.pathExtension.lowercased(),
+              pathExtension.isEmpty == false else {
+            return false
+        }
+
+        let playableExtensions: Set<String> = [
+            "aac", "aif", "aiff", "flac", "m4a", "m4v", "m3u8", "mov",
+            "mp3", "mp4", "oga", "ogg", "opus", "wav"
+        ]
+        return playableExtensions.contains(pathExtension)
+    }
+
+    static func isImage(url: URL?, mimeType: String?) -> Bool {
+        if let mimeType = mimeType?.lowercased(), mimeType.hasPrefix("image/") {
+            return true
+        }
+
+        guard let pathExtension = url?.pathExtension.lowercased(),
+              pathExtension.isEmpty == false else {
+            return false
+        }
+
+        let imageExtensions: Set<String> = ["avif", "gif", "heic", "jpeg", "jpg", "png", "webp"]
+        return imageExtensions.contains(pathExtension)
+    }
+
+    static func playableEnclosure(from enclosures: [[String: Any]]?) -> [String: Any]? {
+        enclosures?.first { enclosure in
+            let url = (enclosure["url"] as? String).flatMap(URL.init(string:))
+            let mimeType = enclosure["type"] as? String
+            return isPlayable(url: url, mimeType: mimeType)
+        }
+    }
+
+    static func imageEnclosure(from enclosures: [[String: Any]]?) -> [String: Any]? {
+        enclosures?.first { enclosure in
+            let url = (enclosure["url"] as? String).flatMap(URL.init(string:))
+            let mimeType = enclosure["type"] as? String
+            return isImage(url: url, mimeType: mimeType)
+        }
+    }
+
+    static func alternateVideo(from optionalTags: PodcastNamespaceOptionalTags?) -> AlternateVideo? {
+        optionalTags?.alternateEnclosure?
+            .compactMap { node -> AlternateVideo? in
+                let mimeType = node.attributes["type"] ?? node.attributes["contentType"]
+                let sourceURLString = node.children
+                    .first { localName(from: $0.name) == "source" }?
+                    .attributes["uri"]
+                    ?? node.attributes["url"]
+                    ?? node.attributes["uri"]
+
+                guard let sourceURLString,
+                      let url = URL(string: sourceURLString),
+                      isVideo(url: url, mimeType: mimeType) else {
+                    return nil
+                }
+
+                return AlternateVideo(
+                    url: url,
+                    mimeType: mimeType,
+                    title: node.attributes["title"]
+                )
+            }
+            .first
+    }
+
+    private static func localName(from qualifiedName: String) -> String {
+        if let separatorIndex = qualifiedName.firstIndex(of: ":") {
+            return String(qualifiedName[qualifiedName.index(after: separatorIndex)...])
+        }
+        return qualifiedName
+    }
+}
+
 private final class EpisodeLocalFileCache: @unchecked Sendable {
     static let shared = EpisodeLocalFileCache()
 
@@ -96,6 +204,7 @@ class EpisodeDownloadStatus{
     var url: URL? // episodeURL - the mp3/m4a file
     var deeplinks: [URL]?
     var fileSize: Int64?
+    var mediaType: String?
     var link: URL? // Link to the episode webpage
     var imageURL: URL? // Episode Image
     
@@ -168,6 +277,18 @@ class EpisodeDownloadStatus{
         let progress = Double(metaData?.maxPlayposition ?? 0.0) / Double(duration ?? 1)
         
         return  progress > 1 ? 1 : progress
+    }
+
+    @Transient var isVideo: Bool {
+        EpisodeMedia.isVideo(url: url, mimeType: mediaType)
+    }
+
+    @Transient var alternateVideo: EpisodeMedia.AlternateVideo? {
+        EpisodeMedia.alternateVideo(from: optionalTags)
+    }
+
+    @Transient var hasAlternateVideo: Bool {
+        alternateVideo != nil
     }
 
     var hasLoadedTranscript: Bool {
@@ -289,6 +410,8 @@ class EpisodeDownloadStatus{
         metadata.episode = self
         self.metaData = metadata
     }
+    
+
 
     convenience init(
         sideLoadedURL: URL,
@@ -312,7 +435,14 @@ class EpisodeDownloadStatus{
     private func updateEpisodeData(from episodeData: [String: Any]) {
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
         self.author = episodeData["itunes:author"] as? String
-        self.guid = episodeData["guid"] as? String ?? episodeData["podcast:guid"] as? String ?? (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String
+        let enclosures = episodeData["enclosure"] as? [[String: Any]]
+        let playableEnclosure = EpisodeMedia.playableEnclosure(from: enclosures)
+        let imageEnclosure = EpisodeMedia.imageEnclosure(from: enclosures)
+
+        self.guid = episodeData["guid"] as? String
+            ?? episodeData["podcast:guid"] as? String
+            ?? playableEnclosure?["url"] as? String
+            ?? episodeData["link"] as? String
         self.desc = episodeData["description"] as? String
         self.subtitle = episodeData["itunes:subtitle"] as? String
         self.content = episodeData["content"] as? String
@@ -327,18 +457,22 @@ class EpisodeDownloadStatus{
         
         if let url = episodeData["itunes:image"] as? String{
             self.imageURL = URL(string: url)
+        } else if let imageURLString = imageEnclosure?["url"] as? String {
+            self.imageURL = URL(string: imageURLString)
         }
         
-        for assetDetails in episodeData["enclosure"] as? [[String:Any]] ?? []{
-            
+        if let assetDetails = playableEnclosure {
             if let url = URL(string: assetDetails["url"] as? String ?? "") {
                 self.url = url
+                self.mediaType = assetDetails["type"] as? String
             }
             if let length = Int64(assetDetails["length"] as? String ?? ""){
                 self.fileSize = length
             }
-            let _ = assetDetails["type"] as? String
- 
+        } else if EpisodeMedia.isImage(url: url, mimeType: mediaType) {
+            self.url = nil
+            self.mediaType = nil
+            self.fileSize = nil
         }
         
         replaceExternalFiles(with: feedExternalFiles(from: episodeData))
@@ -519,8 +653,7 @@ class EpisodeDownloadStatus{
     
     convenience init?(from episodeData: [String: Any], podcast: Podcast) {
         guard let title = episodeData["itunes:title"] as? String ?? episodeData["title"] as? String,
-              let urlString = episodeData["enclosure"] as? [[String: Any]],
-              let firstEnclosure = urlString.first,
+              let firstEnclosure = EpisodeMedia.playableEnclosure(from: episodeData["enclosure"] as? [[String: Any]]),
               let urlString = firstEnclosure["url"] as? String,
               let url = URL(string: urlString)
               else {

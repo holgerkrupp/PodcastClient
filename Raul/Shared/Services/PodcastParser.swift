@@ -7,11 +7,17 @@ enum elements:String, CaseIterable{
 
 enum PodcastParserError: LocalizedError {
     case notAPodcastFeed
+    case couldNotLoad(URL, statusCode: Int)
+    case xmlParserError(Error, line: Int, column: Int)
 
     var errorDescription: String? {
         switch self {
         case .notAPodcastFeed:
             return "This XML document does not look like a podcast feed."
+        case .couldNotLoad(let url, let statusCode):
+            return "Could not load \(url.absoluteString). HTTP status \(statusCode)."
+        case .xmlParserError(let error, let line, let column):
+            return "XML parser failed at line \(line), column \(column): \(error.localizedDescription)"
         }
     }
 }
@@ -27,6 +33,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     var episodeDeepLinks: [String] = []
     var maximumEpisodeCount: Int?
+    private(set) var parseError: Error?
 
     var episodeDict = [String: Any]()
     var chapterArray = [Any]()
@@ -159,6 +166,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         currentPerson.removeAll()
         currentPersonName = ""
         didHitEpisodeLimit = false
+        parseError = nil
 
         podcastOptionalTags = PodcastNamespaceOptionalTags()
         episodeOptionalTags = PodcastNamespaceOptionalTags()
@@ -395,11 +403,13 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
                     externalFilesArray.removeAll()
+                    
                     if let maximumEpisodeCount, episodesArray.count >= maximumEpisodeCount {
                         didHitEpisodeLimit = true
                         parser.abortParsing()
                         return
                     }
+                     
                 case "psc:chapters":
                     // list of chapters is finished
                     episodeDict.updateValue(chapterArray, forKey: currentElement) // add all chapters to the Episode
@@ -497,6 +507,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
         }
     }
 
+    func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+        self.parseError = parseError
+    }
+
     
 }
 
@@ -528,6 +542,10 @@ private final class NamespaceNodeBuilder {
 extension PodcastParser {
     static func downloadFeed(from url: URL) async throws -> PodcastFeedDocument {
         let (data, response) = try await URLSession.shared.data(from: url)
+        if let httpResponse = response as? HTTPURLResponse,
+           (200..<400).contains(httpResponse.statusCode) == false {
+            throw PodcastParserError.couldNotLoad(response.url ?? url, statusCode: httpResponse.statusCode)
+        }
         return PodcastFeedDocument(data: data, sourceURL: response.url ?? url)
     }
 
@@ -546,7 +564,21 @@ extension PodcastParser {
 
             let parsedSuccessfully = xmlParser.parse()
             if parsedSuccessfully == false, parser.didHitEpisodeLimit == false {
-                throw xmlParser.parserError ?? PodcastParserError.notAPodcastFeed
+                let error = parser.parseError ?? xmlParser.parserError
+                let nsError = error as NSError?
+                if nsError?.domain == XMLParser.errorDomain,
+                   nsError?.code == 111 {
+                    // libxml reports XML_ERR_USER_STOP when parsing is stopped by client code.
+                    // Treat it as a partial parse if the delegate already captured feed data.
+                } else if let error {
+                    throw PodcastParserError.xmlParserError(
+                        error,
+                        line: xmlParser.lineNumber,
+                        column: xmlParser.columnNumber
+                    )
+                } else {
+                    throw PodcastParserError.notAPodcastFeed
+                }
             }
 
             guard parser.podcastDictArr.isEmpty == false else {

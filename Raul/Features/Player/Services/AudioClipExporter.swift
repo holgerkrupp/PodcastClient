@@ -6,6 +6,7 @@ enum AudioClipExporter {
     enum ExportError: Error {
         case failedToCreateWriter
         case failedToAppendFrame
+        case noPlayableMedia
         case taskCancelled
     }
 
@@ -142,6 +143,56 @@ enum AudioClipExporter {
         try await mergeAudio(from: audioURL, intoVideo: outputURL, startTime: startTime, endTime: endTime, outputURL: finalURL)
         try? FileManager.default.removeItem(at: outputURL)
         return finalURL
+    }
+
+    static func exportVideoClipAsync(
+        videoURL: URL,
+        startTime: Double,
+        endTime: Double,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> URL {
+        progress(0.05)
+
+        let asset = AVURLAsset(url: videoURL)
+        let composition = AVMutableComposition()
+        let start = CMTime(seconds: max(0, startTime), preferredTimescale: 600)
+        let end = CMTime(seconds: max(startTime, endTime), preferredTimescale: 600)
+        let timeRange = CMTimeRange(start: start, end: end)
+
+        guard let sourceVideoTrack = try await asset.loadTracks(withMediaType: .video).first,
+              let compositionVideoTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+              ) else {
+            throw ExportError.noPlayableMedia
+        }
+
+        try compositionVideoTrack.insertTimeRange(timeRange, of: sourceVideoTrack, at: .zero)
+        compositionVideoTrack.preferredTransform = try await sourceVideoTrack.load(.preferredTransform)
+        progress(0.35)
+
+        if let sourceAudioTrack = try await asset.loadTracks(withMediaType: .audio).first,
+           let compositionAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+           ) {
+            try compositionAudioTrack.insertTimeRange(timeRange, of: sourceAudioTrack, at: .zero)
+        }
+        progress(0.55)
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp4")
+
+        guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
+            throw ExportError.failedToCreateWriter
+        }
+
+        progress(0.75)
+        try await exporter.export(to: outputURL, as: .mp4)
+        progress(1.0)
+
+        return outputURL
     }
 
     // MARK: - Shared CIContext for Blur

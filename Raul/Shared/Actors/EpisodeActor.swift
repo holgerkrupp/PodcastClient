@@ -218,6 +218,33 @@ actor EpisodeActor {
 
     }
 
+    func applyCachedPlaybackProgress(
+        episodeURL: URL,
+        playPosition: Double,
+        maxPlayPosition: Double,
+        chapterProgresses: [String: Double]
+    ) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
+
+        let storedMaxPosition = episode.metaData?.maxPlayposition ?? 0.0
+        episode.metaData?.playPosition = playPosition
+        episode.metaData?.maxPlayposition = max(storedMaxPosition, maxPlayPosition, playPosition)
+
+        for (chapterIDString, progress) in chapterProgresses {
+            guard let chapterID = UUID(uuidString: chapterIDString) else { continue }
+            let predicate = #Predicate<Marker> { chapter in
+                chapter.uuid == chapterID
+            }
+
+            if let chapter = try? modelContext.fetch(FetchDescriptor<Marker>(predicate: predicate)).first {
+                chapter.progress = progress
+            }
+        }
+
+        modelContext.saveIfNeeded()
+    }
+
     func playbackStateSnapshot(for episodeURL: URL) async -> EpisodePlaybackStateSnapshot? {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return nil }
         return EpisodePlaybackStateSnapshot(

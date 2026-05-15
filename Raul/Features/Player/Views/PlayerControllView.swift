@@ -6,6 +6,8 @@
 //
 import SwiftUI
 import SwiftData
+import AVFoundation
+import AVKit
 
 
 struct PlayerControllView: View {
@@ -14,6 +16,7 @@ struct PlayerControllView: View {
 
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
+
     @State private var showFullTranscripts: Bool = false
     @State private var openFullTranscriptFollowingPlayback: Bool = false
     @State var showSpeedSetting:Bool = false
@@ -37,7 +40,9 @@ struct PlayerControllView: View {
                         .accessibilityLabel("AirPlay")
                         .accessibilityHint("Choose an audio output device")
                         
-                   Spacer()
+                    Spacer()
+                    
+
                
                     Button {
                         
@@ -148,8 +153,13 @@ struct PlayerControllView: View {
                 })
                 
                 VStack(spacing: mediaSectionSpacing) {
-                    CoverImageView(episode: episode, timecode: player.currentChapter?.start)
-                        .id(episode.url)
+                    PlayerMediaView(
+                        episode: episode,
+                        player: player.videoPlayer,
+                        isVideo: player.currentPlaybackIsVideo,
+                        timecode: player.currentChapter?.start
+                    )
+                        .id("\(episode.url?.absoluteString ?? "")-\(player.currentPlaybackIsVideo)")
                         .scaledToFit()
                         .frame(maxWidth: .infinity)
                         .frame(
@@ -296,58 +306,158 @@ struct PlayerControllView: View {
     }
 }
 
+private struct PlayerMediaView: View {
+    let episode: Episode
+    let player: AVPlayer
+    let isVideo: Bool
+    let timecode: Double?
+
+    var body: some View {
+        Group {
+            if isVideo {
+                NativeVideoPlayerView(player: player)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityLabel(Text(verbatim: "Video player"))
+            } else {
+                CoverImageView(episode: episode, timecode: timecode)
+            }
+        }
+    }
+}
+
+private struct NativeVideoPlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.showsPlaybackControls = true
+        controller.allowsPictureInPicturePlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.entersFullScreenWhenPlaybackBegins = false
+        controller.exitsFullScreenWhenPlaybackEnds = true
+        controller.videoGravity = .resizeAspect
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player {
+            controller.player = player
+        }
+    }
+}
+
 struct PlayerPrimaryTransportControlsView: View {
     @Bindable private var player = Player.shared
     var includeBookmark: Bool = false
     @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 20
+    @State private var showClipExport = false
 
     var body: some View {
         ZStack {
-           // GlassEffectContainer(spacing: centerControlsSpacing){
-                HStack(spacing: centerControlsSpacing) {
-                    Button(action: player.skipback) {
-                        Label {
-                            Text("Skip Back")
-                        } icon: {
-                            Image(systemName: player.skipBackStep.triangleBackString)
-                                .resizable()
-                                .scaledToFit()
-                        }
-                        .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
-
-                    .frame(width: 50)
-                    .accessibilityLabel("Skip back \(player.skipBackStep.rawValue) seconds")
-                    .accessibilityHint("Moves playback backward by \(player.skipBackStep.rawValue) seconds")
-                    .accessibilityInputLabels([Text("Skip back"), Text("Back \(player.skipBackStep.rawValue) seconds")])
-                    
-                    Button(action: {
-                        if player.isPlaying {
-                            player.pause()
-                        } else {
-                            player.play()
-                        }
-                    }) {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+            HStack(spacing: centerControlsSpacing) {
+                Button(action: player.skipback) {
+                    Label {
+                        Text("Skip Back")
+                    } icon: {
+                        Image(systemName: player.skipBackStep.triangleBackString)
                             .resizable()
                             .scaledToFit()
-                            .padding(5)
                     }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
+                    .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
 
-                    .frame(width: 80)
-                    .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
-                    .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
-                    .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
-                    
-                    Button(action: player.skipforward) {
+                .frame(width: 50)
+                .accessibilityLabel("Skip back \(player.skipBackStep.rawValue) seconds")
+                .accessibilityHint("Moves playback backward by \(player.skipBackStep.rawValue) seconds")
+                .accessibilityInputLabels([Text("Skip back"), Text("Back \(player.skipBackStep.rawValue) seconds")])
+                
+                Button(action: {
+                    if player.isPlaying {
+                        player.pause()
+                    } else {
+                        player.play()
+                    }
+                }) {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .padding(5)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+
+                .frame(width: 80)
+                .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+                .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
+                .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
+                
+                Button(action: player.skipforward) {
+                    Label {
+                        Text("Skip Forward")
+                    } icon: {
+                        Image(systemName: player.skipForwardStep.triangleForwardString)
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+
+                .frame(width: 50)
+                .accessibilityLabel("Skip forward \(player.skipForwardStep.rawValue) seconds")
+                .accessibilityHint("Moves playback forward by \(player.skipForwardStep.rawValue) seconds")
+                .accessibilityInputLabels([Text("Skip forward"), Text("Forward \(player.skipForwardStep.rawValue) seconds")])
+            }
+
+            HStack {
+
+                Button(action: {showClipExport = true}) {
+                    Label {
+                        Text("Create audio clip")
+                    } icon: {
+                        Image(systemName: "scissors")
+                            .resizable()
+                            .scaledToFit()
+                    }
+                    .labelStyle(.iconOnly)
+                }
+                
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .frame(height: 30)
+                .help("Share audio clip")
+                .accessibilityLabel("Create audio clip")
+                .accessibilityHint("Opens clip export for the current episode")
+                .sheet(isPresented: $showClipExport) {
+                    if let episode = player.currentEpisode, let audioURL = player.currentPlaybackURL {
+                        AudioClipExportView(
+                            title: episode.title,
+                            audioURL: audioURL,
+                            isVideo: player.currentPlaybackIsVideo,
+                            coverImageURL: episode.imageURL,
+                            fallbackCoverImageURL: episode.podcast?.imageURL,
+                            playPosition: player.playPosition,
+                            duration: episode.duration ?? 60
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                }
+
+                Spacer()
+
+                if includeBookmark {
+                    Button(action: player.createBookmark) {
                         Label {
-                            Text("Skip Forward")
+                            Text("Bookmark")
                         } icon: {
-                            Image(systemName: player.skipForwardStep.triangleForwardString)
+                            Image(systemName: "bookmark.fill")
                                 .resizable()
                                 .scaledToFit()
                         }
@@ -355,36 +465,11 @@ struct PlayerPrimaryTransportControlsView: View {
                     }
                     .buttonStyle(.glass)
                     .buttonBorderShape(.circle)
-
-                    .frame(width: 50)
-                    .accessibilityLabel("Skip forward \(player.skipForwardStep.rawValue) seconds")
-                    .accessibilityHint("Moves playback forward by \(player.skipForwardStep.rawValue) seconds")
-                    .accessibilityInputLabels([Text("Skip forward"), Text("Forward \(player.skipForwardStep.rawValue) seconds")])
+                    .frame(height: 30)
+                    .accessibilityLabel("Add bookmark")
+                    .accessibilityHint("Saves the current playback position as a bookmark")
+                    .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
                 }
-                
-                if includeBookmark {
-                    HStack {
-                        Spacer()
-                        Button(action: player.createBookmark) {
-                            Label {
-                                Text("Bookmark")
-                            } icon: {
-                                Image(systemName: "bookmark.fill")
-                                    .resizable()
-                                    .scaledToFit()
-                                 
-                            }
-                            .labelStyle(.iconOnly)
-                        }
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.circle)
-
-                        .frame(height: 30)
-                        .accessibilityLabel("Add bookmark")
-                        .accessibilityHint("Saves the current playback position as a bookmark")
-                        .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
-                    }
-            //    }
             }
         }
         .frame(height: 50)

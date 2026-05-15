@@ -408,6 +408,7 @@ private struct PodcastBrowseHeaderView: View {
             if let link = feed.link {
                 Link(destination: link) {
                     Label("Open in Browser", systemImage: "safari")
+                        .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.glass(.clear))
             }

@@ -5,6 +5,76 @@ import MediaPlayer
 import SwiftData
 import BasicLogger
 
+enum PlaybackMediaSelection: String, Sendable {
+    case primary
+    case alternateVideo
+}
+
+private struct CachedPlaybackProgress: Codable {
+    var playPosition: Double
+    var maxPlayPosition: Double
+    var chapterProgresses: [String: Double]
+    var updatedAt: Date
+}
+
+@MainActor
+private enum PlaybackProgressDefaultsStore {
+    private static let defaultsKey = "Player.cachedPlaybackProgress.v1"
+    private static let defaults = UserDefaults.standard
+
+    static func cachedProgress(for episodeURL: URL) -> CachedPlaybackProgress? {
+        allCachedProgress()[episodeURL.absoluteString]
+    }
+
+    static func allCachedProgress() -> [String: CachedPlaybackProgress] {
+        guard let data = defaults.data(forKey: defaultsKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: CachedPlaybackProgress].self, from: data)) ?? [:]
+    }
+
+    static func update(
+        episodeURL: URL,
+        playPosition: Double,
+        maxPlayPosition: Double,
+        chapterID: UUID?,
+        chapterProgress: Double?
+    ) {
+        var allProgress = allCachedProgress()
+        let key = episodeURL.absoluteString
+        var cached = allProgress[key] ?? CachedPlaybackProgress(
+            playPosition: 0,
+            maxPlayPosition: 0,
+            chapterProgresses: [:],
+            updatedAt: Date()
+        )
+
+        cached.playPosition = playPosition
+        cached.maxPlayPosition = max(cached.maxPlayPosition, maxPlayPosition, playPosition)
+        if let chapterID, let chapterProgress {
+            cached.chapterProgresses[chapterID.uuidString] = chapterProgress
+        }
+        cached.updatedAt = Date()
+        allProgress[key] = cached
+        save(allProgress)
+    }
+
+    static func removeProgress(for episodeURL: URL) {
+        var allProgress = allCachedProgress()
+        allProgress.removeValue(forKey: episodeURL.absoluteString)
+        save(allProgress)
+    }
+
+    private static func save(_ allProgress: [String: CachedPlaybackProgress]) {
+        guard allProgress.isEmpty == false else {
+            defaults.removeObject(forKey: defaultsKey)
+            return
+        }
+
+        if let data = try? JSONEncoder().encode(allProgress) {
+            defaults.set(data, forKey: defaultsKey)
+        }
+    }
+}
+
 @Observable
 @MainActor
 class Player {
@@ -48,8 +118,11 @@ class Player {
     private let nowPlayingInfoActor = NowPlayingInfoActor()
     private let engine = PlayerEngine()
     private var playbackTask: Task<Void, Never>?
+    private var playbackStatusObservation: NSKeyValueObservation?
+    private var playbackRateObservation: NSKeyValueObservation?
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
+    private var currentPlaybackUsesAlternateMedia = false
     private var hasStartedRecovery = false
 
     var playbackRate: Float = 1.0 {
@@ -73,6 +146,31 @@ class Player {
     
     var currentEpisode: Episode?
     var currentEpisodeURL: URL?
+    var mediaSelection: PlaybackMediaSelection = .primary
+
+    var videoPlayer: AVPlayer {
+        engine.avPlayer
+    }
+
+    var currentPlaybackIsVideo: Bool {
+        guard let currentEpisode else { return false }
+        if mediaSelection == .alternateVideo, currentEpisode.alternateVideo != nil {
+            return true
+        }
+        return currentEpisode.isVideo
+    }
+
+    var currentPlaybackURL: URL? {
+        guard let currentEpisode else { return nil }
+        if mediaSelection == .alternateVideo, let alternateVideo = currentEpisode.alternateVideo {
+            return alternateVideo.url
+        }
+        return currentEpisode.localFile ?? currentEpisode.url
+    }
+
+    var canSwitchCurrentEpisodeMedia: Bool {
+        currentEpisode?.hasAlternateVideo == true
+    }
     
     var isCurrentEpisodeDownloaded: Bool {
         return currentEpisode?.metaData?.calculatedIsAvailableLocally ?? false
@@ -101,10 +199,12 @@ class Player {
         Task {
             // Remove legacy UUID-based last-played storage from older builds.
             await migrateLastPlayedFromUserDefaultsIfNeeded()
+            await reconcileCachedPlaybackProgress()
             await restoreLastPlayedFromPlaylist()
         }
         loadPlayBackSpeed()
         listenToEvent()
+        observeEnginePlaybackState()
         pause()
         addChangeSettingsObserver()
         addDownloadObserver()
@@ -395,13 +495,7 @@ class Player {
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
-        if let chapterID = chapter.uuid{
-
-            let chapterActor = self.chapterActor
-            Task.detached(priority: .background) {
-                await chapterActor?.setChapterProgress(progress, for: chapterID)
-            }
-        }
+        cacheCurrentPlaybackState(chapterID: chapter.uuid, chapterProgress: progress)
     }
 
     private func sanitizedPosition(_ value: Double?) -> Double {
@@ -459,6 +553,53 @@ class Player {
         return candidate
     }
 
+    private func cachedPlaybackProgress(for episodeURL: URL) -> CachedPlaybackProgress? {
+        PlaybackProgressDefaultsStore.cachedProgress(for: episodeURL)
+    }
+
+    private func cacheCurrentPlaybackState(
+        chapterID: UUID? = nil,
+        chapterProgress explicitChapterProgress: Double? = nil
+    ) {
+        guard let currentEpisodeURL else { return }
+        guard currentPlaybackSource != .liveRemote else { return }
+
+        let currentPlayPosition = sanitizedPosition(playPosition)
+        let currentMaxPosition = max(
+            sanitizedPosition(currentEpisode?.metaData?.maxPlayposition),
+            currentPlayPosition
+        )
+        let resolvedChapterID = chapterID ?? currentChapter?.uuid
+        let resolvedChapterProgress = explicitChapterProgress ?? chapterProgress
+
+        currentEpisode?.metaData?.playPosition = currentPlayPosition
+        currentEpisode?.metaData?.maxPlayposition = currentMaxPosition
+
+        PlaybackProgressDefaultsStore.update(
+            episodeURL: currentEpisodeURL,
+            playPosition: currentPlayPosition,
+            maxPlayPosition: currentMaxPosition,
+            chapterID: resolvedChapterID,
+            chapterProgress: resolvedChapterProgress
+        )
+    }
+
+    private func reconcileCachedPlaybackProgress() async {
+        let cachedProgress = PlaybackProgressDefaultsStore.allCachedProgress()
+        guard cachedProgress.isEmpty == false else { return }
+
+        for (episodeURLString, cached) in cachedProgress {
+            guard let episodeURL = URL(string: episodeURLString) else { continue }
+            await episodeActor?.applyCachedPlaybackProgress(
+                episodeURL: episodeURL,
+                playPosition: sanitizedPosition(cached.playPosition),
+                maxPlayPosition: sanitizedPosition(cached.maxPlayPosition),
+                chapterProgresses: cached.chapterProgresses
+            )
+            PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+        }
+    }
+
     func saveCurrentPlaybackState(force: Bool = false) async {
         guard let currentEpisodeURL else { return }
         guard currentPlaybackSource != .liveRemote else { return }
@@ -484,6 +625,8 @@ class Player {
         if let currentChapterID, let currentChapterProgress {
             await chapterActor?.setChapterProgress(currentChapterProgress, for: currentChapterID)
         }
+
+        PlaybackProgressDefaultsStore.removeProgress(for: currentEpisodeURL)
     }
 
     func captureCurrentPlaybackStateFromEngine(force: Bool = true) async {
@@ -535,31 +678,37 @@ class Player {
         updateNowPlayingInfo()
     }
 
-    private func savePlayPosition(force: Bool = false) {
-        Task(priority: .background) { [weak self] in
-            guard let self else { return }
-            await self.saveCurrentPlaybackState(force: force)
+    private func normalizedMediaSelection(_ selection: PlaybackMediaSelection, for episode: Episode) -> PlaybackMediaSelection {
+        if selection == .alternateVideo, episode.alternateVideo != nil {
+            return .alternateVideo
         }
+        return .primary
     }
 
-    
-    private func playbackItem(for episode: Episode) -> (item: AVPlayerItem, source: PlaybackSource)? {
+    private func playbackItem(
+        for episode: Episode,
+        mediaSelection selection: PlaybackMediaSelection
+    ) -> (item: AVPlayerItem, source: PlaybackSource, usesAlternateMedia: Bool)? {
+        if selection == .alternateVideo, let alternateVideo = episode.alternateVideo {
+            return (AVPlayerItem(url: alternateVideo.url), .remote, true)
+        }
+
         if episode.source == .sideLoaded {
             guard let localFile = episode.localFile,
                   FileManager.default.fileExists(atPath: localFile.path) else {
                 return nil
             }
-            return (AVPlayerItem(url: localFile), .local)
+            return (AVPlayerItem(url: localFile), .local, false)
         }
 
         if episode.metaData?.calculatedIsAvailableLocally == true,
            let localFile = episode.localFile,
            FileManager.default.fileExists(atPath: localFile.path) {
-            return (AVPlayerItem(url: localFile), .local)
+            return (AVPlayerItem(url: localFile), .local, false)
         }
 
         guard let remoteURL = episode.url else { return nil }
-        return (AVPlayerItem(url: remoteURL), .remote)
+        return (AVPlayerItem(url: remoteURL), .remote, false)
     }
 
     private func shouldRequeueEpisodeOnUnload(_ episode: Episode, episodeURL: URL) async -> Bool {
@@ -586,6 +735,12 @@ class Player {
     }
 
     private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
+        if currentEpisodeURL == episodeURL, finishedPlayback == false {
+            await captureCurrentPlaybackStateFromEngine(force: true)
+        } else if finishedPlayback {
+            PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+        }
+
         let episode = (currentEpisode?.url == episodeURL) ? currentEpisode : await fetchEpisode(with: episodeURL)
         guard let episode else { return }
         let shouldRequeueUnfinishedEpisode = await shouldRequeueEpisodeOnUnload(episode, episodeURL: episodeURL)
@@ -601,6 +756,8 @@ class Player {
         nextChapter = nil
         chapters = []
         currentPlaybackSource = nil
+        currentPlaybackUsesAlternateMedia = false
+        mediaSelection = .primary
         lastProgressSaveDate = .distantPast
         lastArtworkURL = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
@@ -615,7 +772,12 @@ class Player {
     
     
     
-    func playEpisode(_ episodeURL: URL?, playDirectly: Bool = true, startingAt time: Double? = nil) async {
+    func playEpisode(
+        _ episodeURL: URL?,
+        playDirectly: Bool = true,
+        startingAt time: Double? = nil,
+        mediaSelection requestedMediaSelection: PlaybackMediaSelection? = nil
+    ) async {
         guard let episodeURL,
               let episode = await fetchEpisode(with: episodeURL) else { return }
 
@@ -624,10 +786,16 @@ class Player {
             await unloadEpisode(episodeURL: currentEpisodeURL)
         }
 
+        let selectedMedia = normalizedMediaSelection(
+            requestedMediaSelection ?? (previousEpisodeURL == episodeURL ? mediaSelection : .primary),
+            for: episode
+        )
+
         episode.metaData?.isInbox = false
 
         currentEpisode = episode
         currentEpisodeURL = episodeURL
+        mediaSelection = selectedMedia
         if playDirectly {
             if currentEpisode?.metaData == nil {
                 let metadata = EpisodeMetaData()
@@ -643,8 +811,9 @@ class Player {
 
         updateChapters()
 
-        guard let playback = playbackItem(for: episode) else { return }
+        guard let playback = playbackItem(for: episode, mediaSelection: selectedMedia) else { return }
         currentPlaybackSource = playback.source
+        currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
         let item = playback.item
 
         let duration = item.duration.seconds
@@ -653,12 +822,22 @@ class Player {
         }
 
         let snapshot = await episodeActor?.playbackStateSnapshot(for: episodeURL)
+        let cachedProgress = cachedPlaybackProgress(for: episodeURL)
         if currentEpisode?.metaData == nil {
             let metadata = EpisodeMetaData()
             metadata.episode = currentEpisode
             currentEpisode?.metaData = metadata
         }
-        if let persistedPosition = snapshot?.playPosition {
+        if let cachedProgress {
+            let cachedPosition = sanitizedPosition(cachedProgress.playPosition)
+            currentEpisode?.metaData?.playPosition = cachedPosition
+            currentEpisode?.metaData?.maxPlayposition = max(
+                sanitizedPosition(currentEpisode?.metaData?.maxPlayposition),
+                sanitizedPosition(snapshot?.maxPlayPosition),
+                sanitizedPosition(cachedProgress.maxPlayPosition),
+                cachedPosition
+            )
+        } else if let persistedPosition = snapshot?.playPosition {
             let sanitizedPersistedPosition = sanitizedPosition(persistedPosition)
             if sanitizedPersistedPosition > 0 || sanitizedPosition(currentEpisode?.metaData?.playPosition) <= 0 {
                 currentEpisode?.metaData?.playPosition = sanitizedPersistedPosition
@@ -684,8 +863,11 @@ class Player {
         let targetStartTime = resolvedResumePosition(
             explicitTime: time,
             episodeDuration: currentEpisode?.duration,
-            persistedPosition: snapshot?.playPosition,
-            persistedMaxPosition: snapshot?.maxPlayPosition,
+            persistedPosition: cachedProgress?.playPosition ?? snapshot?.playPosition,
+            persistedMaxPosition: max(
+                sanitizedPosition(cachedProgress?.maxPlayPosition),
+                sanitizedPosition(snapshot?.maxPlayPosition)
+            ),
             metadataPosition: currentEpisode?.metaData?.playPosition,
             metadataMaxPosition: currentEpisode?.metaData?.maxPlayposition,
             inMemoryPosition: inMemoryResumePosition
@@ -697,6 +879,44 @@ class Player {
         await updateNowPlayingCover()
         if playDirectly {
             play()
+        }
+    }
+
+    func switchCurrentEpisodeMedia(to requestedSelection: PlaybackMediaSelection? = nil) async {
+        guard let episode = currentEpisode,
+              episode.hasAlternateVideo else { return }
+
+        let nextSelection = normalizedMediaSelection(
+            requestedSelection ?? (mediaSelection == .alternateVideo ? .primary : .alternateVideo),
+            for: episode
+        )
+        guard nextSelection != mediaSelection else { return }
+
+        await captureCurrentPlaybackStateFromEngine(force: true)
+        guard let playback = playbackItem(for: episode, mediaSelection: nextSelection) else { return }
+
+        let preservedPosition = max(0, playPosition)
+        let wasPlaying = isPlaying
+        let preservedRate = playbackRate
+        let hadPlaybackUpdates = playbackTask != nil
+
+        await engine.replaceCurrentItem(with: playback.item)
+        mediaSelection = nextSelection
+        currentPlaybackSource = playback.source
+        currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
+        await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
+
+        playPosition = preservedPosition
+        updateNowPlayingInfo()
+        _ = updateCurrentChapter()
+        updateChapterProgress()
+
+        if hadPlaybackUpdates {
+            startPlaybackUpdates()
+        }
+
+        if wasPlaying {
+            await engine.setRate(preservedRate)
         }
     }
 
@@ -782,6 +1002,71 @@ class Player {
             return  nil
         }
     }
+
+    private func observeEnginePlaybackState() {
+        playbackStatusObservation = videoPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            Task { @MainActor [weak self] in
+                self?.syncPlaybackStateFromObservedPlayer(player)
+            }
+        }
+
+        playbackRateObservation = videoPlayer.observe(\.rate, options: [.new]) { [weak self] player, _ in
+            Task { @MainActor [weak self] in
+                self?.syncPlaybackStateFromObservedPlayer(player)
+            }
+        }
+    }
+
+    private func syncPlaybackStateFromObservedPlayer(_ observedPlayer: AVPlayer) {
+        if (observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing), isPlaying == false {
+            handleExternalPlaybackStarted()
+        } else if observedPlayer.timeControlStatus == .paused, observedPlayer.rate == 0, isPlaying == true {
+            handleExternalPlaybackPaused()
+        }
+    }
+
+    private func handleExternalPlaybackStarted() {
+        loadSkipDurations()
+        cacheCurrentPlaybackState()
+        startPlaybackUpdates()
+        initRemoteCommandCenter()
+        isPlaying = true
+        updateNowPlayingInfo()
+
+        let desiredRate = playbackRate
+        let position = playPosition
+        let currentEpisodeURL = currentEpisode?.url
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+
+        Task {
+            if await engine.getRate() != desiredRate {
+                await engine.setRate(desiredRate)
+            }
+
+            if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
+                await playSessionTracker.startOrUpdateSession(
+                    episodeURL: currentEpisodeURL,
+                    position: position,
+                    rate: desiredRate,
+                    appVersion: appVersion
+                )
+                await episodeActor?.addplaybackStartTimes(episodeURL: currentEpisodeURL, date: Date())
+            }
+        }
+    }
+
+    private func handleExternalPlaybackPaused() {
+        isPlaying = false
+        stopPlaybackUpdates()
+        stopNowPlayingInfoUpdater()
+        Task {
+            await captureCurrentPlaybackStateFromEngine(force: true)
+
+            if currentEpisode != nil, currentPlaybackSource != .liveRemote {
+                await playSessionTracker.pauseSession(at: playPosition)
+            }
+        }
+    }
     
     func listenToEvent() {
         Task {
@@ -814,7 +1099,7 @@ class Player {
     func play(){
         loadPlayBackSpeed()
         loadSkipDurations()
-        savePlayPosition(force: true)
+        cacheCurrentPlaybackState()
         startPlaybackUpdates()
      //   startNowPlayingInfoUpdater()
         initRemoteCommandCenter()
@@ -892,7 +1177,7 @@ class Player {
         updateNowPlayingInfo()
         _ = updateCurrentChapter()
         updateChapterProgress()
-        await saveCurrentPlaybackState(force: true)
+        cacheCurrentPlaybackState()
     }
     
     func setRate(_ rate: Float){
@@ -986,7 +1271,7 @@ class Player {
             if currentEpisode?.chapters?.isEmpty == false {
                 updateChapters()
             }
-            savePlayPosition(force: true)
+            cacheCurrentPlaybackState()
             lastProgressSaveDate = now
         }
     }
@@ -1084,6 +1369,7 @@ class Player {
                     position: finalPlaybackPosition,
                     force: true
                 )
+                PlaybackProgressDefaultsStore.removeProgress(for: finishedEpisodeURL)
                 await unloadEpisode(episodeURL: finishedEpisodeURL, finishedPlayback: true)
             }
 
@@ -1100,6 +1386,7 @@ class Player {
 
     private func ensureDownloadForCurrentEpisodeIfNeeded() async {
         guard currentPlaybackSource == .remote,
+              currentPlaybackUsesAlternateMedia == false,
               let episode = currentEpisode,
               episode.metaData?.calculatedIsAvailableLocally != true,
               let remoteURL = episode.url else {
@@ -1116,6 +1403,7 @@ class Player {
 
     private func switchCurrentEpisodeToDownloadedCopyIfNeeded() async {
         guard currentPlaybackSource == .remote,
+              currentPlaybackUsesAlternateMedia == false,
               let episode = currentEpisode,
               let localFile = episode.localFile,
               FileManager.default.fileExists(atPath: localFile.path) else {

@@ -130,16 +130,20 @@ actor PodcastModelActor {
             return podcastGUID
         }
 
-        if let enclosure = (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String,
+        if let enclosure = EpisodeMedia.playableEnclosure(from: episodeData["enclosure"] as? [[String: Any]])?["url"] as? String,
            enclosure.isEmpty == false {
             return enclosure
+        }
+
+        if let link = episodeData["link"] as? String, link.isEmpty == false {
+            return link
         }
 
         return nil
     }
 
     private func episodeURL(from episodeData: [String: Any]) -> URL? {
-        guard let enclosure = (episodeData["enclosure"] as? [[String: Any]])?.first?["url"] as? String,
+        guard let enclosure = EpisodeMedia.playableEnclosure(from: episodeData["enclosure"] as? [[String: Any]])?["url"] as? String,
               enclosure.isEmpty == false else {
             return nil
         }
@@ -505,6 +509,13 @@ actor PodcastModelActor {
             await reportProgress(SubscriptionProgressUpdate(1.0, "Refresh paused"), using: progress)
             return false
         } catch {
+            let nsError = error as NSError
+            print(
+                "Podcast refresh failed for \(feedURL.absoluteString):",
+                "domain=\(nsError.domain)",
+                "code=\(nsError.code)",
+                "description=\(error.localizedDescription)"
+            )
             if let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
                 failedMeta.isUpdating = false
                 failedMeta.message = nil

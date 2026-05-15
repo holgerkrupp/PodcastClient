@@ -19,6 +19,7 @@ struct EpisodeDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Bindable var episode: Episode
+    @Bindable private var player = Player.shared
     @StateObject private var backgroundImageLoader: ImageLoaderAndCache
     @State private var shareURL: IdentifiableURL?
 
@@ -112,13 +113,32 @@ struct EpisodeDetailView: View {
                         optionalTags: episode.optionalTags,
                         funding: episode.funding.isEmpty ? episode.podcast?.funding ?? [] : episode.funding
                     )
-                    GlassEffectContainer(spacing: 20.0) {
+                    
                         HStack{
                             NavigationLink(destination: BookmarkListView(episode: episode)) {
                                 Label("Bookmarks", systemImage: "bookmark.fill")
+                                    .labelStyle(.iconOnly)
                             }
                             .buttonStyle(.glass(.clear))
                             .padding()
+
+                            if episode.hasAlternateVideo {
+                                Button {
+                                    Task {
+                                        await switchEpisodeMedia()
+                                    }
+                                } label: {
+                                    Label(
+                                        episodeMediaSwitchTitle,
+                                        systemImage: isCurrentEpisodeShowingVideo ? "waveform" : "play.rectangle"
+                                    )
+                                    .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.glass(.clear))
+                                .padding()
+                                .accessibilityLabel(episodeMediaSwitchTitle)
+                                .accessibilityHint("Changes this episode between the audio enclosure and alternate video stream")
+                            }
                             
                             if hasLoadedTranscript || hasRemoteTranscript {
                                 Button {
@@ -155,7 +175,7 @@ struct EpisodeDetailView: View {
                                 .accessibilityInputLabels([Text("Generate captions"), Text("Transcribe episode")])
                             }
                         }
-                    }
+                    
 
 #if DEBUG
                     if let url = episode.url {
@@ -211,7 +231,10 @@ struct EpisodeDetailView: View {
                     HStack{
                         if let episodeLink = episode.link {
                             Link(destination: episodeLink) {
-                                Label("Open", systemImage: "link")
+                                Label("Open in Browser", systemImage: "safari")
+                                    .labelStyle(.iconOnly)
+                            
+                        
                             }
                             .buttonStyle(.glass(.clear))
                         }
@@ -325,6 +348,31 @@ struct EpisodeDetailView: View {
             return nil
         }
         return author
+    }
+
+    private var isCurrentEpisode: Bool {
+        player.currentEpisodeURL == episode.url
+    }
+
+    private var isCurrentEpisodeShowingVideo: Bool {
+        isCurrentEpisode && player.currentPlaybackIsVideo
+    }
+
+    private var episodeMediaSwitchTitle: String {
+        isCurrentEpisodeShowingVideo ? "Switch to Audio" : "Switch to Video"
+    }
+
+    @MainActor
+    private func switchEpisodeMedia() async {
+        if isCurrentEpisode {
+            await player.switchCurrentEpisodeMedia()
+        } else {
+            await player.playEpisode(
+                episode.url,
+                playDirectly: true,
+                mediaSelection: .alternateVideo
+            )
+        }
     }
 
     @MainActor
