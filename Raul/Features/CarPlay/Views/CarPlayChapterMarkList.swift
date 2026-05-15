@@ -15,7 +15,7 @@ class CarPlayChapterMarkList {
     }
 
     private func setupTemplate()  async{
-        let loadedChapters = Player.shared.chapters ?? []
+        let loadedChapters = Player.shared.currentEpisode?.preferredChapters ?? []
         guard loadedChapters.isEmpty == false else {
             template.updateSections([])
             return

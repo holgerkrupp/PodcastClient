@@ -21,7 +21,7 @@ struct PodcastEpisodeDraft: Identifiable, Hashable, @unchecked Sendable {
 
     init?(episodeData: [String: Any]) {
         guard let title = episodeData["itunes:title"] as? String ?? episodeData["title"] as? String,
-              let enclosure = (episodeData["enclosure"] as? [[String: Any]])?.first,
+              let enclosure = EpisodeMedia.playableEnclosure(from: episodeData["enclosure"] as? [[String: Any]]),
               let enclosureURLString = enclosure["url"] as? String,
               let episodeURL = URL(string: enclosureURLString) else {
             return nil
@@ -40,7 +40,10 @@ struct PodcastEpisodeDraft: Identifiable, Hashable, @unchecked Sendable {
         self.publishDate = (episodeData["pubDate"] as? String).flatMap(Date.dateFromRFC1123)
         self.episodeURL = episodeURL
         self.link = URL(string: episodeData["link"] as? String ?? "")
-        self.imageURL = URL(string: episodeData["itunes:image"] as? String ?? "")
+        self.imageURL = (episodeData["itunes:image"] as? String)
+            .flatMap(URL.init(string:))
+            ?? (EpisodeMedia.imageEnclosure(from: episodeData["enclosure"] as? [[String: Any]])?["url"] as? String)
+                .flatMap(URL.init(string:))
         self.author = episodeData["itunes:author"] as? String
         self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
         self.number = episodeData["itunes:episode"] as? String

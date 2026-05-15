@@ -33,7 +33,8 @@ class CarPlayNowPlaying {
         
         var buttons : [CPNowPlayingButton] = []
     
-        if let chapters = player.chapters, chapters.isEmpty != true {
+        let preferredChapters = player.currentEpisode?.preferredChapters ?? []
+        if preferredChapters.isEmpty == false {
             let listButton = CPNowPlayingImageButton(
                 image: UIImage(systemName: "list.bullet") ?? UIImage()
             ) { _ in
@@ -46,7 +47,7 @@ class CarPlayNowPlaying {
                 image: UIImage(systemName: "backward.end.alt") ?? UIImage()
             ) { _ in
                 Task {
-                    await player.skipToChapterStart()
+                    await self.skipToCurrentPreferredChapterStart()
                 }
             }
             
@@ -54,7 +55,7 @@ class CarPlayNowPlaying {
                 image: UIImage(systemName: "forward.end.alt") ?? UIImage()
             ) { _ in
                 Task {
-                    await player.skipToNextChapter()
+                    await self.skipToNextPreferredChapter()
                 }
             }
             
@@ -80,6 +81,32 @@ class CarPlayNowPlaying {
 
         
         template.updateNowPlayingButtons(buttons)
+    }
+
+    private func preferredChapters() -> [Marker] {
+        player.currentEpisode?.preferredChapters ?? []
+    }
+
+    private func skipToCurrentPreferredChapterStart() async {
+        let chapters = preferredChapters()
+        guard let currentChapter = chapters.last(where: { ($0.start ?? 0) <= player.playPosition }),
+              let start = currentChapter.start else {
+            return
+        }
+
+        await player.jumpTo(time: start)
+    }
+
+    private func skipToNextPreferredChapter() async {
+        let chapters = preferredChapters()
+        let nextChapter = chapters.first(where: { ($0.start ?? 0) >= player.playPosition })
+
+        if let start = nextChapter?.start {
+            await player.jumpTo(time: start)
+        } else if let currentChapter = chapters.last(where: { ($0.start ?? 0) <= player.playPosition }),
+                  let end = currentChapter.end {
+            await player.jumpTo(time: end)
+        }
     }
     
 }

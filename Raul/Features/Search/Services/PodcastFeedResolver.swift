@@ -186,7 +186,7 @@ private extension PodcastFeedResolver {
 
     static func buildPodcastFeed(from data: Data, sourceURL: URL) async throws -> PodcastFeed {
         let document = PodcastFeedDocument(data: data, sourceURL: sourceURL)
-        let page = try await PodcastParser.parsePage(from: document, maximumEpisodes: 1)
+        let page = try await PodcastParser.parsePage(from: document)
         return page.feed
     }
 

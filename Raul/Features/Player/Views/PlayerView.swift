@@ -8,7 +8,6 @@ struct PlayerView: View {
     @State private var showTranscripts: Bool = false
     @State private var showFullTranscripts: Bool = false
     @State var showSpeedSetting:Bool = false
-    @State private var showClipExport = false
 
 
 
@@ -39,6 +38,7 @@ struct PlayerView: View {
 
                                                         Link(destination: episodeLink) {
                                                             Label("Open in Browser", systemImage: "safari")
+                                                                .labelStyle(.iconOnly)
                                                         }
                                                         .buttonStyle(.glass(.clear))
                                                      //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
@@ -55,32 +55,29 @@ struct PlayerView: View {
                                                     Spacer()
 #endif
 
-                                                    Button(action: {
-                                                        showClipExport = true
-                                                    }) {
-                                                        Image(systemName: "scissors")
-                                                    }
-                                                    .buttonStyle(.glass(.clear))
-                                                    .frame(height: 30)
-                                                    .help("Share audio clip")
-                                                    .accessibilityLabel("Create audio clip")
-                                                    .accessibilityHint("Opens clip export for the current episode")
-                                                    .sheet(isPresented: $showClipExport) {
-                                                        // TODO: coverImage loading should ideally not be async in the sheet
-
-                                                        if let episode = player.currentEpisode, let audioURL = episode.localFile ?? episode.url {
-                                                            AudioClipExportView(
-                                                                title: episode.title,
-                                                                audioURL: audioURL,
-                                                                coverImageURL: episode.imageURL,
-                                                                fallbackCoverImageURL: episode.podcast?.imageURL,
-                                                                playPosition: player.playPosition,
-                                                                duration: episode.duration ?? 60
-                                                            )
-                                                        } else {
-                                                            EmptyView()
+                                                    if player.canSwitchCurrentEpisodeMedia {
+                                                        Button {
+                                                            Task {
+                                                                await player.switchCurrentEpisodeMedia()
+                                                            }
+                                                        } label: {
+                                                            Label {
+                                                                Text(player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video")
+                                                            } icon: {
+                                                                Image(systemName: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle")
+                                                                    .resizable()
+                                                                    .scaledToFit()
+                                                            }
+                                                            .labelStyle(.iconOnly)
                                                         }
+                                                        .buttonStyle(.glass)
+                                                        .buttonBorderShape(.circle)
+                                                        .frame(height: 30)
+                                                        .accessibilityLabel(player.currentPlaybackIsVideo ? "Switch to audio" : "Switch to video")
+                                                        .accessibilityHint("Changes the current episode between the audio enclosure and alternate video stream")
                                                     }
+                                                    
+
                                                     Spacer()
                                                     if let url = episode.deeplinks?.first ?? episode.link {
 

@@ -147,80 +147,113 @@ actor SubscriptionManager:NSObject{
             throw SubscribeError.loadfeed
         }
 
+        if subscribe {
+            if let progress {
+                await progress(SubscriptionProgressUpdate(0.02, "Checking podcast feed"))
+            }
+            _ = try await PodcastParser.fetchPage(from: url)
+        }
+
         let descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.feed == url }
         )
 
-        let podcast: Podcast
-        if let existingPodcast = (try? modelContext.fetch(descriptor))?.first {
-            podcast = existingPodcast
-            applyFeedPreview(podcastFeed, to: existingPodcast)
+        let existingPodcast = (try? modelContext.fetch(descriptor))?.first
+        let previousIsSubscribed = existingPodcast?.metaData?.isSubscribed
+        let previousSubscriptionDate = existingPodcast?.metaData?.subscriptionDate
+        var podcastForRollback: Podcast?
+        var insertedNewPodcast = false
 
-            let metadata = ensureMetadata(for: existingPodcast)
-            if subscribe {
-                metadata.isSubscribed = true
-                metadata.subscriptionDate = Date()
-            }
-        } else {
-            let newPodcast = Podcast(from: podcastFeed)
-            let metadata = newPodcast.metaData ?? PodcastMetaData()
-            newPodcast.metaData = metadata
-            metadata.isSubscribed = subscribe
-            metadata.subscriptionDate = subscribe ? Date() : nil
-            modelContext.insert(newPodcast)
-            podcast = newPodcast
-        }
+        do {
+            let podcast: Podcast
+            if let existingPodcast {
+                podcast = existingPodcast
+                applyFeedPreview(podcastFeed, to: existingPodcast)
 
-        modelContext.saveIfNeeded()
-        await SubscriptionManifestSync.publishCurrentSubscriptions(
-            modelContainer: modelContainer,
-            allowEmpty: subscribe == false
-        )
-
-        if let progress {
-            await progress(
-                SubscriptionProgressUpdate(
-                    0.08,
-                    subscribe ? "Preparing subscription" : "Preparing podcast"
-                )
-            )
-        }
-
-        if let feed = podcast.feed {
-            let worker = PodcastModelActor(modelContainer: modelContainer)
-            _ = try await worker.updatePodcast(feed, force: true, silent: true) { update in
-                guard let progress else { return }
-
-                let message: String
-                switch update.message {
-                case "Subscription complete" where subscribe == false:
-                    message = "Podcast ready"
-                case "Subscription failed" where subscribe == false:
-                    message = "Podcast import failed"
-                default:
-                    message = update.message
+                let metadata = ensureMetadata(for: existingPodcast)
+                if subscribe {
+                    metadata.isSubscribed = true
+                    metadata.subscriptionDate = Date()
                 }
-
-                await progress(SubscriptionProgressUpdate(update.fractionCompleted, message))
+            } else {
+                let newPodcast = Podcast(from: podcastFeed)
+                let metadata = newPodcast.metaData ?? PodcastMetaData()
+                newPodcast.metaData = metadata
+                metadata.isSubscribed = subscribe
+                metadata.subscriptionDate = subscribe ? Date() : nil
+                modelContext.insert(newPodcast)
+                podcast = newPodcast
+                insertedNewPodcast = true
             }
+            podcastForRollback = podcast
+
+            modelContext.saveIfNeeded()
             await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
                 allowEmpty: subscribe == false
             )
-        }
 
-        if subscribe == false {
-            let metadata = ensureMetadata(for: podcast)
-            metadata.isSubscribed = false
-            metadata.subscriptionDate = nil
-            modelContext.saveIfNeeded()
+            if let progress {
+                await progress(
+                    SubscriptionProgressUpdate(
+                        0.08,
+                        subscribe ? "Preparing subscription" : "Preparing podcast"
+                    )
+                )
+            }
+
+            if let feed = podcast.feed {
+                let worker = PodcastModelActor(modelContainer: modelContainer)
+                _ = try await worker.updatePodcast(feed, force: true, silent: true) { update in
+                    guard let progress else { return }
+
+                    let message: String
+                    switch update.message {
+                    case "Subscription complete" where subscribe == false:
+                        message = "Podcast ready"
+                    case "Subscription failed" where subscribe == false:
+                        message = "Podcast import failed"
+                    default:
+                        message = update.message
+                    }
+
+                    await progress(SubscriptionProgressUpdate(update.fractionCompleted, message))
+                }
+                await SubscriptionManifestSync.publishCurrentSubscriptions(
+                    modelContainer: modelContainer,
+                    allowEmpty: subscribe == false
+                )
+            }
+
+            if subscribe == false {
+                let metadata = ensureMetadata(for: podcast)
+                metadata.isSubscribed = false
+                metadata.subscriptionDate = nil
+                modelContext.saveIfNeeded()
+                await SubscriptionManifestSync.publishCurrentSubscriptions(
+                    modelContainer: modelContainer,
+                    allowEmpty: true
+                )
+            }
+
+            return podcast.persistentModelID
+        } catch {
+            if let podcast = podcastForRollback {
+                if insertedNewPodcast {
+                    modelContext.delete(podcast)
+                } else if subscribe {
+                    let metadata = ensureMetadata(for: podcast)
+                    metadata.isSubscribed = previousIsSubscribed ?? false
+                    metadata.subscriptionDate = previousSubscriptionDate
+                }
+                modelContext.saveIfNeeded()
+            }
             await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
                 allowEmpty: true
             )
+            throw error
         }
-
-        return podcast.persistentModelID
     }
     
     

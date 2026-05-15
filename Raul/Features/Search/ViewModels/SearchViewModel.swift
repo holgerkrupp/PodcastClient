@@ -71,10 +71,14 @@ class PodcastSearchViewModel: ObservableObject {
             urlString = "https://" + urlString
         }
         if urlString.isValidURL, let url = URL(string: urlString) {
+            let searchedText = searchText
+            let fallbackFeed = PodcastFeed(url: url)
             
             Task {
                 do {
                     let resolution = try await PodcastFeedResolver.resolve(url: url, allowAuthenticationPrompt: true)
+
+                    guard self.searchText == searchedText else { return }
 
                     switch resolution {
                     case .podcast(let podcastFeed):
@@ -87,7 +91,11 @@ class PodcastSearchViewModel: ObservableObject {
                         self.shouldPromptForBasicAuth = true
                     }
                 } catch {
-                    self.singlePodcast = nil
+                    guard self.searchText == searchedText else { return }
+                    self.singlePodcast = fallbackFeed
+                    self.shouldPromptForBasicAuth = false
+                    self.pendingURLForAuth = nil
+                    self.authErrorMessage = nil
                 }
 
                 self.isLoading = false
