@@ -1,0 +1,128 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Views/DownloadedEpisodesView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Downloads",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 49
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episodes you download will appear here.",
+        "location": {
+          "startingColumn": 108,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Downloads",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open episode %@",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 29
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens this episode details screen",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 30
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 37
+        }
+      },
+      {
+        "comment": "",
+        "key": "Download actions",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Download sort",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Download actions and sort",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 69
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sort downloads, rescan files, or delete played episodes",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 70
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sort",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 53
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rescan",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 57
+        }
+      },
+      {
+        "comment": "",
+        "key": "Newest First",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title A–Z",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete Played",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 64
+        }
+      }
+    ]
+  },
+  "version": 1
+}

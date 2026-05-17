@@ -1,0 +1,104 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Chapters/PlayerChapterView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Previous chapter",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back chapter",
+        "location": {
+          "startingColumn": 79,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next chapter",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 118
+        }
+      },
+      {
+        "comment": "",
+        "key": "Forward chapter",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 118
+        }
+      },
+      {
+        "comment": "",
+        "key": "Previous chapter",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 38
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skips to the start of the previous chapter",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 39
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next chapter",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skips to the next chapter",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 117
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open chapters",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter list",
+        "location": {
+          "startingColumn": 84,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open chapter list",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows all chapter markers",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 83
+        }
+      }
+    ]
+  },
+  "version": 1
+}

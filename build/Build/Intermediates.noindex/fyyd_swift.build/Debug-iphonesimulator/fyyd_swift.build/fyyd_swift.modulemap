@@ -1,0 +1,4 @@
+module fyyd_swift {
+header "fyyd_swift-Swift.h"
+export *
+}

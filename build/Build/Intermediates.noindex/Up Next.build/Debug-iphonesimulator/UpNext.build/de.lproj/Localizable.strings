@@ -1,0 +1,1304 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key></key>
+	<string></string>
+	<key> - </key>
+	<string> - </string>
+	<key>#%lld</key>
+	<string>Nr. %lld</string>
+	<key>%.1fs</key>
+	<string>%.1fs</string>
+	<key>%@</key>
+	<string>%@</string>
+	<key>%@ Sessions</key>
+	<string>%@ Sitzungen</string>
+	<key>%@ complete</key>
+	<string>%@ abgeschlossen</string>
+	<key>%@ is shared metadata or SQLite overhead that can’t be tied to a single podcast.</key>
+	<string>Bei %@ handelt es sich um gemeinsam genutzte Metadaten oder SQLite-Overhead, der nicht an einen einzelnen Podcast gebunden werden kann.</string>
+	<key>%@ of episode length</key>
+	<string>%@ der Episodenlänge</string>
+	<key>%@ – %@</key>
+	<string>%1$@ – %2$@</string>
+	<key>%@, opens link</key>
+	<string>%@, öffnet Link</string>
+	<key>%@:</key>
+	<string>%@:</string>
+	<key>%@: %@</key>
+	<string>%1$@: %2$@</string>
+	<key>%lld</key>
+	<string>%lld</string>
+	<key>%lld details</key>
+	<string>%lld-Details</string>
+	<key>%lld file%@</key>
+	<string>%1$lld Datei%2$@</string>
+	<key>%lld file%@ (%@) are currently protected because their episodes are in Up Next.</key>
+	<string>Die Datei %1$lld%2$@ (%3$@) ist derzeit geschützt, da sich ihre Episoden in „Als Nächstes“ befinden.</string>
+	<key>%lld file%@ (%@) are currently protected by archive retention settings.</key>
+	<string>Die Dateien %1$lld%2$@ (%3$@) sind derzeit durch Archivaufbewahrungseinstellungen geschützt.</string>
+	<key>%lld file%@ (%@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window.</key>
+	<string>Die %1$lld-Datei%2$@ (%3$@) kann entfernt werden, ohne dass für Up Next erforderliche Downloads oder archivierte Episoden gelöscht werden, die sich noch im Aufbewahrungsfenster befinden.</string>
+	<key>%lld item%@</key>
+	<string>%1$lld Artikel%2$@</string>
+	<key>%lld. %@: %@</key>
+	<string>%1$lld. %2$@: %3$@</string>
+	<key>+%lld</key>
+	<string>+%lld</string>
+	<key>+%lld more</key>
+	<string>+%lld weitere</string>
+	<key>Accessibility</key>
+	<string>Zugänglichkeit</string>
+	<key>Actions</key>
+	<string>Aktionen</string>
+	<key>Add</key>
+	<string>Hinzufügen</string>
+	<key>Add Rule</key>
+	<string>Regel hinzufügen</string>
+	<key>Add a rule to skip recurring chapters like ads, intros, or credits.</key>
+	<string>Fügen Sie eine Regel hinzu, um wiederkehrende Kapitel wie Anzeigen, Einleitungen oder Credits zu überspringen.</string>
+	<key>Add bookmark</key>
+	<string>Lesezeichen hinzufügen</string>
+	<key>Add to End</key>
+	<string>Zum Ende hinzufügen</string>
+	<key>Add to Up Next</key>
+	<string>Zu „Als Nächstes“ hinzufügen</string>
+	<key>Add to end of playlist</key>
+	<string>Zum Ende der Playlist hinzufügen</string>
+	<key>Add to front of playlist</key>
+	<string>Zum Anfang der Playlist hinzufügen</string>
+	<key>Add to playlist</key>
+	<string>Zur Playlist hinzufügen</string>
+	<key>Adds a new playlist</key>
+	<string>Fügt eine neue Playlist hinzu</string>
+	<key>Adjusts the current playback position</key>
+	<string>Passt die aktuelle Wiedergabeposition an</string>
+	<key>AirPlay</key>
+	<string>AirPlay</string>
+	<key>All Bookmarks</key>
+	<string>Alle Lesezeichen</string>
+	<key>All Episodes</key>
+	<string>Alle Episoden</string>
+	<key>All Podcasts</key>
+	<string>Alle Podcasts</string>
+	<key>All podcasts already use custom settings.</key>
+	<string>Alle Podcasts verwenden bereits individuelle Einstellungen.</string>
+	<key>Already in Library (%lld)</key>
+	<string>Bereits in der Bibliothek (%lld)</string>
+	<key>App Controls</key>
+	<string>App-Steuerelemente</string>
+	<key>Apple Shortcuts</key>
+	<string>Apple Kurzbefehle</string>
+	<key>Apple SpeechTranscriber</key>
+	<string>Apple SpeechTranscriber</string>
+	<key>Applied Right Now</key>
+	<string>Aktuell wirksam</string>
+	<key>Archive</key>
+	<string>Archivieren</string>
+	<key>Archive Episode</key>
+	<string>Episode archivieren</string>
+	<key>Archive all episodes</key>
+	<string>Archivieren Sie alle Episoden</string>
+	<key>Archive all inbox episodes</key>
+	<string>Archivieren Sie alle Episoden im Posteingang</string>
+	<key>Archive episode</key>
+	<string>Archivfolge</string>
+	<key>Archive file retention</key>
+	<string>Aufbewahrung von Archivdateien</string>
+	<key>Archive inbox</key>
+	<string>Posteingang archivieren</string>
+	<key>Archive podcast episodes</key>
+	<string>Podcast-Episoden archivieren</string>
+	<key>Archiving inbox episodes</key>
+	<string>Archivierung von Episoden im Posteingang</string>
+	<key>Aspect Ratio</key>
+	<string>Seitenverhältnis</string>
+	<key>Authentication Required</key>
+	<string>Authentifizierung erforderlich</string>
+	<key>Authors</key>
+	<string>Autoren</string>
+	<key>Auto-download unplayed episodes</key>
+	<string>Nicht abgespielte Episoden automatisch herunterladen</string>
+	<key>Automatic Backgrounds</key>
+	<string>Automatische Hintergründe</string>
+	<key>Automatic Chapter Filtering</key>
+	<string>Automatische Kapitelfilterung</string>
+	<key>Automatic for Period</key>
+	<string>Automatisch für Zeitraum</string>
+	<key>Automatic for Period picks the background from the data period, not from the day the shortcut runs. A shortcut running on 1 June with Previous Period uses May’s background.</key>
+	<string>Automatisch für Zeitraum wählt den Hintergrund aus dem Datenzeitraum, nicht vom Tag, an dem der Kurzbefehl läuft. Ein Kurzbefehl am 1. Juni mit Vorheriger Zeitraum nutzt den Mai-Hintergrund.</string>
+	<key>Automatic on-device transcriptions</key>
+	<string>Automatische Transkriptionen auf dem Gerät</string>
+	<key>Back</key>
+	<string>Zurück</string>
+	<key>Back %lld seconds</key>
+	<string>%lld Sekunden zurück</string>
+	<key>Back chapter</key>
+	<string>Zurück Kapitel</string>
+	<key>Background</key>
+	<string>Hintergrund</string>
+	<key>Background changes are applied to every share picture preview and export.</key>
+	<string>Hintergrundänderungen werden auf jede Vorschau und jeden Export von Teilen-Bildern angewendet.</string>
+	<key>Bookmark</key>
+	<string>Lesezeichen</string>
+	<key>Bookmark This</key>
+	<string>Hier Lesezeichen setzen</string>
+	<key>Bookmarks</key>
+	<string>Lesezeichen</string>
+	<key>Browse by Category</key>
+	<string>Nach Kategorie durchsuchen</string>
+	<key>By Podcast</key>
+	<string>Per Podcast</string>
+	<key>Cancel</key>
+	<string>Abbrechen</string>
+	<key>Caption %@</key>
+	<string>Bildunterschrift %@</string>
+	<key>Captions &amp; Audio Descriptions</key>
+	<string>Untertitel und Audiobeschreibungen</string>
+	<key>Captions &amp; Transcript</key>
+	<string>Bildunterschriften und Transkript</string>
+	<key>Captions processing</key>
+	<string>Verarbeitung von Untertiteln</string>
+	<key>Chapter Rules</key>
+	<string>Kapitelregeln</string>
+	<key>Chapter Skip Keywords</key>
+	<string>Kapitel Schlüsselwörter überspringen</string>
+	<key>Chapter link</key>
+	<string>Kapitellink</string>
+	<key>Chapter list</key>
+	<string>Kapitelliste</string>
+	<key>Chapter rules let you skip recurring segments like intro, ads, or outro.</key>
+	<string>Mit Kapitelregeln können Sie wiederkehrende Segmente wie Intro, Werbung oder Outro überspringen.</string>
+	<key>Chapters</key>
+	<string>Kapitel</string>
+	<key>Check subscribed podcast feeds for new episodes.</key>
+	<string>Abonnierte Podcast-Feeds auf neue Episoden prüfen.</string>
+	<key>Choose an audio output device</key>
+	<string>Wählen Sie ein Audioausgabegerät</string>
+	<key>Choose episode sort order and hide played episodes</key>
+	<string>Wählen Sie die Sortierreihenfolge der Episoden und blenden Sie abgespielte Episoden aus</string>
+	<key>Close</key>
+	<string>Schließen</string>
+	<key>Continue</key>
+	<string>Fortfahren</string>
+	<key>Continues the paused download</key>
+	<string>Setzt den angehaltenen Download fort</string>
+	<key>Continuous playback</key>
+	<string>Kontinuierliche Wiedergabe</string>
+	<key>Could Not Open Podcast</key>
+	<string>Podcast konnte nicht geöffnet werden</string>
+	<key>Counts</key>
+	<string>Zählt</string>
+	<key>Create</key>
+	<string>Erstellen</string>
+	<key>Create a bookmark at the current playback position.</key>
+	<string>Erstelle an der aktuellen Wiedergabeposition ein Lesezeichen.</string>
+	<key>Create a podcast listening statistics share image and return it as a PNG file.</key>
+	<string>Erstellt ein Teilen-Bild aus der Podcast-Hörstatistik und gibt es als PNG-Datei zurück.</string>
+	<key>Create audio clip</key>
+	<string>Audioclip erstellen</string>
+	<key>Create playlist</key>
+	<string>Playlist erstellen</string>
+	<key>Created in Buxtehude by</key>
+	<string>Erstellt in Buxtehude von</string>
+	<key>Created podcast share image.</key>
+	<string>Podcast-Teilen-Bild erstellt.</string>
+	<key>Creates an on-device transcript to use as captions</key>
+	<string>Erstellt auf dem Gerät ein Transkript zur Verwendung als Untertitel</string>
+	<key>Current</key>
+	<string>Aktuell</string>
+	<key>Current Period</key>
+	<string>Aktueller Zeitraum</string>
+	<key>Current caption</key>
+	<string>Aktuelle Bildunterschrift</string>
+	<key>Current chapter</key>
+	<string>Aktuelles Kapitel</string>
+	<key>Current playlist %@</key>
+	<string>Aktuelle Playlist %@</string>
+	<key>Custom Settings</key>
+	<string>Benutzerdefinierte Einstellungen</string>
+	<key>Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global.</key>
+	<string>Der individuelle Modus erstellt eine podcast-eigene Kopie von Warteschlangenposition, Wiedergabegeschwindigkeit und Kapitelregeln. Spätere globale Änderungen wirken sich nicht mehr auf diesen Podcast aus, bis du wieder zu Global wechselst.</string>
+	<key>Customize</key>
+	<string>Anpassen</string>
+	<key>Database</key>
+	<string>Datenbank</string>
+	<key>Database Breakdown</key>
+	<string>Datenbankaufschlüsselung</string>
+	<key>Database Estimate</key>
+	<string>Datenbankschätzung</string>
+	<key>Database Estimate by Type</key>
+	<string>Datenbankschätzung nach Typ</string>
+	<key>Database Files</key>
+	<string>Datenbankdateien</string>
+	<key>Day</key>
+	<string>Tag</string>
+	<key>Debug</key>
+	<string>Debug</string>
+	<key>Default</key>
+	<string>Standard</string>
+	<key>Default playlist for auto-add</key>
+	<string>Standard-Playlist zum automatischen Hinzufügen</string>
+	<key>Default speed</key>
+	<string>Standardgeschwindigkeit</string>
+	<key>Delete</key>
+	<string>Löschen</string>
+	<key>Delete All Stored Files</key>
+	<string>Alle gespeicherten Dateien löschen</string>
+	<key>Delete All Transcript Lines</key>
+	<string>Alle Transkriptzeilen löschen</string>
+	<key>Delete Bookmark</key>
+	<string>Lesezeichen löschen</string>
+	<key>Delete Files</key>
+	<string>Dateien löschen</string>
+	<key>Delete Played</key>
+	<string>Gespielte löschen</string>
+	<key>Delete Transcript Data</key>
+	<string>Transkriptdaten löschen</string>
+	<key>Delete Unprotected Files</key>
+	<string>Löschen Sie ungeschützte Dateien</string>
+	<key>Delete all transcript lines?</key>
+	<string>Alle Transkriptzeilen löschen?</string>
+	<key>Deletes the local file from this device</key>
+	<string>Löscht die lokale Datei von diesem Gerät</string>
+	<key>Deletes this chapter skip rule</key>
+	<string>Löscht diese Regel zum Überspringen von Kapiteln</string>
+	<key>Descriptions</key>
+	<string>Beschreibungen</string>
+	<key>Designs</key>
+	<string>Designs</string>
+	<key>Done</key>
+	<string>Fertig</string>
+	<key>Double tap anywhere on the mini player to open full player controls</key>
+	<string>Tippen Sie zweimal irgendwo auf den Miniplayer, um die vollständige Player-Steuerung zu öffnen</string>
+	<key>Download</key>
+	<string>Herunterladen</string>
+	<key>Download actions</key>
+	<string>Aktionen herunterladen</string>
+	<key>Download actions and sort</key>
+	<string>Aktionen herunterladen und sortieren</string>
+	<key>Download sort</key>
+	<string>Sortierung herunterladen</string>
+	<key>Downloaded</key>
+	<string>Heruntergeladen</string>
+	<key>Downloaded Episodes</key>
+	<string>Heruntergeladene Episoden</string>
+	<key>Downloaded audio and cache files will appear here when they exist.</key>
+	<string>Heruntergeladene Audio- und Cache-Dateien werden hier angezeigt, sofern sie vorhanden sind.</string>
+	<key>Downloads</key>
+	<string>Downloads</string>
+	<key>Downloads the latest episodes from this podcast feed</key>
+	<string>Lädt die neuesten Episoden aus diesem Podcast-Feed herunter</string>
+	<key>Downloads this episode for offline playback</key>
+	<string>Lädt diese Episode zur Offline-Wiedergabe herunter</string>
+	<key>Enable Notifications</key>
+	<string>Benachrichtigungen aktivieren</string>
+	<key>Enable Sideloading</key>
+	<string>Aktivieren Sie Sideloading</string>
+	<key>Enabled</key>
+	<string>Ermöglicht</string>
+	<key>End: %@</key>
+	<string>Ende: %@</string>
+	<key>Ended cleanly</key>
+	<string>Ordnungsgemäß beendet</string>
+	<key>Engine</key>
+	<string>Engine</string>
+	<key>Episode Unavailable</key>
+	<string>Folge nicht verfügbar</string>
+	<key>Episode sort</key>
+	<string>Episodensortierung</string>
+	<key>Episode sort and visibility</key>
+	<string>Sortierung und Sichtbarkeit der Episoden</string>
+	<key>Episode transcripts are used as captions inside the player and transcript screens.</key>
+	<string>Episodentranskripte werden als Untertitel im Player und auf den Transkriptionsbildschirmen verwendet.</string>
+	<key>Episode type: %@</key>
+	<string>Episodentyp: %@</string>
+	<key>Episodes</key>
+	<string>Episoden</string>
+	<key>Episodes you download will appear here.</key>
+	<string>Episoden, die du herunterlädst, erscheinen hier.</string>
+	<key>Error</key>
+	<string>Fehler</string>
+	<key>Export</key>
+	<string>Exportieren</string>
+	<key>Exporting... %@</key>
+	<string>Exportieren ... %@</string>
+	<key>Exporting…</key>
+	<string>Wird exportiert…</string>
+	<key>Extremely Successful Apps</key>
+	<string>Extrem erfolgreiche Apps</string>
+	<key>Fetches new episodes and reloads your inbox</key>
+	<string>Ruft neue Episoden ab und lädt Ihren Posteingang neu</string>
+	<key>Fetches reloads your sideloading folder</key>
+	<string>Fetches lädt Ihren Sideloading-Ordner neu</string>
+	<key>File Cleanup</key>
+	<string>Dateibereinigung</string>
+	<key>File Count</key>
+	<string>Dateianzahl</string>
+	<key>Files</key>
+	<string>Dateien</string>
+	<key>Files %@</key>
+	<string>Dateien %@</string>
+	<key>Filter library by subscribed, not subscribed, or all podcasts</key>
+	<string>Filtern Sie die Bibliothek nach abonnierten, nicht abonnierten oder allen Podcasts</string>
+	<key>Follow</key>
+	<string>Folgen</string>
+	<key>Follow captions</key>
+	<string>Folgen Sie den Untertiteln</string>
+	<key>Follow playback</key>
+	<string>Folgen Sie der Wiedergabe</string>
+	<key>Following</key>
+	<string>Nachfolgend</string>
+	<key>Following Global Defaults</key>
+	<string>Befolgen globaler Standards</string>
+	<key>Following global defaults</key>
+	<string>Folgt den globalen Standardwerten</string>
+	<key>Following playback</key>
+	<string>Nach der Wiedergabe</string>
+	<key>For best results, keep a few Siri phrases short and specific, like "Play Up Next" or "Bookmark this in Up Next."</key>
+	<string>Um optimale Ergebnisse zu erzielen, sollten Sie ein paar Siri-Sätze kurz und präzise halten, z. B. „Als Nächstes abspielen“ oder „Als Nächstes als Lesezeichen speichern“.</string>
+	<key>For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device.</key>
+	<string>Für Untertitel öffnen Sie „Transcript“ aus einer Episode oder dem Player. Wenn ein Feed kein Transkript enthält, können Sie eines auf dem Gerät erstellen.</string>
+	<key>For yearly images, Automatic for Period uses the New Year background. For day, week, and month images, it uses the month containing the listening history.</key>
+	<string>Für Jahresbilder nutzt Automatisch für Zeitraum den Neujahrs-Hintergrund. Für Tages-, Wochen- und Monatsbilder wird der Monat der Hörhistorie verwendet.</string>
+	<key>Forward</key>
+	<string>Nach vorne</string>
+	<key>Forward %lld seconds</key>
+	<string>%lld Sekunden vorwärts</string>
+	<key>Forward chapter</key>
+	<string>Vorwärtskapitel</string>
+	<key>From %@ to %@</key>
+	<string>Von %1$@ bis %2$@</string>
+	<key>Generate Podcast Share Image</key>
+	<string>Podcast-Teilen-Bild erstellen</string>
+	<key>Generate Podcast Share Image returns a PNG file. Shortcuts can pass that file to Save File, Save to Photo Album, Messages, Mail, or Share Sheet.</key>
+	<string>Podcast-Teilen-Bild erstellen gibt eine PNG-Datei zurück. Kurzbefehle kann diese Datei an Datei sichern, Im Fotoalbum sichern, Nachrichten, Mail oder das Teilen-Menü übergeben.</string>
+	<key>Generate captions</key>
+	<string>Bildunterschriften generieren</string>
+	<key>Get the source code</key>
+	<string>Quellcode anzeigen</string>
+	<key>Getting Started</key>
+	<string>Erste Schritte</string>
+	<key>Global Defaults</key>
+	<string>Globale Standardwerte</string>
+	<key>Global Settings</key>
+	<string>Globale Einstellungen</string>
+	<key>Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently.</key>
+	<string>Der globale Modus belässt diesen Podcast bei den gemeinsamen Standardwerten. Wechsle nur dann zu Individuell, wenn sich diese Sendung anders verhalten soll.</string>
+	<key>Has bookmarks</key>
+	<string>Hat Lesezeichen</string>
+	<key>Has chapters</key>
+	<string>Hat Kapitel</string>
+	<key>Has transcript</key>
+	<string>Transkript vorhanden</string>
+	<key>Heat Map (%@ – %@)</key>
+	<string>Heatmap (%1$@ – %2$@)</string>
+	<key>Heat map summary</key>
+	<string>Zusammenfassung der Heatmap</string>
+	<key>Help</key>
+	<string>Helfen</string>
+	<key>Hide captions</key>
+	<string>Untertitel ausblenden</string>
+	<key>Hide inline transcript</key>
+	<string>Inline-Transkript ausblenden</string>
+	<key>Hide played Episodes</key>
+	<string>Gespielte Episoden ausblenden</string>
+	<key>Hide transcript</key>
+	<string>Transkript ausblenden</string>
+	<key>Hot Podcasts</key>
+	<string>Beliebte Podcasts</string>
+	<key>Hour By Weekday</key>
+	<string>Stunde nach Wochentag</string>
+	<key>How It Works</key>
+	<string>Wie es funktioniert</string>
+	<key>Icon</key>
+	<string>Symbol</string>
+	<key>Import / Export</key>
+	<string>Import / Export</string>
+	<key>Import Preview</key>
+	<string>Vorschau importieren</string>
+	<key>Import from OPML, review what is new, and export your current library whenever you need it.</key>
+	<string>Importieren Sie aus OPML, überprüfen Sie, was neu ist, und exportieren Sie Ihre aktuelle Bibliothek, wann immer Sie sie benötigen.</string>
+	<key>Import from Other Apps</key>
+	<string>Aus anderen Apps importieren</string>
+	<key>Import from another app, review your feeds, then subscribe only to what is new.</key>
+	<string>Importieren Sie aus einer anderen App, überprüfen Sie Ihre Feeds und abonnieren Sie dann nur das, was neu ist.</string>
+	<key>In Apple Shortcuts, search for Up Next to add these actions to personal automations.</key>
+	<string>Suchen Sie in Apple Shortcuts nach „Up Next“, um diese Aktionen zu persönlichen Automatisierungen hinzuzufügen.</string>
+	<key>Inbox</key>
+	<string>Posteingang</string>
+	<key>Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible.</key>
+	<string>Der Posteingang ist Ihr Triage-Bereich für neue Episoden. Verschieben Sie wichtige Elemente nach „Up Next“ oder archivieren Sie, was nicht sichtbar bleiben soll.</string>
+	<key>Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.</key>
+	<string>Der Posteingang hält neue Episoden von „Up Next“ fern. Top und Bottom platzieren sie direkt in Ihrer ausgewählten Playlist.</string>
+	<key>Inbox section</key>
+	<string>Abschnitt „Posteingang“.</string>
+	<key>Include back catalog episodes</key>
+	<string>Fügen Sie Episoden aus dem Backkatalog hinzu</string>
+	<key>Install Apple Podcasts Shortcut</key>
+	<string>Apple Podcasts-Kurzbefehl installieren</string>
+	<key>Installed Models</key>
+	<string>Installierte Modelle</string>
+	<key>Integrations</key>
+	<string>Integrationen</string>
+	<key>Jump to max play position</key>
+	<string>Springe zur maximalen Spielposition</string>
+	<key>Jumps to the furthest point you have listened to in this episode</key>
+	<string>Springt zum entferntesten Punkt, den Sie in dieser Folge gehört haben</string>
+	<key>Keep available</key>
+	<string>Verfügbar halten</string>
+	<key>Keep the current transcript line centered</key>
+	<string>Halten Sie die aktuelle Transkriptzeile zentriert</string>
+	<key>Keeps captions centered around the current playback time</key>
+	<string>Hält die Untertitel um die aktuelle Wiedergabezeit herum zentriert</string>
+	<key>Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports.</key>
+	<string>Behält nur die ausgewählten ältesten oder neuesten nicht abgespielten Episoden für diesen Podcast bei, die auf das Gerät heruntergeladen wurden. Enthält optional Backkatalog-Episoden von Erstimporten.</string>
+	<key>Keyword or phrase</key>
+	<string>Stichwort oder Ausdruck</string>
+	<key>Landscape</key>
+	<string>Querformat</string>
+	<key>Language</key>
+	<string>Sprache</string>
+	<key>Last refresh: %@</key>
+	<string>Letzte Aktualisierung: %@</string>
+	<key>Last updated: %@</key>
+	<string>Zuletzt aktualisiert: %@</string>
+	<key>Less</key>
+	<string>Weniger</string>
+	<key>Library</key>
+	<string>Mediathek</string>
+	<key>Library Search</key>
+	<string>Bibliothekssuche</string>
+	<key>Library scope</key>
+	<string>Umfang der Bibliothek</string>
+	<key>Library search</key>
+	<string>Bibliothekssuche</string>
+	<key>Listening</key>
+	<string>Hören</string>
+	<key>Listening Habits</key>
+	<string>Hörgewohnheiten</string>
+	<key>Listening History</key>
+	<string>Hörverlauf</string>
+	<key>Listening Time</key>
+	<string>Hörzeit</string>
+	<key>Listening Trend</key>
+	<string>Hörtrend</string>
+	<key>Listening breakdown</key>
+	<string>Zusammenbruch des Zuhörens</string>
+	<key>Listening summary</key>
+	<string>Zusammenfassung zum Hören</string>
+	<key>Loading Transcript</key>
+	<string>Transkript wird geladen</string>
+	<key>Loading categories...</key>
+	<string>Kategorien werden geladen...</string>
+	<key>Loading episodes...</key>
+	<string>Folgen werden geladen...</string>
+	<key>Loading languages...</key>
+	<string>Sprachen werden geladen...</string>
+	<key>Loading podcasts...</key>
+	<string>Podcasts werden geladen...</string>
+	<key>Loading settings…</key>
+	<string>Einstellungen werden geladen…</string>
+	<key>Loading…</key>
+	<string>Wird geladen…</string>
+	<key>Lock screen slider</key>
+	<string>Slider auf Sperrbildschirm</string>
+	<key>Maintenance</key>
+	<string>Wartung</string>
+	<key>Marks all episodes in this podcast as archived</key>
+	<string>Markiert alle Episoden dieses Podcasts als archiviert</string>
+	<key>Match style</key>
+	<string>Match-Stil</string>
+	<key>Matched in podcast metadata</key>
+	<string>In Podcast-Metadaten abgeglichen</string>
+	<key>Matching chapter titles will be marked to skip as soon as chapter data is loaded.</key>
+	<string>Übereinstimmende Kapiteltitel werden zum Überspringen markiert, sobald die Kapiteldaten geladen werden.</string>
+	<key>Max snippet length</key>
+	<string>Maximale Snippet-Länge</string>
+	<key>Mini player, %@</key>
+	<string>Mini-Player, %@</string>
+	<key>Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale.</key>
+	<string>Modelle sind sprachspezifische Sprachressourcen auf dem Gerät. Die App verwendet nach Möglichkeit die Sprache der Episode und greift andernfalls auf das aktuelle Gebietsschema des Geräts zurück.</string>
+	<key>Month</key>
+	<string>Monat</string>
+	<key>More</key>
+	<string>Mehr</string>
+	<key>More episodes load as you scroll.</key>
+	<string>Beim Scrollen werden weitere Episoden geladen.</string>
+	<key>Move Current To End</key>
+	<string>Aktuelles Ende verschieben</string>
+	<key>Move Subscriptions in Minutes</key>
+	<string>Verschieben Sie Abonnements in wenigen Minuten</string>
+	<key>Move To End</key>
+	<string>Zum Ende bewegen</string>
+	<key>Move the current episode to the end of your Up Next queue.</key>
+	<string>Verschieben Sie die aktuelle Episode an das Ende Ihrer Up Next-Warteschlange.</string>
+	<key>Move to next %@</key>
+	<string>Gehen Sie zum nächsten %@</string>
+	<key>Move to previous %@</key>
+	<string>Zum vorherigen %@ wechseln</string>
+	<key>Moves every inbox episode to archive</key>
+	<string>Verschiebt jede Episode im Posteingang ins Archiv</string>
+	<key>Moves playback backward by %lld seconds</key>
+	<string>Bewegt die Wiedergabe um %lld Sekunden zurück</string>
+	<key>Moves playback forward by %lld seconds</key>
+	<string>Bewegt die Wiedergabe um %lld Sekunden vorwärts</string>
+	<key>Moves this episode in or out of the archive</key>
+	<string>Verschiebt diese Episode in das Archiv oder aus dem Archiv</string>
+	<key>My Podcasts</key>
+	<string>Meine Podcasts</string>
+	<key>Name</key>
+	<string>Name</string>
+	<key>Needs keyword</key>
+	<string>Benötigt Schlüsselwort</string>
+	<key>Network</key>
+	<string>Netzwerk</string>
+	<key>New Playlist</key>
+	<string>Neue Playlist</string>
+	<key>New Playlist…</key>
+	<string>Neue Playlist…</string>
+	<key>New episodes can be placed at the front, end, or not added automatically, depending on your settings.</key>
+	<string>Je nach Ihren Einstellungen können neue Episoden vorne oder am Ende platziert oder nicht automatisch hinzugefügt werden.</string>
+	<key>New episodes go to</key>
+	<string>Neue Episoden landen in</string>
+	<key>New episodes of subscribed podcasts appear here. You can add them to your listening queue or archive them, if you are not interested in an episode.</key>
+	<string>Neue Episoden abonnierter Podcasts erscheinen hier. Du kannst sie zu deiner Warteschlange hinzufügen oder archivieren, wenn dich eine Episode nicht interessiert.</string>
+	<key>Newest First</key>
+	<string>Neueste zuerst</string>
+	<key>Next chapter</key>
+	<string>Nächstes Kapitel</string>
+	<key>Next week</key>
+	<string>Nächste Woche</string>
+	<key>No Bookmarks saved for this podcast.</key>
+	<string>Für diesen Podcast sind keine Lesezeichen gespeichert.</string>
+	<key>No Downloads</key>
+	<string>Keine Downloads</string>
+	<key>No Episodes Yet</key>
+	<string>Noch keine Episoden</string>
+	<key>No Files for This Podcast</key>
+	<string>Keine Dateien für diesen Podcast</string>
+	<key>No Listening History</key>
+	<string>Kein Hörverlauf</string>
+	<key>No Matching Transcript</key>
+	<string>Kein passendes Transkript</string>
+	<key>No Podcast</key>
+	<string>Kein Podcast</string>
+	<key>No Podcast Storage Yet</key>
+	<string>Noch kein Podcast-Speicher</string>
+	<key>No Podcast Year Available</key>
+	<string>Kein Podcast-Jahr verfügbar</string>
+	<key>No Podcasts</key>
+	<string>Keine Podcasts</string>
+	<key>No Results</key>
+	<string>Keine Ergebnisse</string>
+	<key>No Sessions</key>
+	<string>Keine Sitzungen</string>
+	<key>No Share Pictures</key>
+	<string>Keine Teilen-Bilder</string>
+	<key>No Storage Report</key>
+	<string>Kein Speicherbericht</string>
+	<key>No Stored Files</key>
+	<string>Keine gespeicherten Dateien</string>
+	<key>No Transcriptions Yet</key>
+	<string>Noch keine Transkriptionen</string>
+	<key>No Unsubscribed Podcasts</key>
+	<string>Keine nicht abonnierten Podcasts</string>
+	<key>No episode playing.</key>
+	<string>Es wird keine Episode abgespielt.</string>
+	<key>No listening data yet.</key>
+	<string>Es gibt noch keine Hördaten.</string>
+	<key>No listening sessions in this %@.</key>
+	<string>Keine Hörsitzungen in diesem %@.</string>
+	<key>No matches found for "%@".</key>
+	<string>Für „%@“ wurden keine Treffer gefunden.</string>
+	<key>No playlists yet.</key>
+	<string>Noch keine Playlists.</string>
+	<key>No podcasts are stored in the library yet.</key>
+	<string>In der Mediathek sind noch keine Podcasts gespeichert.</string>
+	<key>No podcasts are using custom settings yet.</key>
+	<string>Noch keine Podcasts verwenden individuelle Einstellungen.</string>
+	<key>No podcasts found</key>
+	<string>Keine Podcasts gefunden</string>
+	<key>No rules applied</key>
+	<string>Es wurden keine Regeln angewendet</string>
+	<key>No rules yet</key>
+	<string>Noch keine Regeln</string>
+	<key>None</key>
+	<string>Keine</string>
+	<key>Not Subscribed</key>
+	<string>Nicht abonniert</string>
+	<key>Not downloaded</key>
+	<string>Nicht heruntergeladen</string>
+	<key>Now Playing</key>
+	<string>Jetzt läuft</string>
+	<key>Now Playing slider</key>
+	<string>Slider im Bereich Jetzt läuft</string>
+	<key>OK</key>
+	<string>OK</string>
+	<key>OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app.</key>
+	<string>OPML überträgt nur Podcast-Abonnements. Wiedergabeverlauf, Warteschlangen und Episodenfortschritt bleiben normalerweise in der ursprünglichen App.</string>
+	<key>Off</key>
+	<string>Aus</string>
+	<key>On</key>
+	<string>An</string>
+	<key>On-Device Transcription</key>
+	<string>Transkription auf dem Gerät</string>
+	<key>Only while charging</key>
+	<string>Nur während des Ladevorgangs</string>
+	<key>Open Notification Settings</key>
+	<string>Benachrichtigungseinstellungen öffnen</string>
+	<key>Open Settings</key>
+	<string>Öffnen Sie Einstellungen</string>
+	<key>Open Share Pictures</key>
+	<string>Teilen-Bilder öffnen</string>
+	<key>Open Shortcuts</key>
+	<string>Kurzbefehle öffnen</string>
+	<key>Open captions</key>
+	<string>Untertitel öffnen</string>
+	<key>Open captions and transcript</key>
+	<string>Untertitel und Transkript öffnen</string>
+	<key>Open chapter link</key>
+	<string>Link zum Kapitel öffnen</string>
+	<key>Open chapter list</key>
+	<string>Kapitelliste öffnen</string>
+	<key>Open chapters</key>
+	<string>Kapitel öffnen</string>
+	<key>Open episode %@</key>
+	<string>Folge öffnen %@</string>
+	<key>Open full player</key>
+	<string>Vollständigen Player öffnen</string>
+	<key>Open full transcript</key>
+	<string>Vollständiges Transkript öffnen</string>
+	<key>Open in Browser</key>
+	<string>Im Browser öffnen</string>
+	<key>Open playback and queue settings</key>
+	<string>Öffnen Sie die Wiedergabe- und Warteschlangeneinstellungen</string>
+	<key>Open podcast %@</key>
+	<string>Öffnen Sie den Podcast %@</string>
+	<key>Open podcast website</key>
+	<string>Podcast-Website öffnen</string>
+	<key>Open settings</key>
+	<string>Einstellungen öffnen</string>
+	<key>Open settings for this podcast</key>
+	<string>Öffnen Sie die Einstellungen für diesen Podcast</string>
+	<key>Open transcript</key>
+	<string>Transkript öffnen</string>
+	<key>Opens clip export for the current episode</key>
+	<string>Öffnet den Clip-Export für die aktuelle Episode</string>
+	<key>Opens episode captions if available</key>
+	<string>Öffnet Episodenuntertitel, sofern verfügbar</string>
+	<key>Opens playback speed, sleep timer, and queue settings</key>
+	<string>Öffnet die Einstellungen für Wiedergabegeschwindigkeit, Sleep-Timer und Warteschlange</string>
+	<key>Opens playlist picker</key>
+	<string>Öffnet die Playlist-Auswahl</string>
+	<key>Opens the chapter webpage in Safari</key>
+	<string>Öffnet die Kapitel-Webseite in Safari</string>
+	<key>Opens the full transcript in a sheet</key>
+	<string>Öffnet das vollständige Transkript in einem Blatt</string>
+	<key>Opens the share sheet for this episode</key>
+	<string>Öffnet das Freigabeblatt für diese Episode</string>
+	<key>Opens the share sheet with the current playback timestamp</key>
+	<string>Öffnet das Freigabeblatt mit dem aktuellen Wiedergabezeitstempel</string>
+	<key>Opens the transcript list and jumps to the current playback line</key>
+	<string>Öffnet die Transkriptliste und springt zur aktuellen Wiedergabezeile</string>
+	<key>Opens this episode details screen</key>
+	<string>Öffnet den Bildschirm mit den Episodendetails</string>
+	<key>Opens this podcast details screen</key>
+	<string>Öffnet diesen Podcast-Detailbildschirm</string>
+	<key>Overview</key>
+	<string>Überblick</string>
+	<key>Password</key>
+	<string>Passwort</string>
+	<key>Pause</key>
+	<string>Pause</string>
+	<key>Pause Playback</key>
+	<string>Wiedergabe anhalten</string>
+	<key>Pause playback</key>
+	<string>Wiedergabe anhalten</string>
+	<key>Pause the current episode.</key>
+	<string>Pausieren Sie die aktuelle Episode.</string>
+	<key>Pauses the active download</key>
+	<string>Pausiert den aktiven Download</string>
+	<key>Pauses the current episode</key>
+	<string>Pausiert die aktuelle Episode</string>
+	<key>People</key>
+	<string>Personen</string>
+	<key>Period</key>
+	<string>Zeitraum</string>
+	<key>Places this episode at the end of %@</key>
+	<string>Platziert diese Episode am Ende von %@</string>
+	<key>Places this episode at the front of %@</key>
+	<string>Platziert diese Episode an den Anfang von %@</string>
+	<key>Play</key>
+	<string>Abspielen</string>
+	<key>Play Chapter</key>
+	<string>Kapitel abspielen</string>
+	<key>Play Last</key>
+	<string>Als Letztes abspielen</string>
+	<key>Play Next</key>
+	<string>Als Nächstes abspielen</string>
+	<key>Play Next Up Next Episode</key>
+	<string>Nächste Folge abspielen</string>
+	<key>Play Up Next</key>
+	<string>Als nächstes abspielen</string>
+	<key>Play caption</key>
+	<string>Untertitel abspielen</string>
+	<key>Play chapter</key>
+	<string>Kapitel abspielen</string>
+	<key>Play episode</key>
+	<string>Folge abspielen</string>
+	<key>Play from %@</key>
+	<string>Spielen Sie ab %@</string>
+	<key>Play from transcript match</key>
+	<string>Abspielen vom Transkript-Match</string>
+	<key>Play the next episode from your Up Next queue.</key>
+	<string>Spielen Sie die nächste Episode aus Ihrer Up Next-Warteschlange ab.</string>
+	<key>Playback</key>
+	<string>Wiedergabe</string>
+	<key>Playback &amp; Queue</key>
+	<string>Wiedergabe &amp; Warteschlange</string>
+	<key>Playback Continuation</key>
+	<string>Fortsetzung der Wiedergabe</string>
+	<key>Playback Settings</key>
+	<string>Wiedergabeeinstellungen</string>
+	<key>Playback Speed</key>
+	<string>Wiedergabegeschwindigkeit</string>
+	<key>Playback position</key>
+	<string>Wiedergabeposition</string>
+	<key>Playback scrubbing is disabled</key>
+	<string>Das Playback-Scrubbing ist deaktiviert</string>
+	<key>Playback settings</key>
+	<string>Wiedergabeeinstellungen</string>
+	<key>Played</key>
+	<string>Gespielt</string>
+	<key>Player Controls</key>
+	<string>Spielersteuerung</string>
+	<key>PlayerIntentsExtension</key>
+	<string>PlayerIntentsExtension</string>
+	<key>Playlist</key>
+	<string>Wiedergabeliste</string>
+	<key>Playlist icon %@</key>
+	<string>Playlist-Symbol %@</string>
+	<key>Playlists</key>
+	<string>Wiedergabelisten</string>
+	<key>Podcast</key>
+	<string>Podcast</string>
+	<key>Podcast Overrides</key>
+	<string>Podcast-spezifische Anpassungen</string>
+	<key>Podcast Scope</key>
+	<string>Podcast-Filter</string>
+	<key>Podcast Sections</key>
+	<string>Podcast-Abschnitte</string>
+	<key>Podcast Settings</key>
+	<string>Podcast-Einstellungen</string>
+	<key>Podcast Share Aspect Ratio</key>
+	<string>Podcast-Teilen-Seitenverhältnis</string>
+	<key>Podcast Share Background</key>
+	<string>Podcast-Teilen-Hintergrund</string>
+	<key>Podcast Share Design</key>
+	<string>Podcast-Teilen-Design</string>
+	<key>Podcast Share Period</key>
+	<string>Podcast-Teilen-Zeitraum</string>
+	<key>Podcast Share Timing</key>
+	<string>Podcast-Teilen-Zeitpunkt</string>
+	<key>Podcast Unavailable</key>
+	<string>Podcast nicht verfügbar</string>
+	<key>Podcast Year</key>
+	<string>Podcast-Jahr</string>
+	<key>Podcast listening distribution</key>
+	<string>Podcast-Hörverbreitung</string>
+	<key>Podcast refresh started.</key>
+	<string>Podcast-Aktualisierung gestartet.</string>
+	<key>Podcast scope</key>
+	<string>Podcast-Umfang</string>
+	<key>Podcast settings</key>
+	<string>Podcast-Einstellungen</string>
+	<key>Podcast-attributed storage will appear here once content is stored locally.</key>
+	<string>Der Podcast-zugeordnete Speicher wird hier angezeigt, sobald der Inhalt lokal gespeichert ist.</string>
+	<key>Podcasts</key>
+	<string>Podcasts</string>
+	<key>Podcasts kept in the database but excluded from refresh will appear here.</key>
+	<string>Podcasts, die in der Datenbank verbleiben, aber von der Aktualisierung ausgeschlossen sind, erscheinen hier.</string>
+	<key>Podcasts.opml</key>
+	<string>Podcasts.opml</string>
+	<key>Portrait</key>
+	<string>Hochformat</string>
+	<key>Preset</key>
+	<string>Voreinstellung</string>
+	<key>Preview</key>
+	<string>Vorschau</string>
+	<key>Preview unavailable</key>
+	<string>Vorschau nicht verfügbar</string>
+	<key>Previous Period</key>
+	<string>Vorheriger Zeitraum</string>
+	<key>Previous chapter</key>
+	<string>Vorheriges Kapitel</string>
+	<key>Previous week</key>
+	<string>Vorherige Woche</string>
+	<key>Pull to refresh to calculate the app's current storage usage.</key>
+	<string>Zum Aktualisieren ziehen, um die aktuelle Speichernutzung der App zu berechnen.</string>
+	<key>Queue &amp; Downloads</key>
+	<string>Warteschlange und Downloads</string>
+	<key>Queue Behavior</key>
+	<string>Warteschlangenverhalten</string>
+	<key>Queue settings</key>
+	<string>Warteschlangeneinstellungen</string>
+	<key>Ready to Subscribe (%lld)</key>
+	<string>Bereit zum Abonnieren (%lld)</string>
+	<key>Rebuilding analytics…</key>
+	<string>Analytics werden neu erstellt …</string>
+	<key>Recent %@</key>
+	<string>Aktuelle %@</string>
+	<key>Recent Transcriptions</key>
+	<string>Letzte Transkriptionen</string>
+	<key>Recent on-device transcriptions will appear here once you create one.</key>
+	<string>Neuere Transkriptionen auf dem Gerät erscheinen hier, sobald du eine erstellt hast.</string>
+	<key>Recently Played Episodes</key>
+	<string>Kürzlich gespielte Episoden</string>
+	<key>Recovered / interrupted</key>
+	<string>Wiederhergestellt / unterbrochen</string>
+	<key>Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.</key>
+	<string>Reduzierte Bewegung, größerer Text und Differenzieren ohne Farbe werden unterstützt. Wenn Sie hohe Kontrasteinstellungen verwenden, erhöht die App den sekundären Textkontrast in aktuell wiedergegebenen Benutzeroberflächen.</string>
+	<key>Refresh Podcasts</key>
+	<string>Podcasts aktualisieren</string>
+	<key>Refresh inbox</key>
+	<string>Posteingang aktualisieren</string>
+	<key>Refresh library</key>
+	<string>Bibliothek aktualisieren</string>
+	<key>Refresh podcast</key>
+	<string>Podcast aktualisieren</string>
+	<key>Refresh podcasts</key>
+	<string>Podcasts aktualisieren</string>
+	<key>Refresh sideloading</key>
+	<string>Seitenladen aktualisieren</string>
+	<key>Refresh sideloading folder</key>
+	<string>Aktualisieren Sie den Sideloading-Ordner</string>
+	<key>Refresh storage report</key>
+	<string>Speicherbericht aktualisieren</string>
+	<key>Refreshing inbox</key>
+	<string>Erfrischender Posteingang</string>
+	<key>Refreshing podcast</key>
+	<string>Erfrischender Podcast</string>
+	<key>Refreshing podcasts</key>
+	<string>Erfrischende Podcasts</string>
+	<key>Refreshing sideloading folder</key>
+	<string>Aktualisierter Sideloading-Ordner</string>
+	<key>Refreshing storage report</key>
+	<string>Erfrischender Speicherbericht</string>
+	<key>Remove Current</key>
+	<string>Aktuelle entfernen</string>
+	<key>Remove Current From Up Next</key>
+	<string>Aktuelles von oben entfernen</string>
+	<key>Remove Download</key>
+	<string>Download entfernen</string>
+	<key>Remove Duplicate Podcasts</key>
+	<string>Doppelte Podcasts entfernen</string>
+	<key>Remove from Playlist</key>
+	<string>Aus Playlist entfernen</string>
+	<key>Remove rule %lld</key>
+	<string>Entfernen Sie die Regel %lld</string>
+	<key>Remove the current episode from your Up Next queue.</key>
+	<string>Entfernen Sie die aktuelle Episode aus Ihrer Up Next-Warteschlange.</string>
+	<key>Removes the transcript panel below the artwork</key>
+	<string>Entfernt das Transkriptfenster unter dem Bildmaterial</string>
+	<key>Rescan</key>
+	<string>Erneut scannen</string>
+	<key>Reset to Default</key>
+	<string>Auf Standard zurücksetzen</string>
+	<key>Resume</key>
+	<string>Fortsetzen</string>
+	<key>Resume Playback</key>
+	<string>Wiedergabe fortsetzen</string>
+	<key>Rule %lld</key>
+	<string>Regel %lld</string>
+	<key>Rules</key>
+	<string>Regeln</string>
+	<key>Rules are checked against chapter titles and can use operators like contains, starts with, or ends with.</key>
+	<string>Regeln werden anhand von Kapiteltiteln überprüft und können Operatoren wie „enthält“, „beginnt mit“ oder „endet mit“ verwenden.</string>
+	<key>Rules compare against chapter titles and mark matching chapters to be skipped.</key>
+	<string>Regeln werden mit Kapiteltiteln verglichen und passende Kapitel zum Überspringen markiert.</string>
+	<key>Save episode transcriptions</key>
+	<string>Episodentranskriptionen speichern</string>
+	<key>Saves the current playback position as a bookmark</key>
+	<string>Speichert die aktuelle Wiedergabeposition als Lesezeichen</string>
+	<key>Scanning the database and stored files.</key>
+	<string>Scannen der Datenbank und der gespeicherten Dateien.</string>
+	<key>Scans database and files to update storage usage</key>
+	<string>Durchsucht Datenbank und Dateien, um die Speichernutzung zu aktualisieren</string>
+	<key>Scope</key>
+	<string>Geltungsbereich</string>
+	<key>Search Failed</key>
+	<string>Suche fehlgeschlagen</string>
+	<key>Search Library</key>
+	<string>Bibliothek durchsuchen</string>
+	<key>Search Your Library</key>
+	<string>Durchsuchen Sie Ihre Bibliothek</string>
+	<key>Search captions…</key>
+	<string>Untertitel suchen…</string>
+	<key>Search filters</key>
+	<string>Suchfilter</string>
+	<key>Search is powered by fyyd</key>
+	<string>Die Suche wird von fyyd bereitgestellt</string>
+	<key>Search library</key>
+	<string>Bibliothek durchsuchen</string>
+	<key>Search podcasts, episodes, chapters, and transcripts</key>
+	<string>Durchsuchen Sie Podcasts, Episoden, Kapitel und Transkripte</string>
+	<key>Search podcasts, episodes, chapters, and transcripts directly in SwiftData.</key>
+	<string>Durchsuchen Sie Podcasts, Episoden, Kapitel und Transkripte direkt in SwiftData.</string>
+	<key>Searching Library...</key>
+	<string>Bibliothek durchsuchen...</string>
+	<key>Select the segment to share</key>
+	<string>Wähle den Abschnitt zum Teilen aus</string>
+	<key>Selection</key>
+	<string>Auswahl</string>
+	<key>Setting up the iCloud folder...</key>
+	<string>Einrichten des iCloud-Ordners...</string>
+	<key>Settings</key>
+	<string>Einstellungen</string>
+	<key>Share</key>
+	<string>Teilen</string>
+	<key>Share Episode</key>
+	<string>Episode teilen</string>
+	<key>Share Picture Title</key>
+	<string>Titel des Teilen-Bilds</string>
+	<key>Share Selected Image</key>
+	<string>Ausgewähltes Bild teilen</string>
+	<key>Share Selected Images</key>
+	<string>Ausgewählte Bilder teilen</string>
+	<key>Share Top Podcasts</key>
+	<string>Top-Podcasts teilen</string>
+	<key>Share audio clip</key>
+	<string>Audioclip teilen</string>
+	<key>Share episode</key>
+	<string>Folge teilen</string>
+	<key>Share episode link at current time</key>
+	<string>Episodenlink zum aktuellen Zeitpunkt teilen</string>
+	<key>Share your podcast year</key>
+	<string>Teile dein Podcast-Jahr</string>
+	<key>Shortcuts</key>
+	<string>Kurzbefehle</string>
+	<key>Shorter snippets follow playback more closely and are better for word-level highlighting, but they create more transcript rows.</key>
+	<string>Kürzere Snippets folgen der Wiedergabe besser und eignen sich besser für die Hervorhebung auf Wortebene, erzeugen aber mehr Transkriptzeilen.</string>
+	<key>Show All Play Sessions</key>
+	<string>Alle Wiedergabesitzungen anzeigen</string>
+	<key>Show all Settings</key>
+	<string>Alle Einstellungen anzeigen</string>
+	<key>Show captions</key>
+	<string>Untertitel anzeigen</string>
+	<key>Show inline transcript</key>
+	<string>Inline-Transkript anzeigen</string>
+	<key>Show summary</key>
+	<string>Zusammenfassung anzeigen</string>
+	<key>Show transcript</key>
+	<string>Transkript anzeigen</string>
+	<key>Shows all chapter markers</key>
+	<string>Zeigt alle Kapitelmarkierungen an</string>
+	<key>Shows listening activity aggregated across all weeks</key>
+	<string>Zeigt die über alle Wochen aggregierte Höraktivität an</string>
+	<key>Shows listening activity for the following week</key>
+	<string>Zeigt die Höraktivität für die folgende Woche</string>
+	<key>Shows listening activity for the week before</key>
+	<string>Zeigt die Höraktivität für die Woche zuvor</string>
+	<key>Shows listening stats aggregated across all weeks</key>
+	<string>Zeigt die über alle Wochen aggregierten Hörstatistiken an</string>
+	<key>Shows listening stats for the following week</key>
+	<string>Zeigt Hörstatistiken für die folgende Woche an</string>
+	<key>Shows listening stats for the previous week</key>
+	<string>Zeigt die Hörstatistiken der vergangenen Woche an</string>
+	<key>Shows the transcript panel below the artwork</key>
+	<string>Zeigt das Transkriptfenster unter dem Bildmaterial an</string>
+	<key>Side loaded</key>
+	<string>Seitlich beladen</string>
+	<key>Sideloading</key>
+	<string>Seitenladen</string>
+	<key>Siri &amp; Shortcuts Intents</key>
+	<string>Absichten für Siri und Verknüpfungen</string>
+	<key>Skip Back</key>
+	<string>Zurückspringen</string>
+	<key>Skip Backward</key>
+	<string>Rückwärts springen</string>
+	<key>Skip Forward</key>
+	<string>Vorwärts springen</string>
+	<key>Skip back</key>
+	<string>Springe zurück</string>
+	<key>Skip back %lld seconds</key>
+	<string>%lld Sekunden zurückspringen</string>
+	<key>Skip backward by your configured duration.</key>
+	<string>Springt um deine konfigurierte Dauer zurück.</string>
+	<key>Skip chapter</key>
+	<string>Kapitel überspringen</string>
+	<key>Skip forward</key>
+	<string>Vorwärts springen</string>
+	<key>Skip forward %lld seconds</key>
+	<string>%lld Sekunden vorwärtsspringen</string>
+	<key>Skip forward by your configured duration.</key>
+	<string>Springt um deine konfigurierte Dauer vorwärts.</string>
+	<key>Skipped</key>
+	<string>Übersprungen</string>
+	<key>Skips to the next chapter</key>
+	<string>Springt zum nächsten Kapitel</string>
+	<key>Skips to the start of the previous chapter</key>
+	<string>Springt zum Anfang des vorherigen Kapitels</string>
+	<key>Sleep Timer</key>
+	<string>Sleep-Timer</string>
+	<key>Social links</key>
+	<string>Social-Links</string>
+	<key>Sort</key>
+	<string>Sortieren</string>
+	<key>Sort by</key>
+	<string>Sortieren nach</string>
+	<key>Sort downloads, rescan files, or delete played episodes</key>
+	<string>Sortieren Sie Downloads, scannen Sie Dateien erneut oder löschen Sie abgespielte Episoden</string>
+	<key>Sort episodes</key>
+	<string>Episoden sortieren</string>
+	<key>Square</key>
+	<string>Quadratisch</string>
+	<key>Start Listening</key>
+	<string>Anhören starten</string>
+	<key>Start listening to see your summarized playback history here.</key>
+	<string>Beginne mit dem Hören, damit hier dein zusammengefasster Wiedergabeverlauf angezeigt wird.</string>
+	<key>Start playback</key>
+	<string>Starten Sie die Wiedergabe</string>
+	<key>Start playback with the first episode in your Up Next queue.</key>
+	<string>Starten Sie die Wiedergabe mit der ersten Episode in Ihrer Up Next-Warteschlange.</string>
+	<key>Start: %@</key>
+	<string>Start: %@</string>
+	<key>Starts playback from this caption line</key>
+	<string>Startet die Wiedergabe ab dieser Titelzeile</string>
+	<key>Starts playback of the current episode</key>
+	<string>Startet die Wiedergabe der aktuellen Episode</string>
+	<key>Starts playing the current episode</key>
+	<string>Beginnt mit der Wiedergabe der aktuellen Episode</string>
+	<key>Starts this episode immediately</key>
+	<string>Startet diese Episode sofort</string>
+	<key>Stop after this episode</key>
+	<string>Nach dieser Episode stoppen</string>
+	<key>Stop following playback</key>
+	<string>Hören Sie auf, der Wiedergabe zu folgen</string>
+	<key>Stops and removes this download</key>
+	<string>Stoppt und entfernt diesen Download</string>
+	<key>Storage</key>
+	<string>Lagerung</string>
+	<key>Storage Error</key>
+	<string>Speicherfehler</string>
+	<key>Stored Files</key>
+	<string>Gespeicherte Dateien</string>
+	<key>Subscribe</key>
+	<string>Abonnieren</string>
+	<key>Subscribe to All New Podcasts</key>
+	<string>Abonnieren Sie alle neuen Podcasts</string>
+	<key>Subscribed</key>
+	<string>Abonniert</string>
+	<key>Summary</key>
+	<string>Zusammenfassung</string>
+	<key>Supported Models</key>
+	<string>Unterstützte Modelle</string>
+	<key>Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open.</key>
+	<string>Zu den unterstützten Formaten gehören MP3, AAC, M4A, M4B, WAV, CAF, AIFF und alle anderen Audiotypen, die AVFoundation öffnen kann.</string>
+	<key>The currently playing episode is kept pinned at the top while playback is active.</key>
+	<string>Die aktuell abgespielte Episode bleibt bei aktiver Wiedergabe oben angeheftet.</string>
+	<key>The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size.</key>
+	<string>Die Datenbanksumme verwendet die echten SQLite-Dateien auf der Festplatte. Die nachstehenden Podcast- und Datentypaufschlüsselungen schätzen den Anteil jedes Datensatzes und skalieren diese Schätzung auf die tatsächliche Datenbankgröße.</string>
+	<key>The selected ratio is applied to every share picture preview and export.</key>
+	<string>Das ausgewählte Verhältnis wird auf jede Vorschau und jeden Export von Teilen-Bildern angewendet.</string>
+	<key>These chapter rules could not be loaded.</key>
+	<string>Diese Kapitelregeln konnten nicht geladen werden.</string>
+	<key>These control whether playback scrubbing is available inside the app and through system playback controls.</key>
+	<string>Diese steuern, ob das Playback-Scrubbing in der App und über die Wiedergabesteuerung des Systems verfügbar ist.</string>
+	<key>These durations update the skip buttons, lock screen controls, CarPlay, shortcuts, and watch playback controls.</key>
+	<string>Diese Dauern aktualisieren die Sprungtasten, Sperrbildschirm-Steuerungen, CarPlay, Kurzbefehle und Wiedergabesteuerungen auf der Watch.</string>
+	<key>These values apply across the app unless a podcast is switched to custom settings.</key>
+	<string>Diese Werte gelten in der gesamten App, sofern ein Podcast nicht auf Individuell umgestellt wird.</string>
+	<key>This app plays spoken-word audio and does not include separate audio-description tracks. Chapter titles and transcripts provide descriptive context instead.</key>
+	<string>Diese App spielt gesprochenes Audio ab und enthält keine separaten Audiobeschreibungsspuren. Stattdessen liefern Kapiteltitel und Transkripte beschreibenden Kontext.</string>
+	<key>This episode could not be loaded.</key>
+	<string>Diese Episode konnte nicht geladen werden.</string>
+	<key>This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to.</key>
+	<string>Dieser Feed bleibt vorübergehend, bis Sie eine Episode in die Warteschlange stellen. Auf diese Weise schreiben wir nur Podcasts und Episoden, die Sie auch tatsächlich hören.</string>
+	<key>This podcast could not be loaded.</key>
+	<string>Dieser Podcast konnte nicht geladen werden.</string>
+	<key>This podcast currently has no standalone files stored outside the database.</key>
+	<string>Für diesen Podcast sind derzeit keine eigenständigen Dateien außerhalb der Datenbank gespeichert.</string>
+	<key>This podcast stays in the database, but it is skipped by bulk refresh.</key>
+	<string>Dieser Podcast bleibt in der Datenbank, wird aber bei der Sammelaktualisierung übersprungen.</string>
+	<key>This removes downloaded media and cache files, but keeps your SwiftData database, subscriptions, and playback history.</key>
+	<string>Dadurch werden heruntergeladene Medien- und Cache-Dateien entfernt, Ihre SwiftData-Datenbank, Ihre Abonnements und Ihr Wiedergabeverlauf bleiben jedoch erhalten.</string>
+	<key>This removes stored transcript text from the database. Episode audio files and transcription history records are kept.</key>
+	<string>Dadurch wird gespeicherter Transkripttext aus der Datenbank entfernt. Episoden-Audiodateien und Transkriptionsverlaufsdaten bleiben erhalten.</string>
+	<key>This rule has no keyword yet.</key>
+	<string>Diese Regel hat noch kein Schlüsselwort.</string>
+	<key>This screen focuses on what is unique to this podcast. App-wide controls stay grouped under Global Settings.</key>
+	<string>Dieser Bildschirm konzentriert sich auf das Einzigartige an diesem Podcast. App-weite Steuerelemente bleiben unter „Globale Einstellungen“ gruppiert.</string>
+	<key>This settings scope does not currently skip any chapters automatically.</key>
+	<string>Dieser Einstellungsbereich überspringt derzeit keine Kapitel automatisch.</string>
+	<key>This speed is used when playback starts. The player speed control also writes back here.</key>
+	<string>Diese Geschwindigkeit wird verwendet, wenn die Wiedergabe startet. Die Geschwindigkeitssteuerung im Player speichert Änderungen ebenfalls hier.</string>
+	<key>This title is used for every share picture preview and export.</key>
+	<string>Dieser Titel wird für jede Vorschau und jeden Export von Teilen-Bildern verwendet.</string>
+	<key>Title</key>
+	<string>Titel</string>
+	<key>Title A–Z</key>
+	<string>Titel A–Z</string>
+	<key>Title: %@ • Background: %@</key>
+	<string>Titel: %1$@ • Hintergrund: %2$@</string>
+	<key>Titles</key>
+	<string>Titel</string>
+	<key>To create multiple designs, add the Generate Podcast Share Image action more than once with different design values.</key>
+	<string>Um mehrere Designs zu erstellen, füge die Aktion Podcast-Teilen-Bild erstellen mehrfach mit unterschiedlichen Designs hinzu.</string>
+	<key>Top Podcasts</key>
+	<string>Top-Podcasts</string>
+	<key>Top podcast share pictures are available when the statistics show all podcasts.</key>
+	<string>Teilen-Bilder für Top-Podcasts sind verfügbar, wenn die Statistik alle Podcasts anzeigt.</string>
+	<key>Total</key>
+	<string>Gesamt</string>
+	<key>Total Listening Time per Podcast</key>
+	<string>Gesamte Hörzeit pro Podcast</string>
+	<key>Total Used</key>
+	<string>Gesamtverbrauch</string>
+	<key>Transcribe</key>
+	<string>Transkribieren</string>
+	<key>Transcribe episode</key>
+	<string>Episode transkribieren</string>
+	<key>Transcribing</key>
+	<string>Wird transkribiert</string>
+	<key>Transcribing audio… %@</key>
+	<string>Audio wird transkribiert … %@</string>
+	<key>Transcript</key>
+	<string>Transkript</string>
+	<key>Transcript Lines</key>
+	<string>Transkriptzeilen</string>
+	<key>Transcript Unavailable</key>
+	<string>Transkript nicht verfügbar</string>
+	<key>Transcription</key>
+	<string>Transkription</string>
+	<key>Transcription Records</key>
+	<string>Transkriptionsaufzeichnungen</string>
+	<key>Transcriptions</key>
+	<string>Transkriptionen</string>
+	<key>Turn off to skip this chapter</key>
+	<string>Deaktivieren Sie diese Option, um dieses Kapitel zu überspringen</string>
+	<key>Turn off to skip this chapter automatically</key>
+	<string>Schalten Sie diese Option aus, um dieses Kapitel automatisch zu überspringen</string>
+	<key>URL or Search</key>
+	<string>URL oder Suche</string>
+	<key>Unable to Enable Sideloading</key>
+	<string>Sideloading kann nicht aktiviert werden</string>
+	<key>Unarchive</key>
+	<string>Aus dem Archiv holen</string>
+	<key>Unarchive episode</key>
+	<string>Folge aus dem Archiv entfernen</string>
+	<key>Unattributed Files</key>
+	<string>Nicht zugeordnete Dateien</string>
+	<key>Unsubscribe</key>
+	<string>Abbestellen</string>
+	<key>Up Next</key>
+	<string>Als Nächstes</string>
+	<key>Up Next Basics</key>
+	<string>Up Next Grundlagen</string>
+	<key>Up Next actions are available in Apple Shortcuts. Search for “Up Next” when adding an action to a shortcut or personal automation.</key>
+	<string>Up Next Aktionen sind in Apple Kurzbefehle verfügbar. Suche beim Hinzufügen einer Aktion zu einem Kurzbefehl oder einer persönlichen Automation nach „Up Next“.</string>
+	<key>Up Next is your single playback queue. Episodes in this list are what the player uses for "what comes next."</key>
+	<string>Up Next ist Ihre einzelne Wiedergabewarteschlange. Episoden in dieser Liste werden vom Spieler für „Was kommt als Nächstes“ verwendet.</string>
+	<key>Update inbox</key>
+	<string>Posteingang aktualisieren</string>
+	<key>Update podcast</key>
+	<string>Podcast aktualisieren</string>
+	<key>Update sideloading</key>
+	<string>Seitenladen aktualisieren</string>
+	<key>Updates all podcast feeds in your library</key>
+	<string>Aktualisiert alle Podcast-Feeds in Ihrer Bibliothek</string>
+	<key>Updating search results...</key>
+	<string>Suchergebnisse werden aktualisiert...</string>
+	<key>Use "Only while charging" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available.</key>
+	<string>Verwende „Nur während des Ladevorgangs“, wenn die automatische lokale Transkription auf externe Stromversorgung warten soll. Während die App geöffnet ist, reagiert sie auf Ladeänderungen, und im Hintergrund kann sie geeignete „Up Next“-Episoden aufnehmen, sobald Strom verfügbar ist.</string>
+	<key>Use Custom</key>
+	<string>Individuell verwenden</string>
+	<key>Use at least %lld characters to search transcripts.</key>
+	<string>Verwenden Sie mindestens %lld Zeichen, um Transkripte zu durchsuchen.</string>
+	<key>Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior.</key>
+	<string>Verwenden Sie globale Regeln für alle Podcasts oder aktivieren Sie benutzerdefinierte Einstellungen für einen Podcast, wenn dieser ein eigenes Verhalten benötigt.</string>
+	<key>Use podcast-specific settings</key>
+	<string>Verwenden Sie Podcast-spezifische Einstellungen</string>
+	<key>Use previous and next week buttons to change the date range</key>
+	<string>Verwenden Sie die Schaltflächen „Vorherige“ und „Nächste Woche“, um den Datumsbereich zu ändern</string>
+	<key>Use rules for repeated segments like ads, intros, and credits. Each rule checks the chapter title with a match style such as contains or starts with.</key>
+	<string>Verwenden Sie Regeln für sich wiederholende Segmente wie Anzeigen, Intros und Credits. Jede Regel prüft den Kapiteltitel anhand eines Übereinstimmungsstils, z. B. „enthält“ oder „beginnt mit“.</string>
+	<key>Useful Outputs</key>
+	<string>Nützliche Ausgaben</string>
+	<key>Username</key>
+	<string>Benutzername</string>
+	<key>Using Global Defaults</key>
+	<string>Globale Standardwerte werden verwendet</string>
+	<key>Using Podcast Defaults</key>
+	<string>Verwenden der Podcast-Standardeinstellungen</string>
+	<key>Using Up Next</key>
+	<string>Als nächstes verwenden</string>
+	<key>Using podcast-specific settings</key>
+	<string>Podcast-spezifische Einstellungen werden verwendet</string>
+	<key>Video Size</key>
+	<string>Videogröße</string>
+	<key>VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views.</key>
+	<string>VoiceOver und Voice Control verwenden dieselben Steuerelementnamen, die Sie in den Player-, Warteschlangen- und Transkriptansichten sehen.</string>
+	<key>Week</key>
+	<string>Woche</string>
+	<key>Weekday</key>
+	<string>Wochentag</string>
+	<key>Weekday totals and an hour-by-weekday heat map based on your listening history.</key>
+	<string>Wochentagssummen und eine Heatmap nach Stunde und Wochentag auf Basis deines Hörverlaufs.</string>
+	<key>Weekly Listening Heat Map</key>
+	<string>Wöchentliche Hör-Heatmap</string>
+	<key>Weekly listening heat map</key>
+	<string>Wöchentliche Hör-Heatmap</string>
+	<key>When an episode finishes, continuous playback can automatically start the next item from Up Next.</key>
+	<string>Wenn eine Episode zu Ende ist, kann die kontinuierliche Wiedergabe automatisch mit dem nächsten Element von „Up Next“ beginnen.</string>
+	<key>When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.</key>
+	<string>Wenn eine Episode archiviert wird, bleibt die heruntergeladene Datei für diesen Zeitraum erhalten, bevor sie durch die automatische Bereinigung entfernt werden kann.</string>
+	<key>When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available.</key>
+	<string>Wenn diese Option aktiviert ist, kann die App die Transkription auf dem Gerät automatisch starten, nachdem Downloads abgeschlossen sind. Vom Feed bereitgestellte Transkripte werden weiterhin bevorzugt, wenn sie verfügbar sind.</string>
+	<key>When enabled, the app watches the iCloud Drive &gt; Up Next root and imports audio files from there when you open the iCloud Drive view. Turning it off stops discovery, but keeps existing sideloaded items in the database.</key>
+	<string>Wenn diese Option aktiviert ist, überwacht die App das Stammverzeichnis „iCloud Drive &gt; Up Next“ und importiert Audiodateien von dort, wenn Sie die iCloud Drive-Ansicht öffnen. Wenn Sie es deaktivieren, wird die Erkennung gestoppt, vorhandene seitlich geladene Elemente bleiben jedoch in der Datenbank erhalten.</string>
+	<key>When enabled, the next queue item starts automatically after an episode finishes.</key>
+	<string>Wenn diese Option aktiviert ist, startet das nächste Warteschlangenelement automatisch, nachdem eine Episode beendet ist.</string>
+	<key>When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.</key>
+	<string>Wenn diese Option deaktiviert ist, überspringt die App für jeden Podcast Feed-verknüpfte Transkript-Downloads und die automatische Transkripterstellung auf dem Gerät.</string>
+	<key>When you usually listen</key>
+	<string>Wann du normalerweise hörst</string>
+	<key>Will be skipped</key>
+	<string>Wird übersprungen</string>
+	<key>Y-axis: listening time per %@.</key>
+	<string>Y-Achse: Hörzeit pro %@.</string>
+	<key>Year</key>
+	<string>Jahr</string>
+	<key>You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue.</key>
+	<string>Sie können „Up Next“ manuell neu anordnen, eine Episode an das Ende verschieben oder Episoden aus der Warteschlange entfernen.</string>
+	<key>You have not saved a bookmark yet. Tap the bookmark icon during playback to add a bookmark. Bookmarking allows you to listen to a segment of an episode later on. It also works in CarPlay or by saying 'Bookmark this in Up Next'.</key>
+	<string>Du hast noch kein Lesezeichen gespeichert. Tippe während der Wiedergabe auf das Lesezeichen-Symbol, um eines hinzuzufügen. So kannst du später einen Abschnitt einer Episode erneut anhören. Das funktioniert auch in CarPlay oder per Sprachbefehl 'Bookmark this in Up Next'.</string>
+	<key>You have not subscribed to any podcasts yet. Tap the + Button in the bottom right corner to subscribe to some podcasts. You can import a OPML File, search the directory or browse for trending podcasts in different languages.</key>
+	<string>Du hast noch keine Podcasts abonniert. Tippe auf die Plus-Taste unten rechts, um Podcasts zu abonnieren. Du kannst eine OPML-Datei importieren, das Verzeichnis durchsuchen oder angesagte Podcasts in verschiedenen Sprachen entdecken.</string>
+	<key>Your %lld listening recap is ready. Open the share picture view to customize and export it.</key>
+	<string>Dein Hörrückblick %lld ist bereit. Öffne die Teilen-Bild-Ansicht, um ihn anzupassen und zu exportieren.</string>
+	<key>Your Inbox is empty</key>
+	<string>Dein Posteingang ist leer</string>
+	<key>Your Library is empty</key>
+	<string>Deine Mediathek ist leer</string>
+	<key>Your Sideloading Folder is empty</key>
+	<string>Ihr Sideloading-Ordner ist leer</string>
+	<key>apps</key>
+	<string>Apps</string>
+	<key>at %@</key>
+	<string>bei %@</string>
+	<key>e.g. ad break, intro, credits</key>
+	<string>z.B. Werbepause, Intro, Credits</string>
+	<key>extremely</key>
+	<string>extrem</string>
+	<key>max play position</key>
+	<string>Max. Wiedergabeposition</string>
+	<key>no results for %@</key>
+	<string>Keine Ergebnisse für %@</string>
+	<key>successful</key>
+	<string>erfolgreiche</string>
+	<key>total listening time</key>
+	<string>gesamte Hörzeit</string>
+</dict>
+</plist>

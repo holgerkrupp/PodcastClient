@@ -1,0 +1,40 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/SkipNextView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Play chapter",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "On",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Off",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Turn off to skip this chapter",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 104
+        }
+      }
+    ]
+  },
+  "version": 1
+}

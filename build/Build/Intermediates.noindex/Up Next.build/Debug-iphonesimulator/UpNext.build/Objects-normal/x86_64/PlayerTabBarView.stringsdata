@@ -1,0 +1,72 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/PlayerTabBarView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Open full player",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Mini player, %@",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "Double tap anywhere on the mini player to open full player controls",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause playback",
+        "location": {
+          "startingColumn": 60,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start playback",
+        "location": {
+          "startingColumn": 79,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pauses the current episode",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 67
+        }
+      },
+      {
+        "comment": "",
+        "key": "Starts playback of the current episode",
+        "location": {
+          "startingColumn": 90,
+          "startingLine": 67
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hello World",
+        "location": {
+          "startingColumn": 1,
+          "startingLine": 133
+        }
+      }
+    ]
+  },
+  "version": 1
+}

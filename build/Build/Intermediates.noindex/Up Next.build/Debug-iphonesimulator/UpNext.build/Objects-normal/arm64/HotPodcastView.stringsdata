@@ -1,0 +1,32 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Views/HotPodcastView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Hot Podcasts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Language",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 20
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading languages...",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 27
+        }
+      }
+    ]
+  },
+  "version": 1
+}

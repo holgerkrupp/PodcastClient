@@ -1,0 +1,312 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Podcasts/PodcastDetailView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Live notification",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 541
+        }
+      },
+      {
+        "comment": "",
+        "key": "This podcast stays in the database, but it is skipped by bulk refresh.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 321
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open podroll",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 232
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows podcasts recommended by this podcast",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unsubscribe",
+        "location": {
+          "startingColumn": 55,
+          "startingLine": 285
+        }
+      },
+      {
+        "comment": "",
+        "key": "Subscribe",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 285
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last updated: %@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 147
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last refresh: %@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 153
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open podcast website",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 183
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast debug metadata",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podroll",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 229
+        }
+      },
+      {
+        "comment": "",
+        "key": "Switch Alternative Feed",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 307
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open episode %@",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 373
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens this episode details screen",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 374
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sort episodes",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 485
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode sort",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 485
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode sort and visibility",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 483
+        }
+      },
+      {
+        "comment": "",
+        "key": "Choose episode sort order and hide played episodes",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 484
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sort by",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 468
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hide played Episodes",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 478
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast settings",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 495
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open settings",
+        "location": {
+          "startingColumn": 79,
+          "startingLine": 495
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast settings",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 493
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open settings for this podcast",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 494
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh podcast",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 516
+        }
+      },
+      {
+        "comment": "",
+        "key": "Update podcast",
+        "location": {
+          "startingColumn": 78,
+          "startingLine": 516
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing podcast",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 514
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh podcast",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 514
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloads the latest episodes from this podcast feed",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 515
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive all episodes",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 529
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive podcast episodes",
+        "location": {
+          "startingColumn": 83,
+          "startingLine": 529
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive all episodes",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 527
+        }
+      },
+      {
+        "comment": "",
+        "key": "Marks all episodes in this podcast as archived",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 528
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 542
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live Now: %@",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 732
+        }
+      },
+      {
+        "comment": "",
+        "key": "Notify Me: %@",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 743
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open Live Page",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 758
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Live Stream",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 782
+        }
+      }
+    ]
+  },
+  "version": 1
+}

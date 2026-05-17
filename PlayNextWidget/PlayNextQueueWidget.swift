@@ -2,20 +2,23 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-private struct QueueSnapshot: Codable {
+struct QueueSnapshot: Codable {
     struct Item: Codable, Identifiable {
         let id: String
         let title: String
         let subtitle: String?
         let podcast: String?
+        let coverURL: URL?
         let isCurrent: Bool
     }
 
     let generatedAt: Date
+    let totalItemCount: Int?
+    let currentIndex: Int?
     let items: [Item]
 }
 
-private struct QueuePlaylistCatalog: Codable {
+struct QueuePlaylistCatalog: Codable {
     struct Item: Codable, Identifiable, Hashable {
         let id: String
         let title: String
@@ -24,17 +27,19 @@ private struct QueuePlaylistCatalog: Codable {
     }
 
     let generatedAt: Date
+    let selectedPlaylistID: String?
     let playlists: [Item]
 }
 
-private struct QueueTimelineEntry: TimelineEntry {
+struct QueueTimelineEntry: TimelineEntry {
     let date: Date
     let snapshot: QueueSnapshot
     let playlistID: String
     let playlistTitle: String
+    let statusMessage: String?
 }
 
-private struct QueuePlaylistEntity: AppEntity, Identifiable, Hashable {
+struct QueuePlaylistEntity: AppEntity, Identifiable, Hashable {
     typealias ID = String
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Playlist")
@@ -52,10 +57,18 @@ private struct QueuePlaylistEntity: AppEntity, Identifiable, Hashable {
     }
 }
 
-private struct QueuePlaylistQuery: EntityQuery {
+struct QueuePlaylistQuery: EntityQuery {
     func entities(for identifiers: [QueuePlaylistEntity.ID]) async throws -> [QueuePlaylistEntity] {
         let optionsByID = Dictionary(uniqueKeysWithValues: QueueProvider.loadPlaylistOptions().map { ($0.id, $0) })
         return identifiers.compactMap { identifier in
+            if identifier == QueueProvider.currentPlaylistOption.id {
+                return QueuePlaylistEntity(
+                    id: QueueProvider.currentPlaylistOption.id,
+                    title: QueueProvider.currentPlaylistOption.title,
+                    symbolName: QueueProvider.currentPlaylistOption.symbolName
+                )
+            }
+
             guard let option = optionsByID[identifier] else { return nil }
             return QueuePlaylistEntity(
                 id: option.id,
@@ -66,7 +79,7 @@ private struct QueuePlaylistQuery: EntityQuery {
     }
 
     func suggestedEntities() async throws -> [QueuePlaylistEntity] {
-        QueueProvider.loadPlaylistOptions().map { option in
+        ([QueueProvider.currentPlaylistOption] + QueueProvider.loadPlaylistOptions()).map { option in
             QueuePlaylistEntity(
                 id: option.id,
                 title: option.title,
@@ -76,29 +89,38 @@ private struct QueuePlaylistQuery: EntityQuery {
     }
 
     func defaultResult() async -> QueuePlaylistEntity? {
-        QueueProvider.defaultPlaylistOption().map { option in
-            QueuePlaylistEntity(
-                id: option.id,
-                title: option.title,
-                symbolName: option.symbolName
-            )
-        }
+        QueuePlaylistEntity(
+            id: QueueProvider.currentPlaylistOption.id,
+            title: QueueProvider.currentPlaylistOption.title,
+            symbolName: QueueProvider.currentPlaylistOption.symbolName
+        )
     }
 }
 
-private struct QueueConfigurationIntent: WidgetConfigurationIntent {
+struct QueueConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Playlist"
     static let description = IntentDescription("Choose which playlist this widget should show.")
+    static var parameterSummary: some ParameterSummary {
+        Summary("Show \(\.$playlist)")
+    }
 
     @Parameter(title: "Playlist")
     var playlist: QueuePlaylistEntity?
 }
 
-private struct QueueProvider: AppIntentTimelineProvider {
+struct QueueProvider: AppIntentTimelineProvider {
     static let appGroupID = "group.de.holgerkrupp.PodcastClient"
     static let legacyFileName = "play-next-widget.json"
     static let catalogFileName = "play-next-widget-playlists.json"
     static let snapshotFilePrefix = "play-next-widget-"
+    static let currentPlaylistOptionID = "__current_playlist__"
+
+    static let currentPlaylistOption = QueuePlaylistCatalog.Item(
+        id: currentPlaylistOptionID,
+        title: "Current Playlist",
+        symbolName: "rectangle.stack.badge.play",
+        isDefault: false
+    )
 
     static let fallbackPlaylistOption = QueuePlaylistCatalog.Item(
         id: "",
@@ -110,9 +132,10 @@ private struct QueueProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> QueueTimelineEntry {
         QueueTimelineEntry(
             date: .now,
-            snapshot: .placeholder,
+            snapshot: .empty,
             playlistID: "",
-            playlistTitle: "Up Next"
+            playlistTitle: "Up Next",
+            statusMessage: "Open Up Next to prepare widget data."
         )
     }
 
@@ -127,29 +150,57 @@ private struct QueueProvider: AppIntentTimelineProvider {
     }
 
     private func entry(for configuration: QueueConfigurationIntent) -> QueueTimelineEntry {
-        let options = Self.loadPlaylistOptions()
-        let selectedPlaylist: QueuePlaylistCatalog.Item
-        if let selectedID = configuration.playlist?.id,
-           let match = options.first(where: { $0.id == selectedID }) {
+        let catalog = Self.loadCatalog()
+        let options = Self.playlistOptions(from: catalog)
+        let requestedPlaylistID = configuration.playlist?.id
+        var selectedPlaylist: QueuePlaylistCatalog.Item
+        if let requestedPlaylistID,
+           requestedPlaylistID != Self.currentPlaylistOptionID,
+           let match = options.first(where: { $0.id == requestedPlaylistID }) {
             selectedPlaylist = match
         } else {
-            selectedPlaylist = Self.defaultPlaylistOption() ?? Self.fallbackPlaylistOption
+            selectedPlaylist = Self.selectedPlaylistOption() ?? Self.defaultPlaylistOption() ?? Self.fallbackPlaylistOption
         }
 
-        let snapshot = loadSnapshot(for: selectedPlaylist.id)
-            ?? loadSnapshot(for: "")
-            ?? .placeholder
+        let selectedSnapshot = loadSnapshot(for: selectedPlaylist.id)
+        let legacySnapshot = loadSnapshot(for: "")
+        var snapshot = selectedSnapshot
+            ?? legacySnapshot
+            ?? .empty
+        var statusMessage: String?
+        if selectedSnapshot == nil, legacySnapshot == nil {
+            statusMessage = catalog == nil
+                ? "Open Up Next to prepare widget data."
+                : "No widget data for this playlist yet."
+        }
+
+        if requestedPlaylistID != Self.currentPlaylistOptionID,
+           selectedPlaylist.isDefault,
+           snapshot.items.isEmpty,
+           let currentPlaylist = Self.selectedPlaylistOption(),
+           currentPlaylist.id != selectedPlaylist.id,
+           let currentSnapshot = loadSnapshot(for: currentPlaylist.id),
+           currentSnapshot.items.isEmpty == false {
+            selectedPlaylist = currentPlaylist
+            snapshot = currentSnapshot
+            statusMessage = nil
+        }
 
         return QueueTimelineEntry(
             date: .now,
             snapshot: snapshot,
             playlistID: selectedPlaylist.id,
-            playlistTitle: selectedPlaylist.title
+            playlistTitle: selectedPlaylist.title,
+            statusMessage: statusMessage
         )
     }
 
     static func loadPlaylistOptions() -> [QueuePlaylistCatalog.Item] {
-        guard let catalog = loadCatalog() else {
+        playlistOptions(from: loadCatalog())
+    }
+
+    static func playlistOptions(from catalog: QueuePlaylistCatalog?) -> [QueuePlaylistCatalog.Item] {
+        guard let catalog else {
             return [fallbackPlaylistOption]
         }
 
@@ -163,6 +214,17 @@ private struct QueueProvider: AppIntentTimelineProvider {
     static func defaultPlaylistOption() -> QueuePlaylistCatalog.Item? {
         let options = loadPlaylistOptions()
         return options.first(where: \.isDefault) ?? options.first
+    }
+
+    static func selectedPlaylistOption() -> QueuePlaylistCatalog.Item? {
+        guard let catalog = loadCatalog(),
+              let selectedPlaylistID = catalog.selectedPlaylistID,
+              selectedPlaylistID.isEmpty == false
+        else {
+            return nil
+        }
+
+        return catalog.playlists.first(where: { $0.id == selectedPlaylistID })
     }
 
     private static func loadCatalog() -> QueuePlaylistCatalog? {
@@ -204,14 +266,12 @@ private struct QueueProvider: AppIntentTimelineProvider {
 }
 
 private extension QueueSnapshot {
-    static var placeholder: QueueSnapshot {
+    static var empty: QueueSnapshot {
         QueueSnapshot(
             generatedAt: .now,
-            items: [
-                .init(id: "current", title: "Current episode", subtitle: "Resume where you left off", podcast: "Up Next", isCurrent: true),
-                .init(id: "next", title: "Next in queue", subtitle: "Queued for later", podcast: "Up Next", isCurrent: false),
-                .init(id: "later", title: "Another episode", subtitle: "Ready to play", podcast: "Up Next", isCurrent: false),
-            ]
+            totalItemCount: 0,
+            currentIndex: nil,
+            items: []
         )
     }
 
@@ -251,7 +311,7 @@ private struct PlayNextQueueWidgetView: View {
         case .systemSmall:
             smallView
         case .systemMedium:
-            listView(limit: 3, showsCurrent: true)
+            listView(limit: 2, showsCurrent: true, spacing: 6)
         case .systemLarge:
             listView(limit: 6, showsCurrent: true)
         case .accessoryRectangular:
@@ -299,8 +359,8 @@ private struct PlayNextQueueWidgetView: View {
         .widgetURL(widgetURL)
     }
 
-    private func listView(limit: Int, showsCurrent: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func listView(limit: Int, showsCurrent: Bool, spacing: CGFloat = 8) -> some View {
+        VStack(alignment: .leading, spacing: spacing) {
             widgetHeader
 
             if entry.snapshot.items.isEmpty {
@@ -327,19 +387,25 @@ private struct PlayNextQueueWidgetView: View {
                 .lineLimit(1)
 
             if let first = entry.snapshot.upcomingItems.first ?? entry.snapshot.currentItem {
-                Text(first.title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    QueueCover(url: first.coverURL, size: 22)
 
-                if let podcast = first.podcast, podcast.isEmpty == false {
-                    Text(podcast)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(first.title)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+
+                        if let podcast = first.podcast, podcast.isEmpty == false {
+                            Text(podcast)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
                 }
             } else {
-                Text("Queue is empty")
+                Text(entry.statusMessage ?? "Queue is empty")
                     .font(.caption)
                     .lineLimit(1)
             }
@@ -356,19 +422,40 @@ private struct PlayNextQueueWidgetView: View {
                 .fontWeight(.semibold)
                 .lineLimit(1)
             Spacer(minLength: 0)
+            if let progressText {
+                Text(progressText)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+            }
         }
         .foregroundStyle(.secondary)
+        .padding(.top, 1)
+    }
+
+    private var progressText: String? {
+        guard let total = entry.snapshot.totalItemCount, total > 0 else {
+            return nil
+        }
+
+        if let currentIndex = entry.snapshot.currentIndex {
+            return "\(currentIndex + 1)/\(total)"
+        }
+
+        return "\(total) left"
     }
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Queue is empty")
+            Text(entry.statusMessage ?? "Queue is empty")
                 .font(.subheadline)
                 .fontWeight(.semibold)
-            Text("Add episodes in the app to see them here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            if entry.statusMessage == nil {
+                Text("Add episodes in the app to see them here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
         }
     }
 }
@@ -388,10 +475,7 @@ private struct QueueLine: View {
             : AnyShapeStyle(.secondary)
 
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward")
-                .font(.caption)
-                .foregroundStyle(iconStyle)
-                .frame(width: 14)
+            QueueCover(url: item.coverURL, size: 26, fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
@@ -419,13 +503,50 @@ private struct QueueLine: View {
     }
 }
 
+private struct QueueCover: View {
+    let url: URL?
+    let size: CGFloat
+    var fallbackSystemName: String = "text.line.first.and.arrowtriangle.forward"
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(.quaternary)
+
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallbackIcon
+                    }
+                }
+            } else {
+                fallbackIcon
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
+    private var fallbackIcon: some View {
+        Image(systemName: fallbackSystemName)
+            .font(.system(size: max(size * 0.48, 10), weight: .medium))
+            .foregroundStyle(.secondary)
+    }
+}
+
 #Preview(as: .systemMedium) {
     PlayNextQueueWidget()
 } timeline: {
     QueueTimelineEntry(
         date: .now,
-        snapshot: .placeholder,
+        snapshot: .empty,
         playlistID: "",
-        playlistTitle: "Up Next"
+        playlistTitle: "Up Next",
+        statusMessage: "Open Up Next to prepare widget data."
     )
 }

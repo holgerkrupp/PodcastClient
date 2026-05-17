@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Podcast/Views/SocialView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Social links",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 65
+        }
+      }
+    ]
+  },
+  "version": 1
+}

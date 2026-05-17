@@ -1,0 +1,152 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/EpisodeControlView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Play episode",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 70
+        }
+      },
+      {
+        "comment": "",
+        "key": "Starts this episode immediately",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unarchive episode",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 178
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive episode",
+        "location": {
+          "startingColumn": 95,
+          "startingLine": 178
+        }
+      },
+      {
+        "comment": "",
+        "key": "Moves this episode in or out of the archive",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to front of playlist",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to playlist",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 111
+        }
+      },
+      {
+        "comment": "",
+        "key": "Places this episode at the front of %@",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to end of playlist",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 138
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to end of playlist",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 148
+        }
+      },
+      {
+        "comment": "",
+        "key": "Places this episode at the end of %@",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 149
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Next",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 109
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Last",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 120
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 146
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unarchive",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 166
+        }
+      }
+    ]
+  },
+  "version": 1
+}

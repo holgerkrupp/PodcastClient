@@ -11,10 +11,13 @@ struct PlayNextWidgetSnapshot: Codable {
         let title: String
         let subtitle: String?
         let podcast: String?
+        let coverURL: URL?
         let isCurrent: Bool
     }
 
     let generatedAt: Date
+    let totalItemCount: Int
+    let currentIndex: Int?
     let items: [Item]
 }
 
@@ -27,6 +30,7 @@ struct PlayNextWidgetPlaylistCatalog: Codable {
     }
 
     let generatedAt: Date
+    let selectedPlaylistID: String?
     let playlists: [Item]
 }
 
@@ -44,10 +48,13 @@ enum PlayNextWidgetSync {
         let resolvedContainer = await MainActor.run { container ?? ModelContainerManager.shared.container }
         let modelContext = ModelContext(resolvedContainer)
 
+        _ = Playlist.ensureDefaultQueue(in: modelContext)
+        modelContext.saveIfNeeded()
+
         let allPlaylists = (try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? []
         let manualPlaylists = Playlist.manualVisibleSorted(allPlaylists)
         guard manualPlaylists.isEmpty == false else {
-            clear()
+            reloadWidgets()
             return
         }
 
@@ -55,7 +62,16 @@ enum PlayNextWidgetSync {
             ?? manualPlaylists.first?.id
 
         pruneStaleSnapshots(validPlaylistIDs: Set(manualPlaylists.map { $0.id.uuidString }))
-        persistCatalog(for: manualPlaylists, defaultPlaylistID: defaultPlaylistID)
+        let selectedPlaylistID = resolvedSelectedPlaylistID(
+            from: manualPlaylists,
+            defaultPlaylistID: defaultPlaylistID
+        )
+
+        persistCatalog(
+            for: manualPlaylists,
+            defaultPlaylistID: defaultPlaylistID,
+            selectedPlaylistID: selectedPlaylistID
+        )
 
         let resolvedCurrentURL: URL?
         if let currentEpisodeURL {
@@ -69,6 +85,9 @@ enum PlayNextWidgetSync {
             var targetedIDs = playlistIDs
             if let defaultPlaylistID {
                 targetedIDs.insert(defaultPlaylistID)
+            }
+            if let selectedPlaylistID {
+                targetedIDs.insert(selectedPlaylistID)
             }
             playlistIDsToRefresh = targetedIDs.filter { targetID in
                 manualPlaylists.contains(where: { $0.id == targetID })
@@ -96,13 +115,13 @@ enum PlayNextWidgetSync {
     }
 
     static func clear() {
-        let emptySnapshot = PlayNextWidgetSnapshot(generatedAt: .now, items: [])
+        let emptySnapshot = PlayNextWidgetSnapshot(generatedAt: .now, totalItemCount: 0, currentIndex: nil, items: [])
         persist(emptySnapshot, fileName: legacyFileName)
-        persist(PlayNextWidgetPlaylistCatalog(generatedAt: .now, playlists: []), fileName: catalogFileName)
+        persist(PlayNextWidgetPlaylistCatalog(generatedAt: .now, selectedPlaylistID: nil, playlists: []), fileName: catalogFileName)
         reloadWidgets()
     }
 
-    private static func persistCatalog(for playlists: [Playlist], defaultPlaylistID: UUID?) {
+    private static func persistCatalog(for playlists: [Playlist], defaultPlaylistID: UUID?, selectedPlaylistID: UUID?) {
         let items = playlists.map { playlist in
             PlayNextWidgetPlaylistCatalog.Item(
                 id: playlist.id.uuidString,
@@ -111,22 +130,41 @@ enum PlayNextWidgetSync {
                 isDefault: playlist.id == defaultPlaylistID
             )
         }
-        let catalog = PlayNextWidgetPlaylistCatalog(generatedAt: .now, playlists: items)
+        let catalog = PlayNextWidgetPlaylistCatalog(
+            generatedAt: .now,
+            selectedPlaylistID: selectedPlaylistID?.uuidString,
+            playlists: items
+        )
         persist(catalog, fileName: catalogFileName)
     }
 
+    private static func resolvedSelectedPlaylistID(from playlists: [Playlist], defaultPlaylistID: UUID?) -> UUID? {
+        if let selectedID = Playlist.resolvePlaylistID(
+            from: UserDefaults.standard.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        ),
+           playlists.contains(where: { $0.id == selectedID }) {
+            return selectedID
+        }
+
+        let fallbackID = defaultPlaylistID ?? playlists.first?.id
+        if let fallbackID {
+            UserDefaults.standard.set(fallbackID.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        }
+        return fallbackID
+    }
+
     private static func writeSnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?, playlistID: UUID) {
-        let snapshot = PlayNextWidgetSnapshot(generatedAt: .now, items: snapshotItems(from: episodes, currentEpisodeURL: currentEpisodeURL))
+        let snapshot = makeSnapshot(from: episodes, currentEpisodeURL: currentEpisodeURL)
         persist(snapshot, fileName: snapshotFileName(for: playlistID))
     }
 
     private static func writeLegacySnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?) {
-        let snapshot = PlayNextWidgetSnapshot(generatedAt: .now, items: snapshotItems(from: episodes, currentEpisodeURL: currentEpisodeURL))
+        let snapshot = makeSnapshot(from: episodes, currentEpisodeURL: currentEpisodeURL)
         persist(snapshot, fileName: legacyFileName)
     }
 
-    private static func snapshotItems(from episodes: [EpisodeSummary], currentEpisodeURL: URL?) -> [PlayNextWidgetSnapshot.Item] {
-        episodes.prefix(12).compactMap { episode in
+    private static func makeSnapshot(from episodes: [EpisodeSummary], currentEpisodeURL: URL?) -> PlayNextWidgetSnapshot {
+        let items: [PlayNextWidgetSnapshot.Item] = episodes.compactMap { episode in
             let title = episode.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard title.isEmpty == false,
                   let episodeURL = episode.url else { return nil }
@@ -136,9 +174,17 @@ enum PlayNextWidgetSync {
                 title: title,
                 subtitle: episode.desc?.trimmingCharacters(in: .whitespacesAndNewlines),
                 podcast: episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),
+                coverURL: episode.cover ?? episode.podcastCover,
                 isCurrent: episode.url == currentEpisodeURL
             )
         }
+
+        return PlayNextWidgetSnapshot(
+            generatedAt: .now,
+            totalItemCount: items.count,
+            currentIndex: items.firstIndex { $0.isCurrent },
+            items: Array(items.prefix(12))
+        )
     }
 
     private static func snapshotFileName(for playlistID: UUID) -> String {

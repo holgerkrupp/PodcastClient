@@ -1,0 +1,40 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Views/SubscribeToPodcastView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Alternative Feeds",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 72
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play podcast trailer",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open podcast trailers",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 115
+        }
+      },
+      {
+        "comment": "",
+        "key": "Trailers",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 112
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,496 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Settings/Views/StorageManagementView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Storage",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pull to refresh to calculate the app's current storage usage.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 56
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Storage Report",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Overview",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 111
+        }
+      },
+      {
+        "comment": "",
+        "key": "Database Files",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 147
+        }
+      },
+      {
+        "comment": "",
+        "key": "By Podcast",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "File Cleanup",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 229
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ complete",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scanning the database and stored files.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing storage report",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh storage report",
+        "location": {
+          "startingColumn": 79,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scans database and files to update storage usage",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 92
+        }
+      },
+      {
+        "comment": "",
+        "key": "Storage Error",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 139
+        }
+      },
+      {
+        "comment": "",
+        "key": "Total Used",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Database",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 117
+        }
+      },
+      {
+        "comment": "",
+        "key": "Files",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 122
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stored Files",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 127
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unattributed Files",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 133
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld item%@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "Database Breakdown",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 193
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ is shared metadata or SQLite overhead that can’t be tied to a single podcast.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 196
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast-attributed storage will appear here once content is stored locally.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Podcast Storage Yet",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloaded audio and cache files will appear here when they exist.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld file%@ (%@) are currently protected because their episodes are in Up Next.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 259
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld file%@ (%@) are currently protected by archive retention settings.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 265
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld file%@ (%@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 271
+        }
+      },
+      {
+        "comment": "",
+        "key": "This removes downloaded media and cache files, but keeps your SwiftData database, subscriptions, and playback history.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 276
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Stored Files",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 232
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete Unprotected Files",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 246
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete All Stored Files",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 254
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 300
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld file%@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 312
+        }
+      },
+      {
+        "comment": "",
+        "key": "Files %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 397
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 442
+        }
+      },
+      {
+        "comment": "",
+        "key": "Overview",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 479
+        }
+      },
+      {
+        "comment": "",
+        "key": "Database Estimate by Type",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 504
+        }
+      },
+      {
+        "comment": "",
+        "key": "Counts",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 525
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stored Files",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 550
+        }
+      },
+      {
+        "comment": "",
+        "key": "Total",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 480
+        }
+      },
+      {
+        "comment": "",
+        "key": "Database Estimate",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 485
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stored Files",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 490
+        }
+      },
+      {
+        "comment": "",
+        "key": "File Count",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 496
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 497
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld item%@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 509
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episodes",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 526
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcript Lines",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 530
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapters",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 534
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bookmarks",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 538
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcription Records",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 543
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 527
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 531
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 535
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 539
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 544
+        }
+      },
+      {
+        "comment": "",
+        "key": "This podcast currently has no standalone files stored outside the database.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 555
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Files for This Podcast",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 553
+        }
+      }
+    ]
+  },
+  "version": 1
+}

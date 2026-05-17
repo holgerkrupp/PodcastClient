@@ -1,0 +1,280 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchRootView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Up Next Watch",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 62
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open watch storage and download settings",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing inbox",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh inbox",
+        "location": {
+          "startingColumn": 92,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loads the latest inbox episodes from your phone",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 132
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "Choose which playlist appears on the watch",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 138
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now playing %@",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 162
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens the full now playing screen",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 163
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloads prefer Wi-Fi and stay within your watch storage limit.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "Watch Storage",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 197
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now Playing",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 238
+        }
+      },
+      {
+        "comment": "",
+        "key": "The iPhone already has this file, so it should sync here when space opens up.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 350
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now playing %@",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 286
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens full playback controls",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 287
+        }
+      },
+      {
+        "comment": "",
+        "key": "Syncing %@",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 325
+        }
+      },
+      {
+        "comment": "",
+        "key": "Syncing",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 314
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause",
+        "location": {
+          "startingColumn": 66,
+          "startingLine": 330
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 330
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 336
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 341
+        }
+      },
+      {
+        "comment": "",
+        "key": "Download",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 341
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 425
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pull new episodes from the phone, then send the ones you want into %@.",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 429
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing…",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 433
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh Inbox",
+        "location": {
+          "startingColumn": 80,
+          "startingLine": 433
+        }
+      },
+      {
+        "comment": "",
+        "key": "Adds this episode to %@ and downloads it when available",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 503
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to %@",
+        "location": {
+          "startingColumn": 60,
+          "startingLine": 498
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue + Download",
+        "location": {
+          "startingColumn": 102,
+          "startingLine": 498
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sync Now",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 532
+        }
+      }
+    ]
+  },
+  "version": 1
+}

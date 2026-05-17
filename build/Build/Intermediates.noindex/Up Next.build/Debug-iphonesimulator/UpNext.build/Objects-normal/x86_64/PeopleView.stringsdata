@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Podcast/Views/PeopleView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "People",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 45
+        }
+      }
+    ]
+  },
+  "version": 1
+}

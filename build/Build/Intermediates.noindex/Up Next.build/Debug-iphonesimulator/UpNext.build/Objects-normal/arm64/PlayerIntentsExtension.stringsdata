@@ -1,0 +1,744 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "PlayerIntentsExtension",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 16
+        }
+      },
+      {
+        "comment": "",
+        "key": "Resume Playback",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bookmark This",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 34
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create a bookmark at the current playback position.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause Playback",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause the current episode.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip Forward",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip forward by your configured duration.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip Backward",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip backward by your configured duration.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Up Next",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start playback with the first episode in your Up Next queue.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Next Up Next Episode",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 93
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play the next episode from your Up Next queue.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move Current To End",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 111
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move the current episode to the end of your Up Next queue.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove Current From Up Next",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove the current episode from your Up Next queue.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 129
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bookmark",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 150
+        }
+      },
+      {
+        "comment": "",
+        "key": "Resume",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 157
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 164
+        }
+      },
+      {
+        "comment": "",
+        "key": "Forward",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 178
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Up Next",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 185
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Next",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move To End",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 199
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove Current",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Image",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh podcasts",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 221
+        }
+      },
+      {
+        "comment": "",
+        "key": "Check subscribed podcast feeds for new episodes.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 222
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast refresh started.",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 228
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate Podcast Share Image",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create a podcast listening statistics share image and return it as a PNG file.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 237
+        }
+      },
+      {
+        "comment": "",
+        "key": "When",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 240
+        }
+      },
+      {
+        "comment": "",
+        "key": "Design",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 243
+        }
+      },
+      {
+        "comment": "",
+        "key": "Background",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 246
+        }
+      },
+      {
+        "comment": "",
+        "key": "Aspect Ratio",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 249
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Created podcast share image.",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 275
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Share Period",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 285
+        }
+      },
+      {
+        "comment": "",
+        "key": "Day",
+        "location": {
+          "startingColumn": 15,
+          "startingLine": 287
+        }
+      },
+      {
+        "comment": "",
+        "key": "Week",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 288
+        }
+      },
+      {
+        "comment": "",
+        "key": "Month",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 289
+        }
+      },
+      {
+        "comment": "",
+        "key": "Year",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 290
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Share Timing",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 311
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current Period",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 313
+        }
+      },
+      {
+        "comment": "",
+        "key": "Previous Period",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 314
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Share Aspect Ratio",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 323
+        }
+      },
+      {
+        "comment": "",
+        "key": "Portrait",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 325
+        }
+      },
+      {
+        "comment": "",
+        "key": "Square",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 326
+        }
+      },
+      {
+        "comment": "",
+        "key": "Landscape",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 327
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Share Design",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 352
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podium Top 3",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 354
+        }
+      },
+      {
+        "comment": "",
+        "key": "Billboard Top 10",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 355
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cover Grid",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 356
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cover Collage",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 357
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cover Cloud",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 358
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playtime Bars",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 359
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playtime Pie",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 360
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stats Wrapped",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 361
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Share Background",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 418
+        }
+      },
+      {
+        "comment": "",
+        "key": "Automatic for Period",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 420
+        }
+      },
+      {
+        "comment": "",
+        "key": "Boring",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 421
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rainbow",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 422
+        }
+      },
+      {
+        "comment": "",
+        "key": "45 Gradient",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 423
+        }
+      },
+      {
+        "comment": "",
+        "key": "White",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 424
+        }
+      },
+      {
+        "comment": "",
+        "key": "Black",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 425
+        }
+      },
+      {
+        "comment": "",
+        "key": "January",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 426
+        }
+      },
+      {
+        "comment": "",
+        "key": "February",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 427
+        }
+      },
+      {
+        "comment": "",
+        "key": "March",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 428
+        }
+      },
+      {
+        "comment": "",
+        "key": "April",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 429
+        }
+      },
+      {
+        "comment": "",
+        "key": "May",
+        "location": {
+          "startingColumn": 15,
+          "startingLine": 430
+        }
+      },
+      {
+        "comment": "",
+        "key": "June",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 431
+        }
+      },
+      {
+        "comment": "",
+        "key": "July",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 432
+        }
+      },
+      {
+        "comment": "",
+        "key": "August",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 433
+        }
+      },
+      {
+        "comment": "",
+        "key": "September",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 434
+        }
+      },
+      {
+        "comment": "",
+        "key": "October",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 435
+        }
+      },
+      {
+        "comment": "",
+        "key": "November",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 436
+        }
+      },
+      {
+        "comment": "",
+        "key": "December",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 437
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Year",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 438
+        }
+      },
+      {
+        "comment": "",
+        "key": "Carnival",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 439
+        }
+      },
+      {
+        "comment": "",
+        "key": "Christmas",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 440
+        }
+      },
+      {
+        "comment": "",
+        "key": "Easter",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 441
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ramadan",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 442
+        }
+      },
+      {
+        "comment": "",
+        "key": "Eid al-Fitr",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 443
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hanukkah",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 444
+        }
+      },
+      {
+        "comment": "",
+        "key": "Holi",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 445
+        }
+      },
+      {
+        "comment": "",
+        "key": "Diwali",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 446
+        }
+      },
+      {
+        "comment": "",
+        "key": "Lunar New Year",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 447
+        }
+      },
+      {
+        "comment": "",
+        "key": "Midsummer",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 448
+        }
+      },
+      {
+        "comment": "",
+        "key": "Halloween",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 449
+        }
+      }
+    ]
+  },
+  "version": 1
+}

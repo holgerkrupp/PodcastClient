@@ -75,7 +75,7 @@ struct ChapterRowView: View {
                    
                 }
                 if showsPlayToggle {
-                    Toggle("Play Chapter", isOn: Binding(
+                    Toggle("Play chapter", isOn: Binding(
                         get: { chapter.shouldPlay },
                         set: { newValue in
                             chapter.shouldPlay = newValue

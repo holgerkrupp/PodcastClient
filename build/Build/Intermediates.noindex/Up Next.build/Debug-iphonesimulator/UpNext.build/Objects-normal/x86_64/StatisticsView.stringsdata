@@ -1,0 +1,456 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/StatisticsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Listening History",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 829
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening Trend",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 652
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening Habits",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 681
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ Sessions",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 756
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recent %@",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 793
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 559
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 566
+        }
+      },
+      {
+        "comment": "",
+        "key": "All Podcasts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 567
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move to previous %@",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 581
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move to next %@",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 601
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 578
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 599
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Top Podcasts",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 617
+        }
+      },
+      {
+        "comment": "",
+        "key": "Y-axis: listening time per %@.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 653
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 659
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 660
+        }
+      },
+      {
+        "comment": "",
+        "key": "When you usually listen",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 683
+        }
+      },
+      {
+        "comment": "",
+        "key": "Weekday totals and an hour-by-weekday heat map based on your listening history.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 685
+        }
+      },
+      {
+        "comment": "",
+        "key": "Weekday",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 691
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 692
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Top Podcasts",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 725
+        }
+      },
+      {
+        "comment": "",
+        "key": "Top Podcasts",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 749
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start listening to see your summarized playback history here.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 761
+        }
+      },
+      {
+        "comment": "",
+        "key": "No listening sessions in this %@.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 767
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Listening History",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 759
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Sessions",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 765
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show All Play Sessions",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 783
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hour By Weekday",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1179
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1188
+        }
+      },
+      {
+        "comment": "",
+        "key": "Less",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1218
+        }
+      },
+      {
+        "comment": "",
+        "key": "More",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1228
+        }
+      },
+      {
+        "comment": "",
+        "key": "From %@ to %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1640
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ended cleanly",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 1634
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recovered / interrupted",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 1634
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Top Podcasts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1790
+        }
+      },
+      {
+        "comment": "",
+        "key": "Top podcast share pictures are available when the statistics show all podcasts.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 1748
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Share Pictures",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1746
+        }
+      },
+      {
+        "comment": "",
+        "key": "Customize",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 1759
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title: %@ • Background: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1762
+        }
+      },
+      {
+        "comment": "",
+        "key": "Designs",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1783
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Selected Image",
+        "location": {
+          "startingColumn": 66,
+          "startingLine": 1800
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Selected Images",
+        "location": {
+          "startingColumn": 91,
+          "startingLine": 1800
+        }
+      },
+      {
+        "comment": "",
+        "key": "Customize",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1982
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 1940
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reset to Default",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1944
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Picture Title",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1948
+        }
+      },
+      {
+        "comment": "",
+        "key": "This title is used for every share picture preview and export.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1950
+        }
+      },
+      {
+        "comment": "",
+        "key": "Aspect Ratio",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1956
+        }
+      },
+      {
+        "comment": "",
+        "key": "The selected ratio is applied to every share picture preview and export.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1958
+        }
+      },
+      {
+        "comment": "",
+        "key": "Background",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1977
+        }
+      },
+      {
+        "comment": "",
+        "key": "Background changes are applied to every share picture preview and export.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1979
+        }
+      },
+      {
+        "comment": "",
+        "key": "total listening time",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 3622
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 3788
+        }
+      },
+      {
+        "comment": "",
+        "key": "#%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 4088
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 4107
+        }
+      },
+      {
+        "comment": "",
+        "key": "+%lld more",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 4322
+        }
+      }
+    ]
+  },
+  "version": 1
+}

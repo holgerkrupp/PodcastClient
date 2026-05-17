@@ -1,0 +1,200 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/LibrarySearchView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Library Search",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 157
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search library",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search podcasts, episodes, chapters, and transcripts directly in SwiftData.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "No matches found for \"%@\".",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 97
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search Your Library",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Searching Library...",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Results",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 95
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search Failed",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use at least %lld characters to search transcripts.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 147
+        }
+      },
+      {
+        "comment": "",
+        "key": "Updating search results...",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 137
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast scope",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Scope",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 186
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search filters",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Titles",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 199
+        }
+      },
+      {
+        "comment": "",
+        "key": "Authors",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 200
+        }
+      },
+      {
+        "comment": "",
+        "key": "Descriptions",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 201
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episodes",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 202
+        }
+      },
+      {
+        "comment": "",
+        "key": "Matched in podcast metadata",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 283
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play from %@",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 359
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play from transcript match",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 353
+        }
+      },
+      {
+        "comment": "",
+        "key": "This podcast could not be loaded.",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 1021
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Unavailable",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 1019
+        }
+      },
+      {
+        "comment": "",
+        "key": "This episode could not be loaded.",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 1038
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode Unavailable",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 1036
+        }
+      }
+    ]
+  },
+  "version": 1
+}

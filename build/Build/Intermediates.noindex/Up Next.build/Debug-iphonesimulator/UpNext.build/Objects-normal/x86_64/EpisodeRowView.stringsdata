@@ -1,0 +1,80 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/EpisodeRowView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Episode type: %@",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "Has bookmarks",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Played",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 115
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloaded",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 118
+        }
+      },
+      {
+        "comment": "",
+        "key": "Not downloaded",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 121
+        }
+      },
+      {
+        "comment": "",
+        "key": "Has chapters",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "Has transcript",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 130
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now Playing",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now Playing",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 179
+        }
+      }
+    ]
+  },
+  "version": 1
+}

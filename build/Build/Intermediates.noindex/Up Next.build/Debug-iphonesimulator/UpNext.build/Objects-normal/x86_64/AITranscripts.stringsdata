@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Transcripts/Services/AITranscripts.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Transcribing audio… %@",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 272
+        }
+      }
+    ]
+  },
+  "version": 1
+}

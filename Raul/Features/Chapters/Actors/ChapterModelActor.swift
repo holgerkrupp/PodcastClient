@@ -38,6 +38,13 @@ actor ChapterModelActor {
         chapter.didSkip = true
         modelContext.saveIfNeeded()
     }
+
+    func setShouldPlay(_ shouldPlay: Bool, for chapterID: UUID) async {
+        guard let chapter = await fetchChapter(byID: chapterID) else { return }
+
+        chapter.shouldPlay = shouldPlay
+        modelContext.saveIfNeeded()
+    }
     
     func setChapterProgress(_ progress: Double, for chapterID: UUID) async {
         guard let chapter = await fetchChapter(byID: chapterID) else { return }

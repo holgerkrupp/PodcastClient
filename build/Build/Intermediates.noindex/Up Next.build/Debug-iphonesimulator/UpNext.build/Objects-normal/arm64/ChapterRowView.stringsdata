@@ -1,0 +1,160 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Chapters/ChapterRowView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Play %@ %@",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Jump to %@ %@",
+        "location": {
+          "startingColumn": 91,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Double tap to jump playback to this %@",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ %@",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enabled",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skipped",
+        "location": {
+          "startingColumn": 85,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 98,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip chapter",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "Turn off to skip this chapter automatically",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current chapter",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 39
+        }
+      },
+      {
+        "comment": "",
+        "key": "Will be skipped",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open chapter link",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter link",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open chapter link",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 61
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens the chapter webpage in Safari",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 62
+        }
+      },
+      {
+        "comment": "",
+        "key": " - ",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 69
+        }
+      }
+    ]
+  },
+  "version": 1
+}

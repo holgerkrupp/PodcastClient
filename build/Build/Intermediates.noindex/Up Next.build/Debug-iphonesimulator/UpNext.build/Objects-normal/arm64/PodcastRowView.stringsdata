@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Podcasts/PodcastRowView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Not Subscribed",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 50
+        }
+      }
+    ]
+  },
+  "version": 1
+}

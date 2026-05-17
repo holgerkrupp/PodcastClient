@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/AllEpisodesListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Delete Files",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 66
+        }
+      }
+    ]
+  },
+  "version": 1
+}

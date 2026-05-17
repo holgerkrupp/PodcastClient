@@ -1,0 +1,240 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/EpisodeDetailView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Transcript Error",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 298
+        }
+      },
+      {
+        "comment": "",
+        "key": "Side loaded",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 68
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open captions",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 160
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open transcript",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 160
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate captions",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 175
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcribe episode",
+        "location": {
+          "startingColumn": 92,
+          "startingLine": 175
+        }
+      },
+      {
+        "comment": "",
+        "key": "Changes this episode between the audio enclosure and alternate video stream",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open captions and transcript",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens episode captions if available",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 159
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate captions",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 173
+        }
+      },
+      {
+        "comment": "",
+        "key": "Creates an on-device transcript to use as captions",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 174
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bookmarks",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 119
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading Transcript",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 150
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcript",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 152
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcribe",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 168
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generating…",
+        "location": {
+          "startingColumn": 70,
+          "startingLine": 187
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate AI Chapters",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 187
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode debug metadata",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 248
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share episode",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 257
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens the share sheet for this episode",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 258
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open in Browser",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 253
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Episode",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 295
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 308
+        }
+      },
+      {
+        "comment": "",
+        "key": "Captions & Transcript",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 318
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcript Unavailable",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 321
+        }
+      },
+      {
+        "comment": "",
+        "key": "Captions processing",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 619
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcribing",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 594
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 598
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,192 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Inbox/InboxView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Inbox section",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 29
+        }
+      },
+      {
+        "comment": "",
+        "key": "Error",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 72
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh inbox",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Update inbox",
+        "location": {
+          "startingColumn": 80,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing inbox",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh inbox",
+        "location": {
+          "startingColumn": 95,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fetches new episodes and reloads your inbox",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open episode %@",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 119
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens this episode details screen",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 120
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive Episode",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh inbox",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 175
+        }
+      },
+      {
+        "comment": "",
+        "key": "Update inbox",
+        "location": {
+          "startingColumn": 80,
+          "startingLine": 175
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing inbox",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 173
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh inbox",
+        "location": {
+          "startingColumn": 95,
+          "startingLine": 173
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fetches new episodes and reloads your inbox",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 174
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive inbox",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive all inbox episodes",
+        "location": {
+          "startingColumn": 80,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archiving inbox episodes",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive all inbox episodes",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "Moves every inbox episode to archive",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 193
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 204
+        }
+      }
+    ]
+  },
+  "version": 1
+}

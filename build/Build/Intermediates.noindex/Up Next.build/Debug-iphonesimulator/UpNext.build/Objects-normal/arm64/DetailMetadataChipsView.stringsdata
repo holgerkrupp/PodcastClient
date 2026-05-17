@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Podcasts/DetailMetadataChipsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "%@, opens link",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 37
+        }
+      }
+    ]
+  },
+  "version": 1
+}

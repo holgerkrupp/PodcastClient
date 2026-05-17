@@ -1559,7 +1559,7 @@ private struct SettingsShortcutsIntegrationView: View {
                     "Open Shortcuts and switch to Automation.",
                     "Create a new Personal Automation.",
                     "Choose Alarm, then select Goes Off and the alarm you use.",
-                    "Add the Up Next action Refresh Podcasts.",
+                    "Add the Up Next action Refresh podcasts.",
                     "Turn off Ask Before Running if you want this to happen quietly."
                 ]
             )

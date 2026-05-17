@@ -19,7 +19,8 @@ struct PlayerControllView: View {
 
     @State private var showFullTranscripts: Bool = false
     @State private var openFullTranscriptFollowingPlayback: Bool = false
-    @State var showSpeedSetting:Bool = false
+    @State private var showPlaybackSpeedSettings = false
+    @State private var showSleepTimerSettings = false
     @State var showSettings: Bool = false
     @ScaledMetric(relativeTo: .body) private var mediaSectionHeight: CGFloat = 360
     @ScaledMetric(relativeTo: .body) private var transcriptCardHeight: CGFloat = 120
@@ -43,114 +44,67 @@ struct PlayerControllView: View {
                     Spacer()
                     
 
-               
                     Button {
-                        
-                        showSpeedSetting = true
-                        
+                        showPlaybackSpeedSettings = true
                     } label: {
-                        
                         Label {
-                            Text("Playback Settings")
+                            Text("Playback Speed")
                         } icon: {
-                            
-                            Image(systemName: "gear")
+                            Image(systemName: "gauge.with.dots.needle.50percent")
                                 .tint(.primary)
-                            
                         }
                         .labelStyle(.iconOnly)
-                        
-                        
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Playback settings")
-                    .accessibilityHint("Opens playback speed, sleep timer, and queue settings")
-                    .accessibilityInputLabels([Text("Playback settings"), Text("Settings")])
-               
-                    
+                    .accessibilityLabel("Playback speed")
+                    .accessibilityHint("Opens playback speed controls")
+                    .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
+
+                    Button {
+                        showSleepTimerSettings = true
+                    } label: {
+                        Label {
+                            Text("Sleep Timer")
+                        } icon: {
+                            Image(systemName: "zzz")
+                                .tint(player.remainingTime == nil && player.stopAfterEpisode == false ? .primary : .accent)
+                        }
+                        .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Sleep timer")
+                    .accessibilityHint("Opens sleep timer controls")
+                    .accessibilityInputLabels([Text("Sleep timer"), Text("Timer")])
+
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label {
+                            Text("Settings")
+                        } icon: {
+                            Image(systemName: "gear")
+                                .tint(.primary)
+                        }
+                        .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Settings")
+                    .accessibilityHint("Opens all settings")
+                    .accessibilityInputLabels([Text("Settings"), Text("All settings")])
                     
                     
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .zIndex(3)
-                .sheet(isPresented: $showSpeedSetting, content: {
-                    List{
-                        Section(header: Label("Playback Speed", systemImage: "gauge.with.dots.needle.50percent")) {
-
-                            Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
-                            
-                                Text(String(format: "%.1fx", player.playbackRate))
-                            }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0,
-                                                 leading: 0,
-                                                 bottom: 0,
-                                                 trailing: 0))
-                        }
-                        
-                        Section(header: Label("Sleep Timer", systemImage: "zzz")) {
-
-                            SleepTimerView()
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0,
-                                                 leading: 0,
-                                                 bottom: 0,
-                                                 trailing: 0))
-                            
-                            Toggle(isOn: $player.stopAfterEpisode) {
-                                Text("Stop after this episode")
-                            }
-                            .tint(.accent)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0,
-                                                 leading: 8,
-                                                 bottom: 0,
-                                                 trailing: 8))
-                        }
-
-                        
-                       HStack{
-                           Spacer()
-                           Button("Show all Settings") {
-                               showSettings = true
-                           }
-                           .buttonStyle(.glass(.clear))
-                           Spacer()
-
-                        }
-                       .listRowSeparator(.hidden)
-                       .listRowBackground(Color.clear)
-                       .listRowInsets(.init(top: 0,
-                                            leading: 0,
-                                            bottom: 0,
-                                            trailing: 0))
-                       
-                        
-                    }
-
-                    .listStyle(.plain)
-                    
-                    .padding()
-                        .presentationDragIndicator(.visible)
-                        .presentationBackground(.ultraThinMaterial)
-                        .presentationDetents([.fraction(0.5)])
-                        .sheet(isPresented: $showSettings) {
-                           
-                            if let podcast = player.currentEpisode?.podcast {
-                                PodcastSettingsView(podcast: podcast, modelContainer: context.container, embedInNavigationStack: true)
-                                        .presentationBackground(.ultraThinMaterial)
-                            }else{
-                                PodcastSettingsView(podcast: nil, modelContainer: context.container, embedInNavigationStack: true)
-                                        .presentationBackground(.ultraThinMaterial)
-                            }
-                            
-                        
-                    }
-                    
-                })
+                .sheet(isPresented: $showPlaybackSpeedSettings) {
+                    playbackSpeedSheet
+                }
+                .sheet(isPresented: $showSleepTimerSettings) {
+                    sleepTimerSheet
+                }
+                .sheet(isPresented: $showSettings) {
+                    settingsSheet
+                }
                 
                 VStack(spacing: mediaSectionSpacing) {
                     PlayerMediaView(
@@ -302,6 +256,59 @@ struct PlayerControllView: View {
                 
             }
             .padding()
+        }
+    }
+
+    private var playbackSpeedSheet: some View {
+        List {
+            Section(header: Label("Playback Speed", systemImage: "gauge.with.dots.needle.50percent")) {
+                Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
+                    Text(String(format: "%.1fx", player.playbackRate))
+                }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+            }
+        }
+        .listStyle(.plain)
+        .padding()
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.ultraThinMaterial)
+        .presentationDetents([.fraction(0.25)])
+    }
+
+    private var sleepTimerSheet: some View {
+        List {
+            Section(header: Label("Sleep Timer", systemImage: "zzz")) {
+                SleepTimerView()
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+
+                Toggle(isOn: $player.stopAfterEpisode) {
+                    Text("Stop after this episode")
+                }
+                .tint(.accent)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+            }
+        }
+        .listStyle(.plain)
+        .padding()
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.ultraThinMaterial)
+        .presentationDetents([.fraction(0.25)])
+    }
+
+    @ViewBuilder
+    private var settingsSheet: some View {
+        if let podcast = player.currentEpisode?.podcast {
+            PodcastSettingsView(podcast: podcast, modelContainer: context.container, embedInNavigationStack: true)
+                .presentationBackground(.ultraThinMaterial)
+        } else {
+            PodcastSettingsView(podcast: nil, modelContainer: context.container, embedInNavigationStack: true)
+                .presentationBackground(.ultraThinMaterial)
         }
     }
 }

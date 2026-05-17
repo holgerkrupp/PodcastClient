@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'UpNextWatch' in project 'Up Next'
+➜ Explicit dependency on target 'UpNextWatchComplications' in project 'Up Next'
+Target 'UpNextWatchComplications' in project 'Up Next' (no dependencies)

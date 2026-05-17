@@ -39,6 +39,73 @@ actor EpisodeActor {
         return episode.title
     }
 
+    private func chapterIdentity(for chapter: Marker) -> String {
+        let normalizedTitle = chapter.title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedStart = Int(((chapter.start ?? 0) * 100).rounded())
+        return "\(chapter.type.rawValue)|\(normalizedStart)|\(normalizedTitle)"
+    }
+
+    private func uniqueChapters(_ chapters: [Marker]) -> [Marker] {
+        var seen = Set<String>()
+        return chapters.filter { chapter in
+            seen.insert(chapterIdentity(for: chapter)).inserted
+        }
+    }
+
+    private func replaceChapters(
+        on episode: Episode,
+        replacingTypes types: Set<MarkerType>,
+        with newChapters: [Marker]
+    ) {
+        if episode.chapters == nil {
+            episode.chapters = []
+        }
+
+        var existingByIdentity: [String: Marker] = [:]
+        for chapter in (episode.chapters ?? []) where types.contains(chapter.type) {
+            let identity = chapterIdentity(for: chapter)
+            if existingByIdentity[identity] == nil {
+                existingByIdentity[identity] = chapter
+            }
+        }
+
+        let replacementChapters = uniqueChapters(newChapters)
+        for chapter in replacementChapters {
+            chapter.episode = episode
+            if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
+                chapter.shouldPlay = existing.shouldPlay
+                chapter.progress = existing.progress
+                chapter.image = chapter.image ?? existing.image
+                chapter.imageData = chapter.imageData ?? existing.imageData
+                chapter.link = chapter.link ?? existing.link
+            }
+        }
+
+        episode.chapters?.removeAll { types.contains($0.type) }
+        episode.chapters?.append(contentsOf: replacementChapters)
+        episode.chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+
+    @discardableResult
+    private func removeDuplicateChapters(on episode: Episode) -> Bool {
+        guard let chapters = episode.chapters, chapters.isEmpty == false else { return false }
+
+        var seen = Set<String>()
+        let originalCount = chapters.count
+        episode.chapters = chapters.filter { chapter in
+            seen.insert(chapterIdentity(for: chapter)).inserted
+        }
+
+        if episode.chapters?.count != originalCount {
+            episode.chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+            return true
+        }
+
+        return false
+    }
+
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
         let predicate = #Predicate<Bookmark> { marker in
             marker.uuid == markerID
@@ -976,6 +1043,7 @@ actor EpisodeActor {
         if episode.chapters == nil {
             episode.chapters = []
         }
+        let removedDuplicateChapters = removeDuplicateChapters(on: episode)
         
         if let chapters = episode.chapters, chapters.isEmpty {
             if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
@@ -985,8 +1053,7 @@ actor EpisodeActor {
                         if let jsonString = await downloadAndParseStringFile(url: url),
                            let jsonData = jsonString.data(using: .utf8),
                            let chapters = await parseJSONChapters(jsonData: jsonData) {
-                            episode.chapters?.removeAll(where: { $0.type == .extracted })
-                            episode.chapters?.append(contentsOf: chapters)
+                            replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
                             modelContext.saveIfNeeded()
                         }
                     }
@@ -1014,6 +1081,9 @@ actor EpisodeActor {
         }
         if let url = episode.url {
             await finalizeTranscriptChapters(for: url)
+        }
+        if removedDuplicateChapters {
+            modelContext.saveIfNeeded()
         }
     }
 
@@ -1457,9 +1527,8 @@ actor EpisodeActor {
             if let mp3Reader = mp3ChapterReader(with: url){
                 let dict = mp3Reader.getID3Dict()
                 if let chapters = parse(chapters: dict){
-                    episode.chapters?.removeAll(where: { $0.type == .mp3 })
-                    episode.chapters?.append(contentsOf: chapters)
-                     modelContext.saveIfNeeded()
+                    replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+                    modelContext.saveIfNeeded()
                 }
             }
             return
@@ -1473,8 +1542,7 @@ actor EpisodeActor {
         if let remoteURL = episode.url, let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
             let dict = mp3Reader.getID3Dict()
             if let chapters = parse(chapters: dict) {
-                episode.chapters?.removeAll(where: { $0.type == .mp3 })
-                episode.chapters?.append(contentsOf: chapters)
+                replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
                 modelContext.saveIfNeeded()
             }
         }
@@ -1555,8 +1623,7 @@ actor EpisodeActor {
                 chapter.imageData = data.imageData
                 return chapter
             }
-            episode.chapters?.removeAll(where: { $0.type == .mp4 })
-            episode.chapters?.append(contentsOf: chapters)
+            replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
             modelContext.saveIfNeeded()
         } catch {
         }
@@ -1587,9 +1654,7 @@ actor EpisodeActor {
         if episode.chapters == nil {
             episode.chapters = []
         }
-        episode.chapters?.removeAll(where: { $0.type == .extracted || $0.type == .ai })
-        episode.chapters?.append(contentsOf: newchapters)
-        episode.chapters?.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
+        replaceChapters(on: episode, replacingTypes: [.extracted, .ai], with: newchapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
         return true
@@ -1613,8 +1678,7 @@ actor EpisodeActor {
                     newchapters.append(newChapter)
                 }
             }
-            episode.chapters?.removeAll(where: { $0.type == .extracted })
-            episode.chapters?.append(contentsOf: newchapters)
+            replaceChapters(on: episode, replacingTypes: [.extracted], with: newchapters)
             modelContext.saveIfNeeded()
         }
     }

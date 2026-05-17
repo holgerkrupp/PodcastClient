@@ -22,6 +22,7 @@
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; };
+		D4C001002FB9000100000001 /* UpNextWatchComplications.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D4C004002FB9000100000001 /* UpNextWatchComplications.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +46,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 487F5C6E2D9D4F0C00056D08;
 			remoteInfo = UpNext;
+		};
+		D4C002002FB9000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 487F5C672D9D4F0C00056D08 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D4C010002FB9000100000001;
+			remoteInfo = UpNextWatchComplications;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -81,6 +89,17 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D4C003002FB9000100000001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D4C001002FB9000100000001 /* UpNextWatchComplications.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -95,6 +114,7 @@
 		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0D3A0022FAD000100000001 /* UpNextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UpNextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D4C004002FB9000100000001 /* UpNextWatchComplications.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UpNextWatchComplications.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -152,6 +172,13 @@
 			);
 			target = B1C2D3062F10000100000001 /* UpNextWatch */;
 		};
+		D4C005002FB9000100000001 /* Exceptions for "UpNextWatchComplications" folder in "UpNextWatchComplications" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = D4C010002FB9000100000001 /* UpNextWatchComplications */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -199,6 +226,14 @@
 			path = UpNextTests;
 			sourceTree = "<group>";
 		};
+		D4C006002FB9000100000001 /* UpNextWatchComplications */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D4C005002FB9000100000001 /* Exceptions for "UpNextWatchComplications" folder in "UpNextWatchComplications" target */,
+			);
+			path = UpNextWatchComplications;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -239,6 +274,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D4C007002FB9000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -251,6 +293,7 @@
 				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
 				B1C2D3052F10000100000001 /* WatchShared */,
 				B1C2D3042F10000100000001 /* UpNextWatch */,
+				D4C006002FB9000100000001 /* UpNextWatchComplications */,
 				A1B2C3042F00000100000001 /* PlayNextWidget */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				C0D3A0032FAD000100000001 /* UpNextTests */,
@@ -264,6 +307,7 @@
 			isa = PBXGroup;
 			children = (
 				B1C2D3022F10000100000001 /* UpNextWatch.app */,
+				D4C004002FB9000100000001 /* UpNextWatchComplications.appex */,
 				A1B2C3022F00000100000001 /* PlayNextWidget.appex */,
 				C0D3A0022FAD000100000001 /* UpNextTests.xctest */,
 				487F5C6F2D9D4F0C00056D08 /* UpNext.app */,
@@ -350,10 +394,12 @@
 				B1C2D30B2F10000100000001 /* Sources */,
 				B1C2D3092F10000100000001 /* Frameworks */,
 				B1C2D30A2F10000100000001 /* Resources */,
+				D4C003002FB9000100000001 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D4C011002FB9000100000001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B1C2D3042F10000100000001 /* UpNextWatch */,
@@ -389,6 +435,29 @@
 			productReference = C0D3A0022FAD000100000001 /* UpNextTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		D4C010002FB9000100000001 /* UpNextWatchComplications */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D4C014002FB9000100000001 /* Build configuration list for PBXNativeTarget "UpNextWatchComplications" */;
+			buildPhases = (
+				D4C009002FB9000100000001 /* Sources */,
+				D4C007002FB9000100000001 /* Frameworks */,
+				D4C008002FB9000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B1C2D3052F10000100000001 /* WatchShared */,
+				D4C006002FB9000100000001 /* UpNextWatchComplications */,
+			);
+			name = UpNextWatchComplications;
+			packageProductDependencies = (
+			);
+			productName = UpNextWatchComplications;
+			productReference = D4C004002FB9000100000001 /* UpNextWatchComplications.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -411,6 +480,9 @@
 					C0D3A0042FAD000100000001 = {
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = 487F5C6E2D9D4F0C00056D08;
+					};
+					D4C010002FB9000100000001 = {
+						CreatedOnToolsVersion = 16.2;
 					};
 				};
 			};
@@ -441,6 +513,7 @@
 				487F5C6E2D9D4F0C00056D08 /* UpNext */,
 				C0D3A0042FAD000100000001 /* UpNextTests */,
 				B1C2D3062F10000100000001 /* UpNextWatch */,
+				D4C010002FB9000100000001 /* UpNextWatchComplications */,
 				A1B2C3062F00000100000001 /* PlayNextWidget */,
 			);
 		};
@@ -479,6 +552,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D4C008002FB9000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -510,6 +590,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D4C009002FB9000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -527,6 +614,11 @@
 			isa = PBXTargetDependency;
 			target = 487F5C6E2D9D4F0C00056D08 /* UpNext */;
 			targetProxy = C0D3A0012FAD000100000001 /* PBXContainerItemProxy */;
+		};
+		D4C011002FB9000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D4C010002FB9000100000001 /* UpNextWatchComplications */;
+			targetProxy = D4C002002FB9000100000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -667,11 +759,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
+				DEVELOPMENT_TEAM = 46D3VYP253;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -696,6 +790,7 @@
 				MARKETING_VERSION = 2026.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -712,11 +807,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
+				DEVELOPMENT_TEAM = 46D3VYP253;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -741,6 +838,7 @@
 				MARKETING_VERSION = 2026.9;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -756,7 +854,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -785,7 +883,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -812,8 +910,9 @@
 			buildSettings = {
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -840,8 +939,9 @@
 			buildSettings = {
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -911,6 +1011,66 @@
 			};
 			name = Release;
 		};
+		D4C012002FB9000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 19;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UpNextWatchComplications/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2026.9;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		D4C013002FB9000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 19;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UpNextWatchComplications/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2026.9;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -955,6 +1115,15 @@
 			buildConfigurations = (
 				C0D3A00A2FAD000100000001 /* Debug */,
 				C0D3A00B2FAD000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D4C014002FB9000100000001 /* Build configuration list for PBXNativeTarget "UpNextWatchComplications" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D4C012002FB9000100000001 /* Debug */,
+				D4C013002FB9000100000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

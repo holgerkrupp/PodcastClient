@@ -1,0 +1,1288 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Settings/Views/PodcastSettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Delete all transcript lines?",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Podcast Year Available",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 152
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unable to Change App Icon",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 157
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 47,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Settings",
+        "location": {
+          "startingColumn": 60,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unable to Enable Sideloading",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 216
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete All Transcript Lines",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 130
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 133
+        }
+      },
+      {
+        "comment": "",
+        "key": "This removes stored transcript text from the database. Episode audio files and transcription history records are kept.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 135
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 153
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 158
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scope",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 263
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback & Queue",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 357
+        }
+      },
+      {
+        "comment": "",
+        "key": "Appearance",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 284
+        }
+      },
+      {
+        "comment": "",
+        "key": "Player Controls",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 454
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live Notifications",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 546
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcriptions",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 500
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sideloading",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 806
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcasts",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 884
+        }
+      },
+      {
+        "comment": "",
+        "key": "Integrations",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 899
+        }
+      },
+      {
+        "comment": "",
+        "key": "Maintenance",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 928
+        }
+      },
+      {
+        "comment": "",
+        "key": "Help",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 970
+        }
+      },
+      {
+        "comment": "",
+        "key": "Debug",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 998
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 612
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue & Downloads",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 663
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Sections",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 782
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live Notifications",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 572
+        }
+      },
+      {
+        "comment": "",
+        "key": "Global Settings",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 869
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading settings…",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 201
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 217
+        }
+      },
+      {
+        "comment": "",
+        "key": "This screen focuses on what is unique to this podcast. App-wide controls stay grouped under Global Settings.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 245
+        }
+      },
+      {
+        "comment": "",
+        "key": "Using podcast-specific settings",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 236
+        }
+      },
+      {
+        "comment": "",
+        "key": "Following global defaults",
+        "location": {
+          "startingColumn": 98,
+          "startingLine": 236
+        }
+      },
+      {
+        "comment": "",
+        "key": "These values apply across the app unless a podcast is switched to custom settings.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 253
+        }
+      },
+      {
+        "comment": "",
+        "key": "Global Defaults",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 250
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use podcast-specific settings",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 265
+        }
+      },
+      {
+        "comment": "",
+        "key": "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global.",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 276
+        }
+      },
+      {
+        "comment": "",
+        "key": "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently.",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 277
+        }
+      },
+      {
+        "comment": "",
+        "key": "Applied Right Now",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 310
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 386
+        }
+      },
+      {
+        "comment": "",
+        "key": "This speed is used when playback starts. The player speed control also writes back here.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 407
+        }
+      },
+      {
+        "comment": "",
+        "key": "When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 429
+        }
+      },
+      {
+        "comment": "",
+        "key": "New episodes go to",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 359
+        }
+      },
+      {
+        "comment": "",
+        "key": "Default playlist for auto-add",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 374
+        }
+      },
+      {
+        "comment": "",
+        "key": "Default speed",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 401
+        }
+      },
+      {
+        "comment": "",
+        "key": "These durations update the skip buttons, lock screen controls, CarPlay, shortcuts, and watch playback controls.",
+        "location": {
+          "startingColumn": 14,
+          "startingLine": 863
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip back",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 834
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip forward",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 849
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive file retention",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 424
+        }
+      },
+      {
+        "comment": "",
+        "key": "When enabled, the next queue item starts automatically after an episode finishes.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 466
+        }
+      },
+      {
+        "comment": "",
+        "key": "These control whether playback scrubbing is available inside the app and through system playback controls.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 492
+        }
+      },
+      {
+        "comment": "",
+        "key": "Continuous playback",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 456
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now Playing slider",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 471
+        }
+      },
+      {
+        "comment": "",
+        "key": "Lock screen slider",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 482
+        }
+      },
+      {
+        "comment": "",
+        "key": "When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 538
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save episode transcriptions",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 502
+        }
+      },
+      {
+        "comment": "",
+        "key": "Delete Transcript Data",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 516
+        }
+      },
+      {
+        "comment": "",
+        "key": "Allow live event notifications",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 548
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live event notifications",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 548
+        }
+      },
+      {
+        "comment": "",
+        "key": "When this is off, no podcast can schedule notifications for podcast:liveItem events.",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 563
+        }
+      },
+      {
+        "comment": "",
+        "key": "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 564
+        }
+      },
+      {
+        "comment": "",
+        "key": "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 590
+        }
+      },
+      {
+        "comment": "",
+        "key": "This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 596
+        }
+      },
+      {
+        "comment": "",
+        "key": "This podcast currently does not support Live event information.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 603
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live event notifications",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 576
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live event information supported",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 594
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live event information unavailable",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 601
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 615
+        }
+      },
+      {
+        "comment": "",
+        "key": "This speed is used when playback starts. The player speed control also writes back here.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 636
+        }
+      },
+      {
+        "comment": "",
+        "key": "When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 658
+        }
+      },
+      {
+        "comment": "",
+        "key": "Default speed",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 630
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive file retention",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 653
+        }
+      },
+      {
+        "comment": "",
+        "key": "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 777
+        }
+      },
+      {
+        "comment": "",
+        "key": "New episodes go to",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 665
+        }
+      },
+      {
+        "comment": "",
+        "key": "Default playlist for auto-add",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 680
+        }
+      },
+      {
+        "comment": "",
+        "key": "Auto-download unplayed episodes",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 693
+        }
+      },
+      {
+        "comment": "",
+        "key": "Selection",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 736
+        }
+      },
+      {
+        "comment": "",
+        "key": "Network",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 751
+        }
+      },
+      {
+        "comment": "",
+        "key": "Include back catalog episodes",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 766
+        }
+      },
+      {
+        "comment": "",
+        "key": "Keep available",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 729
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 730
+        }
+      },
+      {
+        "comment": "",
+        "key": "When enabled, the app watches the iCloud Drive > Up Next root and imports audio files from there when you open the iCloud Drive view. Turning it off stops discovery, but keeps existing sideloaded items in the database.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 817
+        }
+      },
+      {
+        "comment": "",
+        "key": "Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 821
+        }
+      },
+      {
+        "comment": "",
+        "key": "Setting up the iCloud folder...",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 826
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enable Sideloading",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 813
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rebuilding analytics…",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 957
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove Duplicate Podcasts",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 1027
+        }
+      },
+      {
+        "comment": "",
+        "key": "App Icon",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1315
+        }
+      },
+      {
+        "comment": "",
+        "key": "Using Up Next",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1534
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next Basics",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1503
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue Behavior",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1509
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter Skip Keywords",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1515
+        }
+      },
+      {
+        "comment": "",
+        "key": "Siri & Shortcuts Intents",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1521
+        }
+      },
+      {
+        "comment": "",
+        "key": "Accessibility",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1527
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1504
+        }
+      },
+      {
+        "comment": "",
+        "key": "Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1505
+        }
+      },
+      {
+        "comment": "",
+        "key": "When an episode finishes, continuous playback can automatically start the next item from Up Next.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1506
+        }
+      },
+      {
+        "comment": "",
+        "key": "New episodes can be placed at the front, end, or not added automatically, depending on your settings.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1510
+        }
+      },
+      {
+        "comment": "",
+        "key": "The currently playing episode is kept pinned at the top while playback is active.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1511
+        }
+      },
+      {
+        "comment": "",
+        "key": "You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1512
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter rules let you skip recurring segments like intro, ads, or outro.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1516
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rules are checked against chapter titles and can use operators like contains, starts with, or ends with.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1517
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1518
+        }
+      },
+      {
+        "comment": "",
+        "key": "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1522
+        }
+      },
+      {
+        "comment": "",
+        "key": "In Apple Shortcuts, search for Up Next to add these actions to personal automations.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1523
+        }
+      },
+      {
+        "comment": "",
+        "key": "For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1524
+        }
+      },
+      {
+        "comment": "",
+        "key": "VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1528
+        }
+      },
+      {
+        "comment": "",
+        "key": "For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1529
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1530
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shortcuts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1593
+        }
+      },
+      {
+        "comment": "",
+        "key": "Automatic Backgrounds",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1582
+        }
+      },
+      {
+        "comment": "",
+        "key": "Useful Outputs",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1587
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next actions are available in Apple Shortcuts. Search for “Up Next” when adding an action to a shortcut or personal automation.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1545
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open Shortcuts",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 1548
+        }
+      },
+      {
+        "comment": "",
+        "key": "Apple Shortcuts",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1551
+        }
+      },
+      {
+        "comment": "",
+        "key": "Automatic for Period picks the background from the data period, not from the day the shortcut runs. A shortcut running on 1 June with Previous Period uses May’s background.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1583
+        }
+      },
+      {
+        "comment": "",
+        "key": "For yearly images, Automatic for Period uses the New Year background. For day, week, and month images, it uses the month containing the listening history.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1584
+        }
+      },
+      {
+        "comment": "",
+        "key": "Generate Podcast Share Image returns a PNG file. Shortcuts can pass that file to Save File, Save to Photo Album, Messages, Mail, or Share Sheet.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1588
+        }
+      },
+      {
+        "comment": "",
+        "key": "To create multiple designs, add the Generate Podcast Share Image action more than once with different design values.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1589
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1637
+        }
+      },
+      {
+        "comment": "",
+        "key": "Following Global Defaults",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 1689
+        }
+      },
+      {
+        "comment": "",
+        "key": "Using Podcast Defaults",
+        "location": {
+          "startingColumn": 72,
+          "startingLine": 1689
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter Rules",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1732
+        }
+      },
+      {
+        "comment": "",
+        "key": "These chapter rules could not be loaded.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1727
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter Rules",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1797
+        }
+      },
+      {
+        "comment": "",
+        "key": "How It Works",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 1754
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rules",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1770
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rules compare against chapter titles and mark matching chapters to be skipped.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1781
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add Rule",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 1790
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use rules for repeated segments like ads, intros, and credits. Each rule checks the chapter title with a match style such as contains or starts with.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1861
+        }
+      },
+      {
+        "comment": "",
+        "key": "Automatic Chapter Filtering",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1852
+        }
+      },
+      {
+        "comment": "",
+        "key": "Matching chapter titles will be marked to skip as soon as chapter data is loaded.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1855
+        }
+      },
+      {
+        "comment": "",
+        "key": "No rules yet",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 1879
+        }
+      },
+      {
+        "comment": "",
+        "key": "No rules applied",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 1879
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add a rule to skip recurring chapters like ads, intros, or credits.",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1884
+        }
+      },
+      {
+        "comment": "",
+        "key": "This settings scope does not currently skip any chapters automatically.",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1885
+        }
+      },
+      {
+        "comment": "",
+        "key": "Needs keyword",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 1913
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rule %lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1907
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove rule %lld",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 1926
+        }
+      },
+      {
+        "comment": "",
+        "key": "Deletes this chapter skip rule",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 1927
+        }
+      },
+      {
+        "comment": "",
+        "key": "Match style",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1931
+        }
+      },
+      {
+        "comment": "",
+        "key": "Match style",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 1935
+        }
+      },
+      {
+        "comment": "",
+        "key": "Keyword or phrase",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1944
+        }
+      },
+      {
+        "comment": "",
+        "key": "e.g. ad break, intro, credits",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 1948
+        }
+      },
+      {
+        "comment": "",
+        "key": "This rule has no keyword yet.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1989
+        }
+      },
+      {
+        "comment": "",
+        "key": "Rule %lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 1976
+        }
+      },
+      {
+        "comment": "",
+        "key": "App Controls",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2059
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback Continuation",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2013
+        }
+      },
+      {
+        "comment": "",
+        "key": "Player Controls",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2030
+        }
+      },
+      {
+        "comment": "",
+        "key": "When enabled, the next queue item starts automatically after an episode finishes.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 2025
+        }
+      },
+      {
+        "comment": "",
+        "key": "Continuous playback",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2015
+        }
+      },
+      {
+        "comment": "",
+        "key": "These control whether playback scrubbing is available inside the app and through system playback controls.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 2053
+        }
+      },
+      {
+        "comment": "",
+        "key": "Now Playing slider",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2032
+        }
+      },
+      {
+        "comment": "",
+        "key": "Lock screen slider",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2043
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Overrides",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2127
+        }
+      },
+      {
+        "comment": "",
+        "key": "Custom Settings",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2083
+        }
+      },
+      {
+        "comment": "",
+        "key": "Using Global Defaults",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 2101
+        }
+      },
+      {
+        "comment": "",
+        "key": "No podcasts are using custom settings yet.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2085
+        }
+      },
+      {
+        "comment": "",
+        "key": "All podcasts already use custom settings.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use Custom",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 2115
+        }
+      }
+    ]
+  },
+  "version": 1
+}

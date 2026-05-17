@@ -1,0 +1,160 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/WeekListeningHeatMapView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Weekly Listening Heat Map",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 168
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ – %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 53
+        }
+      },
+      {
+        "comment": "",
+        "key": "Weekly listening heat map",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 144
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use previous and next week buttons to change the date range",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 146
+        }
+      },
+      {
+        "comment": "",
+        "key": "All Podcasts",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show summary",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 83
+        }
+      },
+      {
+        "comment": "",
+        "key": "Heat map summary",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 83
+        }
+      },
+      {
+        "comment": "",
+        "key": "Previous week",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 73
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows listening activity for the week before",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "Summary",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 76
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show summary",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows listening activity aggregated across all weeks",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next week",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 93
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows listening activity for the following week",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Less",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 149
+        }
+      },
+      {
+        "comment": "",
+        "key": "More",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 159
+        }
+      },
+      {
+        "comment": "",
+        "key": "Heat Map (%@ – %@)",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 170
+        }
+      }
+    ]
+  },
+  "version": 1
+}

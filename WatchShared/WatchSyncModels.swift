@@ -6,6 +6,42 @@ struct WatchSyncChapter: Codable, Hashable, Identifiable, Sendable {
     let start: Double
     let duration: Double?
     let imageURL: String?
+    let shouldPlay: Bool
+
+    init(
+        id: String,
+        title: String,
+        start: Double,
+        duration: Double?,
+        imageURL: String?,
+        shouldPlay: Bool = true
+    ) {
+        self.id = id
+        self.title = title
+        self.start = start
+        self.duration = duration
+        self.imageURL = imageURL
+        self.shouldPlay = shouldPlay
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case start
+        case duration
+        case imageURL
+        case shouldPlay
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        start = try container.decode(Double.self, forKey: .start)
+        duration = try container.decodeIfPresent(Double.self, forKey: .duration)
+        imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
+        shouldPlay = try container.decodeIfPresent(Bool.self, forKey: .shouldPlay) ?? true
+    }
 
     var resolvedImageURL: URL? {
         guard let imageURL else { return nil }
@@ -13,9 +49,40 @@ struct WatchSyncChapter: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+struct WatchPlaybackSettings: Codable, Hashable, Sendable {
+    let playbackSpeed: Float
+    let skipBackSeconds: Int
+    let skipForwardSeconds: Int
+    let continuousPlay: Bool
+    let isPodcastSpecific: Bool
+
+    static let `default` = WatchPlaybackSettings(
+        playbackSpeed: 1.0,
+        skipBackSeconds: 15,
+        skipForwardSeconds: 30,
+        continuousPlay: true,
+        isPodcastSpecific: false
+    )
+
+    init(
+        playbackSpeed: Float = 1.0,
+        skipBackSeconds: Int = 15,
+        skipForwardSeconds: Int = 30,
+        continuousPlay: Bool = true,
+        isPodcastSpecific: Bool = false
+    ) {
+        self.playbackSpeed = playbackSpeed
+        self.skipBackSeconds = skipBackSeconds
+        self.skipForwardSeconds = skipForwardSeconds
+        self.continuousPlay = continuousPlay
+        self.isPodcastSpecific = isPodcastSpecific
+    }
+}
+
 struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
     let episodeURL: String
     let audioURL: String
+    let podcastFeedURL: String?
     let title: String
     let subtitle: String?
     let podcastTitle: String?
@@ -26,12 +93,14 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
     let fileSize: Int64?
     let playPosition: Double?
     let chapters: [WatchSyncChapter]
+    let playbackSettings: WatchPlaybackSettings?
 
     var id: String { episodeURL }
 
     init(
         episodeURL: String,
         audioURL: String,
+        podcastFeedURL: String? = nil,
         title: String,
         subtitle: String?,
         podcastTitle: String?,
@@ -41,10 +110,12 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         phoneHasLocalFile: Bool,
         fileSize: Int64?,
         playPosition: Double? = nil,
-        chapters: [WatchSyncChapter] = []
+        chapters: [WatchSyncChapter] = [],
+        playbackSettings: WatchPlaybackSettings? = nil
     ) {
         self.episodeURL = episodeURL
         self.audioURL = audioURL
+        self.podcastFeedURL = podcastFeedURL
         self.title = title
         self.subtitle = subtitle
         self.podcastTitle = podcastTitle
@@ -55,12 +126,14 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         self.fileSize = fileSize
         self.playPosition = playPosition
         self.chapters = chapters
+        self.playbackSettings = playbackSettings
     }
 
     private enum CodingKeys: String, CodingKey {
         case id
         case episodeURL
         case audioURL
+        case podcastFeedURL
         case title
         case subtitle
         case podcastTitle
@@ -71,6 +144,7 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         case fileSize
         case playPosition
         case chapters
+        case playbackSettings
     }
 
     init(from decoder: any Decoder) throws {
@@ -78,6 +152,7 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         let legacyID = try container.decodeIfPresent(String.self, forKey: .id)
         episodeURL = try container.decodeIfPresent(String.self, forKey: .episodeURL) ?? legacyID ?? ""
         audioURL = try container.decode(String.self, forKey: .audioURL)
+        podcastFeedURL = try container.decodeIfPresent(String.self, forKey: .podcastFeedURL)
         title = try container.decode(String.self, forKey: .title)
         subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
         podcastTitle = try container.decodeIfPresent(String.self, forKey: .podcastTitle)
@@ -88,6 +163,7 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         fileSize = try container.decodeIfPresent(Int64.self, forKey: .fileSize)
         playPosition = try container.decodeIfPresent(Double.self, forKey: .playPosition)
         chapters = try container.decodeIfPresent([WatchSyncChapter].self, forKey: .chapters) ?? []
+        playbackSettings = try container.decodeIfPresent(WatchPlaybackSettings.self, forKey: .playbackSettings)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -95,6 +171,7 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         try container.encode(episodeURL, forKey: .id)
         try container.encode(episodeURL, forKey: .episodeURL)
         try container.encode(audioURL, forKey: .audioURL)
+        try container.encodeIfPresent(podcastFeedURL, forKey: .podcastFeedURL)
         try container.encode(title, forKey: .title)
         try container.encodeIfPresent(subtitle, forKey: .subtitle)
         try container.encodeIfPresent(podcastTitle, forKey: .podcastTitle)
@@ -105,6 +182,7 @@ struct WatchSyncEpisode: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(fileSize, forKey: .fileSize)
         try container.encodeIfPresent(playPosition, forKey: .playPosition)
         try container.encode(chapters, forKey: .chapters)
+        try container.encodeIfPresent(playbackSettings, forKey: .playbackSettings)
     }
 
     var resolvedEpisodeURL: URL? {
@@ -160,6 +238,9 @@ struct WatchSyncSnapshot: Codable, Sendable {
     let selectedPlaylistTitle: String
     let skipBackSeconds: Int
     let skipForwardSeconds: Int
+    let playbackSettings: WatchPlaybackSettings
+    let phoneTransferEpisodeIDs: [String]
+    let phoneTransferProgressByEpisodeID: [String: Double]
 
     static let empty = WatchSyncSnapshot(
         generatedAt: .distantPast,
@@ -169,7 +250,10 @@ struct WatchSyncSnapshot: Codable, Sendable {
         selectedPlaylistID: nil,
         selectedPlaylistTitle: WatchSyncPlaylist.defaultQueue.title,
         skipBackSeconds: 15,
-        skipForwardSeconds: 30
+        skipForwardSeconds: 30,
+        playbackSettings: .default,
+        phoneTransferEpisodeIDs: [],
+        phoneTransferProgressByEpisodeID: [:]
     )
 
     init(
@@ -180,7 +264,10 @@ struct WatchSyncSnapshot: Codable, Sendable {
         selectedPlaylistID: String? = nil,
         selectedPlaylistTitle: String = WatchSyncPlaylist.defaultQueue.title,
         skipBackSeconds: Int = 15,
-        skipForwardSeconds: Int = 30
+        skipForwardSeconds: Int = 30,
+        playbackSettings: WatchPlaybackSettings = .default,
+        phoneTransferEpisodeIDs: [String] = [],
+        phoneTransferProgressByEpisodeID: [String: Double] = [:]
     ) {
         self.generatedAt = generatedAt
         self.playlist = playlist
@@ -190,6 +277,9 @@ struct WatchSyncSnapshot: Codable, Sendable {
         self.selectedPlaylistTitle = selectedPlaylistTitle
         self.skipBackSeconds = skipBackSeconds
         self.skipForwardSeconds = skipForwardSeconds
+        self.playbackSettings = playbackSettings
+        self.phoneTransferEpisodeIDs = phoneTransferEpisodeIDs
+        self.phoneTransferProgressByEpisodeID = phoneTransferProgressByEpisodeID
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -201,6 +291,9 @@ struct WatchSyncSnapshot: Codable, Sendable {
         case selectedPlaylistTitle
         case skipBackSeconds
         case skipForwardSeconds
+        case playbackSettings
+        case phoneTransferEpisodeIDs
+        case phoneTransferProgressByEpisodeID
     }
 
     init(from decoder: any Decoder) throws {
@@ -213,6 +306,10 @@ struct WatchSyncSnapshot: Codable, Sendable {
         selectedPlaylistTitle = try container.decodeIfPresent(String.self, forKey: .selectedPlaylistTitle) ?? WatchSyncPlaylist.defaultQueue.title
         skipBackSeconds = try container.decodeIfPresent(Int.self, forKey: .skipBackSeconds) ?? 15
         skipForwardSeconds = try container.decodeIfPresent(Int.self, forKey: .skipForwardSeconds) ?? 30
+        playbackSettings = try container.decodeIfPresent(WatchPlaybackSettings.self, forKey: .playbackSettings)
+            ?? WatchPlaybackSettings(skipBackSeconds: skipBackSeconds, skipForwardSeconds: skipForwardSeconds)
+        phoneTransferEpisodeIDs = try container.decodeIfPresent([String].self, forKey: .phoneTransferEpisodeIDs) ?? []
+        phoneTransferProgressByEpisodeID = try container.decodeIfPresent([String: Double].self, forKey: .phoneTransferProgressByEpisodeID) ?? [:]
     }
 }
 
@@ -237,6 +334,8 @@ enum WatchCommandKind: String, Codable, Sendable {
     case queueEpisodeAtFront
     case selectPlaylist
     case syncPlaybackProgress
+    case setChapterShouldPlay
+    case setPlaybackSettings
 }
 
 enum WatchCommandPosition: String, Codable, Sendable {
@@ -252,6 +351,10 @@ struct WatchCommand: Codable, Sendable {
     let playPosition: Double?
     let playlistID: String?
     let position: WatchCommandPosition?
+    let chapterID: String?
+    let shouldPlay: Bool?
+    let podcastFeedURL: String?
+    let playbackSettings: WatchPlaybackSettings?
 
     init(
         kind: WatchCommandKind,
@@ -259,7 +362,11 @@ struct WatchCommand: Codable, Sendable {
         episodeURL: String? = nil,
         playPosition: Double? = nil,
         playlistID: String? = nil,
-        position: WatchCommandPosition? = nil
+        position: WatchCommandPosition? = nil,
+        chapterID: String? = nil,
+        shouldPlay: Bool? = nil,
+        podcastFeedURL: String? = nil,
+        playbackSettings: WatchPlaybackSettings? = nil
     ) {
         self.id = UUID()
         self.kind = kind
@@ -268,6 +375,10 @@ struct WatchCommand: Codable, Sendable {
         self.playPosition = playPosition
         self.playlistID = playlistID
         self.position = position
+        self.chapterID = chapterID
+        self.shouldPlay = shouldPlay
+        self.podcastFeedURL = podcastFeedURL
+        self.playbackSettings = playbackSettings
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -278,6 +389,10 @@ struct WatchCommand: Codable, Sendable {
         case playPosition
         case playlistID
         case position
+        case chapterID
+        case shouldPlay
+        case podcastFeedURL
+        case playbackSettings
     }
 
     init(from decoder: any Decoder) throws {
@@ -289,6 +404,10 @@ struct WatchCommand: Codable, Sendable {
         playPosition = try container.decodeIfPresent(Double.self, forKey: .playPosition)
         playlistID = try container.decodeIfPresent(String.self, forKey: .playlistID)
         position = try container.decodeIfPresent(WatchCommandPosition.self, forKey: .position)
+        chapterID = try container.decodeIfPresent(String.self, forKey: .chapterID)
+        shouldPlay = try container.decodeIfPresent(Bool.self, forKey: .shouldPlay)
+        podcastFeedURL = try container.decodeIfPresent(String.self, forKey: .podcastFeedURL)
+        playbackSettings = try container.decodeIfPresent(WatchPlaybackSettings.self, forKey: .playbackSettings)
     }
 }
 
@@ -298,6 +417,7 @@ enum WatchSyncTransport {
     static let commandMessageKey = "watchSyncCommand"
     static let transferEpisodeIDKey = "watchSyncTransferEpisodeID"
     static let transferEpisodeURLKey = "watchSyncTransferEpisodeURL"
+    static let transferQueuedAtKey = "watchSyncTransferQueuedAt"
 
     static func encode<T: Encodable>(_ value: T) -> Data? {
         let encoder = JSONEncoder()
