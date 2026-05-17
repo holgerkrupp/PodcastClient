@@ -157,12 +157,12 @@ struct WatchPlayerView: View {
                                     }
                                 }
 
-                                Button(playback.formattedPlaybackRate) {
-                                    playback.cyclePlaybackRate()
+                                Button(playback.formattedPlaybackRate(for: episode)) {
+                                    playback.cyclePlaybackRate(for: episode)
                                 }
                                 .buttonStyle(WatchCapsuleButtonStyle(accent: .teal))
                                 .accessibilityLabel("Playback speed")
-                                .accessibilityValue(playback.formattedPlaybackRate)
+                                .accessibilityValue(playback.formattedPlaybackRate(for: episode))
                                 .accessibilityHint("Double tap to cycle playback speed")
                             }
                         }
@@ -175,34 +175,48 @@ struct WatchPlayerView: View {
                                         .foregroundStyle(.white.opacity(0.84))
 
                                     ForEach(episode.chapters) { chapter in
-                                        Button {
-                                            playback.play(episode, startingAt: chapter.start)
-                                        } label: {
-                                            HStack(spacing: 8) {
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(chapter.title)
-                                                        .font(.caption)
-                                                        .multilineTextAlignment(.leading)
-                                                        .foregroundStyle(.white)
-                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Button {
+                                                playback.play(episode, startingAt: chapter.start)
+                                            } label: {
+                                                HStack(spacing: 8) {
+                                                    VStack(alignment: .leading, spacing: 2) {
+                                                        Text(chapter.title)
+                                                            .font(.caption)
+                                                            .multilineTextAlignment(.leading)
+                                                            .foregroundStyle(chapter.shouldPlay ? .white : .white.opacity(0.54))
+                                                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                                                    Text(watchPlaybackTime(chapter.start))
-                                                        .font(.caption2.monospacedDigit())
-                                                        .foregroundStyle(.white.opacity(0.78))
-                                                }
+                                                        Text(watchPlaybackTime(chapter.start))
+                                                            .font(.caption2.monospacedDigit())
+                                                            .foregroundStyle(.white.opacity(chapter.shouldPlay ? 0.78 : 0.48))
+                                                    }
 
-                                                if activeChapter?.id == chapter.id {
-                                                    Image(systemName: "dot.radiowaves.left.and.right")
-                                                        .font(.caption2)
-                                                        .foregroundStyle(.teal)
-                                                        .accessibilityHidden(true)
+                                                    if activeChapter?.id == chapter.id {
+                                                        Image(systemName: "dot.radiowaves.left.and.right")
+                                                            .font(.caption2)
+                                                            .foregroundStyle(.teal)
+                                                            .accessibilityHidden(true)
+                                                    }
                                                 }
+                                                .padding(.vertical, 2)
                                             }
-                                            .padding(.vertical, 2)
+                                            .buttonStyle(.plain)
+                                            .accessibilityLabel("Play chapter \(chapter.title)")
+                                            .accessibilityHint("Starts playback at \(watchPlaybackTime(chapter.start))")
+
+                                            Toggle("Skip chapter", isOn: Binding(
+                                                get: { chapter.shouldPlay == false },
+                                                set: { newValue in
+                                                    store.setChapterShouldPlay(newValue == false, chapterID: chapter.id, episodeID: episode.episodeURL)
+                                                }
+                                            ))
+                                            .font(.caption2)
+                                            .toggleStyle(.switch)
+                                            .accessibilityLabel("Skip chapter \(chapter.title)")
+                                            .accessibilityValue(chapter.shouldPlay ? "Off" : "On")
+                                            .accessibilityHint("Turn on to skip this chapter automatically")
                                         }
-                                        .buttonStyle(.plain)
-                                        .accessibilityLabel("Play chapter \(chapter.title)")
-                                        .accessibilityHint("Starts playback at \(watchPlaybackTime(chapter.start))")
                                     }
                                 }
                             }

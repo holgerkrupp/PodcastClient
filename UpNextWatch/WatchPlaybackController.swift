@@ -15,6 +15,9 @@ final class WatchPlaybackController: ObservableObject {
     private let player = AVPlayer()
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var interruptionObserver: NSObjectProtocol?
+    private var playbackStatusObservation: NSKeyValueObservation?
+    private var playbackRateObservation: NSKeyValueObservation?
     private var currentSourceURL: URL?
     private var fallbackEpisode: WatchSyncEpisode?
     private var lastSyncedPosition: Double = 0
@@ -22,10 +25,12 @@ final class WatchPlaybackController: ObservableObject {
 
     private let progressSyncInterval: TimeInterval = 20
     private let progressSyncDistance: Double = 15
-    private let playbackRates: [Float] = [0.8, 1.0, 1.25, 1.5, 1.75, 2.0]
+    private let playbackRates: [Float] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
 
     init() {
         installTimeObserver()
+        installPlaybackStateObservers()
+        installAudioSessionObservers()
     }
 
     func attach(store: WatchSyncStore) {
@@ -64,12 +69,25 @@ final class WatchPlaybackController: ObservableObject {
         String(format: "%.2gx", playbackRate)
     }
 
+    func formattedPlaybackRate(for episode: WatchSyncEpisode) -> String {
+        if isCurrentEpisode(episode) {
+            return formattedPlaybackRate
+        }
+
+        let rate = episode.playbackSettings?.playbackSpeed ?? store?.snapshot.playbackSettings.playbackSpeed ?? 1.0
+        return String(format: "%.2gx", rate)
+    }
+
+    private var effectivePlaybackSettings: WatchPlaybackSettings {
+        currentEpisode?.playbackSettings ?? store?.snapshot.playbackSettings ?? .default
+    }
+
     var skipBackSeconds: Int {
-        store?.snapshot.skipBackSeconds ?? 15
+        effectivePlaybackSettings.skipBackSeconds
     }
 
     var skipForwardSeconds: Int {
-        store?.snapshot.skipForwardSeconds ?? 30
+        effectivePlaybackSettings.skipForwardSeconds
     }
 
     var skipBackSystemName: String {
@@ -143,6 +161,7 @@ final class WatchPlaybackController: ObservableObject {
 
         errorMessage = nil
         configureAudioSessionIfNeeded()
+        applyPlaybackSettings(for: episode)
 
         let shouldReplaceItem = currentEpisodeID != episode.episodeURL || currentSourceURL != sourceURL
         if shouldReplaceItem {
@@ -168,6 +187,7 @@ final class WatchPlaybackController: ObservableObject {
         player.pause()
         isPlaying = false
         isBuffering = false
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: false)
         flushProgressSync(force: true)
     }
 
@@ -177,16 +197,36 @@ final class WatchPlaybackController: ObservableObject {
         player.rate = playbackRate
         isPlaying = true
         isBuffering = false
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: true)
     }
 
-    func cyclePlaybackRate() {
-        let currentIndex = playbackRates.firstIndex(of: playbackRate) ?? 1
+    func cyclePlaybackRate(for episode: WatchSyncEpisode? = nil) {
+        let targetEpisode = episode ?? currentEpisode
+        let currentSettings = targetEpisode?.playbackSettings ?? store?.snapshot.playbackSettings ?? .default
+        let targetsCurrentEpisode = targetEpisode.map(isCurrentEpisode) ?? false
+        let currentRate = targetsCurrentEpisode ? playbackRate : currentSettings.playbackSpeed
+        let currentIndex = playbackRates.enumerated().min {
+            abs($0.element - currentRate) < abs($1.element - currentRate)
+        }?.offset ?? 1
         let nextIndex = (currentIndex + 1) % playbackRates.count
-        playbackRate = playbackRates[nextIndex]
+        let newRate = playbackRates[nextIndex]
 
-        if isPlaying {
+        if targetsCurrentEpisode {
+            playbackRate = newRate
+        }
+
+        if isPlaying, targetsCurrentEpisode {
             player.rate = playbackRate
         }
+
+        let updatedSettings = WatchPlaybackSettings(
+            playbackSpeed: newRate,
+            skipBackSeconds: currentSettings.skipBackSeconds,
+            skipForwardSeconds: currentSettings.skipForwardSeconds,
+            continuousPlay: currentSettings.continuousPlay,
+            isPodcastSpecific: currentSettings.isPodcastSpecific
+        )
+        store?.setPlaybackSettings(updatedSettings, for: targetEpisode)
     }
 
     func skipBackward() {
@@ -224,10 +264,19 @@ final class WatchPlaybackController: ObservableObject {
     private func configureAudioSessionIfNeeded() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
             try session.setActive(true)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyPlaybackSettings(for episode: WatchSyncEpisode) {
+        let settings = episode.playbackSettings ?? store?.snapshot.playbackSettings ?? .default
+        guard settings.playbackSpeed > 0 else { return }
+        playbackRate = settings.playbackSpeed
+        if isPlaying {
+            player.rate = playbackRate
         }
     }
 
@@ -243,6 +292,7 @@ final class WatchPlaybackController: ObservableObject {
         lastSyncDate = .now
         isPlaying = false
         isBuffering = false
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: false)
         installEndObserver(for: item)
     }
 
@@ -254,6 +304,33 @@ final class WatchPlaybackController: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 self.handleTimeUpdate(time.seconds)
+            }
+        }
+    }
+
+    private func installPlaybackStateObservers() {
+        playbackStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.handleObservedPlaybackState()
+            }
+        }
+
+        playbackRateObservation = player.observe(\.rate, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.handleObservedPlaybackState()
+            }
+        }
+    }
+
+    private func installAudioSessionObservers() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            Task { @MainActor in
+                self?.handleAudioSessionInterruption(typeValue: typeValue)
             }
         }
     }
@@ -278,12 +355,39 @@ final class WatchPlaybackController: ObservableObject {
         guard seconds.isFinite else { return }
 
         playPosition = max(seconds, 0)
-        isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
-        if player.rate > 0 {
-            isPlaying = true
-        }
+        syncPlaybackStateFromPlayer()
+        skipCurrentChapterIfNeeded()
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: isPlaying)
 
         flushProgressSync(force: false)
+    }
+
+    private func handleObservedPlaybackState() {
+        let wasPlaying = isPlaying
+        syncPlaybackStateFromPlayer()
+
+        if wasPlaying, isPlaying == false {
+            flushProgressSync(force: true)
+        }
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: isPlaying)
+    }
+
+    private func syncPlaybackStateFromPlayer() {
+        isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        isPlaying = player.rate > 0
+    }
+
+    private func handleAudioSessionInterruption(typeValue: UInt?) {
+        guard let typeValue,
+              AVAudioSession.InterruptionType(rawValue: typeValue) == .began
+        else {
+            return
+        }
+
+        isPlaying = false
+        isBuffering = false
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: false)
+        flushProgressSync(force: true)
     }
 
     private func handlePlaybackFinished() {
@@ -296,7 +400,24 @@ final class WatchPlaybackController: ObservableObject {
         isPlaying = false
         isBuffering = false
         player.pause()
+        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: false)
         flushProgressSync(force: true)
+    }
+
+    private func skipCurrentChapterIfNeeded() {
+        guard isPlaying,
+              let currentChapter,
+              currentChapter.shouldPlay == false
+        else {
+            return
+        }
+
+        if let nextChapter {
+            seek(to: nextChapter.start)
+            return
+        }
+
+        handlePlaybackFinished()
     }
 
     private func seek(to requestedTime: Double, completion: (@MainActor () -> Void)? = nil) {

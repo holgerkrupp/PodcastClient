@@ -90,9 +90,6 @@ struct ChapterListView: View {
 
     private var sortedChapters: [Marker] {
         episode.chaptersForDisplay(preferredType: selectedChapterSource.markerType)
-            .sorted(by: { first, second in
-                (first.start ?? 0.0) < (second.start ?? 0.0)
-            })
     }
 
     private var sortedSoundbites: [Marker] {

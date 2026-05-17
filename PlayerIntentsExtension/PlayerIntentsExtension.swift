@@ -218,7 +218,7 @@ struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
 }
 
 struct RefreshPodcastFeedsIntent: AppIntent {
-    static let title: LocalizedStringResource = "Refresh Podcasts"
+    static let title: LocalizedStringResource = "Refresh podcasts"
     static let description = IntentDescription("Check subscribed podcast feeds for new episodes.")
     static let openAppWhenRun = false
 

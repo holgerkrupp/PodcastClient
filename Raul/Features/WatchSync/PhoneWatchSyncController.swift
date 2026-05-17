@@ -24,9 +24,14 @@ final class PhoneWatchSyncController: NSObject {
 
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
     private let defaults = UserDefaults.standard
+    private let maximumOutstandingFileTransfers = 2
+    private let staleFileTransferTimeout: TimeInterval = 120
 
     private var lastStorageReport: WatchStorageReport?
     private var pendingTransferEpisodeIDs: Set<String> = []
+    private var transferProgressByEpisodeID: [String: Double] = [:]
+    private var transferProgressObservers: [String: NSKeyValueObservation] = [:]
+    private var lastPushedSnapshot: WatchSyncSnapshot?
 
     private override init() {
         super.init()
@@ -42,9 +47,13 @@ final class PhoneWatchSyncController: NSObject {
         guard let session else { return }
         guard session.isPaired, session.isWatchAppInstalled else { return }
 
+        reconcileOutstandingFileTransfers(via: session)
         let bundle = makeSnapshotBundle()
         pushSnapshot(bundle.snapshot, via: session)
-        syncPlaylistFilesIfPossible(bundle, via: session)
+        let didQueueTransfers = syncPlaylistFilesIfPossible(bundle, via: session)
+        if didQueueTransfers {
+            pushSnapshot(makeSnapshotBundle().snapshot, via: session)
+        }
     }
 
     private func makeSnapshotBundle() -> SnapshotBundle {
@@ -55,6 +64,7 @@ final class PhoneWatchSyncController: NSObject {
         let playlistEntries = selection.selectedPlaylist.ordered
         let inboxEpisodes = fetchInboxEpisodes(with: context)
         let settings = fetchStandardSettings(with: context)
+        let globalPlaybackSettings = makePlaybackSettings(from: settings, isPodcastSpecific: false)
         let watchPlaylists = makeSyncPlaylists(from: selection)
 
         var transferCandidates: [String: TransferCandidate] = [:]
@@ -78,7 +88,10 @@ final class PhoneWatchSyncController: NSObject {
                 selectedPlaylistID: selection.selectedPlaylist.id.uuidString,
                 selectedPlaylistTitle: selection.selectedPlaylist.displayTitle,
                 skipBackSeconds: settings.skipBack.rawValue,
-                skipForwardSeconds: settings.skipForward.rawValue
+                skipForwardSeconds: settings.skipForward.rawValue,
+                playbackSettings: globalPlaybackSettings,
+                phoneTransferEpisodeIDs: Array(pendingTransferEpisodeIDs).sorted(),
+                phoneTransferProgressByEpisodeID: filteredTransferProgress()
             ),
             transferCandidates: transferCandidates
         )
@@ -150,14 +163,46 @@ final class PhoneWatchSyncController: NSObject {
         return settings
     }
 
+    private func fetchEnabledPodcastSettings(for podcastFeed: URL?, with context: ModelContext) -> PodcastSettings? {
+        guard let podcastFeed else { return nil }
+
+        let descriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate<PodcastSettings> { setting in
+                setting.podcast?.feed == podcastFeed &&
+                setting.isEnabled == true
+            }
+        )
+
+        return try? context.fetch(descriptor).first
+    }
+
+    private func makePlaybackSettings(from settings: PodcastSettings, isPodcastSpecific: Bool) -> WatchPlaybackSettings {
+        WatchPlaybackSettings(
+            playbackSpeed: settings.playbackSpeed ?? 1.0,
+            skipBackSeconds: settings.skipBack.rawValue,
+            skipForwardSeconds: settings.skipForward.rawValue,
+            continuousPlay: settings.getContinuousPlay,
+            isPodcastSpecific: isPodcastSpecific
+        )
+    }
+
     private func makeSyncEpisode(from episode: Episode) -> WatchSyncEpisode? {
         guard let episodeURL = episode.url?.absoluteString else { return nil }
+        let context = ModelContext(ModelContainerManager.shared.container)
+        let globalSettings = fetchStandardSettings(with: context)
+        let podcastFeed = episode.podcast?.feed
+        let podcastSettings = fetchEnabledPodcastSettings(for: podcastFeed, with: context)
+        let playbackSettings = makePlaybackSettings(
+            from: podcastSettings ?? globalSettings,
+            isPodcastSpecific: podcastSettings != nil
+        )
         let audioURL = episodeURL
         let imageURL = (episode.imageURL ?? episode.podcast?.imageURL)?.absoluteString
 
         return WatchSyncEpisode(
             episodeURL: episodeURL,
             audioURL: audioURL,
+            podcastFeedURL: podcastFeed?.absoluteString,
             title: episode.title,
             subtitle: episode.subtitle ?? episode.desc,
             podcastTitle: episode.displayPodcastTitle,
@@ -167,55 +212,26 @@ final class PhoneWatchSyncController: NSObject {
             phoneHasLocalFile: episode.metaData?.calculatedIsAvailableLocally ?? false,
             fileSize: resolvedFileSize(for: episode),
             playPosition: episode.metaData?.playPosition,
-            chapters: makeSyncChapters(from: episode)
+            chapters: makeSyncChapters(from: episode),
+            playbackSettings: playbackSettings
         )
     }
 
     private func makeSyncChapters(from episode: Episode) -> [WatchSyncChapter] {
-        resolvedChapters(for: episode).map { chapter in
+        episode.preferredChapters.map { chapter in
             WatchSyncChapter(
-                id: chapter.uuid?.uuidString ?? "\(chapter.start ?? 0)-\(chapter.title)",
+                id: chapterSyncID(for: chapter),
                 title: chapter.title,
                 start: chapter.start ?? 0,
                 duration: chapter.duration,
-                imageURL: chapter.image?.absoluteString
+                imageURL: chapter.image?.absoluteString,
+                shouldPlay: chapter.shouldPlay
             )
         }
     }
 
-    private func resolvedChapters(for episode: Episode) -> [Marker] {
-        let chapters = episode.chapters ?? []
-        guard chapters.isEmpty == false else { return [] }
-
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .ai, .extracted]
-        let priorityByType = Dictionary(
-            uniqueKeysWithValues: preferredOrder.enumerated().map { ($1, $0) }
-        )
-        let categoryGroups = Dictionary(grouping: chapters) {
-            $0.title + Duration.seconds($0.start ?? 0).formatted(.units(width: .narrow))
-        }
-
-        var resolved: [Marker] = []
-        resolved.reserveCapacity(chapters.count)
-
-        for group in categoryGroups.values {
-            var bestType: MarkerType?
-            var bestPriority = preferredOrder.count
-
-            for marker in group {
-                let priority = priorityByType[marker.type] ?? preferredOrder.count
-                if priority < bestPriority {
-                    bestPriority = priority
-                    bestType = marker.type
-                }
-            }
-
-            guard let bestType else { continue }
-            resolved.append(contentsOf: group.filter { $0.type == bestType })
-        }
-
-        resolved.sort { ($0.start ?? 0) < ($1.start ?? 0) }
-        return resolved
+    private func chapterSyncID(for chapter: Marker) -> String {
+        chapter.uuid?.uuidString ?? "\(chapter.start ?? 0)-\(chapter.title)"
     }
 
     private func makeTransferCandidate(from episode: Episode) -> TransferCandidate? {
@@ -251,6 +267,10 @@ final class PhoneWatchSyncController: NSObject {
             try session.updateApplicationContext([
                 WatchSyncTransport.snapshotContextKey: data
             ])
+            lastPushedSnapshot = snapshot
+            #if DEBUG
+            print("Watch sync pushed snapshot: playlist=\(snapshot.playlist.count), inbox=\(snapshot.inbox.count)")
+            #endif
         } catch {
             #if DEBUG
             print("Failed to push watch snapshot: \(error)")
@@ -258,38 +278,227 @@ final class PhoneWatchSyncController: NSObject {
         }
     }
 
-    private func syncPlaylistFilesIfPossible(_ bundle: SnapshotBundle, via session: WCSession) {
-        guard let storageReport = lastStorageReport else { return }
+    @discardableResult
+    private func syncPlaylistFilesIfPossible(_ bundle: SnapshotBundle, via session: WCSession) -> Bool {
+        let storageReport: WatchStorageReport
+        if let lastStorageReport {
+            storageReport = lastStorageReport
+        } else {
+            storageReport = provisionalStorageReport()
+            #if DEBUG
+            print("Watch sync using provisional storage report while waiting for watch")
+            #endif
+        }
 
         var remainingBudget = max(storageReport.maxStorageBytes - storageReport.usedBytes, 0)
         let downloadedEpisodeIDs = Set(storageReport.downloadedEpisodeIDs)
+        var didQueueTransfers = false
 
         for episode in bundle.snapshot.playlist {
-            guard let candidate = bundle.transferCandidates[episode.episodeURL] else { continue }
-            guard !downloadedEpisodeIDs.contains(episode.episodeURL) else { continue }
-            guard !pendingTransferEpisodeIDs.contains(episode.episodeURL) else { continue }
-            guard candidate.size <= remainingBudget else { continue }
+            guard pendingTransferEpisodeIDs.count < maximumOutstandingFileTransfers else {
+                #if DEBUG
+                print("Watch sync paused file transfer queue: \(pendingTransferEpisodeIDs.count) transfer(s) already outstanding")
+                #endif
+                break
+            }
+
+            guard let candidate = bundle.transferCandidates[episode.episodeURL] else {
+                #if DEBUG
+                print("Watch sync skipped \(episode.title): no local phone file candidate")
+                #endif
+                continue
+            }
+            guard !downloadedEpisodeIDs.contains(episode.episodeURL) else {
+                #if DEBUG
+                print("Watch sync skipped \(episode.title): already on watch")
+                #endif
+                continue
+            }
+            guard !pendingTransferEpisodeIDs.contains(episode.episodeURL) else {
+                #if DEBUG
+                print("Watch sync skipped \(episode.title): transfer already pending")
+                #endif
+                continue
+            }
+            guard candidate.size <= remainingBudget else {
+                #if DEBUG
+                print("Watch sync skipped \(episode.title): file \(candidate.size) exceeds remaining watch budget \(remainingBudget)")
+                #endif
+                continue
+            }
 
             pendingTransferEpisodeIDs.insert(episode.episodeURL)
-            session.transferFile(candidate.fileURL, metadata: [
+            transferProgressByEpisodeID[episode.episodeURL] = 0
+            let transfer = session.transferFile(candidate.fileURL, metadata: [
                 WatchSyncTransport.transferEpisodeIDKey: episode.episodeURL,
-                WatchSyncTransport.transferEpisodeURLKey: episode.episodeURL
+                WatchSyncTransport.transferEpisodeURLKey: episode.episodeURL,
+                WatchSyncTransport.transferQueuedAtKey: Date().timeIntervalSince1970
             ])
+            installProgressObserver(for: transfer, episodeID: episode.episodeURL)
+            #if DEBUG
+            print("Watch sync queued file transfer: \(episode.title), bytes=\(candidate.size)")
+            #endif
+            didQueueTransfers = true
             remainingBudget -= candidate.size
         }
+
+        return didQueueTransfers
+    }
+
+    private func provisionalStorageReport() -> WatchStorageReport {
+        let settings = WatchStorageSettings()
+        return WatchStorageReport(
+            generatedAt: .now,
+            usedBytes: 0,
+            maxStorageBytes: settings.maxStorageBytes,
+            allowCellularDownloads: settings.allowCellularDownloads,
+            downloadedEpisodeIDs: []
+        )
+    }
+
+    private func reconcileOutstandingFileTransfers(via session: WCSession) {
+        let transfers = session.outstandingFileTransfers
+        guard transfers.isEmpty == false else {
+            if pendingTransferEpisodeIDs.isEmpty == false {
+                pendingTransferEpisodeIDs.removeAll()
+                transferProgressByEpisodeID.removeAll()
+                transferProgressObservers.removeAll()
+            }
+            return
+        }
+
+        var keptEpisodeIDs: Set<String> = []
+        var keptTransferCount = 0
+        let now = Date().timeIntervalSince1970
+
+        for transfer in transfers {
+            guard let episodeID = transfer.file.metadata?[WatchSyncTransport.transferEpisodeIDKey] as? String else {
+                continue
+            }
+
+            let queuedAt = transfer.file.metadata?[WatchSyncTransport.transferQueuedAtKey] as? TimeInterval
+            let age = queuedAt.map { now - $0 }
+            let fractionCompleted = transfer.progress.fractionCompleted
+
+            if queuedAt == nil || (age ?? 0) > staleFileTransferTimeout && fractionCompleted == 0 {
+                transfer.cancel()
+                transferProgressObservers.removeValue(forKey: episodeID)
+                transferProgressByEpisodeID.removeValue(forKey: episodeID)
+                #if DEBUG
+                if let age {
+                    print("Watch sync cancelled stale transfer for \(episodeID), age=\(Int(age))s, progress=\(fractionCompleted)")
+                } else {
+                    print("Watch sync cancelled legacy transfer without queue timestamp for \(episodeID)")
+                }
+                #endif
+                continue
+            }
+
+            if keptTransferCount >= maximumOutstandingFileTransfers {
+                transfer.cancel()
+                transferProgressObservers.removeValue(forKey: episodeID)
+                transferProgressByEpisodeID.removeValue(forKey: episodeID)
+                #if DEBUG
+                print("Watch sync cancelled overflow transfer for \(episodeID)")
+                #endif
+                continue
+            }
+
+            keptEpisodeIDs.insert(episodeID)
+            keptTransferCount += 1
+            transferProgressByEpisodeID[episodeID] = fractionCompleted
+            installProgressObserver(for: transfer, episodeID: episodeID)
+            #if DEBUG
+            print("Watch sync kept outstanding transfer for \(episodeID), progress=\(fractionCompleted)")
+            #endif
+        }
+
+        pendingTransferEpisodeIDs = keptEpisodeIDs
+        transferProgressByEpisodeID = transferProgressByEpisodeID.filter { keptEpisodeIDs.contains($0.key) }
+    }
+
+    private func installProgressObserver(for transfer: WCSessionFileTransfer, episodeID: String) {
+        guard transferProgressObservers[episodeID] == nil else { return }
+
+        transferProgressObservers[episodeID] = transfer.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] _, change in
+            guard let fractionCompleted = change.newValue else { return }
+            Task { @MainActor in
+                self?.handleTransferProgress(fractionCompleted, episodeID: episodeID)
+            }
+        }
+    }
+
+    private func handleTransferProgress(_ fractionCompleted: Double, episodeID: String) {
+        let progress = min(max(fractionCompleted, 0), 1)
+        let previousProgress = transferProgressByEpisodeID[episodeID] ?? 0
+        guard abs(progress - previousProgress) >= 0.01 || progress >= 1 else { return }
+
+        transferProgressByEpisodeID[episodeID] = progress
+        #if DEBUG
+        let percentage = Int((progress * 100).rounded())
+        print("Watch sync transfer progress \(percentage)% for \(episodeID)")
+        #endif
+
+        pushTransferProgressSnapshot()
+    }
+
+    private func pushTransferProgressSnapshot() {
+        guard let session,
+              let lastPushedSnapshot,
+              session.activationState == .activated
+        else {
+            return
+        }
+
+        pushSnapshot(snapshotWithCurrentTransferState(from: lastPushedSnapshot), via: session)
+    }
+
+    private func snapshotWithCurrentTransferState(from snapshot: WatchSyncSnapshot) -> WatchSyncSnapshot {
+        WatchSyncSnapshot(
+            generatedAt: snapshot.generatedAt,
+            playlist: snapshot.playlist,
+            inbox: snapshot.inbox,
+            playlists: snapshot.playlists,
+            selectedPlaylistID: snapshot.selectedPlaylistID,
+            selectedPlaylistTitle: snapshot.selectedPlaylistTitle,
+            skipBackSeconds: snapshot.skipBackSeconds,
+            skipForwardSeconds: snapshot.skipForwardSeconds,
+            playbackSettings: snapshot.playbackSettings,
+            phoneTransferEpisodeIDs: Array(pendingTransferEpisodeIDs).sorted(),
+            phoneTransferProgressByEpisodeID: filteredTransferProgress()
+        )
+    }
+
+    private func filteredTransferProgress() -> [String: Double] {
+        transferProgressByEpisodeID.filter { pendingTransferEpisodeIDs.contains($0.key) }
     }
 
     private func handleIncomingPayload(storageData: Data?, commandData: Data?) async {
         if let data = storageData,
            let report = WatchSyncTransport.decode(WatchStorageReport.self, from: data) {
+            let shouldRefresh = storageReportDidChange(report)
             lastStorageReport = report
-            await refreshSnapshotAndTransfers()
+            #if DEBUG
+            print("Watch sync received storage report: used=\(report.usedBytes), max=\(report.maxStorageBytes), downloads=\(report.downloadedEpisodeIDs.count)")
+            #endif
+            if shouldRefresh {
+                await refreshSnapshotAndTransfers()
+            }
         }
 
         if let data = commandData,
            let command = WatchSyncTransport.decode(WatchCommand.self, from: data) {
             await handle(command: command)
         }
+    }
+
+    private func storageReportDidChange(_ report: WatchStorageReport) -> Bool {
+        guard let lastStorageReport else { return true }
+
+        return lastStorageReport.usedBytes != report.usedBytes
+            || lastStorageReport.maxStorageBytes != report.maxStorageBytes
+            || lastStorageReport.allowCellularDownloads != report.allowCellularDownloads
+            || Set(lastStorageReport.downloadedEpisodeIDs) != Set(report.downloadedEpisodeIDs)
     }
 
     private func handle(command: WatchCommand) async {
@@ -345,6 +554,10 @@ final class PhoneWatchSyncController: NSObject {
             }
 
             defaults.set(playlistID.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+            await PlayNextWidgetSync.refresh(
+                using: ModelContainerManager.shared.container,
+                playlistIDs: Set([playlistID])
+            )
             await refreshSnapshotAndTransfers()
 
         case .syncPlaybackProgress:
@@ -357,15 +570,73 @@ final class PhoneWatchSyncController: NSObject {
 
             let episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
             await episodeActor.setLastPlayed(episodeURL: episodeURL)
-            await episodeActor.setPlayPosition(episodeURL: episodeURL, position: playPosition)
+            await episodeActor.setPlayPosition(episodeURL: episodeURL, position: playPosition, force: true)
+
+        case .setChapterShouldPlay:
+            guard let chapterIDString = command.chapterID,
+                  let shouldPlay = command.shouldPlay
+            else {
+                return
+            }
+
+            if let chapterID = UUID(uuidString: chapterIDString) {
+                let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager.shared.container)
+                await chapterActor.setShouldPlay(shouldPlay, for: chapterID)
+            } else if let episodeURLString = command.episodeURL,
+                      let episodeURL = URL(string: episodeURLString) {
+                setChapterShouldPlay(
+                    shouldPlay,
+                    chapterSyncID: chapterIDString,
+                    episodeURL: episodeURL
+                )
+            }
+            await refreshSnapshotAndTransfers()
+
+        case .setPlaybackSettings:
+            guard let playbackSettings = command.playbackSettings else { return }
+
+            let settingsActor = PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
+            let podcastFeed = command.podcastFeedURL.flatMap(URL.init(string:))
+            await settingsActor.setPlaybackSpeed(for: podcastFeed, to: playbackSettings.playbackSpeed)
+            await refreshSnapshotAndTransfers()
         }
+    }
+
+    private func setChapterShouldPlay(_ shouldPlay: Bool, chapterSyncID: String, episodeURL: URL) {
+        let context = ModelContext(ModelContainerManager.shared.container)
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { episode in
+                episode.url == episodeURL
+            }
+        )
+
+        guard let episode = try? context.fetch(descriptor).first,
+              let chapter = episode.preferredChapters.first(where: { self.chapterSyncID(for: $0) == chapterSyncID })
+        else {
+            return
+        }
+
+        chapter.shouldPlay = shouldPlay
+        context.saveIfNeeded()
     }
 
     private func handleFinishedTransfer(episodeID: String?, error: Error?) {
         if let episodeID {
             pendingTransferEpisodeIDs.remove(episodeID)
+            transferProgressObservers.removeValue(forKey: episodeID)
+            transferProgressByEpisodeID.removeValue(forKey: episodeID)
         }
-        guard error == nil else { return }
+        #if DEBUG
+        if let error {
+            print("Watch sync file transfer failed for \(episodeID ?? "unknown episode"): \(error)")
+        } else {
+            print("Watch sync file transfer finished for \(episodeID ?? "unknown episode")")
+        }
+        #endif
+
+        Task {
+            await refreshSnapshotAndTransfers()
+        }
     }
 }
 

@@ -307,6 +307,25 @@ private struct WatchPlaylistCard: View {
                     }
                 }
 
+                if let syncProgress = store.syncProgress(for: episode),
+                   store.isDownloaded(episode) == false {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("Syncing")
+                            Spacer()
+                            Text(syncProgress, format: .percent.precision(.fractionLength(0)))
+                                .monospacedDigit()
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.teal)
+
+                        WatchProgressBar(progress: syncProgress)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Syncing \(episode.title)")
+                    .accessibilityValue(Text(syncProgress.formatted(.percent.precision(.fractionLength(0)))))
+                }
+
                 HStack(spacing: 8) {
                     Button(playback.isActivelyPlaying(episode) ? "Pause" : "Play") {
                         playback.togglePlayback(for: episode)

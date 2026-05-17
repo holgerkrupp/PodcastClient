@@ -150,6 +150,9 @@ struct ContentView: View {
                 await podcastYearShareCoordinator.handleNotificationTap(modelContext: modelContext)
             }
         }
+        .onChange(of: selectedPlaylistID) { _, newValue in
+            refreshWidgetForSelectedPlaylist(newValue)
+        }
         .onOpenURL { url in
             CrashBreadcrumbs.shared.record("on_open_url", details: url.absoluteString)
             if IncomingPodcastSubscriptionController.canHandle(url) {
@@ -221,6 +224,22 @@ struct ContentView: View {
             BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
             CrashBreadcrumbs.shared.record("load_inbox_count_failed", details: error.localizedDescription)
             inboxCount = 0
+        }
+    }
+
+    private func refreshWidgetForSelectedPlaylist(_ playlistID: String) {
+        guard let selectedID = Playlist.resolvePlaylistID(from: playlistID) else {
+            Task {
+                await PlayNextWidgetSync.refresh(using: modelContext.container)
+            }
+            return
+        }
+
+        Task {
+            await PlayNextWidgetSync.refresh(
+                using: modelContext.container,
+                playlistIDs: Set([selectedID])
+            )
         }
     }
 

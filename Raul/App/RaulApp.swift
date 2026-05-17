@@ -47,13 +47,11 @@ struct RaulApp: App {
                             await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                                 modelContainer: modelContainerManager.container
                             )
+                            await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
+                            WatchSyncCoordinator.refreshSoon()
                         }
                         Task {
                             await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
-                        }
-                        Task {
-                            await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
-                            WatchSyncCoordinator.refreshSoon()
                         }
                         Task {
                             await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
@@ -137,6 +135,9 @@ struct RaulApp: App {
 
     func refreshOnActive(){
         WatchSyncCoordinator.refreshSoon()
+        Task {
+            await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
+        }
         if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
             Task .detached {
                 await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()

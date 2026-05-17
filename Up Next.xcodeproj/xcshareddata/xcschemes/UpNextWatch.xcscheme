@@ -21,20 +21,6 @@
                ReferencedContainer = "container:Up Next.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "487F5C6E2D9D4F0C00056D08"
-               BuildableName = "UpNext.app"
-               BlueprintName = "UpNext"
-               ReferencedContainer = "container:Up Next.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

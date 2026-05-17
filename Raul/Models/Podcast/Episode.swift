@@ -345,7 +345,9 @@ class EpisodeDownloadStatus{
         guard chapters.isEmpty == false else { return [] }
 
         if let preferredType {
-            return chapters.filter { $0.type == preferredType }
+            return chapters
+                .filter { $0.type == preferredType }
+                .sortedByStartTime()
         }
 
         let preferredOrder: [MarkerType] = [.podlove, .mp3, .mp4, .ai, .extracted]
@@ -353,10 +355,12 @@ class EpisodeDownloadStatus{
         // Pick a single type for the whole list based on availability and preference order.
         let availableTypes = Set(chapters.map { $0.type })
         if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
-            return chapters.filter { $0.type == chosenType }
+            return chapters
+                .filter { $0.type == chosenType }
+                .sortedByStartTime()
         } else {
             // Fallback: no known preferred types found, return all chapters as-is.
-            return chapters
+            return chapters.sortedByStartTime()
         }
     }
 
@@ -477,23 +481,9 @@ class EpisodeDownloadStatus{
         
         replaceExternalFiles(with: feedExternalFiles(from: episodeData))
         if let chaptersData = episodeData["psc:chapters"] as? [[String: Any]] {
-            for chapterData in chaptersData {
-                let chapter = Marker(details: chapterData)
-                chapter.episode = self
-                self.chapters?.append(chapter)
-            }
-            chapters?.sort { $0.start ?? 0.0 < $1.start ?? 0.0 }
-            for i in 0..<(chapters?.count ?? 0){
-                if chapters?[i].duration == nil {
-                    
-                    if i + 1 < (chapters?.count ?? 0), let nextStart = chapters?[i + 1].start {
-                        chapters?[i].duration = nextStart - (chapters?[i].start ?? 0.0)
-                    } else {
-                        chapters?[i].duration = (duration ?? 0.0) - (chapters?[i].start ?? 0.0)
-                    }
-                }
-            }
-            
+            let feedChapters = chaptersData.map { Marker(details: $0) }
+            replaceChapters(ofType: .podlove, with: feedChapters)
+            fillMissingChapterDurations(for: .podlove)
         }
         
         if let deepLinks = episodeData["deepLinks"] as? [String] {
@@ -567,6 +557,63 @@ class EpisodeDownloadStatus{
         (episodeData["externalFiles"] as? [ExternalFile])
         ?? (episodeData["transcripts"] as? [ExternalFile])
         ?? []
+    }
+
+    private func chapterIdentity(for chapter: Marker) -> String {
+        let normalizedTitle = chapter.title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedStart = Int(((chapter.start ?? 0) * 100).rounded())
+        return "\(chapter.type.rawValue)|\(normalizedStart)|\(normalizedTitle)"
+    }
+
+    private func uniqueChapters(_ chapters: [Marker]) -> [Marker] {
+        var seen = Set<String>()
+        return chapters.filter { chapter in
+            seen.insert(chapterIdentity(for: chapter)).inserted
+        }
+    }
+
+    private func replaceChapters(ofType type: MarkerType, with newChapters: [Marker]) {
+        if chapters == nil {
+            chapters = []
+        }
+
+        var existingByIdentity: [String: Marker] = [:]
+        for chapter in (chapters ?? []) where chapter.type == type {
+            let identity = chapterIdentity(for: chapter)
+            if existingByIdentity[identity] == nil {
+                existingByIdentity[identity] = chapter
+            }
+        }
+
+        let replacementChapters = uniqueChapters(newChapters)
+        for chapter in replacementChapters {
+            chapter.episode = self
+            if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
+                chapter.shouldPlay = existing.shouldPlay
+                chapter.progress = existing.progress
+                chapter.imageData = chapter.imageData ?? existing.imageData
+            }
+        }
+
+        chapters?.removeAll { $0.type == type }
+        chapters?.append(contentsOf: replacementChapters)
+        chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+
+    private func fillMissingChapterDurations(for type: MarkerType) {
+        let typedChapters = (chapters ?? [])
+            .filter { $0.type == type }
+            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+
+        for index in typedChapters.indices where typedChapters[index].duration == nil {
+            if index + 1 < typedChapters.count, let nextStart = typedChapters[index + 1].start {
+                typedChapters[index].duration = nextStart - (typedChapters[index].start ?? 0)
+            } else {
+                typedChapters[index].duration = (duration ?? 0) - (typedChapters[index].start ?? 0)
+            }
+        }
     }
 
     private func replaceExternalFiles(with files: [ExternalFile]) {
@@ -665,6 +712,12 @@ class EpisodeDownloadStatus{
         // additional Optional Values
         updateEpisodeData(from: episodeData)
 
+    }
+}
+
+private extension Array where Element == Marker {
+    func sortedByStartTime() -> [Marker] {
+        sorted { ($0.start ?? 0) < ($1.start ?? 0) }
     }
 }
 
