@@ -87,12 +87,12 @@ struct EpisodeDetailView: View {
                             
                     }
                     
-                    if Player.shared.currentEpisodeURL != episode.url {
+                   
                         EpisodeControlView(episode: episode)
                             .modelContainer(context.container)
                             .frame(height: 50)
                             .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                    }
+                    
                     
                     Spacer(minLength: 16)
                     
@@ -174,17 +174,14 @@ struct EpisodeDetailView: View {
                                 .accessibilityHint("Creates an on-device transcript to use as captions")
                                 .accessibilityInputLabels([Text("Generate captions"), Text("Transcribe episode")])
                             }
-                        }
-                    
-
 #if DEBUG
                     if let url = episode.url {
-                        HStack(spacing: 12) {
+                        
                             Button {
                                 Task { await generateTranscriptChaptersOnDemand(for: url) }
                             } label: {
                                 Label(
-                                    isGeneratingTranscriptChapters ? "Generating…" : "Generate AI Chapters",
+                                    isGeneratingTranscriptChapters ? "Generating…" : "Generate Chapters",
                                     systemImage: "sparkles"
                                 )
                             }
@@ -199,8 +196,7 @@ struct EpisodeDetailView: View {
                             }
 
                             Spacer()
-                        }
-                        .padding(.horizontal)
+                        
 
                         if let chapterGenerationMessage {
                             Text(chapterGenerationMessage)
@@ -210,6 +206,10 @@ struct EpisodeDetailView: View {
                         }
                     }
 #endif
+                        }
+                    
+
+
                     
                     Spacer(minLength: 10)
                     
@@ -248,15 +248,15 @@ struct EpisodeDetailView: View {
                     .padding()
                     
                     SocialView(socials: episode.social)
-                        .padding()
+                        
                     PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
-                        .padding()
+                       
                     PodcastNamespaceMetadataView(
                         optionalTags: episode.optionalTags,
                         title: "Episode Metadata",
                         hidesRenderableValueBlocks: true
                     )
-                        .padding()
+                        
                     
                     RichText(html: episode.content ?? episode.desc ?? "")
                         .linkColor(light: Color.secondary, dark: Color.secondary)

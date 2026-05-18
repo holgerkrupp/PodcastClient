@@ -74,6 +74,12 @@
             "state" : "new",
             "value" : "%1$@ %2$@"
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
         }
       }
     },
@@ -291,7 +297,14 @@
       }
     },
     "45 Gradient" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "45-Grad-Verlauf"
+          }
+        }
+      }
     },
     "Accessibility" : {
       "localizations" : {
@@ -474,10 +487,24 @@
       }
     },
     "All settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Einstellungen"
+          }
+        }
+      }
     },
     "Allow live event notifications" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Ereignisbenachrichtigungen erlauben"
+          }
+        }
+      }
     },
     "Already in Library (%lld)" : {
       "localizations" : {
@@ -490,7 +517,14 @@
       }
     },
     "Alternative Feeds" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alternative Feeds"
+          }
+        }
+      }
     },
     "App Controls" : {
       "localizations" : {
@@ -503,10 +537,24 @@
       }
     },
     "App Icon" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Symbol"
+          }
+        }
+      }
     },
     "Appearance" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild"
+          }
+        }
+      }
     },
     "Apple Shortcuts" : {
       "localizations" : {
@@ -549,7 +597,14 @@
       }
     },
     "April" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "April"
+          }
+        }
+      }
     },
     "Archive" : {
       "localizations" : {
@@ -662,7 +717,14 @@
       }
     },
     "August" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "August"
+          }
+        }
+      }
     },
     "Authentication Required" : {
       "localizations" : {
@@ -745,7 +807,14 @@
       }
     },
     "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbare Aktionen umfassen jetzt: Wiedergabe fortsetzen, Wiedergabe pausieren, Lesezeichen setzen, Vorwärts springen, Zurück springen, \"Als Nächstes\" abspielen, nächste \"Als Nächstes\"-Episode abspielen, aktuelle Episode ans Ende verschieben, aktuelle Episode aus \"Als Nächstes\" entfernen, Podcasts aktualisieren und Podcast-Teilen-Bild erstellen."
+          }
+        }
+      }
     },
     "Back" : {
       "localizations" : {
@@ -798,10 +867,24 @@
       }
     },
     "Billboard Top 10" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Billboard Top 10"
+          }
+        }
+      }
     },
     "Black" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schwarz"
+          }
+        }
+      }
     },
     "Bookmark" : {
       "localizations" : {
@@ -834,7 +917,14 @@
       }
     },
     "Boring" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langweilig"
+          }
+        }
+      }
     },
     "Browse by Category" : {
       "localizations" : {
@@ -907,13 +997,34 @@
       }
     },
     "Carnival" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karneval"
+          }
+        }
+      }
     },
     "Changes the current episode between the audio enclosure and alternate video stream" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechselt die aktuelle Episode zwischen der Audio-Mediendatei und dem alternativen Videostream"
+          }
+        }
+      }
     },
     "Changes this episode between the audio enclosure and alternate video stream" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechselt diese Episode zwischen der Audio-Mediendatei und dem alternativen Videostream"
+          }
+        }
+      }
     },
     "Chapter link" : {
       "localizations" : {
@@ -936,7 +1047,14 @@
       }
     },
     "Chapter list tab" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab \"Kapitelliste\""
+          }
+        }
+      }
     },
     "Chapter Rules" : {
       "localizations" : {
@@ -1009,7 +1127,14 @@
       }
     },
     "Christmas" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weihnachten"
+          }
+        }
+      }
     },
     "Close" : {
       "localizations" : {
@@ -1072,13 +1197,34 @@
       }
     },
     "Cover Cloud" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover-Wolke"
+          }
+        }
+      }
     },
     "Cover Collage" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover-Collage"
+          }
+        }
+      }
     },
     "Cover Grid" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover-Raster"
+          }
+        }
+      }
     },
     "Create" : {
       "localizations" : {
@@ -1311,7 +1457,14 @@
       }
     },
     "December" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dezember"
+          }
+        }
+      }
     },
     "Default" : {
       "localizations" : {
@@ -1464,7 +1617,14 @@
       }
     },
     "Design" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Design"
+          }
+        }
+      }
     },
     "Designs" : {
       "localizations" : {
@@ -1477,7 +1637,14 @@
       }
     },
     "Diwali" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diwali"
+          }
+        }
+      }
     },
     "Done" : {
       "localizations" : {
@@ -1500,7 +1667,14 @@
       }
     },
     "Double tap to jump playback to this %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Doppeltippen, um die Wiedergabe zu diesem %@ zu springen"
+          }
+        }
+      }
     },
     "Download" : {
       "localizations" : {
@@ -1613,10 +1787,24 @@
       }
     },
     "Easter" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ostern"
+          }
+        }
+      }
     },
     "Eid al-Fitr" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eid al-Fitr"
+          }
+        }
+      }
     },
     "Enable Notifications" : {
       "localizations" : {
@@ -1809,10 +1997,24 @@
       }
     },
     "February" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Februar"
+          }
+        }
+      }
     },
     "Feed URL unavailable" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed-URL nicht verfügbar"
+          }
+        }
+      }
     },
     "Fetches new episodes and reloads your inbox" : {
       "localizations" : {
@@ -2111,10 +2313,24 @@
       }
     },
     "Halloween" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halloween"
+          }
+        }
+      }
     },
     "Hanukkah" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chanukka"
+          }
+        }
+      }
     },
     "Has bookmarks" : {
       "localizations" : {
@@ -2223,7 +2439,14 @@
       }
     },
     "Holi" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Holi"
+          }
+        }
+      }
     },
     "Hot Podcasts" : {
       "localizations" : {
@@ -2406,10 +2629,24 @@
       }
     },
     "January" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Januar"
+          }
+        }
+      }
     },
     "July" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juli"
+          }
+        }
+      }
     },
     "Jump to %@ %@" : {
       "localizations" : {
@@ -2417,6 +2654,12 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Jump to %1$@ %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu %1$@ %2$@ springen"
           }
         }
       }
@@ -2442,7 +2685,14 @@
       }
     },
     "June" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juni"
+          }
+        }
+      }
     },
     "Keep available" : {
       "localizations" : {
@@ -2655,22 +2905,64 @@
       }
     },
     "Live event information supported" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Ereignisinformationen unterstützt"
+          }
+        }
+      }
     },
     "Live event information unavailable" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Ereignisinformationen nicht verfügbar"
+          }
+        }
+      }
     },
     "Live event notifications" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Ereignisbenachrichtigungen"
+          }
+        }
+      }
     },
     "Live notification" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Benachrichtigung"
+          }
+        }
+      }
     },
     "Live Notifications" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Benachrichtigungen"
+          }
+        }
+      }
     },
     "Live Now: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt live: %@"
+          }
+        }
+      }
     },
     "Loading categories..." : {
       "localizations" : {
@@ -2753,7 +3045,14 @@
       }
     },
     "Lunar New Year" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mondneujahr"
+          }
+        }
+      }
     },
     "Maintenance" : {
       "localizations" : {
@@ -2766,10 +3065,24 @@
       }
     },
     "March" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "März"
+          }
+        }
+      }
     },
     "Marker type" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierungstyp"
+          }
+        }
+      }
     },
     "Marks all episodes in this podcast as archived" : {
       "localizations" : {
@@ -2832,13 +3145,34 @@
       }
     },
     "May" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mai"
+          }
+        }
+      }
     },
     "Metadata Details" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metadaten-Details"
+          }
+        }
+      }
     },
     "Midsummer" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mittsommer"
+          }
+        }
+      }
     },
     "Mini player, %@" : {
       "localizations" : {
@@ -3081,7 +3415,14 @@
       }
     },
     "New Year" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neujahr"
+          }
+        }
+      }
     },
     "Newest First" : {
       "localizations" : {
@@ -3424,10 +3765,24 @@
       }
     },
     "Notify Me: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtige mich: %@"
+          }
+        }
+      }
     },
     "November" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "November"
+          }
+        }
+      }
     },
     "Now Playing" : {
       "localizations" : {
@@ -3450,7 +3805,14 @@
       }
     },
     "October" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oktober"
+          }
+        }
+      }
     },
     "Off" : {
       "localizations" : {
@@ -3503,7 +3865,14 @@
       }
     },
     "Open %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ öffnen"
+          }
+        }
+      }
     },
     "Open captions" : {
       "localizations" : {
@@ -3596,7 +3965,14 @@
       }
     },
     "Open Live Page" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Seite öffnen"
+          }
+        }
+      }
     },
     "Open Notification Settings" : {
       "localizations" : {
@@ -3629,7 +4005,14 @@
       }
     },
     "Open podcast trailers" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Trailer öffnen"
+          }
+        }
+      }
     },
     "Open podcast website" : {
       "localizations" : {
@@ -3642,7 +4025,14 @@
       }
     },
     "Open podroll" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podroll öffnen"
+          }
+        }
+      }
     },
     "Open settings" : {
       "localizations" : {
@@ -3705,7 +4095,14 @@
       }
     },
     "Opens all settings" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet alle Einstellungen"
+          }
+        }
+      }
     },
     "Opens clip export for the current episode" : {
       "localizations" : {
@@ -3728,7 +4125,14 @@
       }
     },
     "Opens playback speed controls" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Bedienelemente für die Wiedergabegeschwindigkeit"
+          }
+        }
+      }
     },
     "Opens playback speed, sleep timer, and queue settings" : {
       "extractionState" : "stale",
@@ -3752,7 +4156,14 @@
       }
     },
     "Opens sleep timer controls" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Bedienelemente für den Sleeptimer"
+          }
+        }
+      }
     },
     "Opens the chapter webpage in Safari" : {
       "localizations" : {
@@ -3825,7 +4236,14 @@
       }
     },
     "Opens this podcasts details screen" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Detailansicht dieses Podcasts"
+          }
+        }
+      }
     },
     "OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app." : {
       "localizations" : {
@@ -3974,6 +4392,12 @@
             "state" : "new",
             "value" : "Play %1$@ %2$@"
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ abspielen"
+          }
         }
       }
     },
@@ -4049,7 +4473,14 @@
       }
     },
     "Play Live Stream" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Livestream abspielen"
+          }
+        }
+      }
     },
     "Play Next" : {
       "localizations" : {
@@ -4072,7 +4503,14 @@
       }
     },
     "Play podcast trailer" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Trailer abspielen"
+          }
+        }
+      }
     },
     "Play the next episode from your Up Next queue." : {
       "localizations" : {
@@ -4167,7 +4605,14 @@
       }
     },
     "Playback speed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabegeschwindigkeit"
+          }
+        }
+      }
     },
     "Playback Speed" : {
       "localizations" : {
@@ -4240,10 +4685,24 @@
       }
     },
     "Playtime Bars" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabezeit-Balken"
+          }
+        }
+      }
     },
     "Playtime Pie" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabezeit-Kreis"
+          }
+        }
+      }
     },
     "Podcast" : {
       "localizations" : {
@@ -4446,10 +4905,24 @@
       }
     },
     "Podium Top 3" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podium Top 3"
+          }
+        }
+      }
     },
     "Podroll" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podroll"
+          }
+        }
+      }
     },
     "Portrait" : {
       "localizations" : {
@@ -4482,7 +4955,14 @@
       }
     },
     "Preview is only available for downloaded media files." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Vorschau ist nur für heruntergeladene Mediendateien verfügbar."
+          }
+        }
+      }
     },
     "Preview unavailable" : {
       "localizations" : {
@@ -4565,10 +5045,24 @@
       }
     },
     "Rainbow" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regenbogen"
+          }
+        }
+      }
     },
     "Ramadan" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ramadan"
+          }
+        }
+      }
     },
     "Ready to Subscribe (%lld)" : {
       "localizations" : {
@@ -5112,7 +5606,14 @@
       }
     },
     "September" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "September"
+          }
+        }
+      }
     },
     "Setting up the iCloud folder..." : {
       "localizations" : {
@@ -5185,7 +5686,14 @@
       }
     },
     "Share Image" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen-Bild"
+          }
+        }
+      }
     },
     "Share Picture Title" : {
       "localizations" : {
@@ -5389,7 +5897,14 @@
       }
     },
     "Shows podcasts recommended by this podcast" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt Podcasts, die von diesem Podcast empfohlen werden"
+          }
+        }
+      }
     },
     "Shows the transcript panel below the artwork" : {
       "localizations" : {
@@ -5562,7 +6077,14 @@
       }
     },
     "Sleep timer" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sleeptimer"
+          }
+        }
+      }
     },
     "Sleep Timer" : {
       "localizations" : {
@@ -5625,7 +6147,14 @@
       }
     },
     "Speed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschwindigkeit"
+          }
+        }
+      }
     },
     "Square" : {
       "localizations" : {
@@ -5728,7 +6257,14 @@
       }
     },
     "Stats Wrapped" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jahresrückblick"
+          }
+        }
+      }
     },
     "Stop after this episode" : {
       "localizations" : {
@@ -5811,7 +6347,14 @@
       }
     },
     "Subscribe to Alternative Feed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alternativen Feed abonnieren"
+          }
+        }
+      }
     },
     "Subscribed" : {
       "localizations" : {
@@ -5844,7 +6387,14 @@
       }
     },
     "Support" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support"
+          }
+        }
+      }
     },
     "Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open." : {
       "localizations" : {
@@ -5867,19 +6417,54 @@
       }
     },
     "Switch Alternative Feed" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alternativen Feed wechseln"
+          }
+        }
+      }
     },
     "Switch to audio" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Audio wechseln"
+          }
+        }
+      }
     },
     "Switch to Audio" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Audio wechseln"
+          }
+        }
+      }
     },
     "Switch to video" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Video wechseln"
+          }
+        }
+      }
     },
     "Switch to Video" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Video wechseln"
+          }
+        }
+      }
     },
     "The currently playing episode is kept pinned at the top while playback is active." : {
       "localizations" : {
@@ -5992,7 +6577,14 @@
       }
     },
     "This podcast currently does not support Live event information." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast unterstützt derzeit keine Live-Ereignisinformationen."
+          }
+        }
+      }
     },
     "This podcast currently has no standalone files stored outside the database." : {
       "localizations" : {
@@ -6015,7 +6607,14 @@
       }
     },
     "This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast unterstützt Live-Ereignisinformationen. Aktiviere podcastspezifische Einstellungen, um die globale Einstellung für Live-Benachrichtigungen zu überschreiben."
+          }
+        }
+      }
     },
     "This removes downloaded media and cache files, but keeps your SwiftData database, subscriptions, and playback history." : {
       "localizations" : {
@@ -6088,7 +6687,14 @@
       }
     },
     "Timer" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Timer"
+          }
+        }
+      }
     },
     "Title" : {
       "localizations" : {
@@ -6207,7 +6813,14 @@
       }
     },
     "Trailers" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trailer"
+          }
+        }
+      }
     },
     "Transcribe" : {
       "localizations" : {
@@ -6260,7 +6873,14 @@
       }
     },
     "Transcript Error" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptfehler"
+          }
+        }
+      }
     },
     "Transcript Lines" : {
       "localizations" : {
@@ -6333,7 +6953,14 @@
       }
     },
     "Unable to Change App Icon" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Symbol kann nicht geändert werden"
+          }
+        }
+      }
     },
     "Unable to Enable Sideloading" : {
       "localizations" : {
@@ -6686,7 +7313,14 @@
       }
     },
     "When" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wann"
+          }
+        }
+      }
     },
     "When an episode finishes, continuous playback can automatically start the next item from Up Next." : {
       "localizations" : {
@@ -6739,7 +7373,14 @@
       }
     },
     "When this is off, no podcast can schedule notifications for podcast:liveItem events." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dies deaktiviert ist, kann kein Podcast Benachrichtigungen für podcast:liveItem-Ereignisse planen."
+          }
+        }
+      }
     },
     "When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast." : {
       "localizations" : {
@@ -6752,7 +7393,14 @@
       }
     },
     "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn dies deaktiviert ist, zeigt dieser Podcast die Schaltfläche zum Planen von Live-Ereignisbenachrichtigungen nicht an. Die globale Einstellung kann Live-Benachrichtigungen weiterhin für alle Podcasts deaktivieren."
+          }
+        }
+      }
     },
     "When you usually listen" : {
       "localizations" : {
@@ -6765,7 +7413,14 @@
       }
     },
     "White" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiß"
+          }
+        }
+      }
     },
     "Will be skipped" : {
       "localizations" : {

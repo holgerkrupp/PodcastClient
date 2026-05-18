@@ -470,7 +470,7 @@ private struct QueueLine: View {
     let style: Style
 
     var body: some View {
-        let iconStyle: AnyShapeStyle = style == .current
+        let _: AnyShapeStyle = style == .current
             ? AnyShapeStyle(.tint)
             : AnyShapeStyle(.secondary)
 

@@ -27,42 +27,45 @@ struct SocialView: View {
     }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: spacing) {
-            ForEach(sortedSocials) { info in
-                Link(destination: info.url) {
-                    HStack(spacing: 4) {
-                        Text(info.socialprotocol)
-                            .font(.footnote)
-                            .foregroundStyle(.tint)
-                            .lineLimit(1)
-                        if let accountId = info.accountId, !accountId.isEmpty {
-                            Text(accountId)
+        if !sortedSocials.isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: spacing) {
+                ForEach(sortedSocials) { info in
+                    Link(destination: info.url) {
+                        HStack(spacing: 4) {
+                            Text(info.socialprotocol)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.tint)
                                 .lineLimit(1)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(.thinMaterial, in: Capsule())
-                    .overlay(
-                        Group {
-                            if let p = info.priority {
-                                Text(String(p))
-                                    .font(.caption2)
-                                    .padding(4)
-                                    .background(Circle().fill(Color.secondary.opacity(0.15)))
-                                    .overlay(Circle().strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5))
-                                    .offset(x: 8, y: -8)
+                            if let accountId = info.accountId, !accountId.isEmpty {
+                                Text(accountId)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
-                        }, alignment: .topTrailing
-                    )
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay(
+                            Group {
+                                if let p = info.priority {
+                                    Text(String(p))
+                                        .font(.caption2)
+                                        .padding(4)
+                                        .background(Circle().fill(Color.secondary.opacity(0.15)))
+                                        .overlay(Circle().strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5))
+                                        .offset(x: 8, y: -8)
+                                }
+                            }, alignment: .topTrailing
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Social links")
+            .padding()
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Social links")
     }
 }
 

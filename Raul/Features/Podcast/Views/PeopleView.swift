@@ -27,6 +27,9 @@ struct PeopleView: View {
     }
 
     var body: some View {
+        if !displayPeople.isEmpty {
+            
+        
         FlowRows(spacing: spacing) {
             ForEach(displayPeople) { person in
                 Group {
@@ -43,6 +46,8 @@ struct PeopleView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("People")
+        .padding()
+        }
     }
 }
 

@@ -37,14 +37,16 @@ struct WatchStorageSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Network") {
-                Toggle(
-                    "Allow Cellular Downloads",
-                    isOn: Binding(
-                        get: { store.storageSettings.allowCellularDownloads },
-                        set: { store.setAllowCellularDownloads($0) }
+            if WatchCellularSupport.canUseCellularDownloads {
+                Section("Network") {
+                    Toggle(
+                        "Allow Cellular Downloads",
+                        isOn: Binding(
+                            get: { store.storageSettings.allowCellularDownloads },
+                            set: { store.setAllowCellularDownloads($0) }
+                        )
                     )
-                )
+                }
             }
         }
         .navigationTitle("Settings")
