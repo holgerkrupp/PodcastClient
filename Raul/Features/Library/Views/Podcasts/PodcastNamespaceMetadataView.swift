@@ -341,6 +341,7 @@ struct PodcastNamespaceMetadataView: View {
                     }
                 }
             }
+            .padding()
             
         }
     }

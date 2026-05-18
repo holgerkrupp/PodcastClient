@@ -69,114 +69,115 @@ struct EpisodeControlView: View {
             .buttonStyle(.glass(.clear))
             .accessibilityLabel("Play episode")
             .accessibilityHint("Starts this episode immediately")
-
-            Spacer()
-            GlassEffectContainer(spacing: 20.0){
-                HStack(spacing: 0.0) {
-                    Button {
-                        Task {
-                            await addEpisode(to: resolvedPlaylistID, position: .front)
-                        }
-                    } label: {
-                        Label(
-                            "Play Next",
-                            systemImage: isInPlaylist ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward"
-                        )
-                        .symbolRenderingMode(.hierarchical)
-                        .scaledToFit()
-                        .padding(5)
-                        .minimumScaleFactor(0.5)
-                        .labelStyle(.iconOnly)
-                        .frame(width: 50)
-                        .clipShape(Circle())
-                    }
-                    .buttonStyle(.glass(.clear))
-                    .contentShape(Circle())
-                    .highPriorityGesture(
-                        LongPressGesture(minimumDuration: 0.4)
-                            .onEnded { _ in
-                                isSelectingFrontPlaylist = true
+            if Player.shared.currentEpisodeURL != episode.url {
+                Spacer()
+                GlassEffectContainer(spacing: 20.0){
+                    HStack(spacing: 0.0) {
+                        Button {
+                            Task {
+                                await addEpisode(to: resolvedPlaylistID, position: .front)
                             }
-                    )
-                    .confirmationDialog("Add to front of playlist", isPresented: $isSelectingFrontPlaylist, titleVisibility: .visible) {
-                        ForEach(manualPlaylists) { playlist in
-                            Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
-                                Task {
-                                    await addEpisode(to: playlist.id, position: .front)
+                        } label: {
+                            Label(
+                                "Play Next",
+                                systemImage: isInPlaylist ? "arrow.up.to.line" : "text.line.first.and.arrowtriangle.forward"
+                            )
+                            .symbolRenderingMode(.hierarchical)
+                            .scaledToFit()
+                            .padding(5)
+                            .minimumScaleFactor(0.5)
+                            .labelStyle(.iconOnly)
+                            .frame(width: 50)
+                            .clipShape(Circle())
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .contentShape(Circle())
+                        .highPriorityGesture(
+                            LongPressGesture(minimumDuration: 0.4)
+                                .onEnded { _ in
+                                    isSelectingFrontPlaylist = true
+                                }
+                        )
+                        .confirmationDialog("Add to front of playlist", isPresented: $isSelectingFrontPlaylist, titleVisibility: .visible) {
+                            ForEach(manualPlaylists) { playlist in
+                                Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
+                                    Task {
+                                        await addEpisode(to: playlist.id, position: .front)
+                                    }
                                 }
                             }
+                            Button("Cancel", role: .cancel) {}
                         }
-                        Button("Cancel", role: .cancel) {}
-                    }
-                    .accessibilityLabel("Add to playlist")
-                    .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
-                    
-                    Button {
-                        Task {
-                            await addEpisode(to: resolvedPlaylistID, position: .end)
-                        }
-                    } label: {
-                        Label(
-                            "Play Last",
-                            systemImage: isInPlaylist ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward"
-                        )
-                        .symbolRenderingMode(.hierarchical)
-                        .scaledToFit()
-                        .padding(5)
-                        .minimumScaleFactor(0.5)
-                        .labelStyle(.iconOnly)
-                        .frame(width: 50)
-                    }
-                    .buttonStyle(.glass(.clear))
-                    .contentShape(Circle())
-                    .highPriorityGesture(
-                        LongPressGesture(minimumDuration: 0.4)
-                            .onEnded { _ in
-                                isSelectingEndPlaylist = true
+                        .accessibilityLabel("Add to playlist")
+                        .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
+                        
+                        Button {
+                            Task {
+                                await addEpisode(to: resolvedPlaylistID, position: .end)
                             }
-                    )
-                    .confirmationDialog("Add to end of playlist", isPresented: $isSelectingEndPlaylist, titleVisibility: .visible) {
-                        ForEach(manualPlaylists) { playlist in
-                            Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
-                                Task {
-                                    await addEpisode(to: playlist.id, position: .end)
+                        } label: {
+                            Label(
+                                "Play Last",
+                                systemImage: isInPlaylist ? "arrow.down.to.line" : "text.line.last.and.arrowtriangle.forward"
+                            )
+                            .symbolRenderingMode(.hierarchical)
+                            .scaledToFit()
+                            .padding(5)
+                            .minimumScaleFactor(0.5)
+                            .labelStyle(.iconOnly)
+                            .frame(width: 50)
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .contentShape(Circle())
+                        .highPriorityGesture(
+                            LongPressGesture(minimumDuration: 0.4)
+                                .onEnded { _ in
+                                    isSelectingEndPlaylist = true
+                                }
+                        )
+                        .confirmationDialog("Add to end of playlist", isPresented: $isSelectingEndPlaylist, titleVisibility: .visible) {
+                            ForEach(manualPlaylists) { playlist in
+                                Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
+                                    Task {
+                                        await addEpisode(to: playlist.id, position: .end)
+                                    }
                                 }
                             }
+                            Button("Cancel", role: .cancel) {}
                         }
-                        Button("Cancel", role: .cancel) {}
-                    }
-                    .accessibilityLabel("Add to end of playlist")
-                    .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
-                }
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    let actor = EpisodeActor(modelContainer: modelContext.container)
-                    if episode.metaData?.isArchived == true {
-                        await actor.unarchiveEpisode(episode.url)
-                    } else {
-                        await actor.archiveEpisode(episode.url)
+                        .accessibilityLabel("Add to end of playlist")
+                        .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
                     }
                 }
-            } label: {
-                Label(
-                    episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive",
-                    systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox"
-                )
-                .symbolRenderingMode(.hierarchical)
-                .scaledToFit()
-                .padding(5)
-                .minimumScaleFactor(0.5)
-                .labelStyle(.iconOnly)
-                .clipShape(Circle())
-                .frame(width: 50)
+                
+                Spacer()
+                
+                Button {
+                    Task {
+                        let actor = EpisodeActor(modelContainer: modelContext.container)
+                        if episode.metaData?.isArchived == true {
+                            await actor.unarchiveEpisode(episode.url)
+                        } else {
+                            await actor.archiveEpisode(episode.url)
+                        }
+                    }
+                } label: {
+                    Label(
+                        episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive",
+                        systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox"
+                    )
+                    .symbolRenderingMode(.hierarchical)
+                    .scaledToFit()
+                    .padding(5)
+                    .minimumScaleFactor(0.5)
+                    .labelStyle(.iconOnly)
+                    .clipShape(Circle())
+                    .frame(width: 50)
+                }
+                .buttonStyle(.glass(.clear))
+                .accessibilityLabel(episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
+                .accessibilityHint("Moves this episode in or out of the archive")
             }
-            .buttonStyle(.glass(.clear))
-            .accessibilityLabel(episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
-            .accessibilityHint("Moves this episode in or out of the archive")
         }
     }
 

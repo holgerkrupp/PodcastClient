@@ -57,6 +57,7 @@ private struct DetailMetadataChip: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
+        
         .background(.ultraThinMaterial, in: Capsule())
     }
 }

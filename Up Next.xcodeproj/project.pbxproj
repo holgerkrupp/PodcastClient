@@ -129,13 +129,14 @@
 		488DEBA02F76391C0088432A /* Exceptions for "Raul" folder in "UpNextWatch" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				"AppIcon-trans.icon",
 				"AppIcon-blue.icon",
 				"AppIcon-green.icon",
 				"AppIcon-orange.icon",
 				"AppIcon-pride.icon",
+				"AppIcon-progress.icon",
 				"AppIcon-purple.icon",
 				"AppIcon-red.icon",
+				"AppIcon-trans.icon",
 				"AppIcon-yellow.icon",
 				AppIcon.icon,
 			);
@@ -144,13 +145,14 @@
 		488DEBA12F76391C0088432A /* Exceptions for "Raul" folder in "PlayNextWidget" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				"AppIcon-trans.icon",
 				"AppIcon-blue.icon",
 				"AppIcon-green.icon",
 				"AppIcon-orange.icon",
 				"AppIcon-pride.icon",
+				"AppIcon-progress.icon",
 				"AppIcon-purple.icon",
 				"AppIcon-red.icon",
+				"AppIcon-trans.icon",
 				"AppIcon-yellow.icon",
 				AppIcon.icon,
 			);
@@ -762,7 +764,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-blue AppIcon-green AppIcon-orange AppIcon-purple AppIcon-red AppIcon-yellow AppIcon-pride AppIcon-trans";
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-blue AppIcon-green AppIcon-orange AppIcon-purple AppIcon-red AppIcon-yellow AppIcon-pride AppIcon-trans AppIcon-progress";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
@@ -810,7 +812,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
-				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-blue AppIcon-green AppIcon-orange AppIcon-purple AppIcon-red AppIcon-yellow AppIcon-pride AppIcon-trans";
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-blue AppIcon-green AppIcon-orange AppIcon-purple AppIcon-red AppIcon-yellow AppIcon-pride AppIcon-trans AppIcon-progress";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;

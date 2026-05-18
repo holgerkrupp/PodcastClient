@@ -25,22 +25,22 @@ An open standard to expand podcasting with decentralized, modern features.
 
 Notable Tags:
 - [x] <podcast:person> — Credit people (roles: host, guest, voice, etc.).
-- [ ] <podcast:location> — Geolocation of episode/show.
+- [x] <podcast:location> — Geolocation of episode/show.
 - [x] <podcast:transcript> — Link to a transcript file (WebVTT, SRT, etc.).
 - - [x] WebVTT
 - - [x] SRT
 - - [x] JSON
 - [x] <podcast:chapters> — Link to chapter file (e.g. JSON format).
 - [x] <podcast:funding> — Monetization URL with description (e.g. Patreon).
-- [ ] <podcast:medium> — Show type (e.g. audio, video, music).
+- [x] <podcast:medium> — Show type (e.g. audio, video, music).
 - [x] <podcast:guid> — Global unique identifier (permanent).
-- [ ] <podcast:license> — Licensing info (e.g. Creative Commons).
-- [ ] <podcast:trailer> — Points to trailer episodes.
-- [ ] <podcast:liveItem> — Defines live stream events.
-- [ ] <podcast:remoteItem> — Reference another feed/episode.
+- [x] <podcast:license> — Licensing info (e.g. Creative Commons).
+- [x] <podcast:trailer> — Points to trailer episodes.
+- [x] <podcast:liveItem> — Defines live stream events.
+- [x] <podcast:remoteItem> — Reference another feed/episode.
 - [x] <podcast:social> — Links to social media profiles.
-- [ ] <podcast:value> — Streaming payments support (e.g. Lightning Network).
-- [ ] <podcast:txt> — Verifies feed ownership via DNS.
+- [x] <podcast:value> — Streaming payments support (e.g. Lightning Network).
+- [x] <podcast:txt> — Verifies feed ownership via DNS.
 More evolving tags available at: https://podcastnamespace.org
 
 
@@ -58,7 +58,7 @@ Key Tags:
 - [x] <itunes:image href="..." /> — Show or episode artwork.
 - [ ] <itunes:category> — Nested categories (e.g. Arts > Design).
 - [x] <itunes:episode> — Episode number.
-- [ ] <itunes:season> — Season number.
+- [x] <itunes:season> — Season number.
 - [x] <itunes:title> — Custom title separate from - [ ] <title>.
-- [ ] <itunes:episodeType> — full, trailer, or bonus.
+- [x] <itunes:episodeType> — full, trailer, or bonus.
 - [ ] <itunes:block> — Prevent listing (yes).

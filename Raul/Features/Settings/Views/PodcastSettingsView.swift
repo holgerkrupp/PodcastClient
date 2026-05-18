@@ -1173,8 +1173,12 @@ struct PodcastSettingsView: View {
         }
     }
 
+    @MainActor // 1. Guarantees the entire function and subsequent Task run on the Main Thread
     private func changeAppIcon(to identifier: String) {
+        // 2. Protect against rapid/double taps causing concurrent SpringBoard requests
+        guard !isChangingAppIcon else { return }
         guard UIApplication.shared.supportsAlternateIcons else { return }
+        
         guard let icon = AlternateAppIcon(id: identifier) else {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
             return
@@ -1184,19 +1188,24 @@ struct PodcastSettingsView: View {
 
         Task {
             do {
-                try await UIApplication.shared.setAlternateIconName(icon.iconName)
-                await MainActor.run {
-                    selectedAppIconID = AlternateAppIcon.currentIdentifier
-                    isChangingAppIcon = false
-                }
+                // 3. Ensure resetting to the default icon passes nil to the system API
+                let targetIconName = (identifier == AlternateAppIcon.primaryID) ? nil : icon.iconName
+                
+                try await UIApplication.shared.setAlternateIconName(targetIconName)
+                
+                // 4. State updates flow safely without MainActor.run wrappers
+                selectedAppIconID = AlternateAppIcon.currentIdentifier
             } catch {
-                await MainActor.run {
-                    selectedAppIconID = AlternateAppIcon.currentIdentifier
-                    appIconErrorMessage = error.localizedDescription
-                    showAppIconError = true
-                    isChangingAppIcon = false
-                }
+                // Log via your BasicLogger framework
+            
+                BasicLogger.shared.log("Failed to change app icon: \(error.localizedDescription)")
+                appIconErrorMessage = error.localizedDescription
+                showAppIconError = true
+                selectedAppIconID = AlternateAppIcon.currentIdentifier
             }
+            
+            // Always reset the loading flag at the very end of the cycle
+            isChangingAppIcon = false
         }
     }
 
@@ -1266,7 +1275,9 @@ private struct AlternateAppIcon: Identifiable, Hashable {
         AlternateAppIcon(id: "AppIcon-purple", iconName: "AppIcon-purple", title: "Purple", systemImage: "circle.fill", previewAssetName: "purple", previewColors: [.blue, .purple]),
         AlternateAppIcon(id: "AppIcon-blue", iconName: "AppIcon-blue", title: "Blue", systemImage: "circle.fill", previewAssetName: "blue", previewColors: [.cyan, .blue]),
         AlternateAppIcon(id: "AppIcon-pride", iconName: "AppIcon-pride", title: "Pride", systemImage: "circle.fill", previewAssetName: "pride", previewColors: [.red, .orange, .yellow, .green, .blue, .purple]),
-        AlternateAppIcon(id: "AppIcon-trans", iconName: "AppIcon-trans", title: "Trans", systemImage: "circle.fill", previewAssetName: "trans", previewColors: [.blue, .pink, .white, .pink, .blue])
+        AlternateAppIcon(id: "AppIcon-trans", iconName: "AppIcon-trans", title: "Trans", systemImage: "circle.fill", previewAssetName: "trans", previewColors: [.blue, .pink, .white, .pink, .blue]),
+        AlternateAppIcon(id: "AppIcon-progress", iconName: "AppIcon-progress", title: "Progress", systemImage: "circle.fill", previewAssetName: "progress", previewColors: [.red, .orange, .yellow, .green, .blue, .purple])
+
     ]
 
     @MainActor

@@ -260,7 +260,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
         downloadProgressByEpisodeID[episode.episodeURL] = 0
 
         let configuration = URLSessionConfiguration.default
-        configuration.allowsCellularAccess = storageSettings.allowCellularDownloads
+        configuration.allowsCellularAccess = WatchCellularSupport.canUseCellularDownloads && storageSettings.allowCellularDownloads
         configuration.waitsForConnectivity = true
 
         let downloadSession = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
