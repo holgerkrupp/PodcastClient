@@ -50,6 +50,7 @@ struct WatchStorageSettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .tint(.upNextAccent)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") {

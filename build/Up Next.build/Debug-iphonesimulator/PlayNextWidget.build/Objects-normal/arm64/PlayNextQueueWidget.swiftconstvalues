@@ -1,0 +1,582 @@
+[
+  {
+    "typeName": "PlayNextWidget.QueuePlaylistEntity",
+    "mangledTypeName": "14PlayNextWidget19QueuePlaylistEntityV",
+    "kind": "struct",
+    "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+    "line": 51,
+    "conformances": [
+      "AppIntents.AppEntity",
+      "Swift.Identifiable",
+      "Swift.Hashable",
+      "AppIntents.AppValue",
+      "AppIntents.DisplayRepresentable",
+      "Swift.Equatable",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents.TypeDisplayRepresentable",
+      "AppIntents._IntentValue",
+      "Swift.Sendable",
+      "AppIntents.InstanceDisplayRepresentable",
+      "Swift.SendableMetatype",
+      "Foundation.CustomLocalizedStringResourceConvertible"
+    ],
+    "allConformances": [
+      {
+        "protocolName": "AppIntents.AppEntity",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.Identifiable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.Hashable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.AppValue",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.DisplayRepresentable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.Equatable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.PersistentlyIdentifiable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.TypeDisplayRepresentable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents._IntentValue",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.Sendable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.InstanceDisplayRepresentable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.SendableMetatype",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Foundation.CustomLocalizedStringResourceConvertible",
+        "conformanceDefiningModule": "PlayNextWidget"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "typeAliasName": "DefaultQuery",
+        "substitutedTypeName": "PlayNextWidget.QueuePlaylistQuery",
+        "substitutedMangledTypeName": "14PlayNextWidget18QueuePlaylistQueryV"
+      },
+      {
+        "typeAliasName": "ID",
+        "substitutedTypeName": "Swift.String",
+        "substitutedMangledTypeName": "SS"
+      },
+      {
+        "typeAliasName": "ValueType",
+        "substitutedTypeName": "PlayNextWidget.QueuePlaylistEntity",
+        "substitutedMangledTypeName": "14PlayNextWidget19QueuePlaylistEntityV"
+      },
+      {
+        "typeAliasName": "UnwrappedType",
+        "substitutedTypeName": "PlayNextWidget.QueuePlaylistEntity",
+        "substitutedMangledTypeName": "14PlayNextWidget19QueuePlaylistEntityV"
+      },
+      {
+        "typeAliasName": "Specification",
+        "substitutedTypeName": "AppIntents.EmptyResolverSpecification<PlayNextWidget.QueuePlaylistEntity>",
+        "substitutedMangledTypeName": "10AppIntents26EmptyResolverSpecificationVy14PlayNextWidget19QueuePlaylistEntityVG"
+      }
+    ],
+    "properties": [
+      {
+        "label": "id",
+        "type": "Swift.String",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 57,
+        "valueKind": "Runtime"
+      },
+      {
+        "label": "title",
+        "type": "Swift.String",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 58,
+        "valueKind": "Runtime"
+      },
+      {
+        "label": "symbolName",
+        "type": "Swift.String",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 59,
+        "valueKind": "Runtime"
+      },
+      {
+        "label": "typeDisplayRepresentation",
+        "type": "AppIntents.TypeDisplayRepresentation",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 54,
+        "valueKind": "InitCall",
+        "value": {
+          "type": "AppIntents.TypeDisplayRepresentation",
+          "arguments": [
+            {
+              "label": "name",
+              "type": "Foundation.LocalizedStringResource",
+              "valueKind": "RawLiteral",
+              "value": "Playlist"
+            },
+            {
+              "label": "numericFormat",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            }
+          ]
+        }
+      },
+      {
+        "label": "defaultQuery",
+        "type": "PlayNextWidget.QueuePlaylistQuery",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 55,
+        "valueKind": "InitCall",
+        "value": {
+          "type": "PlayNextWidget.QueuePlaylistQuery",
+          "arguments": []
+        }
+      },
+      {
+        "label": "displayRepresentation",
+        "type": "AppIntents.DisplayRepresentation",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "true",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 61,
+        "valueKind": "InitCall",
+        "value": {
+          "type": "AppIntents.DisplayRepresentation",
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "valueKind": "InterpolatedStringLiteral",
+              "value": {
+                "segments": [
+                  {
+                    "valueKind": "RawLiteral",
+                    "value": ""
+                  },
+                  {
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "valueKind": "RawLiteral",
+                    "value": ""
+                  }
+                ]
+              }
+            },
+            {
+              "label": "subtitle",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "image",
+              "type": "Swift.Optional<AppIntents.DisplayRepresentation.Image>",
+              "valueKind": "InitCall",
+              "value": {
+                "type": "Swift.Optional<AppIntents.DisplayRepresentation.Image>",
+                "arguments": [
+                  {
+                    "label": "systemName",
+                    "type": "Swift.String",
+                    "valueKind": "Runtime"
+                  },
+                  {
+                    "label": "tintColor",
+                    "type": "Swift.Optional<UIKit.UIColor>",
+                    "valueKind": "NilLiteral"
+                  },
+                  {
+                    "label": "symbolConfiguration",
+                    "type": "Swift.Optional<UIKit.UIImage.SymbolConfiguration>",
+                    "valueKind": "NilLiteral"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "label": "hashValue",
+        "type": "Swift.Int",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "true",
+        "valueKind": "FunctionCall",
+        "value": {
+          "name": "_hashValue",
+          "arguments": [
+            {
+              "label": "for",
+              "type": "PlayNextWidget.QueuePlaylistEntity",
+              "valueKind": "Runtime"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "typeName": "PlayNextWidget.QueuePlaylistQuery",
+    "mangledTypeName": "14PlayNextWidget18QueuePlaylistQueryV",
+    "kind": "struct",
+    "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+    "line": 69,
+    "conformances": [
+      "AppIntents.EntityQuery",
+      "AppIntents.DynamicOptionsProvider",
+      "AppIntents.PersistentlyIdentifiable",
+      "Swift.Sendable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.SendableMetatype",
+      "Swift.BitwiseCopyable"
+    ],
+    "allConformances": [
+      {
+        "protocolName": "AppIntents.EntityQuery",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.DynamicOptionsProvider",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.PersistentlyIdentifiable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.Sendable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents._SupportsAppDependencies",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.SendableMetatype",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.BitwiseCopyable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "typeAliasName": "Entity",
+        "substitutedTypeName": "PlayNextWidget.QueuePlaylistEntity",
+        "substitutedMangledTypeName": "14PlayNextWidget19QueuePlaylistEntityV"
+      },
+      {
+        "typeAliasName": "Result",
+        "substitutedTypeName": "Swift.Array<PlayNextWidget.QueuePlaylistEntity>",
+        "substitutedMangledTypeName": "Say14PlayNextWidget19QueuePlaylistEntityVG"
+      },
+      {
+        "typeAliasName": "Result",
+        "substitutedTypeName": "Swift.Array<PlayNextWidget.QueuePlaylistEntity>",
+        "substitutedMangledTypeName": "Say14PlayNextWidget19QueuePlaylistEntityVG"
+      },
+      {
+        "typeAliasName": "DefaultValue",
+        "substitutedTypeName": "PlayNextWidget.QueuePlaylistEntity",
+        "substitutedMangledTypeName": "14PlayNextWidget19QueuePlaylistEntityV"
+      }
+    ],
+    "properties": []
+  },
+  {
+    "typeName": "PlayNextWidget.QueueConfigurationIntent",
+    "mangledTypeName": "14PlayNextWidget24QueueConfigurationIntentV",
+    "kind": "struct",
+    "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+    "line": 109,
+    "conformances": [
+      "AppIntents.WidgetConfigurationIntent",
+      "AppIntents.AppIntent",
+      "AppIntents.PersistentlyIdentifiable",
+      "AppIntents._SupportsAppDependencies",
+      "Swift.Sendable",
+      "Swift.SendableMetatype"
+    ],
+    "allConformances": [
+      {
+        "protocolName": "AppIntents.WidgetConfigurationIntent",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.AppIntent",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents.PersistentlyIdentifiable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "AppIntents._SupportsAppDependencies",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.Sendable",
+        "conformanceDefiningModule": "PlayNextWidget"
+      },
+      {
+        "protocolName": "Swift.SendableMetatype",
+        "conformanceDefiningModule": "PlayNextWidget"
+      }
+    ],
+    "associatedTypeAliases": [
+      {
+        "typeAliasName": "NeverResult",
+        "substitutedTypeName": "Swift.Never",
+        "substitutedMangledTypeName": "s5NeverO"
+      },
+      {
+        "typeAliasName": "PerformResult",
+        "substitutedTypeName": "Swift.Never",
+        "substitutedMangledTypeName": "s5NeverO"
+      },
+      {
+        "typeAliasName": "SummaryContent",
+        "substitutedTypeName": "some AppIntents.ParameterSummary",
+        "substitutedMangledTypeName": "14PlayNextWidget24QueueConfigurationIntentV16parameterSummaryQrvpZQOy_Qo_",
+        "opaqueTypeProtocolRequirements": [
+          "AppIntents.ParameterSummary"
+        ],
+        "opaqueTypeSameTypeRequirements": []
+      }
+    ],
+    "properties": [
+      {
+        "label": "_playlist",
+        "type": "AppIntents.IntentParameter<Swift.Optional<PlayNextWidget.QueuePlaylistEntity>>",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 117,
+        "valueKind": "InitCall",
+        "value": {
+          "type": "AppIntents.IntentParameter<Swift.Optional<PlayNextWidget.QueuePlaylistEntity>>",
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "valueKind": "RawLiteral",
+              "value": "Playlist"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<PlayNextWidget.QueuePlaylistEntity>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ]
+        }
+      },
+      {
+        "label": "title",
+        "type": "Foundation.LocalizedStringResource",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 110,
+        "valueKind": "RawLiteral",
+        "value": "Playlist"
+      },
+      {
+        "label": "description",
+        "type": "AppIntents.IntentDescription",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "false",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 111,
+        "valueKind": "RawLiteral",
+        "value": "Choose which playlist this widget should show."
+      },
+      {
+        "label": "parameterSummary",
+        "type": "some AppIntents.ParameterSummary",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "true",
+        "isComputed": "true",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 112,
+        "valueKind": "InitCall",
+        "value": {
+          "type": "AppIntents.IntentParameterSummary<PlayNextWidget.QueueConfigurationIntent>",
+          "arguments": [
+            {
+              "label": "",
+              "type": "AppIntents.ParameterSummaryString<PlayNextWidget.QueueConfigurationIntent>",
+              "valueKind": "InterpolatedStringLiteral",
+              "value": {
+                "segments": [
+                  {
+                    "valueKind": "RawLiteral",
+                    "value": "Show "
+                  },
+                  {
+                    "valueKind": "KeyPath",
+                    "value": {
+                      "path": "$playlist",
+                      "rootType": "PlayNextWidget.QueueConfigurationIntent",
+                      "components": [
+                        {
+                          "label": "$playlist",
+                          "type": "AppIntents.IntentParameter<Swift.Optional<PlayNextWidget.QueuePlaylistEntity>>"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "valueKind": "RawLiteral",
+                    "value": ""
+                  }
+                ]
+              }
+            },
+            {
+              "label": "table",
+              "type": "Swift.Optional<Swift.String>",
+              "valueKind": "NilLiteral"
+            }
+          ]
+        }
+      },
+      {
+        "label": "playlist",
+        "type": "Swift.Optional<PlayNextWidget.QueuePlaylistEntity>",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "true",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 117,
+        "valueKind": "InitCall",
+        "value": {
+          "type": "AppIntents.IntentParameter<Swift.Optional<PlayNextWidget.QueuePlaylistEntity>>",
+          "arguments": [
+            {
+              "label": "title",
+              "type": "Foundation.LocalizedStringResource",
+              "valueKind": "RawLiteral",
+              "value": "Playlist"
+            },
+            {
+              "label": "description",
+              "type": "Swift.Optional<Foundation.LocalizedStringResource>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "default",
+              "type": "Swift.Optional<PlayNextWidget.QueuePlaylistEntity>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestValueDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "requestDisambiguationDialog",
+              "type": "Swift.Optional<AppIntents.IntentDialog>",
+              "valueKind": "NilLiteral"
+            },
+            {
+              "label": "inputConnectionBehavior",
+              "type": "AppIntents.InputConnectionBehavior",
+              "valueKind": "Runtime"
+            }
+          ]
+        },
+        "propertyWrappers": [
+          {
+            "type": "AppIntents.IntentParameter",
+            "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+            "line": 116,
+            "arguments": [
+              {
+                "label": "title",
+                "type": "Foundation.LocalizedStringResource",
+                "valueKind": "RawLiteral",
+                "value": "Playlist"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "label": "$playlist",
+        "type": "AppIntents.IntentParameter<Swift.Optional<PlayNextWidget.QueuePlaylistEntity>>",
+        "mangledTypeName": "n/a - deprecated",
+        "isStatic": "false",
+        "isComputed": "true",
+        "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+        "line": 117,
+        "valueKind": "Runtime"
+      }
+    ]
+  }
+]

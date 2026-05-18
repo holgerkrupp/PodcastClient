@@ -238,7 +238,7 @@ private struct WatchNowPlayingHero: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Now Playing")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.upNextAccent)
 
                         Text(episode.title)
                             .font(.caption.weight(.semibold))
@@ -320,7 +320,7 @@ private struct WatchPlaylistCard: View {
                                 .monospacedDigit()
                         }
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(Color.upNextAccent)
 
                         WatchProgressBar(progress: syncProgress)
                     }
@@ -333,7 +333,7 @@ private struct WatchPlaylistCard: View {
                     Button(playback.isActivelyPlaying(episode) ? "Pause" : "Play") {
                         playback.togglePlayback(for: episode)
                     }
-                    .buttonStyle(WatchCapsuleButtonStyle(accent: .orange))
+                    .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
 
                     if store.isDownloaded(episode) {
                         Button("Remove") {
@@ -345,7 +345,7 @@ private struct WatchPlaylistCard: View {
                             store.downloadEpisode(episode)
                         }
                         .disabled(store.isDownloading(episode))
-                        .buttonStyle(WatchCapsuleButtonStyle(accent: .teal))
+                        .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
                     }
                 }
 
@@ -386,7 +386,7 @@ private struct WatchPlaylistCard: View {
                     if playback.isActivelyPlaying(episode) {
                         Image(systemName: "speaker.wave.2.fill")
                             .font(.caption2)
-                            .foregroundStyle(.teal)
+                            .foregroundStyle(Color.upNextAccent)
                             .accessibilityHidden(true)
                     }
                 }
@@ -445,7 +445,7 @@ private struct WatchInboxPage: View {
                             Button(store.isRefreshingInbox ? "Refreshing…" : "Refresh Inbox") {
                                 store.refreshInbox()
                             }
-                            .buttonStyle(WatchCapsuleButtonStyle(accent: .teal))
+                            .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
                             .disabled(store.isRefreshingInbox)
                         }
                     }
@@ -510,7 +510,7 @@ private struct WatchInboxCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                .buttonStyle(WatchCapsuleButtonStyle(accent: .orange))
+                .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
                 .accessibilityHint("Adds this episode to \(store.selectedPlaylistTitle) and downloads it when available")
             }
         }
@@ -541,7 +541,7 @@ private struct WatchEmptyState: View {
                     .multilineTextAlignment(.center)
 
                 Button("Sync Now", action: action)
-                    .buttonStyle(WatchCapsuleButtonStyle(accent: .teal))
+                    .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
             }
             .frame(maxWidth: .infinity)
         }

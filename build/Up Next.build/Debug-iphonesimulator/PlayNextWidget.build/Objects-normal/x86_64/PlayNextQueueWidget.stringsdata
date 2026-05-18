@@ -1,0 +1,72 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/PlayNextWidget/PlayNextQueueWidget.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Choose which playlist this widget should show.",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 111
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play Next Queue",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 302
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows episodes from a selected playlist.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 303
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add episodes in the app to see them here.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 464
+        }
+      }
+    ]
+  },
+  "version": 1
+}

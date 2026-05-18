@@ -1,6 +1,10 @@
 import SwiftUI
 import WidgetKit
 
+private extension Color {
+    static let upNextAccent = Color("AccentColor")
+}
+
 private struct WatchComplicationEntry: TimelineEntry {
     let date: Date
     let snapshot: WatchComplicationSnapshot
@@ -128,7 +132,7 @@ private struct WatchEpisodeProgressView: View {
                         .minimumScaleFactor(0.65)
                 }
                 .gaugeStyle(.accessoryCircular)
-                .tint(.orange)
+                .tint(.upNextAccent)
             case .accessoryCorner:
                 Gauge(value: snapshot.playbackProgress ?? 0) {
                     Image(systemName: snapshot.isPlaying ? "pause.fill" : "play.fill")
@@ -182,9 +186,11 @@ private struct WatchPlaylistRemainingView: View {
                     Image(systemName: "text.line.first.and.arrowtriangle.forward")
                         .font(.caption2)
                 }
+                .foregroundStyle(Color.upNextAccent)
                 .widgetAccentable()
             case .accessoryCorner:
                 Image(systemName: "text.line.first.and.arrowtriangle.forward")
+                    .foregroundStyle(Color.upNextAccent)
                     .widgetLabel {
                         Text("\(snapshot.remainingCount) left")
                     }
@@ -224,9 +230,10 @@ private struct WatchSyncStatusView: View {
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                 }
                 .gaugeStyle(.accessoryCircular)
-                .tint(.teal)
+                .tint(.upNextAccent)
             case .accessoryCorner:
                 Image(systemName: syncSymbol)
+                    .foregroundStyle(Color.upNextAccent)
                     .widgetLabel {
                         Text(syncLabel)
                     }
@@ -236,7 +243,7 @@ private struct WatchSyncStatusView: View {
                 HStack(spacing: 8) {
                     Image(systemName: syncSymbol)
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(.teal)
+                        .foregroundStyle(Color.upNextAccent)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(syncLabel)
                             .font(.headline)
@@ -269,7 +276,7 @@ private struct UpNextGlyph: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(.orange.gradient)
+                .fill(Color.upNextAccent.gradient)
             Image(systemName: "play.fill")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.white)
@@ -293,7 +300,8 @@ private struct CountBadge: View {
                 .foregroundStyle(.secondary)
         }
         .frame(width: 38, height: 38)
-        .background(.quaternary, in: Circle())
+        .background(Color.upNextAccent.opacity(0.22), in: Circle())
+        .foregroundStyle(Color.upNextAccent)
     }
 }
 

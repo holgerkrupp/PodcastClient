@@ -1,5 +1,10 @@
 import Foundation
+import CryptoKit
 import SwiftData
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 #if canImport(WidgetKit)
 import WidgetKit
@@ -12,6 +17,7 @@ struct PlayNextWidgetSnapshot: Codable {
         let subtitle: String?
         let podcast: String?
         let coverURL: URL?
+        let coverFileName: String?
         let isCurrent: Bool
     }
 
@@ -101,14 +107,14 @@ enum PlayNextWidgetSync {
                 continue
             }
             let episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
-            writeSnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL, playlistID: playlistID)
+            await writeSnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL, playlistID: playlistID)
         }
 
         // Keep the legacy file in sync so existing widgets continue to work.
         if let defaultPlaylistID,
            let playlistActor = try? PlaylistModelActor(modelContainer: resolvedContainer, playlistID: defaultPlaylistID) {
             let episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
-            writeLegacySnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL)
+            await writeLegacySnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL)
         }
 
         reloadWidgets()
@@ -153,39 +159,130 @@ enum PlayNextWidgetSync {
         return fallbackID
     }
 
-    private static func writeSnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?, playlistID: UUID) {
-        let snapshot = makeSnapshot(from: episodes, currentEpisodeURL: currentEpisodeURL)
+    private static func writeSnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?, playlistID: UUID) async {
+        let snapshot = await makeSnapshot(from: episodes, currentEpisodeURL: currentEpisodeURL)
         persist(snapshot, fileName: snapshotFileName(for: playlistID))
     }
 
-    private static func writeLegacySnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?) {
-        let snapshot = makeSnapshot(from: episodes, currentEpisodeURL: currentEpisodeURL)
+    private static func writeLegacySnapshot(episodes: [EpisodeSummary], currentEpisodeURL: URL?) async {
+        let snapshot = await makeSnapshot(from: episodes, currentEpisodeURL: currentEpisodeURL)
         persist(snapshot, fileName: legacyFileName)
     }
 
-    private static func makeSnapshot(from episodes: [EpisodeSummary], currentEpisodeURL: URL?) -> PlayNextWidgetSnapshot {
-        let items: [PlayNextWidgetSnapshot.Item] = episodes.compactMap { episode in
+    private static func makeSnapshot(from episodes: [EpisodeSummary], currentEpisodeURL: URL?) async -> PlayNextWidgetSnapshot {
+        struct SnapshotSource {
+            let episode: EpisodeSummary
+            let title: String
+            let episodeURL: URL
+        }
+
+        let sources: [SnapshotSource] = episodes.compactMap { episode in
             let title = episode.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard title.isEmpty == false,
                   let episodeURL = episode.url else { return nil }
 
-            return PlayNextWidgetSnapshot.Item(
-                id: episodeURL.absoluteString,
-                title: title,
-                subtitle: episode.desc?.trimmingCharacters(in: .whitespacesAndNewlines),
-                podcast: episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),
-                coverURL: episode.cover ?? episode.podcastCover,
-                isCurrent: episode.url == currentEpisodeURL
-            )
+            return SnapshotSource(episode: episode, title: title, episodeURL: episodeURL)
+        }
+
+        var items: [PlayNextWidgetSnapshot.Item] = []
+        items.reserveCapacity(min(sources.count, 12))
+
+        for source in sources.prefix(12) {
+            let coverURL = source.episode.cover ?? source.episode.podcastCover
+            let coverFileName = await ensureCoverThumbnail(for: coverURL)
+
+            items.append(PlayNextWidgetSnapshot.Item(
+                id: source.episodeURL.absoluteString,
+                title: source.title,
+                subtitle: source.episode.desc?.trimmingCharacters(in: .whitespacesAndNewlines),
+                podcast: source.episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),
+                coverURL: coverURL,
+                coverFileName: coverFileName,
+                isCurrent: source.episode.url == currentEpisodeURL
+            ))
         }
 
         return PlayNextWidgetSnapshot(
             generatedAt: .now,
-            totalItemCount: items.count,
-            currentIndex: items.firstIndex { $0.isCurrent },
-            items: Array(items.prefix(12))
+            totalItemCount: sources.count,
+            currentIndex: sources.firstIndex { $0.episode.url == currentEpisodeURL },
+            items: items
         )
     }
+
+    private static func ensureCoverThumbnail(for coverURL: URL?) async -> String? {
+        guard let coverURL,
+              let directoryURL = coverThumbnailDirectoryURL()
+        else { return nil }
+
+        let fileName = "\(coverThumbnailCacheKey(for: coverURL)).jpg"
+        let relativePath = "play-next-widget-covers/\(fileName)"
+        let fileURL = directoryURL.appendingPathComponent(fileName)
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            return relativePath
+        }
+
+        try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        #if canImport(UIKit)
+        guard let image = await ImageLoaderAndCache.loadUIImage(from: coverURL),
+              let data = await coverThumbnailData(from: image)
+        else { return nil }
+
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            return relativePath
+        } catch {
+            #if DEBUG
+            print("Failed to persist widget cover thumbnail: \(error)")
+            #endif
+            return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+
+    private static func coverThumbnailDirectoryURL() -> URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+            .appendingPathComponent("play-next-widget-covers", isDirectory: true)
+    }
+
+    private static func coverThumbnailCacheKey(for url: URL) -> String {
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    #if canImport(UIKit)
+    @MainActor
+    private static func coverThumbnailData(from image: UIImage) -> Data? {
+        let size = CGSize(width: 96, height: 96)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let thumbnail = renderer.image { context in
+            UIColor.systemBackground.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+
+            let sourceSize = image.size
+            guard sourceSize.width > 0, sourceSize.height > 0 else { return }
+
+            let scale = max(size.width / sourceSize.width, size.height / sourceSize.height)
+            let drawSize = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+            let drawOrigin = CGPoint(
+                x: (size.width - drawSize.width) / 2,
+                y: (size.height - drawSize.height) / 2
+            )
+            image.draw(in: CGRect(origin: drawOrigin, size: drawSize))
+        }
+
+        return thumbnail.jpegData(compressionQuality: 0.78)
+    }
+    #endif
 
     private static func snapshotFileName(for playlistID: UUID) -> String {
         "\(snapshotFilePrefix)\(playlistID.uuidString).json"

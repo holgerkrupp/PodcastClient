@@ -1,0 +1,2 @@
+Target dependency graph (1 target)
+Target 'PlayNextWidget' in project 'Up Next' (no dependencies)
