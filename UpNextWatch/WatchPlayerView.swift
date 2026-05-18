@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Color {
+    static let upNextAccent = Color("AccentColor")
+}
+
 enum WatchPlayerPresentationStyle {
     case page
     case pushed
@@ -151,7 +155,7 @@ struct WatchPlayerView: View {
                                 Button(playback.formattedPlaybackRate(for: episode)) {
                                     playback.cyclePlaybackRate(for: episode)
                                 }
-                                .buttonStyle(WatchCapsuleButtonStyle(accent: .teal))
+                                .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
                                 .accessibilityLabel("Playback speed")
                                 .accessibilityValue(playback.formattedPlaybackRate(for: episode))
                                 .accessibilityHint("Double tap to cycle playback speed")
@@ -265,7 +269,7 @@ struct WatchAppBackground: View {
             LinearGradient(
                 colors: [
                     Color(red: 0.08, green: 0.11, blue: 0.17),
-                    Color(red: 0.05, green: 0.19, blue: 0.22),
+                    Color.upNextAccent.opacity(0.34),
                     Color(red: 0.02, green: 0.04, blue: 0.08)
                 ],
                 startPoint: .topLeading,
@@ -273,13 +277,13 @@ struct WatchAppBackground: View {
             )
 
             Circle()
-                .fill(Color(red: 0.92, green: 0.53, blue: 0.21).opacity(0.22))
+                .fill(Color.upNextAccent.opacity(0.24))
                 .frame(width: 96, height: 96)
                 .blur(radius: 16)
                 .offset(x: 38, y: -58)
 
             Circle()
-                .fill(Color.teal.opacity(0.18))
+                .fill(Color.upNextAccent.opacity(0.16))
                 .frame(width: 112, height: 112)
                 .blur(radius: 20)
                 .offset(x: -44, y: 72)
@@ -307,7 +311,7 @@ struct WatchPanel<Content: View>: View {
          
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(Color.upNextAccent.opacity(0.18), lineWidth: 1)
             )
     }
 }
@@ -323,8 +327,8 @@ struct WatchArtworkView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.95, green: 0.56, blue: 0.23),
-                            Color(red: 0.09, green: 0.53, blue: 0.57)
+                            Color.upNextAccent,
+                            Color.upNextAccent.opacity(0.54)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -394,7 +398,7 @@ struct WatchProgressBar: View {
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [.accentColor, .teal],
+                            colors: [Color.upNextAccent, Color.upNextAccent.opacity(0.62)],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -433,7 +437,7 @@ private struct WatchPrimaryControlButton: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [.accentColor, .teal],
+                                colors: [Color.upNextAccent, Color.upNextAccent.opacity(0.66)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -473,7 +477,7 @@ private struct WatchSmallControlButton: View {
                 .frame(height: 34)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.1))
+                        .fill(Color.upNextAccent.opacity(0.18))
                 )
                 .foregroundStyle(.white)
         }

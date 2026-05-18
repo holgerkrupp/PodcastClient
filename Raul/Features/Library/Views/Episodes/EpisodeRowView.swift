@@ -141,9 +141,10 @@ struct EpisodeRowView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                 }
-
-                EpisodeControlView(episode: episode)
-                    .frame(minHeight: controlsHeight)
+                if Player.shared.currentEpisodeURL != episode.url {
+                    EpisodeControlView(episode: episode)
+                        .frame(minHeight: controlsHeight)
+                }
             }
             .padding(8)
             .background(

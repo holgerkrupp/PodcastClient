@@ -2,6 +2,14 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
+private extension Color {
+    static let upNextAccent = Color("AccentColor")
+}
+
 struct QueueSnapshot: Codable {
     struct Item: Codable, Identifiable {
         let id: String
@@ -9,6 +17,7 @@ struct QueueSnapshot: Codable {
         let subtitle: String?
         let podcast: String?
         let coverURL: URL?
+        let coverFileName: String?
         let isCurrent: Bool
     }
 
@@ -383,12 +392,12 @@ private struct PlayNextQueueWidgetView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(entry.playlistTitle)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.upNextAccent)
                 .lineLimit(1)
 
             if let first = entry.snapshot.upcomingItems.first ?? entry.snapshot.currentItem {
                 HStack(spacing: 6) {
-                    QueueCover(url: first.coverURL, size: 22)
+                    QueueCover(url: first.coverURL, fileName: first.coverFileName, size: 22)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(first.title)
@@ -417,10 +426,12 @@ private struct PlayNextQueueWidgetView: View {
         HStack(spacing: 6) {
             Image(systemName: "text.line.first.and.arrowtriangle.forward")
                 .font(.caption)
+                .foregroundStyle(Color.upNextAccent)
             Text(entry.playlistTitle)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .lineLimit(1)
+                .foregroundStyle(Color.upNextAccent)
             Spacer(minLength: 0)
             if let progressText {
                 Text(progressText)
@@ -429,7 +440,6 @@ private struct PlayNextQueueWidgetView: View {
                     .lineLimit(1)
             }
         }
-        .foregroundStyle(.secondary)
         .padding(.top, 1)
     }
 
@@ -470,17 +480,20 @@ private struct QueueLine: View {
     let style: Style
 
     var body: some View {
-        let _: AnyShapeStyle = style == .current
-            ? AnyShapeStyle(.tint)
-            : AnyShapeStyle(.secondary)
-
         HStack(alignment: .top, spacing: 8) {
-            QueueCover(url: item.coverURL, size: 26, fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward")
+            QueueCover(
+                url: item.coverURL,
+                fileName: item.coverFileName,
+                size: 26,
+                fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward",
+                fallbackColor: style == .current ? .upNextAccent : .secondary
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(.subheadline)
                     .fontWeight(style == .current ? .semibold : .regular)
+                    .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
                     .lineLimit(1)
 
                 if let supportingText = supportingText, supportingText.isEmpty == false {
@@ -505,15 +518,21 @@ private struct QueueLine: View {
 
 private struct QueueCover: View {
     let url: URL?
+    let fileName: String?
     let size: CGFloat
     var fallbackSystemName: String = "text.line.first.and.arrowtriangle.forward"
+    var fallbackColor: Color = .secondary
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(.quaternary)
 
-            if let url {
+            if let localImage {
+                localImage
+                    .resizable()
+                    .scaledToFill()
+            } else if let url {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
@@ -532,10 +551,25 @@ private struct QueueCover: View {
         .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 
+    private var localImage: Image? {
+        #if canImport(UIKit)
+        guard let fileName,
+              let url = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID)?
+                .appendingPathComponent(fileName),
+              let image = UIImage(contentsOfFile: url.path)
+        else { return nil }
+
+        return Image(uiImage: image)
+        #else
+        return nil
+        #endif
+    }
+
     private var fallbackIcon: some View {
         Image(systemName: fallbackSystemName)
             .font(.system(size: max(size * 0.48, 10), weight: .medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(fallbackColor)
     }
 }
 
