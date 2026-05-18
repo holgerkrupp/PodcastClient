@@ -7,7 +7,7 @@
         "key": "Transcript Error",
         "location": {
           "startingColumn": 17,
-          "startingLine": 298
+          "startingLine": 285
         }
       },
       {
@@ -143,7 +143,7 @@
         "key": "Episode debug metadata",
         "location": {
           "startingColumn": 45,
-          "startingLine": 248
+          "startingLine": 235
         }
       },
       {
@@ -151,7 +151,7 @@
         "key": "Share episode",
         "location": {
           "startingColumn": 49,
-          "startingLine": 257
+          "startingLine": 244
         }
       },
       {
@@ -159,7 +159,7 @@
         "key": "Opens the share sheet for this episode",
         "location": {
           "startingColumn": 48,
-          "startingLine": 258
+          "startingLine": 245
         }
       },
       {
@@ -167,7 +167,7 @@
         "key": "Open in Browser",
         "location": {
           "startingColumn": 39,
-          "startingLine": 234
+          "startingLine": 221
         }
       },
       {
@@ -175,7 +175,7 @@
         "key": "Share",
         "location": {
           "startingColumn": 39,
-          "startingLine": 253
+          "startingLine": 240
         }
       },
       {
@@ -183,7 +183,7 @@
         "key": "Share Episode",
         "location": {
           "startingColumn": 58,
-          "startingLine": 295
+          "startingLine": 282
         }
       },
       {
@@ -191,7 +191,7 @@
         "key": "OK",
         "location": {
           "startingColumn": 24,
-          "startingLine": 308
+          "startingLine": 295
         }
       },
       {
@@ -199,7 +199,7 @@
         "key": "Captions & Transcript",
         "location": {
           "startingColumn": 46,
-          "startingLine": 318
+          "startingLine": 305
         }
       },
       {
@@ -207,7 +207,7 @@
         "key": "Transcript Unavailable",
         "location": {
           "startingColumn": 48,
-          "startingLine": 321
+          "startingLine": 308
         }
       },
       {
@@ -215,7 +215,7 @@
         "key": "Captions processing",
         "location": {
           "startingColumn": 29,
-          "startingLine": 619
+          "startingLine": 606
         }
       },
       {
@@ -223,7 +223,7 @@
         "key": "Transcribing",
         "location": {
           "startingColumn": 26,
-          "startingLine": 594
+          "startingLine": 581
         }
       },
       {
@@ -231,7 +231,7 @@
         "key": "%@",
         "location": {
           "startingColumn": 30,
-          "startingLine": 598
+          "startingLine": 585
         }
       }
     ]

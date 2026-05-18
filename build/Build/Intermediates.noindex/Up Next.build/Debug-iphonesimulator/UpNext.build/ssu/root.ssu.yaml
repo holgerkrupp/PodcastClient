@@ -170,53 +170,6 @@ variables:
     - Week
     - Month
     - Year
-- name: PodcastShareShortcutDesign
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Podium Top 3
-    - Billboard Top 10
-    - Cover Grid
-    - Cover Collage
-    - Cover Cloud
-    - Playtime Bars
-    - Playtime Pie
-    - Stats Wrapped
-  - locale: en
-    synomyms:
-    - Podium Top 3
-    - Billboard Top 10
-    - Cover Grid
-    - Cover Collage
-    - Cover Cloud
-    - Playtime Bars
-    - Playtime Pie
-    - Stats Wrapped
-- name: PodcastShareShortcutTiming
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Aktueller Zeitraum
-    - Vorheriger Zeitraum
-  - locale: en
-    synomyms:
-    - Current Period
-    - Previous Period
-- name: PodcastShareShortcutAspectRatio
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Hochformat
-    - Quadratisch
-    - Querformat
-  - locale: en
-    synomyms:
-    - Portrait
-    - Square
-    - Landscape
 - name: PodcastShareShortcutBackground
   type: ssu/parameter
   definitions:
@@ -284,6 +237,53 @@ variables:
     - Lunar New Year
     - Midsummer
     - Halloween
+- name: PodcastShareShortcutAspectRatio
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Hochformat
+    - Quadratisch
+    - Querformat
+  - locale: en
+    synomyms:
+    - Portrait
+    - Square
+    - Landscape
+- name: PodcastShareShortcutTiming
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Aktueller Zeitraum
+    - Vorheriger Zeitraum
+  - locale: en
+    synomyms:
+    - Current Period
+    - Previous Period
+- name: PodcastShareShortcutDesign
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Podium Top 3
+    - Billboard Top 10
+    - Cover Grid
+    - Cover Collage
+    - Cover Cloud
+    - Playtime Bars
+    - Playtime Pie
+    - Stats Wrapped
+  - locale: en
+    synomyms:
+    - Podium Top 3
+    - Billboard Top 10
+    - Cover Grid
+    - Cover Collage
+    - Cover Cloud
+    - Playtime Bars
+    - Playtime Pie
+    - Stats Wrapped
 - name: +prefix
   type: ssu/expansion
   definitions:

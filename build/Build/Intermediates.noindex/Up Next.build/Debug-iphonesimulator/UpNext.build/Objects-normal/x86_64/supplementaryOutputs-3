@@ -1,17 +1,17 @@
 {
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Debug/Views/DebugMetadataView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DebugMetadataView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DebugMetadataView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DebugMetadataView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DebugMetadataView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DebugMetadataView.swiftdeps"
+  },
   "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/ViewModels/DownloadViewModel.swift" : {
     "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadViewModel.swiftconstvalues",
     "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadViewModel.d",
     "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadViewModel.dia",
     "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadViewModel.o",
     "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadViewModel.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Views/DownloadControllView.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadControllView.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadControllView.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadControllView.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadControllView.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadControllView.swiftdeps"
   },
   "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Views/DownloadedEpisodesView.swift" : {
     "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/DownloadedEpisodesView.swiftconstvalues",
@@ -47,40 +47,5 @@
     "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeControlView.dia",
     "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeControlView.o",
     "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeControlView.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/EpisodeCoverView.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeCoverView.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeCoverView.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeCoverView.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeCoverView.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeCoverView.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/EpisodeDetailView.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeDetailView.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeDetailView.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeDetailView.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeDetailView.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeDetailView.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/EpisodeRowView.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeRowView.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeRowView.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeRowView.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeRowView.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/EpisodeRowView.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Inbox/InboxEmptyView.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxEmptyView.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxEmptyView.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxEmptyView.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxEmptyView.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxEmptyView.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Inbox/InboxView.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxView.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxView.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxView.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxView.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/InboxView.swiftdeps"
   }
 }

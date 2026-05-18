@@ -41,46 +41,11 @@
     "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RaulApp.o",
     "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RaulApp.swiftdeps"
   },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Controllers/CarPlaySceneDelegate.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlaySceneDelegate.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlaySceneDelegate.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlaySceneDelegate.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlaySceneDelegate.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlaySceneDelegate.swiftdeps"
-  },
   "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Controllers/RemoteCommandCenter.swift" : {
     "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RemoteCommandCenter.swiftconstvalues",
     "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RemoteCommandCenter.d",
     "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RemoteCommandCenter.dia",
     "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RemoteCommandCenter.o",
     "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/RemoteCommandCenter.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Views/CarPlayChapterMarkList.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayChapterMarkList.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayChapterMarkList.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayChapterMarkList.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayChapterMarkList.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayChapterMarkList.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Views/CarPlayInbox.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayInbox.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayInbox.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayInbox.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayInbox.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayInbox.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Views/CarPlayNowPlaying.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayNowPlaying.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayNowPlaying.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayNowPlaying.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayNowPlaying.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/CarPlayNowPlaying.swiftdeps"
-  },
-  "/Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchSyncModels.swift" : {
-    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/WatchSyncModels.swiftconstvalues",
-    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/WatchSyncModels.d",
-    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/WatchSyncModels.dia",
-    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/WatchSyncModels.o",
-    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/x86_64/WatchSyncModels.swiftdeps"
   }
 }

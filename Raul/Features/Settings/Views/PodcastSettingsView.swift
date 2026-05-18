@@ -176,12 +176,15 @@ struct PodcastSettingsView: View {
 
                     if podcast == nil {
                         globalDefaultsSection(settings: effectiveSettings)
-                        appearanceSection
+                        podcastManagementSection
                         appControlsSection(settings: globalSettings)
+
+                        
                         liveNotificationsSection(settings: globalSettings, isGlobal: true)
                         transcriptionSection(settings: globalSettings)
                         sideloadingSection
-                        podcastManagementSection
+                        
+                        appearanceSection
                         integrationsSection
                         maintenanceSection
                         helpSection
@@ -1261,7 +1264,9 @@ private struct AlternateAppIcon: Identifiable, Hashable {
         AlternateAppIcon(id: "AppIcon-orange", iconName: "AppIcon-orange", title: "Orange", systemImage: "circle.fill", previewAssetName: "orange", previewColors: [.green, .orange]),
         AlternateAppIcon(id: "AppIcon-red", iconName: "AppIcon-red", title: "Red", systemImage: "circle.fill", previewAssetName: "red", previewColors: [.orange, .red]),
         AlternateAppIcon(id: "AppIcon-purple", iconName: "AppIcon-purple", title: "Purple", systemImage: "circle.fill", previewAssetName: "purple", previewColors: [.blue, .purple]),
-        AlternateAppIcon(id: "AppIcon-blue", iconName: "AppIcon-blue", title: "Blue", systemImage: "circle.fill", previewAssetName: "blue", previewColors: [.cyan, .blue])
+        AlternateAppIcon(id: "AppIcon-blue", iconName: "AppIcon-blue", title: "Blue", systemImage: "circle.fill", previewAssetName: "blue", previewColors: [.cyan, .blue]),
+        AlternateAppIcon(id: "AppIcon-pride", iconName: "AppIcon-pride", title: "Pride", systemImage: "circle.fill", previewAssetName: "pride", previewColors: [.red, .orange, .yellow, .green, .blue, .purple]),
+        AlternateAppIcon(id: "AppIcon-trans", iconName: "AppIcon-trans", title: "Trans", systemImage: "circle.fill", previewAssetName: "trans", previewColors: [.blue, .pink, .white, .pink, .blue])
     ]
 
     @MainActor

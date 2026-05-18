@@ -7,39 +7,7 @@
         "key": "%@",
         "location": {
           "startingColumn": 22,
-          "startingLine": 205
-        }
-      },
-      {
-        "comment": "",
-        "key": "Playback speed",
-        "location": {
-          "startingColumn": 53,
-          "startingLine": 61
-        }
-      },
-      {
-        "comment": "",
-        "key": "Speed",
-        "location": {
-          "startingColumn": 77,
-          "startingLine": 61
-        }
-      },
-      {
-        "comment": "",
-        "key": "Sleep timer",
-        "location": {
-          "startingColumn": 53,
-          "startingLine": 77
-        }
-      },
-      {
-        "comment": "",
-        "key": "Timer",
-        "location": {
-          "startingColumn": 74,
-          "startingLine": 77
+          "startingLine": 172
         }
       },
       {
@@ -47,7 +15,7 @@
         "key": "Settings",
         "location": {
           "startingColumn": 53,
-          "startingLine": 93
+          "startingLine": 60
         }
       },
       {
@@ -55,7 +23,7 @@
         "key": "All settings",
         "location": {
           "startingColumn": 71,
-          "startingLine": 93
+          "startingLine": 60
         }
       },
       {
@@ -76,42 +44,10 @@
       },
       {
         "comment": "",
-        "key": "Playback speed",
-        "location": {
-          "startingColumn": 41,
-          "startingLine": 59
-        }
-      },
-      {
-        "comment": "",
-        "key": "Opens playback speed controls",
-        "location": {
-          "startingColumn": 40,
-          "startingLine": 60
-        }
-      },
-      {
-        "comment": "",
-        "key": "Sleep timer",
-        "location": {
-          "startingColumn": 41,
-          "startingLine": 75
-        }
-      },
-      {
-        "comment": "",
-        "key": "Opens sleep timer controls",
-        "location": {
-          "startingColumn": 40,
-          "startingLine": 76
-        }
-      },
-      {
-        "comment": "",
         "key": "Settings",
         "location": {
           "startingColumn": 41,
-          "startingLine": 91
+          "startingLine": 58
         }
       },
       {
@@ -119,23 +55,7 @@
         "key": "Opens all settings",
         "location": {
           "startingColumn": 40,
-          "startingLine": 92
-        }
-      },
-      {
-        "comment": "",
-        "key": "Playback Speed",
-        "location": {
-          "startingColumn": 34,
-          "startingLine": 51
-        }
-      },
-      {
-        "comment": "",
-        "key": "Sleep Timer",
-        "location": {
-          "startingColumn": 34,
-          "startingLine": 67
+          "startingLine": 59
         }
       },
       {
@@ -143,7 +63,7 @@
         "key": "Settings",
         "location": {
           "startingColumn": 34,
-          "startingLine": 83
+          "startingLine": 50
         }
       },
       {
@@ -151,7 +71,7 @@
         "key": "Open captions",
         "location": {
           "startingColumn": 57,
-          "startingLine": 143
+          "startingLine": 110
         }
       },
       {
@@ -159,7 +79,7 @@
         "key": "Open transcript",
         "location": {
           "startingColumn": 80,
-          "startingLine": 143
+          "startingLine": 110
         }
       },
       {
@@ -167,7 +87,7 @@
         "key": "Open full transcript",
         "location": {
           "startingColumn": 45,
-          "startingLine": 141
+          "startingLine": 108
         }
       },
       {
@@ -175,7 +95,7 @@
         "key": "Opens the transcript list and jumps to the current playback line",
         "location": {
           "startingColumn": 44,
-          "startingLine": 142
+          "startingLine": 109
         }
       },
       {
@@ -183,7 +103,7 @@
         "key": "Hide captions",
         "location": {
           "startingColumn": 65,
-          "startingLine": 175
+          "startingLine": 142
         }
       },
       {
@@ -191,7 +111,7 @@
         "key": "Hide transcript",
         "location": {
           "startingColumn": 88,
-          "startingLine": 175
+          "startingLine": 142
         }
       },
       {
@@ -199,7 +119,7 @@
         "key": "Show captions",
         "location": {
           "startingColumn": 65,
-          "startingLine": 185
+          "startingLine": 152
         }
       },
       {
@@ -207,7 +127,7 @@
         "key": "Show transcript",
         "location": {
           "startingColumn": 88,
-          "startingLine": 185
+          "startingLine": 152
         }
       },
       {
@@ -215,7 +135,7 @@
         "key": "Open captions",
         "location": {
           "startingColumn": 61,
-          "startingLine": 197
+          "startingLine": 164
         }
       },
       {
@@ -223,7 +143,7 @@
         "key": "Open transcript",
         "location": {
           "startingColumn": 84,
-          "startingLine": 197
+          "startingLine": 164
         }
       },
       {
@@ -231,7 +151,7 @@
         "key": "Hide inline transcript",
         "location": {
           "startingColumn": 53,
-          "startingLine": 173
+          "startingLine": 140
         }
       },
       {
@@ -239,7 +159,7 @@
         "key": "Removes the transcript panel below the artwork",
         "location": {
           "startingColumn": 52,
-          "startingLine": 174
+          "startingLine": 141
         }
       },
       {
@@ -247,7 +167,7 @@
         "key": "Show inline transcript",
         "location": {
           "startingColumn": 53,
-          "startingLine": 183
+          "startingLine": 150
         }
       },
       {
@@ -255,7 +175,7 @@
         "key": "Shows the transcript panel below the artwork",
         "location": {
           "startingColumn": 52,
-          "startingLine": 184
+          "startingLine": 151
         }
       },
       {
@@ -263,7 +183,7 @@
         "key": "Open full transcript",
         "location": {
           "startingColumn": 49,
-          "startingLine": 195
+          "startingLine": 162
         }
       },
       {
@@ -271,7 +191,7 @@
         "key": "Opens the full transcript in a sheet",
         "location": {
           "startingColumn": 48,
-          "startingLine": 196
+          "startingLine": 163
         }
       },
       {
@@ -279,7 +199,7 @@
         "key": "Jump to max play position",
         "location": {
           "startingColumn": 49,
-          "startingLine": 239
+          "startingLine": 206
         }
       },
       {
@@ -287,7 +207,7 @@
         "key": "Jumps to the furthest point you have listened to in this episode",
         "location": {
           "startingColumn": 48,
-          "startingLine": 240
+          "startingLine": 207
         }
       },
       {
@@ -295,7 +215,71 @@
         "key": "max play position",
         "location": {
           "startingColumn": 42,
-          "startingLine": 226
+          "startingLine": 193
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback speed",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Speed",
+        "location": {
+          "startingColumn": 77,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sleep timer",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Timer",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback speed",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 231
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens playback speed controls",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sleep timer",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 249
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens sleep timer controls",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 251
         }
       },
       {
@@ -303,7 +287,7 @@
         "key": "Playback Speed",
         "location": {
           "startingColumn": 35,
-          "startingLine": 264
+          "startingLine": 297
         }
       },
       {
@@ -311,7 +295,7 @@
         "key": "Sleep Timer",
         "location": {
           "startingColumn": 35,
-          "startingLine": 282
+          "startingLine": 315
         }
       },
       {
@@ -319,7 +303,7 @@
         "key": "Stop after this episode",
         "location": {
           "startingColumn": 26,
-          "startingLine": 289
+          "startingLine": 322
         }
       },
       {
@@ -327,7 +311,7 @@
         "key": "Skip back",
         "location": {
           "startingColumn": 49,
-          "startingLine": 384
+          "startingLine": 417
         }
       },
       {
@@ -335,7 +319,7 @@
         "key": "Back %lld seconds",
         "location": {
           "startingColumn": 68,
-          "startingLine": 384
+          "startingLine": 417
         }
       },
       {
@@ -343,7 +327,7 @@
         "key": "Play",
         "location": {
           "startingColumn": 49,
-          "startingLine": 404
+          "startingLine": 437
         }
       },
       {
@@ -351,7 +335,7 @@
         "key": "Pause",
         "location": {
           "startingColumn": 63,
-          "startingLine": 404
+          "startingLine": 437
         }
       },
       {
@@ -359,7 +343,7 @@
         "key": "Playback",
         "location": {
           "startingColumn": 78,
-          "startingLine": 404
+          "startingLine": 437
         }
       },
       {
@@ -367,7 +351,7 @@
         "key": "Skip forward",
         "location": {
           "startingColumn": 49,
-          "startingLine": 422
+          "startingLine": 455
         }
       },
       {
@@ -375,7 +359,7 @@
         "key": "Forward %lld seconds",
         "location": {
           "startingColumn": 71,
-          "startingLine": 422
+          "startingLine": 455
         }
       },
       {
@@ -383,7 +367,7 @@
         "key": "Skip back %lld seconds",
         "location": {
           "startingColumn": 37,
-          "startingLine": 382
+          "startingLine": 415
         }
       },
       {
@@ -391,7 +375,7 @@
         "key": "Moves playback backward by %lld seconds",
         "location": {
           "startingColumn": 36,
-          "startingLine": 383
+          "startingLine": 416
         }
       },
       {
@@ -399,7 +383,7 @@
         "key": "Pause playback",
         "location": {
           "startingColumn": 56,
-          "startingLine": 402
+          "startingLine": 435
         }
       },
       {
@@ -407,7 +391,7 @@
         "key": "Start playback",
         "location": {
           "startingColumn": 75,
-          "startingLine": 402
+          "startingLine": 435
         }
       },
       {
@@ -415,7 +399,7 @@
         "key": "Pauses the current episode",
         "location": {
           "startingColumn": 55,
-          "startingLine": 403
+          "startingLine": 436
         }
       },
       {
@@ -423,7 +407,7 @@
         "key": "Starts playing the current episode",
         "location": {
           "startingColumn": 86,
-          "startingLine": 403
+          "startingLine": 436
         }
       },
       {
@@ -431,7 +415,7 @@
         "key": "Skip forward %lld seconds",
         "location": {
           "startingColumn": 37,
-          "startingLine": 420
+          "startingLine": 453
         }
       },
       {
@@ -439,7 +423,7 @@
         "key": "Moves playback forward by %lld seconds",
         "location": {
           "startingColumn": 36,
-          "startingLine": 421
+          "startingLine": 454
         }
       },
       {
@@ -447,7 +431,7 @@
         "key": "Skip Back",
         "location": {
           "startingColumn": 30,
-          "startingLine": 370
+          "startingLine": 403
         }
       },
       {
@@ -455,7 +439,7 @@
         "key": "Skip Forward",
         "location": {
           "startingColumn": 30,
-          "startingLine": 408
+          "startingLine": 441
         }
       },
       {
@@ -463,7 +447,7 @@
         "key": "Bookmark",
         "location": {
           "startingColumn": 53,
-          "startingLine": 478
+          "startingLine": 511
         }
       },
       {
@@ -471,7 +455,7 @@
         "key": "Add bookmark",
         "location": {
           "startingColumn": 71,
-          "startingLine": 478
+          "startingLine": 511
         }
       },
       {
@@ -479,7 +463,7 @@
         "key": "Share audio clip",
         "location": {
           "startingColumn": 23,
-          "startingLine": 441
+          "startingLine": 474
         }
       },
       {
@@ -487,7 +471,7 @@
         "key": "Create audio clip",
         "location": {
           "startingColumn": 37,
-          "startingLine": 442
+          "startingLine": 475
         }
       },
       {
@@ -495,7 +479,7 @@
         "key": "Opens clip export for the current episode",
         "location": {
           "startingColumn": 36,
-          "startingLine": 443
+          "startingLine": 476
         }
       },
       {
@@ -503,7 +487,7 @@
         "key": "Add bookmark",
         "location": {
           "startingColumn": 41,
-          "startingLine": 476
+          "startingLine": 509
         }
       },
       {
@@ -511,7 +495,7 @@
         "key": "Saves the current playback position as a bookmark",
         "location": {
           "startingColumn": 40,
-          "startingLine": 477
+          "startingLine": 510
         }
       },
       {
@@ -519,7 +503,7 @@
         "key": "Create audio clip",
         "location": {
           "startingColumn": 30,
-          "startingLine": 429
+          "startingLine": 462
         }
       },
       {
@@ -527,7 +511,7 @@
         "key": "Bookmark",
         "location": {
           "startingColumn": 34,
-          "startingLine": 465
+          "startingLine": 498
         }
       }
     ]

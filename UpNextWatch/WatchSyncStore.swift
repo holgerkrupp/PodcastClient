@@ -9,6 +9,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
     private static let snapshotDefaultsKey = "watch.sync.snapshot"
     private static let downloadedFilesDefaultsKey = "watch.sync.downloadedFiles"
     private static let storageSettingsDefaultsKey = "watch.sync.storageSettings"
+    private static let maximumAutomaticDirectDownloads = 3
 
     @Published private(set) var snapshot: WatchSyncSnapshot
     @Published private(set) var downloadedFiles: [String: String]
@@ -25,6 +26,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
     private var directDownloadSessions: [String: URLSession] = [:]
     private var directDownloadEpisodesByTask: [String: WatchSyncEpisode] = [:]
     private var automaticDirectDownloadEpisodeIDs: Set<String> = []
+    private var directDownloadFailedEpisodeIDs: Set<String> = []
     private var lastStorageReportSignature: String?
     private var lastStorageReportSentAt: Date = .distantPast
     private var lastComplicationSignature: String?
@@ -234,6 +236,15 @@ final class WatchSyncStore: NSObject, ObservableObject {
 
     func downloadEpisode(_ episode: WatchSyncEpisode) {
         guard !downloadingEpisodeIDs.contains(episode.episodeURL) else { return }
+        guard canDirectDownload(episode) else {
+            if episode.phoneHasLocalFile {
+                requestPhoneFileTransfer(for: episode)
+            } else {
+                errorMessage = "This episode does not expose a direct download URL yet."
+            }
+            return
+        }
+
         guard let remoteURL = episode.resolvedAudioURL else {
             errorMessage = "This episode does not expose a download URL yet."
             return
@@ -397,26 +408,65 @@ final class WatchSyncStore: NSObject, ObservableObject {
         persistSnapshot()
         enforceStorageLimit()
         sendStorageReport(force: true)
-        startDirectDownloadsForPendingPhoneTransfers()
+        startDirectDownloadsForPlaylist()
+        requestPhoneTransfersForUndownloadablePlaylist()
         updateComplicationSnapshot()
     }
 
-    private func startDirectDownloadsForPendingPhoneTransfers() {
-        for episodeID in snapshot.phoneTransferEpisodeIDs {
-            guard let episode = episode(withID: episodeID),
-                  episode.resolvedAudioURL != nil,
+    private func startDirectDownloadsForPlaylist() {
+        for episode in snapshot.playlist {
+            guard downloadingEpisodeIDs.count < Self.maximumAutomaticDirectDownloads else { break }
+            guard canDirectDownload(episode),
                   isDownloaded(episode) == false,
-                  downloadingEpisodeIDs.contains(episodeID) == false
+                  downloadingEpisodeIDs.contains(episode.episodeURL) == false,
+                  snapshot.phoneTransferEpisodeIDs.contains(episode.episodeURL) == false,
+                  directDownloadFailedEpisodeIDs.contains(episode.episodeURL) == false
             else {
                 continue
             }
 
             #if DEBUG
-            print("Watch sync starting direct URL download for \(episodeID)")
+            print("Watch sync starting direct URL download for \(episode.episodeURL)")
             #endif
-            automaticDirectDownloadEpisodeIDs.insert(episodeID)
+            automaticDirectDownloadEpisodeIDs.insert(episode.episodeURL)
             downloadEpisode(episode)
         }
+    }
+
+    private func requestPhoneTransfersForUndownloadablePlaylist() {
+        for episode in snapshot.playlist {
+            guard canDirectDownload(episode) == false,
+                  episode.phoneHasLocalFile,
+                  isDownloaded(episode) == false,
+                  downloadingEpisodeIDs.contains(episode.episodeURL) == false,
+                  snapshot.phoneTransferEpisodeIDs.contains(episode.episodeURL) == false
+            else {
+                continue
+            }
+
+            requestPhoneFileTransfer(for: episode)
+        }
+    }
+
+    private func canDirectDownload(_ episode: WatchSyncEpisode) -> Bool {
+        guard let scheme = episode.resolvedAudioURL?.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
+    private func requestPhoneFileTransfer(for episode: WatchSyncEpisode) {
+        guard episode.phoneHasLocalFile else { return }
+        send(
+            command: WatchCommand(
+                kind: .requestFileTransfer,
+                episodeURL: episode.episodeURL
+            ),
+            preferImmediateDelivery: true,
+            showErrors: false
+        )
+
+        #if DEBUG
+        print("Watch sync requested phone fallback transfer for \(episode.episodeURL)")
+        #endif
     }
 
     private func updateEpisodePlaybackPosition(for episodeID: String, position: Double) {
@@ -893,6 +943,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
         directDownloadSessions.removeValue(forKey: key)?.finishTasksAndInvalidate()
         directDownloadEpisodesByTask.removeValue(forKey: key)
         automaticDirectDownloadEpisodeIDs.remove(episode.episodeURL)
+        directDownloadFailedEpisodeIDs.remove(episode.episodeURL)
         downloadProgressByEpisodeID[episode.episodeURL] = 1
         finishDownload(from: temporaryURL, for: episode, prioritizing: episode.episodeURL)
         downloadProgressByEpisodeID.removeValue(forKey: episode.episodeURL)
@@ -910,7 +961,10 @@ final class WatchSyncStore: NSObject, ObservableObject {
         downloadingEpisodeIDs.remove(episode.episodeURL)
         downloadProgressByEpisodeID.removeValue(forKey: episode.episodeURL)
         let wasAutomaticFallback = automaticDirectDownloadEpisodeIDs.remove(episode.episodeURL) != nil
-        if wasAutomaticFallback == false {
+        directDownloadFailedEpisodeIDs.insert(episode.episodeURL)
+        if episode.phoneHasLocalFile {
+            requestPhoneFileTransfer(for: episode)
+        } else if wasAutomaticFallback == false {
             errorMessage = error.localizedDescription
         }
         #if DEBUG
@@ -922,6 +976,152 @@ final class WatchSyncStore: NSObject, ObservableObject {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 }
+
+#if DEBUG
+enum WatchPreviewData {
+    static let chapters = [
+        WatchSyncChapter(
+            id: "chapter-intro",
+            title: "Intro and setup",
+            start: 0,
+            duration: 180,
+            imageURL: nil
+        ),
+        WatchSyncChapter(
+            id: "chapter-main",
+            title: "The bigger story",
+            start: 180,
+            duration: 1_120,
+            imageURL: nil
+        ),
+        WatchSyncChapter(
+            id: "chapter-skip",
+            title: "Sponsor break",
+            start: 1_300,
+            duration: 90,
+            imageURL: nil,
+            shouldPlay: false
+        )
+    ]
+
+    static let playlist = [
+        WatchSyncEpisode(
+            episodeURL: "https://example.com/watch-preview-1",
+            audioURL: "https://example.com/watch-preview-1.mp3",
+            podcastFeedURL: "https://example.com/feed.xml",
+            title: "Designing a Tiny Podcast App",
+            subtitle: "A small tour through the watch experience.",
+            podcastTitle: "Preview FM",
+            publishDate: .now,
+            duration: 2_760,
+            imageURL: nil,
+            phoneHasLocalFile: true,
+            fileSize: 42_000_000,
+            playPosition: 840,
+            chapters: chapters,
+            playbackSettings: WatchPlaybackSettings(playbackSpeed: 1.5)
+        ),
+        WatchSyncEpisode(
+            episodeURL: "https://example.com/watch-preview-2",
+            audioURL: "https://example.com/watch-preview-2.mp3",
+            podcastFeedURL: "https://example.com/feed.xml",
+            title: "What Good Sync Feels Like",
+            subtitle: "A preview episode with active transfer progress.",
+            podcastTitle: "Preview FM",
+            publishDate: .now.addingTimeInterval(-86_400),
+            duration: 3_420,
+            imageURL: nil,
+            phoneHasLocalFile: false,
+            fileSize: 58_000_000,
+            playPosition: 0,
+            chapters: [],
+            playbackSettings: nil
+        )
+    ]
+
+    static let inbox = [
+        WatchSyncEpisode(
+            episodeURL: "https://example.com/watch-inbox-1",
+            audioURL: "https://example.com/watch-inbox-1.mp3",
+            podcastFeedURL: "https://example.com/feed.xml",
+            title: "Fresh from the Inbox",
+            subtitle: "Ready to queue from the watch.",
+            podcastTitle: "Preview FM",
+            publishDate: .now,
+            duration: 1_980,
+            imageURL: nil,
+            phoneHasLocalFile: false,
+            fileSize: 34_000_000
+        )
+    ]
+
+    static let playlists = [
+        WatchSyncPlaylist.defaultQueue,
+        WatchSyncPlaylist(
+            id: "listen-later",
+            title: "Listen Later",
+            symbolName: "clock",
+            isSelected: false,
+            isDefault: false
+        )
+    ]
+
+    static var snapshot: WatchSyncSnapshot {
+        WatchSyncSnapshot(
+            generatedAt: .now,
+            playlist: playlist,
+            inbox: inbox,
+            playlists: playlists,
+            selectedPlaylistTitle: WatchSyncPlaylist.defaultQueue.title,
+            skipBackSeconds: 15,
+            skipForwardSeconds: 30,
+            playbackSettings: WatchPlaybackSettings(playbackSpeed: 1.25),
+            phoneTransferEpisodeIDs: [playlist[1].episodeURL],
+            phoneTransferProgressByEpisodeID: [playlist[1].episodeURL: 0.42]
+        )
+    }
+}
+
+extension WatchSyncStore {
+    static func preview(
+        snapshot: WatchSyncSnapshot = WatchPreviewData.snapshot,
+        downloadedEpisodes: [WatchSyncEpisode] = [WatchPreviewData.playlist[0]],
+        usedStorageBytes: Int64 = 176 * 1_024 * 1_024
+    ) -> WatchSyncStore {
+        let store = WatchSyncStore()
+        store.snapshot = snapshot
+        store.downloadedFiles = [:]
+        store.downloadingEpisodeIDs = Set(snapshot.phoneTransferEpisodeIDs)
+        store.downloadProgressByEpisodeID = snapshot.phoneTransferProgressByEpisodeID
+        store.storageSettings = WatchStorageSettings(
+            maxStorageBytes: 512 * 1_024 * 1_024,
+            allowCellularDownloads: true
+        )
+
+        for episode in downloadedEpisodes {
+            let destinationURL = store.destinationURL(
+                forEpisodeID: episode.episodeURL,
+                sourceURL: episode.resolvedAudioURL ?? URL(fileURLWithPath: "preview.mp3")
+            )
+            try? store.fileManager.createDirectory(
+                at: store.downloadsDirectory,
+                withIntermediateDirectories: true
+            )
+            if store.fileManager.fileExists(atPath: destinationURL.path) == false {
+                store.fileManager.createFile(
+                    atPath: destinationURL.path,
+                    contents: Data(repeating: 0, count: 1_024)
+                )
+            }
+            store.downloadedFiles[episode.episodeURL] = destinationURL.lastPathComponent
+        }
+
+        store.usedStorageBytes = usedStorageBytes
+        store.updateComplicationSnapshot()
+        return store
+    }
+}
+#endif
 
 extension WatchSyncStore: WCSessionDelegate {
     #if os(iOS)

@@ -1,0 +1,176 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatchComplications/UpNextWatchComplications.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Launch Up Next from your watch face.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 32
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode Progress",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows the current episode and listening progress.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist Remaining",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows how many items remain in the selected playlist.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 56
+        }
+      },
+      {
+        "comment": "",
+        "key": "Watch Sync",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 67
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows inbox, downloads, and active transfer progress.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 68
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playing",
+        "location": {
+          "startingColumn": 51,
+          "startingLine": 105
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 105
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld left in %@",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 192
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld left",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 189
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue is empty",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 200
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next: %@",
+        "location": {
+          "startingColumn": 55,
+          "startingLine": 200
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue is empty",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 200
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 223
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld inbox / %lld on watch",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 244
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 288
+        }
+      }
+    ]
+  },
+  "version": 1
+}

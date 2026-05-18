@@ -3,6 +3,11 @@
   "tables" : {
     "AppShortcuts" : [
       {
+        "values" : [
+          "Bookmark this in ${applicationName}",
+          "Save a bookmark in ${applicationName}",
+          "Bookmark the current position in ${applicationName}"
+        ],
         "location" : {
           "startingColumn" : 0,
           "startingLine" : 146
@@ -12,94 +17,69 @@
             "parameterDisplayRepresentations" : {
 
             },
-            "title" : "Bookmark This",
             "actionIdentifier" : "BookmarkCurrentPlaybackIntent",
+            "title" : "Bookmark This",
             "index" : 0,
             "parameterTypes" : {
 
             }
           }
         ],
-        "key" : "Bookmark this in ${applicationName}",
-        "values" : [
-          "Bookmark this in ${applicationName}",
-          "Save a bookmark in ${applicationName}",
-          "Bookmark the current position in ${applicationName}"
-        ]
+        "key" : "Bookmark this in ${applicationName}"
       },
       {
-        "location" : {
-          "startingLine" : 146,
-          "startingColumn" : 0
-        },
-        "appShortcutMetadata" : [
-          {
-            "parameterTypes" : {
-
-            },
-            "parameterDisplayRepresentations" : {
-
-            },
-            "index" : 1,
-            "title" : "Resume Playback",
-            "actionIdentifier" : "ResumePlaybackIntent"
-          }
-        ],
-        "key" : "Resume playback in ${applicationName}",
         "values" : [
           "Resume playback in ${applicationName}",
           "Play last episode in ${applicationName}"
-        ]
-      },
-      {
+        ],
         "location" : {
           "startingColumn" : 0,
           "startingLine" : 146
         },
         "appShortcutMetadata" : [
           {
-            "actionIdentifier" : "PausePlaybackIntent",
-            "index" : 2,
+            "index" : 1,
+            "actionIdentifier" : "ResumePlaybackIntent",
+            "title" : "Resume Playback",
             "parameterTypes" : {
 
             },
-            "parameterDisplayRepresentations" : {
-
-            },
-            "title" : "Pause Playback"
-          }
-        ],
-        "key" : "Pause playback in ${applicationName}",
-        "values" : [
-          "Pause playback in ${applicationName}",
-          "Pause ${applicationName}"
-        ]
-      },
-      {
-        "location" : {
-          "startingLine" : 146,
-          "startingColumn" : 0
-        },
-        "appShortcutMetadata" : [
-          {
-            "index" : 3,
-            "actionIdentifier" : "SkipForwardIntent",
-            "parameterTypes" : {
-
-            },
-            "title" : "Skip Forward",
             "parameterDisplayRepresentations" : {
 
             }
           }
         ],
-        "key" : "Skip forward in ${applicationName}",
+        "key" : "Resume playback in ${applicationName}"
+      },
+      {
+        "values" : [
+          "Pause playback in ${applicationName}",
+          "Pause ${applicationName}"
+        ],
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "parameterDisplayRepresentations" : {
+
+            },
+            "actionIdentifier" : "PausePlaybackIntent",
+            "title" : "Pause Playback",
+            "index" : 2
+          }
+        ],
+        "key" : "Pause playback in ${applicationName}"
+      },
+      {
         "values" : [
           "Skip forward in ${applicationName}",
           "Jump ahead in ${applicationName}"
-        ]
-      },
-      {
+        ],
         "location" : {
           "startingLine" : 146,
           "startingColumn" : 0
@@ -109,138 +89,173 @@
             "parameterDisplayRepresentations" : {
 
             },
-            "index" : 4,
+            "title" : "Skip Forward",
+            "parameterTypes" : {
+
+            },
+            "index" : 3,
+            "actionIdentifier" : "SkipForwardIntent"
+          }
+        ],
+        "key" : "Skip forward in ${applicationName}"
+      },
+      {
+        "values" : [
+          "Skip back in ${applicationName}",
+          "Jump back in ${applicationName}"
+        ],
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "appShortcutMetadata" : [
+          {
+            "title" : "Skip Backward",
             "actionIdentifier" : "SkipBackwardIntent",
             "parameterTypes" : {
 
             },
-            "title" : "Skip Backward"
-          }
-        ],
-        "key" : "Skip back in ${applicationName}",
-        "values" : [
-          "Skip back in ${applicationName}",
-          "Jump back in ${applicationName}"
-        ]
-      },
-      {
-        "location" : {
-          "startingLine" : 146,
-          "startingColumn" : 0
-        },
-        "appShortcutMetadata" : [
-          {
             "parameterDisplayRepresentations" : {
 
             },
+            "index" : 4
+          }
+        ],
+        "key" : "Skip back in ${applicationName}"
+      },
+      {
+        "values" : [
+          "Play Up Next in ${applicationName}",
+          "Start Up Next in ${applicationName}"
+        ],
+        "location" : {
+          "startingColumn" : 0,
+          "startingLine" : 146
+        },
+        "appShortcutMetadata" : [
+          {
             "index" : 5,
             "parameterTypes" : {
 
             },
             "title" : "Play Up Next",
+            "parameterDisplayRepresentations" : {
+
+            },
             "actionIdentifier" : "PlayFirstUpNextIntent"
           }
         ],
-        "key" : "Play Up Next in ${applicationName}",
-        "values" : [
-          "Play Up Next in ${applicationName}",
-          "Start Up Next in ${applicationName}"
-        ]
+        "key" : "Play Up Next in ${applicationName}"
       },
       {
-        "location" : {
-          "startingLine" : 146,
-          "startingColumn" : 0
-        },
-        "appShortcutMetadata" : [
-          {
-            "actionIdentifier" : "PlayNextUpNextIntent",
-            "title" : "Play Next Up Next Episode",
-            "index" : 6,
-            "parameterDisplayRepresentations" : {
-
-            },
-            "parameterTypes" : {
-
-            }
-          }
-        ],
-        "key" : "Play next episode in ${applicationName}",
         "values" : [
           "Play next episode in ${applicationName}",
           "Play what's next in ${applicationName}"
-        ]
-      },
-      {
-        "location" : {
-          "startingColumn" : 0,
-          "startingLine" : 146
-        },
-        "appShortcutMetadata" : [
-          {
-            "title" : "Move Current To End",
-            "index" : 7,
-            "parameterTypes" : {
-
-            },
-            "actionIdentifier" : "MoveCurrentEpisodeToEndIntent",
-            "parameterDisplayRepresentations" : {
-
-            }
-          }
         ],
-        "key" : "Move this episode to the end in ${applicationName}",
-        "values" : [
-          "Move this episode to the end in ${applicationName}",
-          "Send current episode to the end in ${applicationName}"
-        ]
-      },
-      {
         "location" : {
           "startingLine" : 146,
           "startingColumn" : 0
         },
         "appShortcutMetadata" : [
           {
-            "actionIdentifier" : "RemoveCurrentFromUpNextIntent",
-            "index" : 8,
             "parameterTypes" : {
 
             },
+            "title" : "Play Next Up Next Episode",
+            "actionIdentifier" : "PlayNextUpNextIntent",
+            "index" : 6,
             "parameterDisplayRepresentations" : {
 
-            },
-            "title" : "Remove Current From Up Next"
+            }
           }
         ],
-        "key" : "Remove this from Up Next in ${applicationName}",
-        "values" : [
-          "Remove this from Up Next in ${applicationName}",
-          "Remove current episode in ${applicationName}"
-        ]
+        "key" : "Play next episode in ${applicationName}"
       },
       {
+        "values" : [
+          "Move this episode to the end in ${applicationName}",
+          "Send current episode to the end in ${applicationName}"
+        ],
         "location" : {
-          "startingColumn" : 0,
-          "startingLine" : 146
+          "startingLine" : 146,
+          "startingColumn" : 0
         },
         "appShortcutMetadata" : [
           {
-            "title" : "Generate Podcast Share Image",
-            "actionIdentifier" : "GeneratePodcastShareImageIntent",
-            "index" : 9,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "index" : 7,
+            "title" : "Move Current To End",
+            "actionIdentifier" : "MoveCurrentEpisodeToEndIntent",
             "parameterTypes" : {
-              "period" : "PodcastShareShortcutPeriod",
-              "aspectRatio" : "PodcastShareShortcutAspectRatio",
-              "design" : "PodcastShareShortcutDesign",
-              "timing" : "PodcastShareShortcutTiming",
-              "background" : "PodcastShareShortcutBackground"
+
+            }
+          }
+        ],
+        "key" : "Move this episode to the end in ${applicationName}"
+      },
+      {
+        "values" : [
+          "Remove this from Up Next in ${applicationName}",
+          "Remove current episode in ${applicationName}"
+        ],
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "appShortcutMetadata" : [
+          {
+            "index" : 8,
+            "title" : "Remove Current From Up Next",
+            "actionIdentifier" : "RemoveCurrentFromUpNextIntent",
+            "parameterTypes" : {
+
             },
             "parameterDisplayRepresentations" : {
+
+            }
+          }
+        ],
+        "key" : "Remove this from Up Next in ${applicationName}"
+      },
+      {
+        "values" : [
+          "Generate podcast share image in ${applicationName}",
+          "Create podcast stats image in ${applicationName}"
+        ],
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "appShortcutMetadata" : [
+          {
+            "actionIdentifier" : "GeneratePodcastShareImageIntent",
+            "parameterDisplayRepresentations" : {
+              "PodcastShareShortcutTiming" : [
+                "Current Period",
+                "Previous Period"
+              ],
               "PodcastShareShortcutAspectRatio" : [
                 "Portrait",
                 "Square",
                 "Landscape"
+              ],
+              "PodcastShareShortcutDesign" : [
+                "Podium Top 3",
+                "Billboard Top 10",
+                "Cover Grid",
+                "Cover Collage",
+                "Cover Cloud",
+                "Playtime Bars",
+                "Playtime Pie",
+                "Stats Wrapped"
+              ],
+              "PodcastShareShortcutPeriod" : [
+                "Day",
+                "Week",
+                "Month",
+                "Year"
               ],
               "PodcastShareShortcutBackground" : [
                 "Automatic for Period",
@@ -273,35 +288,20 @@
                 "Lunar New Year",
                 "Midsummer",
                 "Halloween"
-              ],
-              "PodcastShareShortcutDesign" : [
-                "Podium Top 3",
-                "Billboard Top 10",
-                "Cover Grid",
-                "Cover Collage",
-                "Cover Cloud",
-                "Playtime Bars",
-                "Playtime Pie",
-                "Stats Wrapped"
-              ],
-              "PodcastShareShortcutPeriod" : [
-                "Day",
-                "Week",
-                "Month",
-                "Year"
-              ],
-              "PodcastShareShortcutTiming" : [
-                "Current Period",
-                "Previous Period"
               ]
+            },
+            "title" : "Generate Podcast Share Image",
+            "index" : 9,
+            "parameterTypes" : {
+              "design" : "PodcastShareShortcutDesign",
+              "period" : "PodcastShareShortcutPeriod",
+              "timing" : "PodcastShareShortcutTiming",
+              "background" : "PodcastShareShortcutBackground",
+              "aspectRatio" : "PodcastShareShortcutAspectRatio"
             }
           }
         ],
-        "key" : "Generate podcast share image in ${applicationName}",
-        "values" : [
-          "Generate podcast share image in ${applicationName}",
-          "Create podcast stats image in ${applicationName}"
-        ]
+        "key" : "Generate podcast share image in ${applicationName}"
       }
     ]
   },

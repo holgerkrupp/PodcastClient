@@ -75,26 +75,26 @@ struct EpisodeDetailView: View {
                     CoverImageView(episode: episode)
                         .frame(width: artworkSize, height: artworkSize)
                         .accessibilityHidden(true)
-                    
-                    HStack{
-                        if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                            Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundColor(.primary)
-                        } else {
-                            Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundColor(.primary)
-                        }
-                        Spacer()
-                        Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.primary)
+                  
+                    EpisodeProgressView(episode: episode)
+                        .padding()
+                        
+                    if episode.source != .sideLoaded {
+                        DownloadControllView(episode: episode, showDelete: false)
+                            .symbolRenderingMode(.hierarchical)
+                            .padding(8)
+                            .foregroundColor(.accent)
+                            
                     }
-                    .padding()
+                    
+                    if Player.shared.currentEpisodeURL != episode.url {
+                        EpisodeControlView(episode: episode)
+                            .modelContainer(context.container)
+                            .frame(height: 50)
+                            .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                    }
+                    
+                    Spacer(minLength: 16)
                     
                     if episode.funding.count > 0 {
                         HStack{
@@ -213,20 +213,7 @@ struct EpisodeDetailView: View {
                     
                     Spacer(minLength: 10)
                     
-                    if episode.source != .sideLoaded {
-                        DownloadControllView(episode: episode, showDelete: false)
-                            .symbolRenderingMode(.hierarchical)
-                            .padding(8)
-                            .foregroundColor(.accent)
-                            .labelStyle(.iconOnly)
-                    }
-                    
-                    if Player.shared.currentEpisodeURL != episode.url {
-                        EpisodeControlView(episode: episode)
-                            .modelContainer(context.container)
-                            .frame(height: 50)
-                            .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                    }
+
                     
                     HStack{
                         if let episodeLink = episode.link {

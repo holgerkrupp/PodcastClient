@@ -39,7 +39,7 @@
         "key": "%@",
         "location": {
           "startingColumn": 22,
-          "startingLine": 95
+          "startingLine": 98
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Continues the paused download",
         "location": {
           "startingColumn": 48,
-          "startingLine": 103
+          "startingLine": 106
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "Pauses the active download",
         "location": {
           "startingColumn": 48,
-          "startingLine": 109
+          "startingLine": 112
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "Stops and removes this download",
         "location": {
           "startingColumn": 44,
-          "startingLine": 120
+          "startingLine": 123
         }
       },
       {
@@ -71,7 +71,7 @@
         "key": "Resume",
         "location": {
           "startingColumn": 39,
-          "startingLine": 100
+          "startingLine": 103
         }
       },
       {
@@ -79,7 +79,7 @@
         "key": "Pause",
         "location": {
           "startingColumn": 39,
-          "startingLine": 106
+          "startingLine": 109
         }
       },
       {
@@ -87,7 +87,7 @@
         "key": "Cancel",
         "location": {
           "startingColumn": 35,
-          "startingLine": 116
+          "startingLine": 119
         }
       }
     ]

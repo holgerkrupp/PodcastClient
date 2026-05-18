@@ -260,13 +260,20 @@ class EpisodeDownloadStatus{
     }
     
     var playProgress: Double {
-       
-        guard metaData?.playPosition != nil else { return 0.0 }
-        guard duration != 0.0 else { return 0.0 }
-        guard duration != nil else { return 0.0 }
-        let progress = Double(metaData?.playPosition ?? 0.0) / Double(duration ?? 1)
-        
-        return  progress > 1 ? 1 : progress
+        get{
+            guard metaData?.playPosition != nil else { return 0.0 }
+            guard duration != 0.0 else { return 0.0 }
+            guard duration != nil else { return 0.0 }
+            let progress = Double(metaData?.playPosition ?? 0.0) / Double(duration ?? 1)
+            
+            return  progress > 1 ? 1 : progress
+        }
+        set{
+            guard let duration, duration != 0 else { return }
+
+            let clampedProgress = min(max(newValue, 0.0), 1.0)
+            metaData?.playPosition = clampedProgress * duration
+        }
     }
     
     var maxPlayProgress: Double {

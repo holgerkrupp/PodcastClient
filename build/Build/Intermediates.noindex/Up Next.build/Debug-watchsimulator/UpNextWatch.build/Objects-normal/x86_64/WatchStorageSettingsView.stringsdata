@@ -7,7 +7,7 @@
         "key": "Settings",
         "location": {
           "startingColumn": 26,
-          "startingLine": 46
+          "startingLine": 50
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Storage",
         "location": {
           "startingColumn": 21,
-          "startingLine": 13
+          "startingLine": 17
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Network",
         "location": {
           "startingColumn": 21,
-          "startingLine": 36
+          "startingLine": 40
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Currently using %@.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 27
+          "startingLine": 31
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "When the limit is full, Up Next still shows the episode but asks before downloading it.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 31
+          "startingLine": 35
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Limit",
         "location": {
           "startingColumn": 21,
-          "startingLine": 15
+          "startingLine": 19
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "Allow Cellular Downloads",
         "location": {
           "startingColumn": 21,
-          "startingLine": 38
+          "startingLine": 42
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "Done",
         "location": {
           "startingColumn": 24,
-          "startingLine": 49
+          "startingLine": 53
         }
       }
     ]

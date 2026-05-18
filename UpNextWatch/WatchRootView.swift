@@ -1,4 +1,5 @@
 import SwiftUI
+import DeviceInfo
 
 struct WatchRootView: View {
     private enum WatchPage: Hashable {
@@ -204,10 +205,11 @@ private struct WatchStorageStatusCard: View {
                 }
 
                 WatchProgressBar(progress: storageProgress)
-
+/*
                 Text("Downloads prefer Wi-Fi and stay within your watch storage limit.")
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.78))
+ */
             }
         }
     }
@@ -228,8 +230,7 @@ private struct WatchNowPlayingHero: View {
                 HStack(spacing: 10) {
                     WatchArtworkView(
                         url: playback.artworkURL(for: episode),
-                        title: episode.title,
-                        icon: "waveform"
+                        title: episode.title
                     )
                     .frame(width: 56, height: 56)
                     .accessibilityHidden(true)
@@ -271,6 +272,7 @@ private struct WatchNowPlayingHero: View {
 private struct WatchPlaylistCard: View {
     @EnvironmentObject private var store: WatchSyncStore
     @EnvironmentObject private var playback: WatchPlaybackController
+    @Environment(\.deviceUIStyle) var style
 
     let episode: WatchSyncEpisode
     let showNowPlaying: () -> Void
@@ -281,6 +283,7 @@ private struct WatchPlaylistCard: View {
                 if playback.isCurrentEpisode(episode) {
                     Button(action: showNowPlaying) {
                         episodeHeader
+                            
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Now playing \(episode.title)")
@@ -347,7 +350,7 @@ private struct WatchPlaylistCard: View {
                 }
 
                 if episode.phoneHasLocalFile && store.isDownloaded(episode) == false {
-                    Text("The iPhone already has this file, so it should sync here when space opens up.")
+                    Text("Wait for episode to sync")
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.74))
                 }
@@ -367,8 +370,7 @@ private struct WatchPlaylistCard: View {
         HStack(spacing: 10) {
             WatchArtworkView(
                 url: playback.artworkURL(for: episode),
-                title: episode.title,
-                icon: store.isDownloaded(episode) ? "arrow.down.circle.fill" : "play.circle.fill"
+                title: episode.title
             )
             .frame(width: 54, height: 54)
             .accessibilityHidden(true)
@@ -397,6 +399,15 @@ private struct WatchPlaylistCard: View {
                 }
 
                 HStack(spacing: 6) {
+                    
+                    if store.isDownloaded(episode) {
+                        Image(systemName: style.sfSymbolName)
+                            .accessibilityLabel("Downloaded")
+                    } else {
+                        Image(systemName: "cloud")
+                            .accessibilityLabel("Not downloaded")
+                    }
+                    /*
                     WatchInfoPill(
                         text: store.isDownloaded(episode) ? "On Watch" : (episode.phoneHasLocalFile ? "Sync Ready" : "Stream"),
                         accent: store.isDownloaded(episode) ? .teal : .orange
@@ -405,6 +416,7 @@ private struct WatchPlaylistCard: View {
                     if let chapter = currentChapter {
                         WatchInfoPill(text: chapter.title, accent: .white.opacity(0.22))
                     }
+ */
                 }
             }
         }
@@ -470,8 +482,7 @@ private struct WatchInboxCard: View {
                 HStack(spacing: 10) {
                     WatchArtworkView(
                         url: episode.resolvedImageURL,
-                        title: episode.title,
-                        icon: "tray.and.arrow.down.fill"
+                        title: episode.title
                     )
                     .frame(width: 52, height: 52)
                     .accessibilityHidden(true)
@@ -544,6 +555,8 @@ private struct WatchInfoPill: View {
     var body: some View {
         Text(text)
             .font(.caption2)
+            .scaledToFit()
+            .minimumScaleFactor(0.01)
             .foregroundStyle(.white.opacity(0.92))
             .lineLimit(1)
             .padding(.horizontal, 8)
@@ -552,5 +565,58 @@ private struct WatchInfoPill: View {
                 Capsule()
                     .fill(accent)
             )
+            
+    }
+    
+    
+}
+
+extension DeviceUIStyle {
+    var sfSymbolName: String {
+        switch self {
+        case .iphoneHomeButton: return "iphone.gen1"
+        case .iphoneNotch: return "iphone.gen2"
+        case .iphoneDynamicIsland: return "iphone.gen3"
+        case .ipadHomeButton: return "ipad.gen1"
+        case .ipadNoHomeButton: return "ipad.gen2"
+        case .appleWatch: return "applewatch"
+        case .visionPro: return "visionpro"
+        case .macLaptop: return "macbook"
+        case .macMini: return "macmini"
+        case .macPro: return "macpro.gen3"
+        case .macDesktop: return "desktopcomputer"
+        @unknown default: return "questionmark.square.dashed"
+        }
     }
 }
+
+#if DEBUG
+#Preview("Watch Root") {
+    let store = WatchSyncStore.preview()
+    let playback = WatchPlaybackController()
+    playback.attach(store: store)
+
+    return WatchRootView()
+        .environmentObject(store)
+        .environmentObject(playback)
+}
+
+#Preview("Watch Root Empty") {
+    let store = WatchSyncStore.preview(
+        snapshot: WatchSyncSnapshot(
+            generatedAt: .now,
+            playlist: [],
+            inbox: [],
+            playlists: WatchPreviewData.playlists
+        ),
+        downloadedEpisodes: [],
+        usedStorageBytes: 0
+    )
+    let playback = WatchPlaybackController()
+    playback.attach(store: store)
+
+    return WatchRootView()
+        .environmentObject(store)
+        .environmentObject(playback)
+}
+#endif

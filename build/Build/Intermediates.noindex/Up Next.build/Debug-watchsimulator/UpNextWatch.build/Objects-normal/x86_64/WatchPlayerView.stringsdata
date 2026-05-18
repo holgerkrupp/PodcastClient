@@ -15,7 +15,7 @@
         "key": "Playback speed",
         "location": {
           "startingColumn": 53,
-          "startingLine": 164
+          "startingLine": 155
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Double tap to cycle playback speed",
         "location": {
           "startingColumn": 52,
-          "startingLine": 166
+          "startingLine": 157
         }
       },
       {
@@ -31,23 +31,63 @@
         "key": "Chapters",
         "location": {
           "startingColumn": 42,
-          "startingLine": 173
+          "startingLine": 186
         }
       },
       {
         "comment": "",
         "key": "Play chapter %@",
         "location": {
-          "startingColumn": 61,
-          "startingLine": 204
+          "startingColumn": 65,
+          "startingLine": 233
         }
       },
       {
         "comment": "",
         "key": "Starts playback at %@",
         "location": {
+          "startingColumn": 64,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter",
+        "location": {
           "startingColumn": 60,
-          "startingLine": 205
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter %@",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 218
+        }
+      },
+      {
+        "comment": "",
+        "key": "On",
+        "location": {
+          "startingColumn": 94,
+          "startingLine": 219
+        }
+      },
+      {
+        "comment": "",
+        "key": "Off",
+        "location": {
+          "startingColumn": 101,
+          "startingLine": 219
+        }
+      },
+      {
+        "comment": "",
+        "key": "Turn off to skip this chapter automatically",
+        "location": {
+          "startingColumn": 72,
+          "startingLine": 220
         }
       },
       {
@@ -55,7 +95,15 @@
         "key": "Episode is no longer available here.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 219
+          "startingLine": 251
+        }
+      },
+      {
+        "comment": "",
+        "key": "Progress",
+        "location": {
+          "startingColumn": 1,
+          "startingLine": 540
         }
       }
     ]

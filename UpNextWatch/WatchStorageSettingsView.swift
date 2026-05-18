@@ -4,9 +4,13 @@ struct WatchStorageSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: WatchSyncStore
 
-    private let storageOptions: [Int64] = [
+  /*  private let storageOptions: [Int64] = [
         128, 256, 512, 1024, 2048
     ].map { Int64($0) * 1_024 * 1_024 }
+   */
+    private let storageOptions: [Int64] = [
+        100000000, 200000000, 500000000, 1000000000, 2000000000
+    ]
 
     var body: some View {
         Form {
@@ -53,3 +57,12 @@ struct WatchStorageSettingsView: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Watch Storage Settings") {
+    NavigationStack {
+        WatchStorageSettingsView()
+            .environmentObject(WatchSyncStore.preview())
+    }
+}
+#endif

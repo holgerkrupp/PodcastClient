@@ -42,39 +42,6 @@ struct PlayerControllView: View {
                         .accessibilityHint("Choose an audio output device")
                         
                     Spacer()
-                    
-
-                    Button {
-                        showPlaybackSpeedSettings = true
-                    } label: {
-                        Label {
-                            Text("Playback Speed")
-                        } icon: {
-                            Image(systemName: "gauge.with.dots.needle.50percent")
-                                .tint(.primary)
-                        }
-                        .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Playback speed")
-                    .accessibilityHint("Opens playback speed controls")
-                    .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
-
-                    Button {
-                        showSleepTimerSettings = true
-                    } label: {
-                        Label {
-                            Text("Sleep Timer")
-                        } icon: {
-                            Image(systemName: "zzz")
-                                .tint(player.remainingTime == nil && player.stopAfterEpisode == false ? .primary : .accent)
-                        }
-                        .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Sleep timer")
-                    .accessibilityHint("Opens sleep timer controls")
-                    .accessibilityInputLabels([Text("Sleep timer"), Text("Timer")])
 
                     Button {
                         showSettings = true
@@ -246,7 +213,45 @@ struct PlayerControllView: View {
                             .font(.caption)
                     }
                 }
-                
+                HStack{
+
+                    
+
+                    Button {
+                        showPlaybackSpeedSettings = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "gauge.with.dots.needle.50percent")
+                                .tint(.primary)
+                            Text(playbackSpeedButtonTitle)
+                                .monospacedDigit()
+                        }
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Playback speed")
+                    .accessibilityValue(playbackSpeedButtonTitle)
+                    .accessibilityHint("Opens playback speed controls")
+                    .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
+
+                    Spacer()
+                    
+                    Button {
+                        showSleepTimerSettings = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "zzz")
+                                .tint(player.remainingTime == nil && player.stopAfterEpisode == false ? .primary : .accent)
+                            Text(sleepTimerButtonTitle)
+                                .monospacedDigit()
+                        }
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Sleep timer")
+                    .accessibilityValue(sleepTimerAccessibilityValue)
+                    .accessibilityHint("Opens sleep timer controls")
+                    .accessibilityInputLabels([Text("Sleep timer"), Text("Timer")])
+                }
+                .frame(height: 50)
                 
                 if showPrimaryTransportControls {
                     PlayerPrimaryTransportControlsView(includeBookmark: true)
@@ -257,6 +262,34 @@ struct PlayerControllView: View {
             }
             .padding()
         }
+    }
+
+    private var playbackSpeedButtonTitle: String {
+        player.playbackRate.formatted(.number.precision(.fractionLength(0...1))) + "x"
+    }
+
+    private var sleepTimerButtonTitle: String {
+        if let remaining = player.remainingTime {
+            return Duration.seconds(remaining).formatted(.units(width: .narrow))
+        }
+
+        if player.stopAfterEpisode {
+            return "Episode"
+        }
+
+        return ""
+    }
+
+    private var sleepTimerAccessibilityValue: String {
+        if let remaining = player.remainingTime {
+            return Duration.seconds(remaining).formatted(.units(width: .wide))
+        }
+
+        if player.stopAfterEpisode {
+            return "Stop after this episode"
+        }
+
+        return "Off"
     }
 
     private var playbackSpeedSheet: some View {

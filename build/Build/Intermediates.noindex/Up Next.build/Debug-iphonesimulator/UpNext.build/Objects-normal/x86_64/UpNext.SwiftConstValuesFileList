@@ -1,4 +1,3 @@
-/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/WatchSyncModels.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/AnimatedLaunchView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/AppDelegate.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/ContentView.swiftconstvalues
@@ -31,6 +30,7 @@
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/EpisodeControlView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/EpisodeCoverView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/EpisodeDetailView.swiftconstvalues
+/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/EpisodeProgressView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/EpisodeRowView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/InboxEmptyView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/InboxView.swiftconstvalues
@@ -65,7 +65,6 @@
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/WeekListeningHeatMapView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PlaylistEmptyView.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PlaylistView.swiftconstvalues
-/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PlayerIntentsExtension.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PlaylistViewModel.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PodcastListViewModel.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PeopleView.swiftconstvalues
@@ -135,5 +134,8 @@
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/CodableArray.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/Debouce.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/CircularProgressView.swiftconstvalues
+/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/WatchComplicationSnapshot.swiftconstvalues
+/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/PlayerIntentsExtension.swiftconstvalues
+/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/WatchSyncModels.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up\ Next.build/Debug-iphonesimulator/UpNext.build/Objects-normal/arm64/GeneratedStringSymbols_Localizable.swiftconstvalues

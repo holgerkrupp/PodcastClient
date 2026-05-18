@@ -49,42 +49,33 @@ struct WatchPlayerView: View {
             if let episode {
                 ScrollView {
                     VStack(spacing: 12) {
-                        WatchArtworkView(
-                            url: playback.artworkURL(for: episode),
-                            title: episode.title,
-                            icon: playback.isActivelyPlaying(episode) ? "waveform" : "play.circle.fill"
-                        )
-                        .frame(maxWidth: .infinity)
-                        .accessibilityHidden(true)
-
-                        VStack(spacing: 4) {
+                        HStack{
+                            WatchArtworkView(
+                                url: playback.artworkURL(for: episode),
+                                title: ""
+                            )
+                            .frame(maxWidth: 30)
+                            .accessibilityHidden(true)
+                            
                             Text(episode.title)
                                 .font(.headline)
                                 .multilineTextAlignment(.center)
                                 .foregroundStyle(.white)
-
-                            if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
-                                Text(podcastTitle)
-                                    .font(.footnote)
-                                    .foregroundStyle(.white.opacity(0.84))
-                                    .multilineTextAlignment(.center)
-                            }
-
-                            if let activeChapter {
-                                Text(activeChapter.title)
-                                    .font(.caption2)
-                                    .foregroundStyle(.white.opacity(0.92))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color.white.opacity(0.14))
-                                    )
-                            }
                         }
-
-                        WatchPanel {
+                        if let activeChapter {
+                            Text(activeChapter.title)
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.92))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.14))
+                                )
+                        }
+                        
                             VStack(spacing: 8) {
+                                Spacer()
                                 WatchProgressBar(progress: playback.isCurrentEpisode(episode) ? playback.progress : (episode.playbackProgress ?? 0))
 
                                 HStack {
@@ -95,7 +86,7 @@ struct WatchPlayerView: View {
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.white.opacity(0.84))
                             }
-                        }
+                        
 
                         VStack(spacing: 8) {
                             HStack(spacing: 8) {
@@ -166,6 +157,28 @@ struct WatchPlayerView: View {
                                 .accessibilityHint("Double tap to cycle playback speed")
                             }
                         }
+                        
+                        WatchArtworkView(
+                            url: playback.artworkURL(for: episode),
+                            title: ""
+                        )
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
+
+                        VStack(spacing: 4) {
+
+
+                            if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
+                                Text(podcastTitle)
+                                    .font(.footnote)
+                                    .foregroundStyle(.white.opacity(0.84))
+                                    .multilineTextAlignment(.center)
+                            }
+
+
+                        }
+
+
 
                         if episode.chapters.isEmpty == false {
                             WatchPanel {
@@ -192,12 +205,27 @@ struct WatchPlayerView: View {
                                                             .foregroundStyle(.white.opacity(chapter.shouldPlay ? 0.78 : 0.48))
                                                     }
 
+                                                    
+                                                    Toggle("Play chapter", isOn: Binding(
+                                                        get: { chapter.shouldPlay == true },
+                                                        set: { newValue in
+                                                            store.setChapterShouldPlay(newValue == false, chapterID: chapter.id, episodeID: episode.episodeURL)
+                                                        }
+                                                    ))
+                                                    .font(.caption2)
+                                                    .labelsHidden()
+                                                    .toggleStyle(.switch)
+                                                    .accessibilityLabel("Play chapter \(chapter.title)")
+                                                    .accessibilityValue(chapter.shouldPlay ? "On" : "Off")
+                                                    .accessibilityHint("Turn off to skip this chapter automatically")
+                                                    /*
                                                     if activeChapter?.id == chapter.id {
                                                         Image(systemName: "dot.radiowaves.left.and.right")
                                                             .font(.caption2)
                                                             .foregroundStyle(.teal)
                                                             .accessibilityHidden(true)
                                                     }
+                                                     */
                                                 }
                                                 .padding(.vertical, 2)
                                             }
@@ -205,17 +233,7 @@ struct WatchPlayerView: View {
                                             .accessibilityLabel("Play chapter \(chapter.title)")
                                             .accessibilityHint("Starts playback at \(watchPlaybackTime(chapter.start))")
 
-                                            Toggle("Skip chapter", isOn: Binding(
-                                                get: { chapter.shouldPlay == false },
-                                                set: { newValue in
-                                                    store.setChapterShouldPlay(newValue == false, chapterID: chapter.id, episodeID: episode.episodeURL)
-                                                }
-                                            ))
-                                            .font(.caption2)
-                                            .toggleStyle(.switch)
-                                            .accessibilityLabel("Skip chapter \(chapter.title)")
-                                            .accessibilityValue(chapter.shouldPlay ? "Off" : "On")
-                                            .accessibilityHint("Turn on to skip this chapter automatically")
+                                            
                                         }
                                     }
                                 }
@@ -281,10 +299,12 @@ struct WatchPanel<Content: View>: View {
         content
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
+        
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(Color.white.opacity(0.1))
             )
+         
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(Color.white.opacity(0.08), lineWidth: 1)
@@ -295,7 +315,7 @@ struct WatchPanel<Content: View>: View {
 struct WatchArtworkView: View {
     let url: URL?
     let title: String
-    var icon: String = "music.note"
+   
 
     var body: some View {
         ZStack {
@@ -315,19 +335,19 @@ struct WatchArtworkView: View {
                 AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
                     switch phase {
                     case .empty:
-                        WatchArtworkPlaceholder(title: title, icon: icon)
+                        WatchArtworkPlaceholder(title: title)
                     case .success(let image):
                         image
                             .resizable()
                             .scaledToFill()
                     case .failure:
-                        WatchArtworkPlaceholder(title: title, icon: icon)
+                        WatchArtworkPlaceholder(title: title)
                     @unknown default:
-                        WatchArtworkPlaceholder(title: title, icon: icon)
+                        WatchArtworkPlaceholder(title: title)
                     }
                 }
             } else {
-                WatchArtworkPlaceholder(title: title, icon: icon)
+                WatchArtworkPlaceholder(title: title)
             }
         }
         .aspectRatio(1, contentMode: .fit)
@@ -342,17 +362,10 @@ struct WatchArtworkView: View {
 
 private struct WatchArtworkPlaceholder: View {
     let title: String
-    let icon: String
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            VStack {
-                Spacer()
-                Image(systemName: icon)
-                    .font(.system(size: 30, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
-                Spacer()
-            }
+
 
             LinearGradient(
                 colors: [.clear, .black.opacity(0.56)],
@@ -381,7 +394,7 @@ struct WatchProgressBar: View {
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [.orange, .teal],
+                            colors: [.accentColor, .teal],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -420,7 +433,7 @@ private struct WatchPrimaryControlButton: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [.orange, .teal],
+                                colors: [.accentColor, .teal],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -500,3 +513,45 @@ func watchPlaybackTime(_ seconds: Double) -> String {
 
     return String(format: "%d:%02d", minutes, remainingSeconds)
 }
+
+#if DEBUG
+#Preview("Watch Player") {
+    let store = WatchSyncStore.preview()
+    let playback = WatchPlaybackController()
+    playback.attach(store: store)
+
+    return NavigationStack {
+        WatchPlayerView(episodeID: WatchPreviewData.playlist[0].id)
+            .environmentObject(store)
+            .environmentObject(playback)
+    }
+}
+
+#Preview("Watch Player Missing Episode") {
+    let store = WatchSyncStore.preview()
+    let playback = WatchPlaybackController()
+    playback.attach(store: store)
+
+    return WatchPlayerView(episodeID: "missing-preview-episode")
+        .environmentObject(store)
+        .environmentObject(playback)
+}
+
+#Preview("Watch Components") {
+    VStack(spacing: 12) {
+        WatchArtworkView(url: nil, title: "Designing a Tiny Podcast App")
+            .frame(width: 120, height: 120)
+
+        WatchPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Progress")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                WatchProgressBar(progress: 0.64)
+            }
+        }
+    }
+    .padding()
+    .background(WatchAppBackground())
+}
+#endif
