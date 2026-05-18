@@ -336,6 +336,7 @@ enum WatchCommandKind: String, Codable, Sendable {
     case syncPlaybackProgress
     case setChapterShouldPlay
     case setPlaybackSettings
+    case requestFileTransfer
 }
 
 enum WatchCommandPosition: String, Codable, Sendable {

@@ -113,7 +113,7 @@ struct PlayerView: View {
                                                 PlayerPrimaryTransportControlsView(includeBookmark: true)
                                                     .tint(.primary)
                                                     .padding(.horizontal)
-                                                    .padding(.top, 8)
+                                                    .padding(.top, 20)
                                                     .padding(.bottom, 6)
                                                     .frame(maxWidth: .infinity)
                                                     .zIndex(3)

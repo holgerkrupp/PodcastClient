@@ -408,41 +408,6 @@ class Player {
         }
     }
 
-    private func resolvedChapters(for episode: Episode) -> [Marker] {
-        let chapters = episode.chapters ?? []
-        guard chapters.isEmpty == false else { return [] }
-
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .ai, .extracted]
-        let priorityByType = Dictionary(
-            uniqueKeysWithValues: preferredOrder.enumerated().map { ($1, $0) }
-        )
-        let categoryGroups = Dictionary(grouping: chapters) {
-            $0.title + Duration.seconds($0.start ?? 0.0).formatted(.units(width: .narrow))
-        }
-
-        var resolved: [Marker] = []
-        resolved.reserveCapacity(chapters.count)
-
-        for group in categoryGroups.values {
-            var bestType: MarkerType?
-            var bestPriority = preferredOrder.count
-
-            for marker in group {
-                let priority = priorityByType[marker.type] ?? preferredOrder.count
-                if priority < bestPriority {
-                    bestPriority = priority
-                    bestType = marker.type
-                }
-            }
-
-            guard let bestType else { continue }
-            resolved.append(contentsOf: group.filter { $0.type == bestType })
-        }
-
-        resolved.sort { ($0.start ?? 0) < ($1.start ?? 0) }
-        return resolved
-    }
-
     private func updateChapters() {
         guard let currentEpisode else {
             chapters = []
@@ -451,7 +416,7 @@ class Player {
             return
         }
 
-        chapters = resolvedChapters(for: currentEpisode)
+        chapters = currentEpisode.preferredChapters
     }
     
     private func updateCurrentChapter() -> Bool {

@@ -64,6 +64,8 @@ struct DownloadControllView: View {
                 .accessibilityHint("Deletes the local file from this device")
             }
         }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.glass(.clear))
         .onAppear {
             guard episode.source != .sideLoaded else { return }
             viewModel.observeDownload(for: episode)
@@ -91,6 +93,7 @@ struct DownloadProgressView: View {
             VStack {
                 ProgressView(value: item.progress)
                     .progressViewStyle(.linear)
+                    
                 HStack {
                 Text("\(item.progress, format: .percent.precision(.fractionLength(0)))")
                 Spacer()
@@ -99,13 +102,13 @@ struct DownloadProgressView: View {
                             Button(action: { viewModel.resumeDownload() }) {
                                 Label("Resume", systemImage: "play.circle")
                             }
-                            .buttonStyle(.plain)
+                           
                             .accessibilityHint("Continues the paused download")
                         }else{
                             Button(action: { viewModel.pauseDownload() }) {
                                 Label("Pause", systemImage: "pause.circle")
                             }
-                            .buttonStyle(.plain)
+                           
                             .accessibilityHint("Pauses the active download")
                         }
                         
@@ -116,13 +119,38 @@ struct DownloadProgressView: View {
                             Label("Cancel", systemImage: "xmark.circle")
                                 .foregroundColor(.red)
                         }
-                        .buttonStyle(.plain)
+                        
                         .accessibilityHint("Stops and removes this download")
                     }
                     
                   
                 }
+                .buttonStyle(.glass(.clear))
+                
             }
         }
     }
+}
+
+#Preview {
+    let episode = Episode(
+        title: "Preview Episode",
+        publishDate: Date(),
+        url: URL(string: "https://example.com/preview-episode.mp3")!,
+        duration: 1_800,
+        author: "Preview Author"
+    )
+
+    DownloadControllView(episode: episode)
+        .padding()
+        .environment(DownloadedFilesManager(folder: FileManager.default.temporaryDirectory))
+}
+
+#Preview("Partial Download") {
+    let item = DownloadItem(url: URL(string: "https://example.com/preview-episode.mp3")!)
+    item.isDownloading = true
+    item.update(bytesWritten: 36, totalBytes: 100)
+
+    return DownloadProgressView(item: item, viewModel: DownloadViewModel())
+        .padding()
 }

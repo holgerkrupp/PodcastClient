@@ -29,6 +29,7 @@ final class PhoneWatchSyncController: NSObject {
 
     private var lastStorageReport: WatchStorageReport?
     private var pendingTransferEpisodeIDs: Set<String> = []
+    private var requestedFileTransferEpisodeIDs: Set<String> = []
     private var transferProgressByEpisodeID: [String: Double] = [:]
     private var transferProgressObservers: [String: NSKeyValueObservation] = [:]
     private var lastPushedSnapshot: WatchSyncSnapshot?
@@ -294,7 +295,10 @@ final class PhoneWatchSyncController: NSObject {
         let downloadedEpisodeIDs = Set(storageReport.downloadedEpisodeIDs)
         var didQueueTransfers = false
 
-        for episode in bundle.snapshot.playlist {
+        let requestedEpisodeIDs = requestedFileTransferEpisodeIDs
+        guard requestedEpisodeIDs.isEmpty == false else { return false }
+
+        for episode in bundle.snapshot.playlist where requestedEpisodeIDs.contains(episode.episodeURL) {
             guard pendingTransferEpisodeIDs.count < maximumOutstandingFileTransfers else {
                 #if DEBUG
                 print("Watch sync paused file transfer queue: \(pendingTransferEpisodeIDs.count) transfer(s) already outstanding")
@@ -303,12 +307,14 @@ final class PhoneWatchSyncController: NSObject {
             }
 
             guard let candidate = bundle.transferCandidates[episode.episodeURL] else {
+                requestedFileTransferEpisodeIDs.remove(episode.episodeURL)
                 #if DEBUG
-                print("Watch sync skipped \(episode.title): no local phone file candidate")
+                print("Watch sync cannot fall back to phone transfer for \(episode.title): no local phone file candidate")
                 #endif
                 continue
             }
             guard !downloadedEpisodeIDs.contains(episode.episodeURL) else {
+                requestedFileTransferEpisodeIDs.remove(episode.episodeURL)
                 #if DEBUG
                 print("Watch sync skipped \(episode.title): already on watch")
                 #endif
@@ -328,6 +334,7 @@ final class PhoneWatchSyncController: NSObject {
             }
 
             pendingTransferEpisodeIDs.insert(episode.episodeURL)
+            requestedFileTransferEpisodeIDs.remove(episode.episodeURL)
             transferProgressByEpisodeID[episode.episodeURL] = 0
             let transfer = session.transferFile(candidate.fileURL, metadata: [
                 WatchSyncTransport.transferEpisodeIDKey: episode.episodeURL,
@@ -336,7 +343,7 @@ final class PhoneWatchSyncController: NSObject {
             ])
             installProgressObserver(for: transfer, episodeID: episode.episodeURL)
             #if DEBUG
-            print("Watch sync queued file transfer: \(episode.title), bytes=\(candidate.size)")
+            print("Watch sync queued requested phone fallback transfer: \(episode.title), bytes=\(candidate.size)")
             #endif
             didQueueTransfers = true
             remainingBudget -= candidate.size
@@ -598,6 +605,14 @@ final class PhoneWatchSyncController: NSObject {
             let settingsActor = PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
             let podcastFeed = command.podcastFeedURL.flatMap(URL.init(string:))
             await settingsActor.setPlaybackSpeed(for: podcastFeed, to: playbackSettings.playbackSpeed)
+            await refreshSnapshotAndTransfers()
+
+        case .requestFileTransfer:
+            guard let episodeURLString = command.episodeURL else { return }
+            requestedFileTransferEpisodeIDs.insert(episodeURLString)
+            #if DEBUG
+            print("Watch sync received phone fallback transfer request for \(episodeURLString)")
+            #endif
             await refreshSnapshotAndTransfers()
         }
     }
