@@ -252,6 +252,8 @@ actor PodcastSettingsModelActor {
             newSettings.playbackSpeed = standardSettings.playbackSpeed
             newSettings.skipForward = standardSettings.skipForward
             newSettings.skipBack = standardSettings.skipBack
+            newSettings.skipForwardBehavior = standardSettings.skipForwardBehavior
+            newSettings.skipBackBehavior = standardSettings.skipBackBehavior
             newSettings.playnextPosition = standardSettings.playnextPosition
             newSettings.autoSkipKeywords = standardSettings.autoSkipKeywords
             newSettings.autoDownload = standardSettings.autoDownload
@@ -331,6 +333,24 @@ actor PodcastSettingsModelActor {
         }
 
         return await standardSettings().skipBack
+    }
+
+    func getSkipForwardBehavior(for podcastFeed: URL?) async -> SkipButtonBehavior {
+        if let podcastFeed,
+           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipForwardBehavior {
+            return customValue
+        }
+
+        return await standardSettings().skipForwardBehavior
+    }
+
+    func getSkipBackBehavior(for podcastFeed: URL?) async -> SkipButtonBehavior {
+        if let podcastFeed,
+           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipBackBehavior {
+            return customValue
+        }
+
+        return await standardSettings().skipBackBehavior
     }
     
     func setPlaybackSpeed(for podcastFeed: URL?, to value: Float) async{

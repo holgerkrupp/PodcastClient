@@ -39,6 +39,8 @@ class PodcastSettings {
     
     var skipForward:SkipSteps = SkipSteps.thirty
     var skipBack: SkipSteps = SkipSteps.fifteen
+    var skipForwardBehaviorRawValue: String? = SkipButtonBehavior.seconds.rawValue
+    var skipBackBehaviorRawValue: String? = SkipButtonBehavior.seconds.rawValue
 
     /// Number of days archived episode files should be kept locally before cleanup may delete them.
     var archiveFileRetentionDays: Int = 7
@@ -99,6 +101,26 @@ class PodcastSettings {
         }
         set {
             autoDownloadNetworkModeRawValue = newValue.rawValue
+        }
+    }
+
+    @Transient
+    var skipForwardBehavior: SkipButtonBehavior {
+        get {
+            SkipButtonBehavior(rawValue: skipForwardBehaviorRawValue ?? "") ?? .seconds
+        }
+        set {
+            skipForwardBehaviorRawValue = newValue.rawValue
+        }
+    }
+
+    @Transient
+    var skipBackBehavior: SkipButtonBehavior {
+        get {
+            SkipButtonBehavior(rawValue: skipBackBehaviorRawValue ?? "") ?? .seconds
+        }
+        set {
+            skipBackBehaviorRawValue = newValue.rawValue
         }
     }
 }
@@ -163,6 +185,20 @@ enum SkipSteps:Int, Codable, CaseIterable{
 
     var triangleForwardString: String {
         "\(rawValue).arrow.trianglehead.clockwise"
+    }
+}
+
+enum SkipButtonBehavior: String, Codable, CaseIterable, Hashable {
+    case seconds
+    case chapter
+
+    var settingsLabel: String {
+        switch self {
+        case .seconds:
+            return "Seconds"
+        case .chapter:
+            return "Chapter"
+        }
     }
 }
 

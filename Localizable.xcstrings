@@ -61,7 +61,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@ – %2$@"
           }
         }
@@ -69,13 +69,13 @@
     },
     "%@ %@" : {
       "localizations" : {
-        "en" : {
+        "de" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@ %2$@"
           }
         },
-        "de" : {
+        "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ %2$@"
@@ -143,23 +143,6 @@
         }
       }
     },
-    "%@: %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@: %2$@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@: %2$@"
-          }
-        }
-      }
-    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -190,7 +173,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld file%2$@"
           }
         }
@@ -206,7 +189,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld file%2$@ (%3$@) are currently protected because their episodes are in Up Next."
           }
         }
@@ -222,7 +205,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld file%2$@ (%3$@) are currently protected by archive retention settings."
           }
         }
@@ -238,7 +221,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld file%2$@ (%3$@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window."
           }
         }
@@ -254,7 +237,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld item%2$@"
           }
         }
@@ -270,7 +253,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld. %2$@: %3$@"
           }
         }
@@ -836,6 +819,9 @@
         }
       }
     },
+    "Back button" : {
+
+    },
     "Back chapter" : {
       "localizations" : {
         "de" : {
@@ -1055,6 +1041,9 @@
           }
         }
       }
+    },
+    "Chapter mode uses previous/next chapter buttons when the playing episode has chapters. Without chapters, external controls fall back to the selected seconds." : {
+
     },
     "Chapter Rules" : {
       "localizations" : {
@@ -1357,6 +1346,7 @@
       }
     },
     "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1365,6 +1355,9 @@
           }
         }
       }
+    },
+    "Custom mode creates a podcast-owned copy of queue placement, playback speed, skip controls, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global." : {
+
     },
     "Custom Settings" : {
       "localizations" : {
@@ -2206,6 +2199,9 @@
         }
       }
     },
+    "Forward button" : {
+
+    },
     "Forward chapter" : {
       "localizations" : {
         "de" : {
@@ -2226,7 +2222,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "From %1$@ to %2$@"
           }
         }
@@ -2372,7 +2368,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "Heat Map (%1$@ – %2$@)"
           }
         }
@@ -2650,16 +2646,16 @@
     },
     "Jump to %@ %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Jump to %1$@ %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zu %1$@ %2$@ springen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jump to %1$@ %2$@"
           }
         }
       }
@@ -3043,6 +3039,9 @@
           }
         }
       }
+    },
+    "Lock Screen, Control Center & CarPlay" : {
+
     },
     "Lunar New Year" : {
       "localizations" : {
@@ -4134,17 +4133,6 @@
         }
       }
     },
-    "Opens playback speed, sleep timer, and queue settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnet die Einstellungen für Wiedergabegeschwindigkeit, Sleep-Timer und Warteschlange"
-          }
-        }
-      }
-    },
     "Opens playlist picker" : {
       "localizations" : {
         "de" : {
@@ -4387,16 +4375,16 @@
     },
     "Play %@ %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Play %1$@ %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ %2$@ abspielen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play %1$@ %2$@"
           }
         }
       }
@@ -4412,17 +4400,6 @@
       }
     },
     "Play chapter" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kapitel abspielen"
-          }
-        }
-      }
-    },
-    "Play Chapter" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4578,28 +4555,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Playback-Scrubbing ist deaktiviert"
-          }
-        }
-      }
-    },
-    "Playback settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiedergabeeinstellungen"
-          }
-        }
-      }
-    },
-    "Playback Settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiedergabeeinstellungen"
           }
         }
       }
@@ -5175,17 +5130,6 @@
       }
     },
     "Refresh podcasts" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Podcasts aktualisieren"
-          }
-        }
-      }
-    },
-    "Refresh Podcasts" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5775,17 +5719,6 @@
         }
       }
     },
-    "Show all Settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Einstellungen anzeigen"
-          }
-        }
-      }
-    },
     "Show captions" : {
       "localizations" : {
         "de" : {
@@ -5976,6 +5909,9 @@
         }
       }
     },
+    "Skip back seconds" : {
+
+    },
     "Skip Backward" : {
       "localizations" : {
         "de" : {
@@ -6005,6 +5941,9 @@
           }
         }
       }
+    },
+    "Skip Durations" : {
+
     },
     "Skip forward" : {
       "localizations" : {
@@ -6045,6 +5984,9 @@
           }
         }
       }
+    },
+    "Skip forward seconds" : {
+
     },
     "Skipped" : {
       "localizations" : {
@@ -6516,7 +6458,11 @@
         }
       }
     },
+    "These durations are used by the app player, shortcuts, and any external controls set to seconds." : {
+
+    },
     "These durations update the skip buttons, lock screen controls, CarPlay, shortcuts, and watch playback controls." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6726,7 +6672,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "Title: %1$@ • Background: %2$@"
           }
         }

@@ -357,7 +357,7 @@ class EpisodeDownloadStatus{
                 .sortedByStartTime()
         }
 
-        let preferredOrder: [MarkerType] = [.podlove, .mp3, .mp4, .ai, .extracted]
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .ai, .extracted]
 
         // Pick a single type for the whole list based on availability and preference order.
         let availableTypes = Set(chapters.map { $0.type })

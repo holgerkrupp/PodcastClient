@@ -62,7 +62,7 @@ private extension PodcastFeedResolver {
         switch scheme {
         case "http", "https":
             return .remote([url])
-        case "feed", "pcast", "itpc", "rss":
+        case "feed", "pcast", "rss":
             let candidates = remoteCandidates(fromPodcastSchemeURL: url)
             guard candidates.isEmpty == false else {
                 throw PodcastFeedResolverError.unsupportedURL
@@ -191,20 +191,47 @@ private extension PodcastFeedResolver {
     }
 
     static func nestedURL(from url: URL) -> URL? {
-        let host = url.host?.lowercased()
-        let path = url.path.lowercased()
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        if let rawValue = components?.queryItems?.first(where: {
+            let name = $0.name.lowercased()
+            return name == "url" || name == "feed" || name == "rss"
+        })?.value {
+            return nestedURL(fromPayload: rawValue)
+        }
 
-        guard host == "subscribe" || path == "/subscribe" else {
+        let rawURL = url.absoluteString
+        let lowercasedURL = rawURL.lowercased()
+        let prefix: String
+
+        if lowercasedURL.hasPrefix("upnext://") {
+            prefix = "upnext://"
+        } else if lowercasedURL.hasPrefix("upnext:") {
+            prefix = "upnext:"
+        } else {
             return nil
         }
 
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let rawValue = components?.queryItems?.first {
-            let name = $0.name.lowercased()
-            return name == "url" || name == "feed"
-        }?.value
+        var payload = String(rawURL.dropFirst(prefix.count))
 
-        guard let rawValue else {
+        if payload.lowercased().hasPrefix("subscribe/") {
+            payload = String(payload.dropFirst("subscribe/".count))
+        } else if payload.lowercased().hasPrefix("subscribe?") {
+            return nil
+        }
+
+        return nestedURL(fromPayload: payload)
+    }
+
+    static func nestedURL(fromPayload payload: String) -> URL? {
+        let trimmedPayload = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmedPayload.isEmpty == false else {
+            return nil
+        }
+
+        let rawValue = trimmedPayload.removingPercentEncoding ?? trimmedPayload
+
+        guard rawValue.lowercased() != "subscribe" else {
             return nil
         }
 
@@ -219,7 +246,7 @@ private extension PodcastFeedResolver {
         let rawURL = url.absoluteString
         let lowercased = rawURL.lowercased()
 
-        for prefix in ["feed://", "pcast://", "itpc://", "rss://", "feed:", "pcast:", "itpc:", "rss:"] {
+        for prefix in ["feed://", "pcast://", "rss://", "feed:", "pcast:", "rss:"] {
             if lowercased.hasPrefix(prefix + "https://") || lowercased.hasPrefix(prefix + "http://") {
                 let trimmed = String(rawURL.dropFirst(prefix.count))
                 if let nestedURL = URL(string: trimmed) {

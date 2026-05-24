@@ -365,6 +365,32 @@ class Playlist {
         return uuid
     }
 
+    @discardableResult
+    static func resolvedSelectedManualPlaylistID(
+        in context: ModelContext,
+        defaults: UserDefaults = .standard
+    ) -> UUID {
+        let defaultPlaylist = ensureDefaultQueue(in: context)
+        let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? [defaultPlaylist]
+        let manualPlaylists = manualVisibleSorted(allPlaylists)
+        let fallbackPlaylist = manualPlaylists.first(where: { $0.id == defaultPlaylist.id })
+            ?? manualPlaylists.first
+            ?? defaultPlaylist
+
+        let storedPlaylistID = resolvePlaylistID(
+            from: defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        )
+        let selectedPlaylist = storedPlaylistID.flatMap { selectedID in
+            manualPlaylists.first(where: { $0.id == selectedID })
+        } ?? fallbackPlaylist
+
+        if defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID) != selectedPlaylist.id.uuidString {
+            defaults.set(selectedPlaylist.id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        }
+
+        return selectedPlaylist.id
+    }
+
     enum Position: Identifiable, Codable, CaseIterable, Hashable, Sendable {
         case front
         case end

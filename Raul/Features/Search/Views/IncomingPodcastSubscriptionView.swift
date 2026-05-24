@@ -116,7 +116,7 @@ struct IncomingPodcastSubscriptionView: View {
 
     private func browserCompatibleURL(from url: URL) -> URL? {
         switch url.scheme?.lowercased() {
-        case "feed", "pcast", "itpc", "rss":
+        case "feed", "pcast", "rss":
             return nil
         default:
             return url.isFileURL ? nil : url
