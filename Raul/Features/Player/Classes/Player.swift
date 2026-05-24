@@ -120,15 +120,21 @@ class Player {
     private var playbackTask: Task<Void, Never>?
     private var playbackStatusObservation: NSKeyValueObservation?
     private var playbackRateObservation: NSKeyValueObservation?
+    private var settingsChangeObserver: NSObjectProtocol?
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
     private var currentPlaybackUsesAlternateMedia = false
     private var hasStartedRecovery = false
+    private var finishingEpisodeURL: URL?
 
     var playbackRate: Float = 1.0 {
         didSet {
-            setPlayBackSpeed(to: playbackRate)
+            guard playbackRate != oldValue else { return }
+            let rate = playbackRate
+            Task { [weak self] in
+                await self?.applyPlaybackRate(rate, persist: true)
             }
+        }
     }
     ///MARK: Sleep timer
     private var timer: Timer?
@@ -142,6 +148,8 @@ class Player {
     var playPosition: Double = 0.0
     var skipForwardStep: SkipSteps = .thirty
     var skipBackStep: SkipSteps = .fifteen
+    var skipForwardBehavior: SkipButtonBehavior = .seconds
+    var skipBackBehavior: SkipButtonBehavior = .seconds
     
     
     var currentEpisode: Episode?
@@ -166,6 +174,18 @@ class Player {
             return alternateVideo.url
         }
         return currentEpisode.localFile ?? currentEpisode.url
+    }
+
+    private var hasCurrentEpisodeChapters: Bool {
+        currentEpisode?.preferredChapters.isEmpty == false
+    }
+
+    var remoteSkipForwardUsesChapter: Bool {
+        skipForwardBehavior == .chapter && hasCurrentEpisodeChapters
+    }
+
+    var remoteSkipBackUsesChapter: Bool {
+        skipBackBehavior == .chapter && hasCurrentEpisodeChapters
     }
 
     var canSwitchCurrentEpisodeMedia: Bool {
@@ -243,9 +263,19 @@ class Player {
             UserDefaults.standard.removeObject(forKey: key)
         }
     }
+
+    private func activePlaybackPlaylistActor() -> PlaylistModelActor? {
+        try? PlaylistModelActor(activePlaybackPlaylistIn: ModelContainerManager.shared.container)
+    }
+
+    private func moveEpisodeToFrontOfActivePlaybackPlaylist(_ episodeURL: URL) async {
+        guard let activePlaylistActor = activePlaybackPlaylistActor() else { return }
+        try? await activePlaylistActor.add(episodeURL: episodeURL, to: .front, startDownload: false)
+    }
     
     func restoreLastPlayedFromPlaylist() async {
-        let episodeURLs = (try? await playlistActor?.orderedEpisodeURLs()) ?? []
+        let activePlaylistActor = activePlaybackPlaylistActor()
+        let episodeURLs = (try? await activePlaylistActor?.orderedEpisodeURLs()) ?? []
 
         if let lastPlayedURL = await episodeActor?.getLastPlayedEpisodeURL(),
            episodeURLs.contains(lastPlayedURL) {
@@ -304,7 +334,7 @@ class Player {
     }
     
     private  func addChangeSettingsObserver() {
-        NotificationCenter.default.addObserver(forName: .podcastSettingsDidChange, object: nil, queue: nil, using: { [weak self] notification in
+        settingsChangeObserver = NotificationCenter.default.addObserver(forName: .podcastSettingsDidChange, object: nil, queue: nil, using: { [weak self] notification in
             // print("received podcast settings change notification")
             Task { @MainActor in
                 self?.loadPlayBackSpeed()
@@ -336,14 +366,11 @@ class Player {
         }
     }
     
-    private func setPlayBackSpeed(to playbackRate: Float){
+    private func applyPlaybackRate(_ playbackRate: Float, persist: Bool) async {
         if isPlaying{
-            Task{
-                await engine.setRate(playbackRate)
+            await engine.setRate(playbackRate)
+            if persist {
                 await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.feed , to: playbackRate)
-                if playbackRate >= 1 {
-                    isPlaying = true
-                }
             }
         }
 
@@ -354,13 +381,11 @@ class Player {
             nowPlayingInfoActor.updateField(key: MPNowPlayingInfoPropertyDefaultPlaybackRate, value: 1.0)
         }
         
-        Task {
-            if currentEpisode != nil {
-                await playSessionTracker.handlePlaybackRateChange(
-                    to: playbackRate,
-                    at: playPosition
-                )
-            }
+        if currentEpisode != nil, currentPlaybackSource != .liveRemote {
+            await playSessionTracker.handlePlaybackRateChange(
+                to: playbackRate,
+                at: playPosition
+            )
         }
     }
     
@@ -385,7 +410,6 @@ class Player {
             // print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
             if savedPlaybackRate > 0, playbackRate != savedPlaybackRate {
                 playbackRate = savedPlaybackRate
-
             }
         }
     }
@@ -395,6 +419,8 @@ class Player {
             let podcastFeed = currentEpisode?.podcast?.feed
             skipForwardStep = await settingsActor?.getSkipForwardStep(for: podcastFeed) ?? .thirty
             skipBackStep = await settingsActor?.getSkipBackStep(for: podcastFeed) ?? .fifteen
+            skipForwardBehavior = await settingsActor?.getSkipForwardBehavior(for: podcastFeed) ?? .seconds
+            skipBackBehavior = await settingsActor?.getSkipBackBehavior(for: podcastFeed) ?? .seconds
             RemoteCommandCenter.shared.updateSkipIntervals()
         }
     }
@@ -417,6 +443,7 @@ class Player {
         }
 
         chapters = currentEpisode.preferredChapters
+        RemoteCommandCenter.shared.updateSkipIntervals()
     }
     
     private func updateCurrentChapter() -> Bool {
@@ -692,7 +719,8 @@ class Player {
             return false
         }
 
-        let isCurrentlyQueued = (try? await playlistActor?.containsEpisodeURL(episodeURL)) ?? false
+        let activePlaylistActor = activePlaybackPlaylistActor()
+        let isCurrentlyQueued = (try? await activePlaylistActor?.containsEpisodeURL(episodeURL)) ?? false
         if isCurrentlyQueued == false {
             BasicLogger.shared.log("skip requeue on unload: episode no longer queued \(episodeURL.absoluteString)")
         }
@@ -731,7 +759,7 @@ class Player {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
             await episodeActor?.moveToHistory(episodeURL: episodeURL)
         } else if shouldRequeueUnfinishedEpisode {
-            try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
+            try? await activePlaybackPlaylistActor()?.add(episodeURL: episodeURL, to: .front)
         }
     }
     
@@ -760,7 +788,9 @@ class Player {
 
         currentEpisode = episode
         currentEpisodeURL = episodeURL
+        finishingEpisodeURL = nil
         mediaSelection = selectedMedia
+        await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
         if playDirectly {
             if currentEpisode?.metaData == nil {
                 let metadata = EpisodeMetaData()
@@ -816,7 +846,6 @@ class Player {
         }
 
         await engine.replaceCurrentItem(with: item)
-        try? await playlistActor?.add(episodeURL: episodeURL, to: .front)
         
         
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
@@ -927,17 +956,6 @@ class Player {
         isPlayerSheetPresented = true
     }
     
-    var coverImage: some View{
-        if let playing = currentEpisode{
-            
-             return AnyView(CoverImageView(episode: playing))
-             
-             
-        }else{
-            return AnyView(EmptyView())
-        }
-    }
-    
     var progress: Double {
         get {
             guard let duration = currentEpisode?.duration, duration > 0 else { return 0.0 }
@@ -983,14 +1001,14 @@ class Player {
     }
 
     private func syncPlaybackStateFromObservedPlayer(_ observedPlayer: AVPlayer) {
-        if (observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing), isPlaying == false {
-            handleExternalPlaybackStarted()
-        } else if observedPlayer.timeControlStatus == .paused, observedPlayer.rate == 0, isPlaying == true {
-            handleExternalPlaybackPaused()
+        if observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing {
+            if isPlaying == false {
+                transitionToPlaying(updateEngineRate: true, preparePlaybackSource: false)
+            }
         }
     }
 
-    private func handleExternalPlaybackStarted() {
+    private func transitionToPlaying(updateEngineRate: Bool, preparePlaybackSource: Bool) {
         loadSkipDurations()
         cacheCurrentPlaybackState()
         startPlaybackUpdates()
@@ -1004,8 +1022,13 @@ class Player {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         Task {
-            if await engine.getRate() != desiredRate {
+            if updateEngineRate, await engine.getRate() != desiredRate {
                 await engine.setRate(desiredRate)
+            }
+
+            if preparePlaybackSource {
+                await switchCurrentEpisodeToDownloadedCopyIfNeeded()
+                await ensureDownloadForCurrentEpisodeIfNeeded()
             }
 
             if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
@@ -1020,11 +1043,14 @@ class Player {
         }
     }
 
-    private func handleExternalPlaybackPaused() {
+    private func transitionToPaused(pauseEngine: Bool) {
         isPlaying = false
         stopPlaybackUpdates()
-        stopNowPlayingInfoUpdater()
+        updateNowPlayingInfo()
         Task {
+            if pauseEngine {
+                await engine.pause()
+            }
             await captureCurrentPlaybackStateFromEngine(force: true)
 
             if currentEpisode != nil, currentPlaybackSource != .liveRemote {
@@ -1063,54 +1089,13 @@ class Player {
     
     func play(){
         loadPlayBackSpeed()
-        loadSkipDurations()
-        cacheCurrentPlaybackState()
-        startPlaybackUpdates()
-     //   startNowPlayingInfoUpdater()
-        initRemoteCommandCenter()
-        isPlaying = true
-        updateNowPlayingInfo()
-
-        let rate = playbackRate
-        let position = playPosition
-        let currentEpisodeURL = currentEpisode?.url
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-
-        Task {
-            await switchCurrentEpisodeToDownloadedCopyIfNeeded()
-            await ensureDownloadForCurrentEpisodeIfNeeded()
-            await engine.setRate(rate)
-            
-            // New session tracking integration: start or update the play session
-            if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
-                await playSessionTracker.startOrUpdateSession(episodeURL: currentEpisodeURL, position: position, rate: rate, appVersion: appVersion)
-            }
-        }
-
-       
-        if let episodeURL =  currentEpisode?.url, currentPlaybackSource != .liveRemote {
-            Task {
-                await self.episodeActor?.addplaybackStartTimes(episodeURL: episodeURL, date: Date())
-            }
-        }
-
+        transitionToPlaying(updateEngineRate: true, preparePlaybackSource: true)
     }
     
     
 
     func pause() {
-        isPlaying = false
-        stopPlaybackUpdates()
-        stopNowPlayingInfoUpdater()
-        Task {
-            await engine.pause()
-            await captureCurrentPlaybackStateFromEngine(force: true)
-
-            // New session tracking integration: pause the play session
-            if currentEpisode != nil, currentPlaybackSource != .liveRemote {
-                await playSessionTracker.pauseSession(at: playPosition)
-            }
-        }
+        transitionToPaused(pauseEngine: true)
     }
     
     func skipback(){
@@ -1119,6 +1104,28 @@ class Player {
     }
     
     func skipforward(){
+        jumpPlaypostion(by: skipForwardStep.seconds)
+    }
+
+    func remoteSkipBack() {
+        if remoteSkipBackUsesChapter {
+            Task {
+                await skipToPreviousChapter()
+            }
+            return
+        }
+
+        jumpPlaypostion(by: -skipBackStep.seconds)
+    }
+
+    func remoteSkipForward() {
+        if remoteSkipForwardUsesChapter {
+            Task {
+                await skipToNextChapter()
+            }
+            return
+        }
+
         jumpPlaypostion(by: skipForwardStep.seconds)
     }
     
@@ -1180,27 +1187,58 @@ class Player {
                     self.playPosition = sanitizedTime
                     self.updateEpisodeProgress(to: sanitizedTime)
                 case .ended:
-                    self.handlePlaybackEndedEvent(source: "player_engine_stream")
+                    let finalPosition = await engine.currentTime()
+                    let itemDuration = await engine.currentItemDuration()
+                    self.handlePlaybackEndedEvent(
+                        source: "player_engine_stream",
+                        observedPosition: finalPosition,
+                        observedDuration: itemDuration,
+                        trustedEndEvent: true
+                    )
                 }
             }
         }
     }
 
-    private func handlePlaybackEndedEvent(source: String) {
-        let resolvedDuration = sanitizedPosition(currentEpisode?.duration)
+    private func handlePlaybackEndedEvent(
+        source: String,
+        observedPosition: Double? = nil,
+        observedDuration: Double? = nil,
+        trustedEndEvent: Bool = false
+    ) {
+        let episodeDuration = sanitizedPosition(currentEpisode?.duration)
+        let itemDuration = sanitizedPosition(observedDuration)
+        let observedPlaybackPosition = sanitizedPosition(observedPosition)
+        let resolvedDuration: Double
+        if itemDuration > 0 {
+            resolvedDuration = itemDuration
+        } else if episodeDuration > 0 {
+            resolvedDuration = episodeDuration
+        } else if trustedEndEvent {
+            resolvedDuration = observedPlaybackPosition
+        } else {
+            resolvedDuration = 0
+        }
+        let resolvedPosition = max(
+            playPosition,
+            observedPlaybackPosition,
+            trustedEndEvent ? resolvedDuration : 0
+        )
+
         guard resolvedDuration > 0 else {
             BasicLogger.shared.log("Ignoring ended event from \(source): episode duration unavailable")
             return
         }
 
         let finishThreshold = max(resolvedDuration * progressThreshold, resolvedDuration - 2.0)
-        guard playPosition >= finishThreshold else {
+        guard trustedEndEvent || resolvedPosition >= finishThreshold else {
             BasicLogger.shared.log(
-                "Ignoring premature ended event from \(source): position=\(playPosition), duration=\(resolvedDuration)"
+                "Ignoring premature ended event from \(source): position=\(resolvedPosition), duration=\(resolvedDuration)"
             )
             return
         }
 
+        playPosition = resolvedPosition
         BasicLogger.shared.log("Playback finished automatically (\(source))")
         handlePlaybackFinished()
     }
@@ -1292,13 +1330,26 @@ class Player {
     }
     
     func skipToNextChapter() async{
-        let nextChapter = chapters?.first(where: { ($0.start ?? 0) >= playPosition })
+        let nextChapter = chapters?.first(where: { ($0.start ?? 0) > playPosition + 0.5 })
 
         if let start = nextChapter?.start{
              await jumpTo(time: start)
         }else if let end = currentChapter?.end{
             await jumpTo(time: end)
         }
+    }
+
+    func skipToPreviousChapter() async {
+        let preferredChapters = chapters ?? currentEpisode?.preferredChapters ?? []
+        guard preferredChapters.isEmpty == false else { return }
+
+        guard let targetChapter = preferredChapters.last(where: { chapter in
+            (chapter.start ?? 0) < playPosition - 0.5
+        }) ?? preferredChapters.first else {
+            return
+        }
+
+        await jumpTo(time: targetChapter.start ?? 0)
     }
     
     func skipToChapterStart() async{
@@ -1315,6 +1366,15 @@ class Player {
         // print("Playback finished. - handlePlaybackFinished")
         stopPlaybackUpdates()
         let finishedEpisodeURL = currentEpisodeURL
+        guard let finishedEpisodeURL else {
+            finishingEpisodeURL = nil
+            return
+        }
+        guard finishingEpisodeURL != finishedEpisodeURL else {
+            BasicLogger.shared.log("Ignoring duplicate playback finish for \(finishedEpisodeURL.absoluteString)")
+            return
+        }
+        finishingEpisodeURL = finishedEpisodeURL
         let finalPlaybackPosition = max(playPosition, currentEpisode?.duration ?? 0.0)
 
         Task {
@@ -1322,25 +1382,29 @@ class Player {
             let sleepTimerContinuePlaying = !stopAfterEpisode
             let nextEpisodeURL: URL?
             if sleepTimerContinuePlaying == true && continuePlaying == true {
-                nextEpisodeURL = try? await playlistActor?.nextEpisodeURL()
+                if let activePlaylistActor = activePlaybackPlaylistActor() {
+                    nextEpisodeURL = try? await activePlaylistActor.nextEpisodeURL(after: finishedEpisodeURL)
+                } else {
+                    nextEpisodeURL = nil
+                }
             } else {
                 nextEpisodeURL = nil
             }
 
-            if let finishedEpisodeURL {
-                await episodeActor?.setLastPlayed(episodeURL: finishedEpisodeURL)
-                await episodeActor?.setPlayPosition(
-                    episodeURL: finishedEpisodeURL,
-                    position: finalPlaybackPosition,
-                    force: true
-                )
-                PlaybackProgressDefaultsStore.removeProgress(for: finishedEpisodeURL)
-                await unloadEpisode(episodeURL: finishedEpisodeURL, finishedPlayback: true)
-            }
+            await episodeActor?.setLastPlayed(episodeURL: finishedEpisodeURL)
+            await episodeActor?.setPlayPosition(
+                episodeURL: finishedEpisodeURL,
+                position: finalPlaybackPosition,
+                force: true
+            )
+            PlaybackProgressDefaultsStore.removeProgress(for: finishedEpisodeURL)
+            await unloadEpisode(episodeURL: finishedEpisodeURL, finishedPlayback: true)
 
             if let nextEpisodeURL {
                 BasicLogger.shared.log("Playing next episode")
                 await playEpisode(nextEpisodeURL, playDirectly: true)
+            } else {
+                finishingEpisodeURL = nil
             }
         }
 
@@ -1433,19 +1497,6 @@ class Player {
         _ = RemoteCommandCenter.shared
     }
     
-    private var nowPlayingInfoTimer: Timer?
-
-    private func startNowPlayingInfoUpdater() {
-        nowPlayingInfoTimer?.invalidate()
-        nowPlayingInfoTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            
-            Task { @MainActor in
-                self.updateNowPlayingInfo()
-            }
-        }
-    }
-    
     func createBookmark() {
         Task {
             if let currentEpisodeURL {
@@ -1487,7 +1538,7 @@ class Player {
                 
             }else if let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
                 // print("using URL image Data \(imageURL.absoluteString)")
-                if let resizedImage = downscale(image: originalImage, to: targetSize) {
+                if let resizedImage = Self.downscale(image: originalImage, to: targetSize) {
                 
                     nowPlayingInfoActor.setArtwork(resizedImage)
                    
@@ -1499,17 +1550,11 @@ class Player {
             }
         }
     
-    func downscale(image: UIImage, to size: CGSize) -> UIImage? {
+    private static func downscale(image: UIImage, to size: CGSize) -> UIImage? {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         image.draw(in: CGRect(origin: .zero, size: size))
         let newImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return newImage
-    }
-    
-    
-    private func stopNowPlayingInfoUpdater() {
-        nowPlayingInfoTimer?.invalidate()
-        nowPlayingInfoTimer = nil
     }
 }

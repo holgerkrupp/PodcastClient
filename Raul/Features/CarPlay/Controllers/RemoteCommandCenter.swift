@@ -65,10 +65,8 @@ class RemoteCommandCenter {
         }
         
         RCC.skipForwardCommand.isEnabled = true
-        RCC.skipForwardCommand.addTarget { event in
-            
-            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.player.jumpPlaypostion(by: seconds)
+        RCC.skipForwardCommand.addTarget { _ in
+            self.player.remoteSkipForward()
             return.success
         }
         RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: player.skipForwardStep.rawValue)]
@@ -76,10 +74,8 @@ class RemoteCommandCenter {
         
         // <<
         RCC.skipBackwardCommand.isEnabled = true
-        RCC.skipBackwardCommand.addTarget { event in
-            
-            let seconds = Double((event as? MPSkipIntervalCommandEvent)?.interval ?? 0)
-            self.player.jumpPlaypostion(by: -seconds)
+        RCC.skipBackwardCommand.addTarget { _ in
+            self.player.remoteSkipBack()
             return.success
         }
         
@@ -109,20 +105,17 @@ class RemoteCommandCenter {
         
         RCC.nextTrackCommand.isEnabled = true
         RCC.nextTrackCommand.addTarget { _ in
-            Task{
-                await self.skipToNextPreferredChapter()
-               
-            }
+            self.player.remoteSkipForward()
             return .success
         }
         
         RCC.previousTrackCommand.isEnabled = true
         RCC.previousTrackCommand.addTarget { _ in
-            Task{
-                await self.skipToCurrentPreferredChapterStart()
-            }
-                return .success
+            self.player.remoteSkipBack()
+            return .success
         }
+
+        updateSkipIntervals()
         
         
     }
@@ -132,33 +125,15 @@ class RemoteCommandCenter {
     }
 
     func updateSkipIntervals() {
+        let forwardUsesChapter = player.remoteSkipForwardUsesChapter
+        let backwardUsesChapter = player.remoteSkipBackUsesChapter
+
+        RCC.skipForwardCommand.isEnabled = forwardUsesChapter == false
+        RCC.nextTrackCommand.isEnabled = forwardUsesChapter
         RCC.skipForwardCommand.preferredIntervals = [NSNumber(value: player.skipForwardStep.rawValue)]
+
+        RCC.skipBackwardCommand.isEnabled = backwardUsesChapter == false
+        RCC.previousTrackCommand.isEnabled = backwardUsesChapter
         RCC.skipBackwardCommand.preferredIntervals = [NSNumber(value: player.skipBackStep.rawValue)]
-    }
-
-    private func preferredChapters() -> [Marker] {
-        player.currentEpisode?.preferredChapters ?? []
-    }
-
-    private func skipToCurrentPreferredChapterStart() async {
-        let chapters = preferredChapters()
-        guard let currentChapter = chapters.last(where: { ($0.start ?? 0) <= player.playPosition }),
-              let start = currentChapter.start else {
-            return
-        }
-
-        await player.jumpTo(time: start)
-    }
-
-    private func skipToNextPreferredChapter() async {
-        let chapters = preferredChapters()
-        let nextChapter = chapters.first(where: { ($0.start ?? 0) >= player.playPosition })
-
-        if let start = nextChapter?.start {
-            await player.jumpTo(time: start)
-        } else if let currentChapter = chapters.last(where: { ($0.start ?? 0) <= player.playPosition }),
-                  let end = currentChapter.end {
-            await player.jumpTo(time: end)
-        }
     }
 }

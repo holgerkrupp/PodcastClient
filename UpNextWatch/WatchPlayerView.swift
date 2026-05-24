@@ -213,15 +213,13 @@ struct WatchPlayerView: View {
                                                     Toggle("Play chapter", isOn: Binding(
                                                         get: { chapter.shouldPlay == true },
                                                         set: { newValue in
-                                                            store.setChapterShouldPlay(newValue == false, chapterID: chapter.id, episodeID: episode.episodeURL)
+                                                            store.setChapterShouldPlay(newValue, chapterID: chapter.id, episodeID: episode.episodeURL)
                                                         }
                                                     ))
+                                                    .toggleStyle(SkipChapter())
                                                     .font(.caption2)
                                                     .labelsHidden()
-                                                    .toggleStyle(.switch)
-                                                    .accessibilityLabel("Play chapter \(chapter.title)")
-                                                    .accessibilityValue(chapter.shouldPlay ? "On" : "Off")
-                                                    .accessibilityHint("Turn off to skip this chapter automatically")
+                                                    
                                                     /*
                                                     if activeChapter?.id == chapter.id {
                                                         Image(systemName: "dot.radiowaves.left.and.right")

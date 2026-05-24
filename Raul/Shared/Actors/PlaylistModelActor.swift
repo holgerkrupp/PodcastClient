@@ -43,6 +43,33 @@ actor PlaylistModelActor {
         }
     }
 
+    public init(activePlaybackPlaylistIn modelContainer: ModelContainer? = nil) throws {
+        guard let container = modelContainer else {
+            fatalError("PlaylistModelActor requires a modelContainer to be passed in from the main actor.")
+        }
+
+        let selectionContext = ModelContext(container)
+        let selectedPlaylistID = Playlist.resolvedSelectedManualPlaylistID(
+            in: selectionContext
+        )
+
+        self.modelContainer = container
+        self.modelContext = ModelContext(container)
+        self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
+        self.playlistID = selectedPlaylistID
+
+        let descriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.id == selectedPlaylistID }
+        )
+        guard try modelContext.fetch(descriptor).first != nil else {
+            throw NSError(
+                domain: "PlaylistModelActor",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Selected playlist not found for id \(selectedPlaylistID)"]
+            )
+        }
+    }
+
     /// Initialize by title; creates the playlist if it doesn't exist.
     public init(modelContainer: ModelContainer? = nil,
                 playlistTitle: String = Playlist.defaultQueueTitle) throws {
@@ -138,6 +165,19 @@ actor PlaylistModelActor {
 
     func nextEpisodeURL() throws -> URL? {
         try orderedEpisodes().dropFirst().compactMap(\.url).first
+    }
+
+    func nextEpisodeURL(after episodeURL: URL) throws -> URL? {
+        let urls = try orderedEpisodeURLs()
+        guard urls.isEmpty == false else { return nil }
+
+        guard let currentIndex = urls.firstIndex(of: episodeURL) else {
+            return urls.first
+        }
+
+        let nextIndex = urls.index(after: currentIndex)
+        guard nextIndex < urls.endIndex else { return nil }
+        return urls[nextIndex]
     }
 
     func nextEpisode() throws -> URL? {

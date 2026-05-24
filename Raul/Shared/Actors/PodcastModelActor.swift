@@ -674,6 +674,12 @@ actor PodcastModelActor {
                         print("episode is old")
                         suppressFromInbox(episode, reason: .backCatalogImport)
                         modelContext.saveIfNeeded()
+                        if let episodeURL = episode.url {
+                            EpisodeActor.scheduleRemoteChapterFetch(
+                                episodeURL: episodeURL,
+                                modelContainer: modelContainer
+                            )
+                        }
                     } else {
                         print("episode is new")
                         if let episodeURL = episode.url {
@@ -685,6 +691,12 @@ actor PodcastModelActor {
                     print("SILENT")
                     suppressFromInbox(episode, reason: .backCatalogImport)
                     modelContext.saveIfNeeded()
+                    if let episodeURL = episode.url {
+                        EpisodeActor.scheduleRemoteChapterFetch(
+                            episodeURL: episodeURL,
+                            modelContainer: modelContainer
+                        )
+                    }
                 }
             }
 

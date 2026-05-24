@@ -25,7 +25,6 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>feed</string>
-				<string>itpc</string>
 				<string>rss</string>
 			</array>
 		</dict>

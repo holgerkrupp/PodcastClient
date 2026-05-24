@@ -276,7 +276,7 @@ struct PodcastSettingsView: View {
             .disabled(podcast?.feed == nil)
 
             Text(useCustomSettings
-                 ? "Custom mode creates a podcast-owned copy of queue placement, playback speed, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global."
+                 ? "Custom mode creates a podcast-owned copy of queue placement, playback speed, skip controls, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global."
                  : "Global mode keeps this podcast on the shared defaults. Switch to Custom only when this show should behave differently.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -833,8 +833,11 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func skipDurationPickers(settings: PodcastSettings) -> some View {
+        Text("Skip Durations")
+            .font(.subheadline.weight(.semibold))
+
         Picker(
-            "Skip back",
+            "Skip back seconds",
             selection: Binding(
                 get: { settings.skipBack },
                 set: {
@@ -849,7 +852,7 @@ struct PodcastSettingsView: View {
         }
 
         Picker(
-            "Skip forward",
+            "Skip forward seconds",
             selection: Binding(
                 get: { settings.skipForward },
                 set: {
@@ -863,7 +866,46 @@ struct PodcastSettingsView: View {
             }
         }
 
-        Text("These durations update the skip buttons, lock screen controls, CarPlay, shortcuts, and watch playback controls.")
+        Text("These durations are used by the app player, shortcuts, and any external controls set to seconds.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        Divider()
+
+        Text("Lock Screen, Control Center & CarPlay")
+            .font(.subheadline.weight(.semibold))
+
+        Picker(
+            "Back button",
+            selection: Binding(
+                get: { settings.skipBackBehavior },
+                set: {
+                    settings.skipBackBehavior = $0
+                    saveAndNotify()
+                }
+            )
+        ) {
+            ForEach(SkipButtonBehavior.allCases, id: \.self) { behavior in
+                Text(behavior.settingsLabel).tag(behavior)
+            }
+        }
+
+        Picker(
+            "Forward button",
+            selection: Binding(
+                get: { settings.skipForwardBehavior },
+                set: {
+                    settings.skipForwardBehavior = $0
+                    saveAndNotify()
+                }
+            )
+        ) {
+            ForEach(SkipButtonBehavior.allCases, id: \.self) { behavior in
+                Text(behavior.settingsLabel).tag(behavior)
+            }
+        }
+
+        Text("Chapter mode uses previous/next chapter buttons when the playing episode has chapters. Without chapters, external controls fall back to the selected seconds.")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -999,6 +1041,7 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private var debugSection: some View {
         Section("Debug") {
+            /*
             NavigationLink {
                 AppDebugMetadataView()
             } label: {
@@ -1009,7 +1052,7 @@ struct PodcastSettingsView: View {
                     systemImage: "ladybug"
                 )
             }
-
+*/
             Button {
                 let didPresent = podcastYearShareCoordinator.presentDebugSheetNow(modelContext: context)
                 if didPresent == false {
@@ -2194,6 +2237,8 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         settings.playbackSpeed = globalSettings.playbackSpeed
         settings.skipForward = globalSettings.skipForward
         settings.skipBack = globalSettings.skipBack
+        settings.skipForwardBehavior = globalSettings.skipForwardBehavior
+        settings.skipBackBehavior = globalSettings.skipBackBehavior
         settings.playnextPosition = globalSettings.playnextPosition
         settings.autoSkipKeywords = globalSettings.autoSkipKeywords
         settings.autoDownload = globalSettings.autoDownload

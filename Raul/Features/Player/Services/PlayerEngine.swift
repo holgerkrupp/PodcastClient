@@ -140,8 +140,12 @@ actor PlayerEngine {
     }
     
     func setRate(_ newRate: Float) async {
-        activateSession()
-        avPlayer.rate = newRate
+        if newRate > 0 {
+            activateSession()
+            avPlayer.playImmediately(atRate: newRate)
+        } else {
+            avPlayer.pause()
+        }
     }
 
     func pause() {
@@ -180,6 +184,12 @@ actor PlayerEngine {
 
     func currentTime() -> Double {
         avPlayer.currentTime().seconds
+    }
+
+    func currentItemDuration() -> Double? {
+        let duration = avPlayer.currentItem?.duration.seconds
+        guard let duration, duration.isFinite, duration > 0 else { return nil }
+        return duration
     }
 
     private func removeEndObserver() {

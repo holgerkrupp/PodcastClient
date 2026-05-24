@@ -26,6 +26,13 @@ actor EpisodeActor {
     private static let legacyBackCatalogSuppressionMigrationKey = "EpisodeMetaData.backCatalogSuppressionMigration.v1"
     private static let legacyBackCatalogSuppressionArchiveWindow: TimeInterval = 24 * 60 * 60
 
+    static func scheduleRemoteChapterFetch(episodeURL: URL, modelContainer: ModelContainer) {
+        Task.detached(priority: .utility) {
+            await EpisodeActor(modelContainer: modelContainer)
+                .getRemoteChapters(episodeURL: episodeURL)
+        }
+    }
+
     private func logAutoDownload(_ message: String) async {
         await MainActor.run {
             BasicLogger.shared.log("[AutoDL] \(message)")
@@ -843,7 +850,7 @@ actor EpisodeActor {
         }
 
         await NotificationManager().sendNotification(title: episode.displayPodcastTitle ?? "New Episode", body: episode.title)
-        await getRemoteChapters(episodeURL: episodeURL)
+        Self.scheduleRemoteChapterFetch(episodeURL: episodeURL, modelContainer: modelContainer)
     }
     
     func getRemoteChapters(episodeURL: URL) async {
@@ -1539,7 +1546,8 @@ actor EpisodeActor {
     
     func extractRemoteMP3Chapters(_ fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        if let remoteURL = episode.url, let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
+        if let remoteURL = episode.url,
+           let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
             let dict = mp3Reader.getID3Dict()
             if let chapters = parse(chapters: dict) {
                 replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
