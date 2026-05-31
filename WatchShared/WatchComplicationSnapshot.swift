@@ -7,6 +7,7 @@ struct WatchComplicationSnapshot: Codable, Sendable {
     let currentTitle: String?
     let currentPodcast: String?
     let currentChapterTitle: String?
+    let currentArtworkURL: String?
     let duration: Double?
     let playPosition: Double?
     let isPlaying: Bool
@@ -14,10 +15,53 @@ struct WatchComplicationSnapshot: Codable, Sendable {
     let currentIndex: Int?
     let nextTitle: String?
     let nextPodcast: String?
+    let nextArtworkURL: String?
     let inboxCount: Int
     let downloadedCount: Int
     let activeTransferCount: Int
     let highestTransferProgress: Double?
+
+    init(
+        generatedAt: Date,
+        selectedPlaylistTitle: String,
+        currentEpisodeID: String?,
+        currentTitle: String?,
+        currentPodcast: String?,
+        currentChapterTitle: String?,
+        currentArtworkURL: String? = nil,
+        duration: Double?,
+        playPosition: Double?,
+        isPlaying: Bool,
+        playlistTotalCount: Int,
+        currentIndex: Int?,
+        nextTitle: String?,
+        nextPodcast: String?,
+        nextArtworkURL: String? = nil,
+        inboxCount: Int,
+        downloadedCount: Int,
+        activeTransferCount: Int,
+        highestTransferProgress: Double?
+    ) {
+        self.generatedAt = generatedAt
+        self.selectedPlaylistTitle = selectedPlaylistTitle
+        self.currentEpisodeID = currentEpisodeID
+        self.currentTitle = currentTitle
+        self.currentPodcast = currentPodcast
+        self.currentChapterTitle = currentChapterTitle
+        self.currentArtworkURL = currentArtworkURL
+        self.duration = duration
+        self.playPosition = playPosition
+        self.isPlaying = isPlaying
+        self.playlistTotalCount = playlistTotalCount
+        self.currentIndex = currentIndex
+        self.nextTitle = nextTitle
+        self.nextPodcast = nextPodcast
+        self.nextArtworkURL = nextArtworkURL
+        self.inboxCount = inboxCount
+        self.downloadedCount = downloadedCount
+        self.activeTransferCount = activeTransferCount
+        self.highestTransferProgress = highestTransferProgress
+    }
 
     static let empty = WatchComplicationSnapshot(
         generatedAt: .distantPast,

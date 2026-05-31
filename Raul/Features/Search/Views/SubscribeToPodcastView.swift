@@ -13,7 +13,7 @@ struct SubscribeToPodcastView: View {
 
     @Query private var allPodcasts: [Podcast]
     @Bindable var newPodcastFeed: PodcastFeed
-    private let previewPodcast: Podcast
+    @State private var previewPodcast: Podcast
     private let showsBrowseNavigationLink: Bool
 
     init(newPodcastFeed: PodcastFeed, showsBrowseNavigationLink: Bool = true) {
@@ -22,13 +22,12 @@ struct SubscribeToPodcastView: View {
         let previewPodcast = Podcast(from: newPodcastFeed)
         previewPodcast.metaData?.isSubscribed = false
         previewPodcast.metaData?.subscriptionDate = nil
-        self.previewPodcast = previewPodcast
+        _previewPodcast = State(initialValue: previewPodcast)
         _allPodcasts = Query()
     }
 
     private var existingPodcast: Podcast? {
-        guard let url = newPodcastFeed.url else { return nil }
-        return allPodcasts.first(where: { $0.feed == url })
+        allPodcasts.first { $0.isSubscribed && newPodcastFeed.matchesExistingPodcast($0) }
     }
 
     private var displayedPodcast: Podcast {
@@ -43,17 +42,35 @@ struct SubscribeToPodcastView: View {
         displayedPodcast.optionalTags?.podcastTrailers(baseURL: displayedPodcast.feed) ?? []
     }
 
+    private var deadFeedStatus: URLstatus? {
+        guard let status = newPodcastFeed.status, status.isDeadFeedResponse else { return nil }
+        return status
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
                 PodcastRowView(podcast: displayedPodcast)
 
-                if showsBrowseNavigationLink, newPodcastFeed.url != nil {
+                if showsBrowseNavigationLink, newPodcastFeed.url != nil, deadFeedStatus == nil {
                     NavigationLink(destination: PodcastBrowseView(feed: newPodcastFeed, modelContainer: modelContext.container)) {
                         EmptyView()
                     }
                     .opacity(0)
                 }
+            }
+
+            if let deadFeedStatus {
+                Label(deadFeedStatus.displayMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.red.opacity(0.12))
+                    )
+                    .accessibilityLabel("Feed unavailable: \(deadFeedStatus.displayMessage)")
             }
 
             if availableAlternativeFeeds.isEmpty == false {
@@ -82,6 +99,24 @@ struct SubscribeToPodcastView: View {
             )
         }
         .buttonStyle(.plain)
+        .onChange(of: newPodcastFeed.previewRefreshID) {
+            updatePreviewPodcast()
+        }
+    }
+
+    private func updatePreviewPodcast() {
+        previewPodcast.feed = newPodcastFeed.url
+        previewPodcast.title = newPodcastFeed.title ?? newPodcastFeed.url?.absoluteString.removingPercentEncoding ?? "New Podcast"
+        previewPodcast.desc = newPodcastFeed.description
+        previewPodcast.author = newPodcastFeed.artist
+        previewPodcast.imageURL = newPodcastFeed.artworkURL
+        previewPodcast.link = newPodcastFeed.link
+        previewPodcast.copyright = newPodcastFeed.copyright
+        previewPodcast.funding = newPodcastFeed.funding
+        previewPodcast.social = newPodcastFeed.social
+        previewPodcast.people = newPodcastFeed.people
+        previewPodcast.alternativeFeeds = newPodcastFeed.alternativeFeeds
+        previewPodcast.optionalTags = newPodcastFeed.optionalTags
     }
 }
 

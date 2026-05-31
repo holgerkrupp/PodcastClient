@@ -6,19 +6,28 @@
 //
 
 import SwiftUI
+import SwiftData
 import UniformTypeIdentifiers
 
 struct ImportExportView: View {
     @Environment(\.modelContext) private var context
+    @Query private var allPodcasts: [Podcast]
 
     @State private var importing = false
     @State private var newPodcasts: [PodcastFeed] = []
     @State private var fileURL: URL?
     @State private var isPreparingExport = false
+    @State private var isSubscribing = false
+    @State private var isCheckingImportedFeeds = false
+    @State private var showsImportPreview = false
+    @State private var importProgress: SubscriptionProgressUpdate?
     @State private var importErrorMessage: String?
     @State private var exportErrorMessage: String?
+    @State private var feedPreviewLoader = OPMLImportFeedPreviewLoader()
 
-    private let applePodcastsShortcutURL = URL(string: "https://www.icloud.com/shortcuts/5e49239698c44e92baf94399df86b3f9")!
+    private var applePodcastsShortcutURL: URL? {
+        Bundle.main.url(forResource: "Apple Podcasts to OPML", withExtension: "shortcut")
+    }
 
     private let transferGuides = [
         TransferGuide(
@@ -26,7 +35,7 @@ struct ImportExportView: View {
             icon: "apple.logo",
             tint: .pink,
             steps: [
-                "Install the Apple Podcasts to OPML shortcut.",
+                "Install the included Apple Podcasts to OPML shortcut.",
                 "Run it from Shortcuts to create an OPML file.",
                 "Return here and tap Import OPML."
             ],
@@ -70,6 +79,14 @@ struct ImportExportView: View {
             .sorted { ($0.title ?? "") < ($1.title ?? "") }
     }
 
+    private var unavailablePodcasts: [PodcastFeed] {
+        pendingPodcasts.filter { $0.status?.isDeadFeedResponse == true }
+    }
+
+    private var subscribablePendingPodcasts: [PodcastFeed] {
+        pendingPodcasts.filter { $0.status?.isDeadFeedResponse != true }
+    }
+
     private var existingPodcasts: [PodcastFeed] {
         newPodcasts
             .filter { $0.existing }
@@ -83,6 +100,24 @@ struct ImportExportView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(.init(top: 8, leading: 14, bottom: 8, trailing: 14))
+
+                if !newPodcasts.isEmpty {
+                    Button {
+                        showsImportPreview = true
+                    } label: {
+                        actionCard(
+                            title: "Review OPML Import",
+                            subtitle: importPreviewSubtitle,
+                            icon: "list.bullet.rectangle.portrait.fill",
+                            tint: .green,
+                            trailingIcon: "chevron.right"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
+                }
             }
 
             Section {
@@ -112,8 +147,12 @@ struct ImportExportView: View {
                             }.value
                             await MainActor.run {
                                 importErrorMessage = nil
+                                importProgress = nil
+                                isSubscribing = false
                                 newPodcasts = imported
+                                showsImportPreview = imported.isEmpty == false
                             }
+                            await validateImportedFeeds(imported)
                         }
                     case .failure(let error):
                         importErrorMessage = error.localizedDescription
@@ -214,74 +253,33 @@ struct ImportExportView: View {
                     HStack(spacing: 10) {
                         previewStat(title: "New", count: pendingPodcasts.count, tint: .green)
                         previewStat(title: "Existing", count: existingPodcasts.count, tint: .orange)
+                        previewStat(title: "Unavailable", count: unavailablePodcasts.count, tint: .red)
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
+
+                    if isSubscribing || importProgress != nil {
+                        importProgressCard
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
+                    }
+
+                    if isCheckingImportedFeeds {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Checking feed availability")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 14)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
+                    }
                 } header: {
                     Text("Import Preview")
-                }
-            }
-
-            if !pendingPodcasts.isEmpty {
-                Section {
-                    Button {
-                        subscribePendingPodcasts()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.headline)
-                            Text("Subscribe to All New Podcasts")
-                                .font(.system(.headline, design: .rounded).weight(.semibold))
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                                .font(.footnote.weight(.semibold))
-                        }
-                        .foregroundStyle(Color.green)
-                        .padding(14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.green.opacity(0.22), Color.green.opacity(0.08)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
-
-                    ForEach(pendingPodcasts, id: \.url) { newPodcastFeed in
-                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
-                            .modelContext(context)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
-                    }
-                } header: {
-                    Text("Ready to Subscribe (\(pendingPodcasts.count))")
-                }
-            }
-
-            if !existingPodcasts.isEmpty {
-                Section {
-                    ForEach(existingPodcasts, id: \.url) { newPodcastFeed in
-                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
-                            .modelContext(context)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
-                    }
-                } header: {
-                    Text("Already in Library (\(existingPodcasts.count))")
                 }
             }
         }
@@ -300,6 +298,14 @@ struct ImportExportView: View {
             .ignoresSafeArea()
         )
         .navigationTitle("Import / Export")
+        .navigationDestination(isPresented: $showsImportPreview) {
+            OPMLImportPreviewView(
+                newPodcasts: $newPodcasts,
+                isCheckingImportedFeeds: isCheckingImportedFeeds,
+                feedPreviewLoader: feedPreviewLoader,
+                onSubscribeAll: subscribePendingPodcasts
+            )
+        }
         .task {
             await prepareExportFileIfNeeded()
         }
@@ -329,7 +335,6 @@ struct ImportExportView: View {
             HStack(spacing: 10) {
                 previewStat(title: "New", count: pendingPodcasts.count, tint: .green)
                 previewStat(title: "Existing", count: existingPodcasts.count, tint: .orange)
-                previewStat(title: "Loaded", count: newPodcasts.count, tint: .blue)
             }
         }
         .padding(16)
@@ -424,23 +429,9 @@ struct ImportExportView: View {
                 }
             }
 
-            if guide.showsShortcutLink {
-                Link(destination: applePodcastsShortcutURL) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "square.grid.2x2.fill")
-                        Text("Install Apple Podcasts Shortcut")
-                        Spacer()
-                        Image(systemName: "arrow.up.forward")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(guide.tint)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(guide.tint.opacity(0.12))
-                    )
+            if guide.showsShortcutLink, let applePodcastsShortcutURL {
+                ShareLink(item: applePodcastsShortcutURL) {
+                    shortcutInstallLabel(tint: guide.tint)
                 }
             }
         }
@@ -455,6 +446,24 @@ struct ImportExportView: View {
         }
     }
 
+    private func shortcutInstallLabel(tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "square.grid.2x2.fill")
+            Text("Install Apple Podcasts Shortcut")
+            Spacer()
+            Image(systemName: "square.and.arrow.up")
+                .font(.caption.weight(.semibold))
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.12))
+        )
+    }
+
     private func previewStat(title: String, count: Int, tint: Color) -> some View {
         HStack(spacing: 6) {
             Circle()
@@ -462,9 +471,14 @@ struct ImportExportView: View {
                 .frame(width: 8, height: 8)
             Text(title)
                 .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             Text("\(count)")
                 .font(.caption.weight(.bold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
+        .fixedSize(horizontal: true, vertical: false)
         .foregroundStyle(tint)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -474,6 +488,41 @@ struct ImportExportView: View {
         )
     }
 
+    private var importPreviewSubtitle: String {
+        if unavailablePodcasts.isEmpty == false {
+            return "\(subscribablePendingPodcasts.count) ready, \(unavailablePodcasts.count) unavailable, \(existingPodcasts.count) already in your library."
+        }
+
+        return "\(pendingPodcasts.count) new, \(existingPodcasts.count) already in your library."
+    }
+
+    private var importProgressCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: isSubscribing ? "arrow.down.circle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(isSubscribing ? Color.green : Color.secondary)
+                Text(importProgress?.message ?? "Preparing subscription")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(Int((importProgress?.fractionCompleted ?? 0) * 100))%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: importProgress?.fractionCompleted ?? 0)
+                .tint(.green)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+        }
+    }
+
     private func prepareExportFileIfNeeded() async {
         if fileURL == nil {
             await sharePodcasts()
@@ -481,12 +530,60 @@ struct ImportExportView: View {
     }
 
     private func subscribePendingPodcasts() {
-        let toSubscribe = pendingPodcasts
+        let toSubscribe = subscribablePendingPodcasts
+        guard !toSubscribe.isEmpty, !isSubscribing else { return }
         let modelContainer = context.container
         Task {
+            await MainActor.run {
+                isSubscribing = true
+                importProgress = SubscriptionProgressUpdate(0, "Preparing subscription")
+            }
             await Task.detached(priority: .utility) {
-                await SubscriptionManager(modelContainer: modelContainer).subscribe(all: toSubscribe)
+                await SubscriptionManager(modelContainer: modelContainer).subscribe(all: toSubscribe) { update in
+                    await MainActor.run {
+                        importProgress = update
+                    }
+                }
             }.value
+            await MainActor.run {
+                for podcast in toSubscribe {
+                    podcast.added = true
+                    podcast.existing = true
+                }
+                importProgress = SubscriptionProgressUpdate(1, "Subscription complete")
+                isSubscribing = false
+            }
+        }
+    }
+
+    private func validateImportedFeeds(_ feeds: [PodcastFeed]) async {
+        let feedsToCheck = feeds.filter { !$0.existing && !$0.added && $0.url != nil }
+        guard !feedsToCheck.isEmpty else { return }
+
+        await MainActor.run {
+            isCheckingImportedFeeds = true
+        }
+
+        await withTaskGroup(of: (PodcastFeed, URLstatus?).self) { group in
+            for feed in feedsToCheck {
+                guard let url = feed.url else { continue }
+
+                group.addTask {
+                    let status = try? await url.status()
+                    return (feed, status ?? URLstatus(statusCode: nil, newURL: nil, lastRequest: Date()))
+                }
+            }
+
+            for await (feed, status) in group {
+                await MainActor.run {
+                    feed.status = status
+                    feed.existing = allPodcasts.contains { $0.isSubscribed && feed.matchesExistingPodcast($0) }
+                }
+            }
+        }
+
+        await MainActor.run {
+            isCheckingImportedFeeds = false
         }
     }
 
@@ -537,6 +634,246 @@ private struct TransferGuide: Identifiable {
     var showsShortcutLink = false
 
     var id: String { title }
+}
+
+private struct OPMLImportPreviewView: View {
+    @Environment(\.modelContext) private var context
+    @Query private var allPodcasts: [Podcast]
+    @Binding var newPodcasts: [PodcastFeed]
+    let isCheckingImportedFeeds: Bool
+    let feedPreviewLoader: OPMLImportFeedPreviewLoader
+    let onSubscribeAll: () -> Void
+
+    private var pendingPodcasts: [PodcastFeed] {
+        newPodcasts
+            .filter { !$0.existing && !$0.added }
+            .sorted { ($0.title ?? "") < ($1.title ?? "") }
+    }
+
+    private var unavailablePodcasts: [PodcastFeed] {
+        pendingPodcasts.filter { $0.status?.isDeadFeedResponse == true }
+    }
+
+    private var subscribablePendingPodcasts: [PodcastFeed] {
+        pendingPodcasts.filter { $0.status?.isDeadFeedResponse != true }
+    }
+
+    private var existingPodcasts: [PodcastFeed] {
+        newPodcasts
+            .filter { $0.existing || $0.added }
+            .sorted { ($0.title ?? "") < ($1.title ?? "") }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 10) {
+                    previewStat(title: "New", count: pendingPodcasts.count, tint: .green)
+                    previewStat(title: "Existing", count: existingPodcasts.count, tint: .orange)
+                    previewStat(title: "Unavailable", count: unavailablePodcasts.count, tint: .red)
+                }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
+            } header: {
+                Text("Import Preview")
+            }
+
+            if isCheckingImportedFeeds {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Checking feed availability")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
+                }
+            }
+
+            if !unavailablePodcasts.isEmpty {
+                Section {
+                    ForEach(unavailablePodcasts, id: \.url) { newPodcastFeed in
+                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed, showsBrowseNavigationLink: false)
+                            .modelContext(context)
+                            .task {
+                                await loadPreviewIfNeeded(for: newPodcastFeed)
+                            }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
+                    }
+                } header: {
+                    Text("Unavailable Feeds (\(unavailablePodcasts.count))")
+                } footer: {
+                    Text("These feeds returned an error code and are skipped when subscribing to all new podcasts.")
+                }
+            }
+
+            if !subscribablePendingPodcasts.isEmpty {
+                Section {
+                    Button {
+                        onSubscribeAll()
+                    } label: {
+                        subscribeAllCard
+                    }
+                    .disabled(isCheckingImportedFeeds)
+                    .buttonStyle(.plain)
+                    .opacity(isCheckingImportedFeeds ? 0.55 : 1)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
+
+                    ForEach(subscribablePendingPodcasts, id: \.url) { newPodcastFeed in
+                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
+                            .modelContext(context)
+                            .task {
+                                await loadPreviewIfNeeded(for: newPodcastFeed)
+                            }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
+                    }
+                } header: {
+                    Text("Ready to Subscribe (\(subscribablePendingPodcasts.count))")
+                }
+            }
+
+            if !existingPodcasts.isEmpty {
+                Section {
+                    ForEach(existingPodcasts, id: \.url) { newPodcastFeed in
+                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
+                            .modelContext(context)
+                            .task {
+                                await loadPreviewIfNeeded(for: newPodcastFeed)
+                            }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0, leading: 0, bottom: 1, trailing: 0))
+                    }
+                } header: {
+                    Text("Already in Library (\(existingPodcasts.count))")
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.green.opacity(0.12),
+                    Color.accentColor.opacity(0.05),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
+        .navigationTitle("OPML Import")
+    }
+
+    private var subscribeAllCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "plus.circle.fill")
+                .font(.headline)
+            Text(isCheckingImportedFeeds ? "Checking Feed Availability" : "Subscribe to All Available Podcasts")
+                .font(.system(.headline, design: .rounded).weight(.semibold))
+            Spacer()
+            Image(systemName: "arrow.down.circle")
+                .font(.footnote.weight(.semibold))
+        }
+        .foregroundStyle(Color.green)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.22), Color.green.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
+        }
+    }
+
+    private func previewStat(title: String, count: Int, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(tint)
+                .frame(width: 8, height: 8)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Text("\(count)")
+                .font(.caption.weight(.bold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(tint.opacity(0.12))
+        )
+    }
+
+    private func loadPreviewIfNeeded(for feed: PodcastFeed) async {
+        guard feed.existing == false, feed.status?.isDeadFeedResponse != true else { return }
+        guard feed.needsRemotePreview, let url = feed.url else { return }
+        guard let resolvedFeed = await feedPreviewLoader.preview(for: url) else { return }
+
+        await MainActor.run {
+            feed.applyPreview(from: resolvedFeed)
+            feed.existing = allPodcasts.contains { $0.isSubscribed && feed.matchesExistingPodcast($0) }
+        }
+    }
+}
+
+private actor OPMLImportFeedPreviewLoader {
+    private var cache: [URL: PodcastFeed] = [:]
+    private var failedURLs = Set<URL>()
+    private var tasks: [URL: Task<PodcastFeed?, Never>] = [:]
+
+    func preview(for url: URL) async -> PodcastFeed? {
+        if let cached = cache[url] {
+            return cached
+        }
+
+        if failedURLs.contains(url) {
+            return nil
+        }
+
+        if let task = tasks[url] {
+            return await task.value
+        }
+
+        let task = Task(priority: .utility) {
+            try? await PodcastParser.fetchPage(from: url, maximumEpisodes: 1).feed
+        }
+        tasks[url] = task
+
+        let feed = await task.value
+        tasks[url] = nil
+
+        if let feed {
+            cache[url] = feed
+        } else {
+            failedURLs.insert(url)
+        }
+
+        return feed
+    }
 }
 
 #Preview {

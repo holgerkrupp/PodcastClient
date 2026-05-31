@@ -157,6 +157,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             currentTitle: currentEpisode?.title,
             currentPodcast: currentEpisode?.podcastTitle,
             currentChapterTitle: currentEpisode?.chapter(at: resolvedPlayPosition)?.title,
+            currentArtworkURL: currentEpisode?.artworkURL(at: resolvedPlayPosition)?.absoluteString,
             duration: currentEpisode?.duration,
             playPosition: resolvedPlayPosition,
             isPlaying: isPlaying,
@@ -164,6 +165,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             currentIndex: currentIndex,
             nextTitle: nextEpisode?.title,
             nextPodcast: nextEpisode?.podcastTitle,
+            nextArtworkURL: nextEpisode?.artworkURL(at: nextEpisode?.playPosition)?.absoluteString,
             inboxCount: self.snapshot.inbox.count,
             downloadedCount: downloadedFiles.count,
             activeTransferCount: activeTransferIDs.count,
@@ -869,6 +871,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
         let transferBucket = Int(((snapshot.highestTransferProgress ?? 0) * 20).rounded(.down))
         let signature = [
             snapshot.currentEpisodeID ?? "",
+            snapshot.currentArtworkURL ?? "",
             "\(snapshot.isPlaying)",
             "\(progressBucket)",
             "\(snapshot.playlistTotalCount)",
@@ -888,6 +891,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
         lastComplicationSignature = signature
         lastComplicationReloadAt = .now
         WidgetCenter.shared.reloadTimelines(ofKind: "WatchEpisodeProgressComplication")
+        WidgetCenter.shared.reloadTimelines(ofKind: "WatchEpisodeArtworkComplication")
         WidgetCenter.shared.reloadTimelines(ofKind: "WatchPlaylistRemainingComplication")
         WidgetCenter.shared.reloadTimelines(ofKind: "WatchSyncStatusComplication")
         WidgetCenter.shared.reloadTimelines(ofKind: "WatchAppLauncherComplication")

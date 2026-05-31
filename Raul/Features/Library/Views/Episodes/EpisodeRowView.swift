@@ -41,7 +41,7 @@ struct EpisodeRowView: View {
         let completionDate = episode.metaData?.completionDate
         let isDownloaded = episode.source == .sideLoaded || fileManager.isDownloaded(episode.localFile) == true
         let hasChapters = episode.chapters?.isEmpty == false
-        let hasTranscript = episode.externalFiles.contains(where: { $0.category == .transcript }) || (episode.transcriptLines?.isEmpty == false)
+        let hasTranscript = episode.externalFiles.contains(where: { $0.category == .transcript })
         let hasBookmarks = episode.bookmarks?.isEmpty == false
         let progress = max(0.0, min(1.0, episode.maxPlayProgress))
         let episodeTypeBadgeText = badgeText(for: episode.type)

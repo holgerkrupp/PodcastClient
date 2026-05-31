@@ -15,9 +15,13 @@ enum EpisodeListFilterMode {
 }
 
 struct AllEpisodesListView: View {
+    private static let recentlyPlayedPageSize = 50
+
     @Environment(\.modelContext) private var modelContext
     @State private var episodes: [Episode] = []
     @State private var searchText: String = ""
+    @State private var recentlyPlayedDisplayLimit = Self.recentlyPlayedPageSize
+    @State private var recentlyPlayedHasMore = false
     let filterMode: EpisodeListFilterMode
     
     init(filterMode: EpisodeListFilterMode = .all) {
@@ -44,6 +48,9 @@ struct AllEpisodesListView: View {
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
+                    .onAppear {
+                        loadMoreRecentlyPlayedIfNeeded(currentEpisode: episode)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -54,6 +61,7 @@ struct AllEpisodesListView: View {
                 Task { await fetchEpisodes() }
             }
             .onChange(of: searchText) { oldValue, newValue in
+                recentlyPlayedDisplayLimit = Self.recentlyPlayedPageSize
                 debounceSearch(newValue)
             }
         }
@@ -84,17 +92,10 @@ struct AllEpisodesListView: View {
             if searchText.isEmpty {
                 predicate = #Predicate<Episode> {
                     $0.metaData?.lastPlayed != nil
-                    &&
-                    ($0.metaData?.isHistory == true || $0.metaData?.isArchived == true)
-                    
                 }
             } else {
                 predicate = #Predicate<Episode> { 
                     $0.metaData?.lastPlayed != nil
-                    
-                    &&
-                    ($0.metaData?.isHistory == true || $0.metaData?.isArchived == true)
-                    
                     &&
                     $0.title.localizedStandardContains(searchText)
                 }
@@ -104,7 +105,7 @@ struct AllEpisodesListView: View {
             )
             do {
                 let fetchedEpisodes = try modelContext.fetch(descriptor)
-                episodes = fetchedEpisodes.sorted { lhs, rhs in
+                let sortedEpisodes = fetchedEpisodes.sorted { lhs, rhs in
                     let lhsDate = lhs.metaData?.lastPlayed ?? .distantPast
                     let rhsDate = rhs.metaData?.lastPlayed ?? .distantPast
                     if lhsDate != rhsDate {
@@ -112,6 +113,10 @@ struct AllEpisodesListView: View {
                     }
                     return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
                 }
+                recentlyPlayedHasMore = sortedEpisodes.count > recentlyPlayedDisplayLimit
+                episodes = sortedEpisodes
+                    .prefix(recentlyPlayedDisplayLimit)
+                    .map { $0 }
             } catch {
                 // print("Fetch error: \(error)")
             }
@@ -138,6 +143,15 @@ struct AllEpisodesListView: View {
         Debounce.shared.perform {
             Task { await fetchEpisodes(searchText: text) }
         }
+    }
+
+    private func loadMoreRecentlyPlayedIfNeeded(currentEpisode: Episode) {
+        guard filterMode == .onlyPlayed else { return }
+        guard recentlyPlayedHasMore else { return }
+        guard episodes.last?.persistentModelID == currentEpisode.persistentModelID else { return }
+
+        recentlyPlayedDisplayLimit += Self.recentlyPlayedPageSize
+        Task { await fetchEpisodes(searchText: searchText) }
     }
     
     

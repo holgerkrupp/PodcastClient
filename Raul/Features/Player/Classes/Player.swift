@@ -209,7 +209,7 @@ class Player {
 
     
     private var nowPlayingArtwork: MPMediaItemArtwork?
-    private var lastArtworkURL: URL?
+    private var lastArtworkIdentifier: String?
 
     
      init()  {
@@ -752,7 +752,7 @@ class Player {
         currentPlaybackUsesAlternateMedia = false
         mediaSelection = .primary
         lastProgressSaveDate = .distantPast
-        lastArtworkURL = nil
+        lastArtworkIdentifier = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
 
         if finishedPlayback || episode.playProgress >= progressThreshold {
@@ -845,6 +845,7 @@ class Player {
             }
         }
 
+        await engine.pause()
         await engine.replaceCurrentItem(with: item)
         
         
@@ -1246,9 +1247,9 @@ class Player {
     
     
     private var lastProgressSaveDate = Date.distantPast
-    private var nowPlayingUpdateCounter = 0
     private let progressSaveInterval: TimeInterval = 10
-    private let nowPlayingUpdateInterval = 1 // 1 second * 1 = 1 second
+    private var lastNowPlayingInfoUpdateDate = Date.distantPast
+    private let nowPlayingUpdateInterval: TimeInterval = 10
     
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
@@ -1263,13 +1264,11 @@ class Player {
             }
         }
 
-        nowPlayingUpdateCounter += 1
-        if nowPlayingUpdateCounter >= nowPlayingUpdateInterval {
+        let now = Date()
+        if now.timeIntervalSince(lastNowPlayingInfoUpdateDate) >= nowPlayingUpdateInterval {
             updateNowPlayingInfo()
-            nowPlayingUpdateCounter = 0
         }
 
-        let now = Date()
         if now.timeIntervalSince(lastProgressSaveDate) >= progressSaveInterval {
             if currentEpisode?.chapters?.isEmpty == false {
                 updateChapters()
@@ -1470,10 +1469,11 @@ class Player {
     
 
     
-    // Always call this function to update nowPlayingInfo—when artwork or position/rate changes.
+    // Always call this function to update nowPlayingInfo—when artwork, position, or rate changes.
     private func updateNowPlayingInfo(artwork: MPMediaItemArtwork? = nil) {
         guard let episode = currentEpisode else { return }
         let effectivePlaybackRate: Float = isPlaying ? playbackRate : 0.0
+        lastNowPlayingInfoUpdateDate = Date()
     
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
@@ -1507,48 +1507,66 @@ class Player {
     }
     
   
-    private func updateNowPlayingCover() async{
-        guard let episode =  currentEpisode else {
-            // print("currentEpisode is nil")
+    private func updateNowPlayingCover() async {
+        guard let episode = currentEpisode else {
+            nowPlayingInfoActor.setArtwork(nil)
+            lastArtworkIdentifier = nil
             return
         }
-        
-        let chapterImage = currentChapter?.image
-        let chapterImageData = currentChapter?.imageData
-        
-        
-       
-            // print("updating now playing cover")
 
-            guard let imageURL = chapterImage ?? episode.imageURL ?? episode.podcast?.imageURL else {
-                // print("imageURL is nil")
-                return }
-            
-            if lastArtworkURL == imageURL {
+        let targetSize = CGSize(width: 600, height: 600)
+
+        if let chapter = currentChapter,
+           let chapterImageData = chapter.imageData,
+           chapterImageData.isEmpty == false {
+            let identifier = "chapter-data:\(chapter.uuid?.uuidString ?? chapter.title):\(chapterImageData.count)"
+            if lastArtworkIdentifier == identifier {
                 return
             }
-            lastArtworkURL = imageURL
-            let targetSize = CGSize(width: 600, height: 600)
-            
-            if let chapterImageData = chapterImageData,
-               let image = ImageLoaderAndCache.makeUIImage(from: chapterImageData, maxPixelSize: max(targetSize.width, targetSize.height)) {
-                // print("using chapter image data")
 
+            if let image = ImageLoaderAndCache.makeUIImage(
+                from: chapterImageData,
+                maxPixelSize: max(targetSize.width, targetSize.height)
+            ) {
+                lastArtworkIdentifier = identifier
                 nowPlayingInfoActor.setArtwork(image)
-                
-            }else if let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
-                // print("using URL image Data \(imageURL.absoluteString)")
-                if let resizedImage = Self.downscale(image: originalImage, to: targetSize) {
-                
-                    nowPlayingInfoActor.setArtwork(resizedImage)
-                   
-                    
-                }
-            }else{
-                // print("image is nil")
-                
+                return
             }
         }
+
+        let imageURLs = [
+            currentChapter?.image,
+            episode.imageURL,
+            episode.podcast?.imageURL
+        ].compactMap { $0 }
+
+        guard imageURLs.isEmpty == false else {
+            if lastArtworkIdentifier != nil {
+                nowPlayingInfoActor.setArtwork(nil)
+                lastArtworkIdentifier = nil
+            }
+            return
+        }
+
+        for imageURL in imageURLs {
+            let identifier = "url:\(imageURL.absoluteString)"
+            if lastArtworkIdentifier == identifier {
+                return
+            }
+
+            guard let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL),
+                  let resizedImage = Self.downscale(image: originalImage, to: targetSize) else {
+                continue
+            }
+
+            lastArtworkIdentifier = identifier
+            nowPlayingInfoActor.setArtwork(resizedImage)
+            return
+        }
+
+        nowPlayingInfoActor.setArtwork(nil)
+        lastArtworkIdentifier = nil
+    }
     
     private static func downscale(image: UIImage, to size: CGSize) -> UIImage? {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
