@@ -153,6 +153,21 @@ final class Podcast: Identifiable {
     var isSubscribed: Bool {
         metaData?.isSubscribed != false
     }
+
+    func matchesFeedURL(_ url: URL) -> Bool {
+        if let feed, feed.podcastFeedComparisonKeys.intersection(url.podcastFeedComparisonKeys).isEmpty == false {
+            return true
+        }
+
+        return alternativeFeeds.contains {
+            $0.url.podcastFeedComparisonKeys.intersection(url.podcastFeedComparisonKeys).isEmpty == false
+        }
+    }
+
+    func matchesWebURL(_ url: URL) -> Bool {
+        guard let link else { return false }
+        return link.matchesPodcastWebURL(url)
+    }
 }
 
 

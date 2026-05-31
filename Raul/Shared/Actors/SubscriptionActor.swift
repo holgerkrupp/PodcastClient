@@ -34,10 +34,18 @@ actor SubscriptionActor:NSObject{
     
     
     func contains(url: URL) -> Bool{
-        if (podcasts.map { $0.feed }.contains(url) ? true : false){
-            return true
-        }else{
-            return false
+        existingFeedComparisonKeys.contains { url.podcastFeedComparisonKeys.contains($0) }
+    }
+
+    private var existingFeedComparisonKeys: Set<String> {
+        podcasts.reduce(into: Set<String>()) { keys, podcast in
+            if let feed = podcast.feed {
+                keys.formUnion(feed.podcastFeedComparisonKeys)
+            }
+
+            for alternativeFeed in podcast.alternativeFeeds {
+                keys.formUnion(alternativeFeed.url.podcastFeedComparisonKeys)
+            }
         }
     }
     
@@ -52,19 +60,12 @@ actor SubscriptionActor:NSObject{
         
         if let data = try? Data(contentsOf: url){
             fetchData()
-            let parser = XMLParser(data: data)
-            parser.shouldProcessNamespaces = true
-            parser.shouldResolveExternalEntities = true
-            parser.delegate = opmlParser
-            if parser.parse(){
-                
-                if let feeds = (parser.delegate as? OPMLParser)?.podcastFeeds {
+            if parseOPMLData(data) || parseSanitizedOPMLData(data) {
+                let feeds = opmlParser.podcastFeeds
+                if feeds.isEmpty == false {
                     newPodcasts = feeds
-                    let podcastURLs = podcasts.map { $0.feed }
-                    
-
                     for index in newPodcasts.indices {
-                        newPodcasts[index].existing = podcastURLs.contains(newPodcasts[index].url) ? true : false
+                        newPodcasts[index].existing = podcasts.contains { newPodcasts[index].matchesExistingPodcast($0) }
                     }
                     
                 }
@@ -76,6 +77,22 @@ actor SubscriptionActor:NSObject{
             // print("could not read data from OPML file")
         }
         return nil
+    }
+
+    private func parseOPMLData(_ data: Data) -> Bool {
+        let parser = XMLParser(data: data)
+        parser.shouldProcessNamespaces = true
+        parser.shouldResolveExternalEntities = true
+        parser.delegate = opmlParser
+        return parser.parse()
+    }
+
+    private func parseSanitizedOPMLData(_ data: Data) -> Bool {
+        guard let sanitizedData = OPMLImportSanitizer.sanitizedDataIfNeeded(from: data) else {
+            return false
+        }
+
+        return parseOPMLData(sanitizedData)
     }
     
 

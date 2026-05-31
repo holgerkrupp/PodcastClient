@@ -39,6 +39,25 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     var importedLastEpisodeDate: Date?
     var importedLastEpisodeURL: URL?
     
+    var needsRemotePreview: Bool {
+        artist == nil || description == nil || artworkURL == nil || alternativeFeeds.isEmpty
+    }
+
+    var previewRefreshID: String {
+        [
+            title,
+            subtitle,
+            description,
+            artist,
+            artworkURL?.absoluteString,
+            lastRelease?.timeIntervalSince1970.description,
+            link?.absoluteString,
+            alternativeFeeds.map(\.url.absoluteString).joined(separator: "|")
+        ]
+            .compactMap { $0 }
+            .joined(separator: "||")
+    }
+    
     
     
     static func == (lhs: PodcastFeed, rhs: PodcastFeed) -> Bool {
@@ -227,6 +246,67 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         description = parsedDescription ?? description
         artist = parsedAuthor ?? artist
         copyright = parsedCopyright ?? copyright
+    }
+
+    func applyPreview(from feed: PodcastFeed) {
+        url = feed.url ?? url
+        title = feed.title ?? title
+        subtitle = feed.subtitle ?? subtitle
+        description = feed.description ?? description
+        source = feed.source ?? source
+        artist = feed.artist ?? artist
+        artworkURL = feed.artworkURL ?? artworkURL
+        lastRelease = feed.lastRelease ?? lastRelease
+        copyright = feed.copyright ?? copyright
+        link = feed.link ?? link
+
+        if feed.funding.isEmpty == false {
+            funding = feed.funding
+        }
+
+        if feed.social.isEmpty == false {
+            social = feed.social
+        }
+
+        if feed.people.isEmpty == false {
+            people = feed.people
+        }
+
+        if feed.alternativeFeeds.isEmpty == false {
+            alternativeFeeds = feed.alternativeFeeds
+        }
+
+        optionalTags = feed.optionalTags ?? optionalTags
+    }
+
+    func matchesExistingPodcast(_ podcast: Podcast) -> Bool {
+        if let url, podcast.matchesFeedURL(url) {
+            return true
+        }
+
+        if alternativeFeeds.contains(where: { podcast.matchesFeedURL($0.url) }) {
+            return true
+        }
+
+        if let link, podcast.matchesWebURL(link) {
+            return true
+        }
+
+        if let podcastLink = podcast.link, podcastLink.matchesPodcastWebURL(link) {
+            return true
+        }
+
+        if let titleKey = title?.podcastTitleComparisonKey,
+           titleKey == podcast.title.podcastTitleComparisonKey {
+            return true
+        }
+
+        if let importedLastEpisodeURL,
+           podcast.episodes?.contains(where: { $0.url == importedLastEpisodeURL }) == true {
+            return true
+        }
+
+        return false
     }
     
     convenience init(fyydPodcast: FyydPodcast) {

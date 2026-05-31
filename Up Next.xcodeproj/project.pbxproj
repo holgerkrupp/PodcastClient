@@ -14,6 +14,7 @@
 		488591272DE4D66F008604DA /* GlowEffects in Frameworks */ = {isa = PBXBuildFile; productRef = 488591262DE4D66F008604DA /* GlowEffects */; };
 		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 		48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
+		48BCBD602FC99A95008EC322 /* Apple Podcasts to OPML.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = 48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */; };
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
 		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
@@ -111,6 +112,7 @@
 		4878D3802DDA612600BA3D92 /* PodcastFeactures.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PodcastFeactures.md; sourceTree = "<group>"; };
 		487F5C6F2D9D4F0C00056D08 /* UpNext.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNext.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48B638D02F59999F00940B67 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Apple Podcasts to OPML.shortcut"; sourceTree = "<group>"; };
 		48E626F62FA0307A0045AC1C /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = /System/Library/Frameworks/AppIntents.framework; sourceTree = "<absolute>"; };
 		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -310,6 +312,7 @@
 				4827FCD32DA5AC0500FA6778 /* README.md */,
 				4878D3802DDA612600BA3D92 /* PodcastFeactures.md */,
 				4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */,
+				48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */,
 				B1C2D3052F10000100000001 /* WatchShared */,
 				B1C2D3042F10000100000001 /* UpNextWatch */,
 				D4C006002FB9000100000001 /* UpNextWatchComplications */,
@@ -544,6 +547,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				48BCBD602FC99A95008EC322 /* Apple Podcasts to OPML.shortcut in Resources */,
 				4827FCD42DA5AC0500FA6778 /* README.md in Resources */,
 				4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */,
 				4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */,
@@ -782,7 +786,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -807,7 +811,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -830,7 +834,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -855,7 +859,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -874,7 +878,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -885,7 +889,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -903,7 +907,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -914,7 +918,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -932,7 +936,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -941,7 +945,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -961,7 +965,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -970,7 +974,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1038,7 +1042,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1048,7 +1052,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1068,7 +1072,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 22;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1078,7 +1082,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.9;
+				MARKETING_VERSION = 2026.10;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;

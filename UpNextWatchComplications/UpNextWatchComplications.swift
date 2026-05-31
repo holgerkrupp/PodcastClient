@@ -50,6 +50,18 @@ struct WatchEpisodeProgressComplication: Widget {
     }
 }
 
+struct WatchEpisodeArtworkComplication: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "WatchEpisodeArtworkComplication", provider: WatchComplicationProvider()) { entry in
+            WatchEpisodeArtworkView(snapshot: entry.snapshot)
+                .containerBackground(.fill.tertiary, for: .widget)
+        }
+        .configurationDisplayName("Episode Cover")
+        .description("Shows the cover for the now playing episode or first playlist item.")
+        .supportedFamilies(watchComplicationFamilies)
+    }
+}
+
 struct WatchPlaylistRemainingComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "WatchPlaylistRemainingComplication", provider: WatchComplicationProvider()) { entry in
@@ -171,6 +183,46 @@ private struct WatchEpisodeProgressView: View {
     }
 }
 
+private struct WatchEpisodeArtworkView: View {
+    @Environment(\.widgetFamily) private var family
+    let snapshot: WatchComplicationSnapshot
+
+    var body: some View {
+        Group {
+            switch family {
+            case .accessoryInline:
+                Label(snapshot.coverTitle ?? "Up Next", systemImage: snapshot.isPlaying ? "pause.fill" : "play.fill")
+            case .accessoryRectangular:
+                HStack(spacing: 7) {
+                    ComplicationArtworkImage(url: snapshot.coverArtworkURL)
+                        .frame(width: 42, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(snapshot.coverTitle ?? "Nothing queued")
+                            .font(.headline)
+                            .lineLimit(1)
+                        Text(snapshot.coverSubtitle ?? snapshot.selectedPlaylistTitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            case .accessoryCorner:
+                ComplicationArtworkImage(url: snapshot.coverArtworkURL)
+                    .clipShape(Circle())
+                    .widgetLabel {
+                        Text(snapshot.coverTitle ?? "Up Next")
+                    }
+            default:
+                ComplicationArtworkImage(url: snapshot.coverArtworkURL)
+                    .clipShape(Circle())
+            }
+        }
+        .widgetURL(URL(string: snapshot.currentEpisodeID == nil ? "upnext://playlist" : "upnext://player"))
+    }
+}
+
 private struct WatchPlaylistRemainingView: View {
     @Environment(\.widgetFamily) private var family
     let snapshot: WatchComplicationSnapshot
@@ -286,6 +338,30 @@ private struct UpNextGlyph: View {
     }
 }
 
+private struct ComplicationArtworkImage: View {
+    let url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        UpNextGlyph()
+                    }
+                }
+            } else {
+                UpNextGlyph()
+            }
+        }
+        .widgetAccentable()
+    }
+}
+
 private struct CountBadge: View {
     let value: Int
     let caption: String
@@ -314,6 +390,7 @@ private extension WatchComplicationSnapshot {
             currentTitle: "Building Better Apps",
             currentPodcast: "Swift by Sundell",
             currentChapterTitle: "WidgetKit",
+            currentArtworkURL: "https://is1-ssl.mzstatic.com/image/thumb/Podcasts116/v4/7c/a9/b3/7ca9b3fb-3f1a-3d2b-6a4e-fc143d56c07a/mza_12282684433178862033.jpg/600x600bb.jpg",
             duration: 3600,
             playPosition: 1740,
             isPlaying: true,
@@ -321,6 +398,7 @@ private extension WatchComplicationSnapshot {
             currentIndex: 2,
             nextTitle: "Designing for watchOS",
             nextPodcast: "Under the Radar",
+            nextArtworkURL: nil,
             inboxCount: 5,
             downloadedCount: 3,
             activeTransferCount: 1,
@@ -344,6 +422,18 @@ private extension WatchComplicationSnapshot {
         return "\(Self.formatDuration(remaining)) left"
     }
 
+    var coverTitle: String? {
+        currentTitle ?? nextTitle
+    }
+
+    var coverSubtitle: String? {
+        currentPodcast ?? nextPodcast
+    }
+
+    var coverArtworkURL: URL? {
+        (currentArtworkURL ?? nextArtworkURL).flatMap(URL.init(string:))
+    }
+
     static func formatDuration(_ seconds: Double) -> String {
         let totalMinutes = max(Int(seconds.rounded() / 60), 0)
         let hours = totalMinutes / 60
@@ -359,6 +449,12 @@ private extension WatchComplicationSnapshot {
 
 #Preview("Progress", as: .accessoryRectangular) {
     WatchEpisodeProgressComplication()
+} timeline: {
+    WatchComplicationEntry(date: .now, snapshot: .preview)
+}
+
+#Preview("Cover", as: .accessoryCircular) {
+    WatchEpisodeArtworkComplication()
 } timeline: {
     WatchComplicationEntry(date: .now, snapshot: .preview)
 }

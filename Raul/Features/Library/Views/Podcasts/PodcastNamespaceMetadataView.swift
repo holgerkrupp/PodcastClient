@@ -497,6 +497,10 @@ private struct NamespaceNodeContentView: View {
 private struct NamespaceNodeValueAndAttributesView: View {
     let node: NamespaceNode
 
+    private var unsupportedNotice: String? {
+        NamespaceMetadataMapper.unsupportedPlaybackNotice(for: node)
+    }
+
     private var valueText: String? {
         let trimmedValue = node.value?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let trimmedValue, trimmedValue.isEmpty == false else { return nil }
@@ -518,7 +522,8 @@ private struct NamespaceNodeValueAndAttributesView: View {
     }
 
     private var links: [URL] {
-        NamespaceMetadataMapper.extractURLs(from: node)
+        guard unsupportedNotice == nil else { return [] }
+        return NamespaceMetadataMapper.extractURLs(from: node)
     }
 
     private var linkLabel: String {
@@ -540,6 +545,15 @@ private struct NamespaceNodeValueAndAttributesView: View {
                         NamespaceAttributePill(key: item.0, value: item.1)
                     }
                 }
+            }
+
+            if let unsupportedNotice {
+                Label(unsupportedNotice, systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(.thinMaterial, in: Capsule())
             }
 
             if links.isEmpty == false {
@@ -759,7 +773,8 @@ private enum NamespaceMetadataMapper {
             return joinedValues([
                 mediaTypeText(node.attributes["type"]),
                 byteCountText(node.attributes["length"]),
-                node.attributes["bitrate"].flatMap { "\($0) bps" }
+                node.attributes["bitrate"].flatMap { "\($0) bps" },
+                unsupportedPlaybackNotice(for: node)
             ])
         case "publisher":
             return node.value ?? node.attributes["name"] ?? node.attributes["guid"]
@@ -778,7 +793,8 @@ private enum NamespaceMetadataMapper {
         case "contentLink", "source":
             return joinedValues([
                 humanizedValue(node.attributes["rel"]),
-                mediaTypeText(node.attributes["type"] ?? node.attributes["contentType"])
+                mediaTypeText(node.attributes["type"] ?? node.attributes["contentType"]),
+                unsupportedPlaybackNotice(for: node)
             ])
         case "image", "images":
             return mediaTypeText(node.attributes["type"]) ?? "Artwork"
@@ -820,6 +836,38 @@ private enum NamespaceMetadataMapper {
             }
         }
         return uniqueURLs
+    }
+
+    static func unsupportedPlaybackNotice(for node: NamespaceNode) -> String? {
+        guard containsUnsupportedOggVorbisMedia(node) else { return nil }
+        return "Ogg Vorbis is not supported"
+    }
+
+    private static func containsUnsupportedOggVorbisMedia(_ node: NamespaceNode) -> Bool {
+        let url = sourceURL(from: node)
+        let mimeType = node.attributes["type"] ?? node.attributes["contentType"]
+        if EpisodeMedia.isUnsupportedOggVorbis(url: url, mimeType: mimeType) {
+            return true
+        }
+
+        return node.children.contains { containsUnsupportedOggVorbisMedia($0) }
+    }
+
+    private static func sourceURL(from node: NamespaceNode) -> URL? {
+        let candidates = [
+            node.attributes["url"],
+            node.attributes["uri"],
+            node.value
+        ]
+
+        for candidate in candidates {
+            guard let candidate else { continue }
+            if let url = url(from: candidate) {
+                return url
+            }
+        }
+
+        return nil
     }
 
     static func url(from text: String) -> URL? {

@@ -45,6 +45,21 @@ enum EpisodeMedia {
         let title: String?
     }
 
+    static func isUnsupportedOggVorbis(url: URL?, mimeType: String?) -> Bool {
+        if let mimeType = mimeType?.lowercased() {
+            if mimeType.contains("ogg") || mimeType.contains("vorbis") {
+                return true
+            }
+        }
+
+        switch url?.pathExtension.lowercased() {
+        case "ogg", "oga":
+            return true
+        default:
+            return false
+        }
+    }
+
     static func isVideo(url: URL?, mimeType: String?) -> Bool {
         if let mimeType = mimeType?.lowercased() {
             if mimeType.hasPrefix("video/") {
@@ -61,6 +76,10 @@ enum EpisodeMedia {
     }
 
     static func isPlayable(url: URL?, mimeType: String?) -> Bool {
+        if isUnsupportedOggVorbis(url: url, mimeType: mimeType) {
+            return false
+        }
+
         if let mimeType = mimeType?.lowercased() {
             if mimeType.hasPrefix("audio/") || mimeType.hasPrefix("video/") {
                 return true
@@ -78,7 +97,7 @@ enum EpisodeMedia {
 
         let playableExtensions: Set<String> = [
             "aac", "aif", "aiff", "flac", "m4a", "m4v", "m3u8", "mov",
-            "mp3", "mp4", "oga", "ogg", "opus", "wav"
+            "mp3", "mp4", "opus", "wav"
         ]
         return playableExtensions.contains(pathExtension)
     }

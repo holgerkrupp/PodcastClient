@@ -259,6 +259,9 @@
         }
       }
     },
+    "%lld%%" : {
+
+    },
     "+%lld" : {
       "localizations" : {
         "de" : {
@@ -1094,6 +1097,12 @@
           }
         }
       }
+    },
+    "Checking feed availability" : {
+
+    },
+    "Checking Feed Availability" : {
+
     },
     "Choose an audio output device" : {
       "localizations" : {
@@ -1998,6 +2007,9 @@
           }
         }
       }
+    },
+    "Feed unavailable: %@" : {
+
     },
     "Feed URL unavailable" : {
       "localizations" : {
@@ -4233,6 +4245,9 @@
         }
       }
     },
+    "OPML Import" : {
+
+    },
     "OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app." : {
       "localizations" : {
         "de" : {
@@ -6278,7 +6293,11 @@
         }
       }
     },
+    "Subscribe to All Available Podcasts" : {
+
+    },
     "Subscribe to All New Podcasts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6471,6 +6490,9 @@
           }
         }
       }
+    },
+    "These feeds returned an error code and are skipped when subscribing to all new podcasts." : {
+
     },
     "These values apply across the app unless a podcast is switched to custom settings." : {
       "localizations" : {
@@ -6947,6 +6969,9 @@
           }
         }
       }
+    },
+    "Unavailable Feeds (%lld)" : {
+
     },
     "Unsubscribe" : {
       "localizations" : {

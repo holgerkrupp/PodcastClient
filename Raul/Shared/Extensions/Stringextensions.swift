@@ -9,6 +9,19 @@ import Foundation
 import SwiftUI
 
 extension String {
+    var podcastTitleComparisonKey: String? {
+        let folded = folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+        let pieces = folded
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.isEmpty == false }
+        let key = pieces.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard key.count > 2 else { return nil }
+        return key
+    }
+
     func toDetectedAttributedString() -> AttributedString {
         
         var attributedString = AttributedString(self)

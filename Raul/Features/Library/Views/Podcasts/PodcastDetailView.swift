@@ -69,7 +69,10 @@ struct PodcastDetailView: View {
     @State private var searchInDescription = true
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
+    @State private var displayedEpisodeLimit = Self.episodePageSize
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
+
+    private static let episodePageSize = 40
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
         podcast.alternativeFeeds.filter { $0.url != podcast.feed }
@@ -85,6 +88,14 @@ struct PodcastDetailView: View {
 
     private var liveItems: [PodcastLiveItem] {
         podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
+    }
+
+    private var displayedEpisodes: ArraySlice<Episode> {
+        filteredEpisodes.prefix(displayedEpisodeLimit)
+    }
+
+    private var hasMoreFilteredEpisodes: Bool {
+        displayedEpisodeLimit < filteredEpisodes.count
     }
 
     private var currentLiveItem: PodcastLiveItem? {
@@ -362,7 +373,7 @@ struct PodcastDetailView: View {
                 }
                 
                 Section{
-                    ForEach(filteredEpisodes, id: \.id) { episode in
+                    ForEach(displayedEpisodes, id: \.id) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
@@ -379,6 +390,9 @@ struct PodcastDetailView: View {
                                              bottom: 0,
                                              trailing: 0))
                         .ignoresSafeArea()
+                        .onAppear {
+                            loadMoreEpisodesIfNeeded(currentEpisode: episode)
+                        }
                         
                         
                     }
@@ -390,6 +404,16 @@ struct PodcastDetailView: View {
                                 
                             }
                         }
+                    }
+                    if hasMoreFilteredEpisodes {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .onAppear {
+                                loadMoreEpisodes()
+                            }
                     }
                 }
                 .listRowSeparator(.hidden)
@@ -425,25 +449,25 @@ struct PodcastDetailView: View {
                 debounceEpisodeFilters()
             }
             .onChange(of: searchInTitle) { _, _ in
-                applyEpisodeFilters()
+                applyEpisodeFilters(resetDisplayLimit: true)
             }
             .onChange(of: searchInAuthor) { _, _ in
-                applyEpisodeFilters()
+                applyEpisodeFilters(resetDisplayLimit: true)
             }
             .onChange(of: searchInDescription) { _, _ in
-                applyEpisodeFilters()
+                applyEpisodeFilters(resetDisplayLimit: true)
             }
             .onChange(of: searchInTranscript) { _, _ in
                 debounceEpisodeFilters()
             }
             .onChange(of: hidePlayedAndArchived) { _, _ in
-                applyEpisodeFilters()
+                applyEpisodeFilters(resetDisplayLimit: true)
             }
             .onChange(of: sortOptionRawValue) { _, _ in
-                applyEpisodeFilters()
+                applyEpisodeFilters(resetDisplayLimit: true)
             }
             .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
-                applyEpisodeFilters()
+                applyEpisodeFilters(resetDisplayLimit: true)
             }
             .navigationTitle(podcast.title)
             .navigationDestination(isPresented: $showPodroll) {
@@ -549,7 +573,7 @@ struct PodcastDetailView: View {
 
     private func debounceEpisodeFilters() {
         Debounce.shared.perform {
-            applyEpisodeFilters()
+            applyEpisodeFilters(resetDisplayLimit: true)
         }
     }
 
@@ -567,8 +591,11 @@ struct PodcastDetailView: View {
         }
     }
 
-    private func applyEpisodeFilters() {
+    private func applyEpisodeFilters(resetDisplayLimit: Bool = false) {
         let episodes = podcast.episodes ?? []
+        if resetDisplayLimit {
+            displayedEpisodeLimit = Self.episodePageSize
+        }
 
         let visibleEpisodes: [Episode]
         if hidePlayedAndArchived {
@@ -603,6 +630,19 @@ struct PodcastDetailView: View {
                 return false
             }
             .sorted(by: sortOption.comparator)
+    }
+
+    private func loadMoreEpisodesIfNeeded(currentEpisode: Episode) {
+        guard hasMoreFilteredEpisodes else { return }
+        guard displayedEpisodes.last?.persistentModelID == currentEpisode.persistentModelID else { return }
+        loadMoreEpisodes()
+    }
+
+    private func loadMoreEpisodes() {
+        displayedEpisodeLimit = min(
+            displayedEpisodeLimit + Self.episodePageSize,
+            filteredEpisodes.count
+        )
     }
     
     private func refreshEpisodes() async {
