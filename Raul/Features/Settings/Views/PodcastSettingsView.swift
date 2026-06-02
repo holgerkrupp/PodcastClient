@@ -1299,7 +1299,7 @@ struct PodcastSettingsView: View {
     }
 }
 
-private struct AlternateAppIcon: Identifiable, Hashable {
+ struct AlternateAppIcon: Identifiable, Hashable {
     let id: String
     let iconName: String?
     let title: String
@@ -1318,7 +1318,20 @@ private struct AlternateAppIcon: Identifiable, Hashable {
         AlternateAppIcon(id: "AppIcon-purple", iconName: "AppIcon-purple", title: "Purple", systemImage: "circle.fill", previewAssetName: "purple", previewColors: [.blue, .purple]),
         AlternateAppIcon(id: "AppIcon-blue", iconName: "AppIcon-blue", title: "Blue", systemImage: "circle.fill", previewAssetName: "blue", previewColors: [.cyan, .blue]),
         AlternateAppIcon(id: "AppIcon-pride", iconName: "AppIcon-pride", title: "Pride", systemImage: "circle.fill", previewAssetName: "pride", previewColors: [.red, .orange, .yellow, .green, .blue, .purple]),
-        AlternateAppIcon(id: "AppIcon-trans", iconName: "AppIcon-trans", title: "Trans", systemImage: "circle.fill", previewAssetName: "trans", previewColors: [.blue, .pink, .white, .pink, .blue]),
+        AlternateAppIcon(
+            id: "AppIcon-trans",
+            iconName: "AppIcon-trans",
+            title: "Trans",
+            systemImage: "circle.fill",
+            previewAssetName: "trans",
+            previewColors: [
+                Color(.displayP3, red: 0.3608, green: 0.8118, blue: 0.9804, opacity: 1), // Pastel Light Blue
+                Color(.displayP3, red: 0.9608, green: 0.6627, blue: 0.7216, opacity: 1), // Pastel Pink
+                Color.white,                                                            // White
+                Color(.displayP3, red: 0.9608, green: 0.6627, blue: 0.7216, opacity: 1), // Pastel Pink
+                Color(.displayP3, red: 0.3608, green: 0.8118, blue: 0.9804, opacity: 1)  // Pastel Light Blue
+            ]
+        ),
         AlternateAppIcon(id: "AppIcon-progress", iconName: "AppIcon-progress", title: "Progress", systemImage: "circle.fill", previewAssetName: "progress", previewColors: [.red, .orange, .yellow, .green, .blue, .purple])
 
     ]

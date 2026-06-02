@@ -58,7 +58,8 @@ struct AppLaunchContainerView<Content: View>: View {
 struct AnimatedLaunchView: View {
     let isFinishing: Bool
 
-    private let stripeColors: [Color] = [
+    // Your default 6-color palette fallback
+    private let defaultStripeColors: [Color] = [
         Color(.displayP3, red: 0.4685, green: 0.7231, blue: 0.3381, opacity: 1),
         Color(.displayP3, red: 0.9526, green: 0.7310, blue: 0.2930, opacity: 1),
         Color(.displayP3, red: 0.9033, green: 0.5332, blue: 0.2329, opacity: 1),
@@ -67,6 +68,34 @@ struct AnimatedLaunchView: View {
         Color(.displayP3, red: 0.2730, green: 0.6084, blue: 0.8413, opacity: 1)
     ]
 
+    // Dynamically look up colors based on the currently chosen app icon
+    private var activeStripeColors: [Color] {
+        let currentID = AlternateAppIcon.currentIdentifier
+        
+        // 1. Fallback if it's the primary icon
+        if currentID == AlternateAppIcon.primaryID {
+            return defaultStripeColors
+        }
+        
+        // 2. Fetch the colors matching the selected icon
+        guard let matchingIcon = AlternateAppIcon(id: currentID),
+              !matchingIcon.previewColors.isEmpty else {
+            return defaultStripeColors
+        }
+        
+        let sourceColors = matchingIcon.previewColors
+        
+        // 3. If the theme naturally has 4 or more colors, use it exactly as is
+        if sourceColors.count >= 4 {
+            return sourceColors
+        }
+        
+        // 4. If it has fewer than 4 colors, pad it out to exactly 4 by repeating the pattern
+        return (0..<4).map { index in
+            sourceColors[index % sourceColors.count]
+        }
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let layout = LaunchLayout(size: geometry.size)
@@ -74,7 +103,7 @@ struct AnimatedLaunchView: View {
             ZStack {
                 LaunchBarsCurtainView(
                     layout: layout,
-                    colors: stripeColors,
+                    colors: activeStripeColors, // Pass the dynamic colors here
                     isFinishing: isFinishing
                 )
 
