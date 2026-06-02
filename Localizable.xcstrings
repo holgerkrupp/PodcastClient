@@ -2376,6 +2376,9 @@
         }
       }
     },
+    "Go to App Store" : {
+
+    },
     "Halloween" : {
       "localizations" : {
         "de" : {
@@ -2847,6 +2850,9 @@
           }
         }
       }
+    },
+    "Later" : {
+
     },
     "Less" : {
       "localizations" : {
@@ -4743,6 +4749,9 @@
           }
         }
       }
+    },
+    "Please Switch to the App Store Version" : {
+
     },
     "Podcast" : {
       "localizations" : {
@@ -6755,6 +6764,9 @@
           }
         }
       }
+    },
+    "This TestFlight version will no longer be updated. Please download the official version of Up Next to keep using the app and save your data." : {
+
     },
     "This title is used for every share picture preview and export." : {
       "localizations" : {
