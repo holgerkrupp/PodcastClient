@@ -66,6 +66,31 @@ final class WatchSyncStore: NSObject, ObservableObject {
         snapshot.selectedPlaylistTitle
     }
 
+    var playbackMode: WatchPlaybackMode {
+        storageSettings.playbackMode
+    }
+
+    var isRemoteControlEnabled: Bool {
+        playbackMode == .remotePhone
+    }
+
+    var isPhoneReachable: Bool {
+        session?.isReachable ?? false
+    }
+
+    var phonePlaybackState: WatchPhonePlaybackState? {
+        snapshot.phonePlaybackState
+    }
+
+    var hasRecentPhonePlaybackState: Bool {
+        guard let phonePlaybackState else { return false }
+        return Date().timeIntervalSince(phonePlaybackState.generatedAt) < 120
+    }
+
+    var isRemoteControlAvailable: Bool {
+        isPhoneReachable || hasRecentPhonePlaybackState
+    }
+
     var inbox: [WatchSyncEpisode] {
         snapshot.inbox
     }
@@ -297,6 +322,121 @@ final class WatchSyncStore: NSObject, ObservableObject {
         sendStorageReport(force: true)
     }
 
+    func setPlaybackMode(_ playbackMode: WatchPlaybackMode) {
+        guard storageSettings.playbackMode != playbackMode else { return }
+        storageSettings.playbackMode = playbackMode
+        persistStorageSettings()
+        if playbackMode == .remotePhone {
+            requestSnapshot(silently: true)
+        } else {
+            startDirectDownloadsForPlaylist()
+            requestPhoneTransfersForUndownloadablePlaylist()
+        }
+    }
+
+    func remotePlay(_ episode: WatchSyncEpisode, startingAt startTime: Double? = nil) {
+        guard ensureRemoteControlAvailable() else { return }
+        send(
+            command: WatchCommand(
+                kind: .remotePlayEpisode,
+                episodeURL: episode.episodeURL,
+                playPosition: startTime
+            ),
+            preferImmediateDelivery: true
+        )
+    }
+
+    func remotePause() {
+        guard ensureRemoteControlAvailable() else { return }
+        send(command: WatchCommand(kind: .remotePause), preferImmediateDelivery: true)
+    }
+
+    func remoteResume() {
+        guard ensureRemoteControlAvailable() else { return }
+        send(command: WatchCommand(kind: .remoteResume), preferImmediateDelivery: true)
+    }
+
+    func remoteSeek(to position: Double) {
+        guard ensureRemoteControlAvailable() else { return }
+        send(
+            command: WatchCommand(kind: .remoteSeek, playPosition: position),
+            preferImmediateDelivery: true
+        )
+    }
+
+    func remoteSkipBackward() {
+        guard ensureRemoteControlAvailable() else { return }
+        send(command: WatchCommand(kind: .remoteSkipBackward), preferImmediateDelivery: true)
+    }
+
+    func remoteSkipForward() {
+        guard ensureRemoteControlAvailable() else { return }
+        send(command: WatchCommand(kind: .remoteSkipForward), preferImmediateDelivery: true)
+    }
+
+    func remoteSkipToChapterStart() {
+        guard ensureRemoteControlAvailable() else { return }
+        send(command: WatchCommand(kind: .remoteSkipToChapterStart), preferImmediateDelivery: true)
+    }
+
+    func remoteSkipToNextChapter() {
+        guard ensureRemoteControlAvailable() else { return }
+        send(command: WatchCommand(kind: .remoteSkipToNextChapter), preferImmediateDelivery: true)
+    }
+
+    func remoteSetPlaybackRate(_ playbackRate: Float, for episode: WatchSyncEpisode?) {
+        guard ensureRemoteControlAvailable() else { return }
+        send(
+            command: WatchCommand(
+                kind: .remoteSetPlaybackRate,
+                episodeURL: episode?.episodeURL,
+                podcastFeedURL: episode?.playbackSettings?.isPodcastSpecific == true ? episode?.podcastFeedURL : nil,
+                playbackRate: playbackRate
+            ),
+            preferImmediateDelivery: true
+        )
+    }
+
+    func remoteRemoveFromPlaylist(_ episode: WatchSyncEpisode) {
+        guard ensureRemoteControlAvailable() else { return }
+        optimisticallyRemoveEpisodeFromPlaylist(episode)
+        send(
+            command: WatchCommand(
+                kind: .remoteRemovePlaylistEpisode,
+                episodeURL: episode.episodeURL,
+                playlistID: selectedPlaylistID
+            ),
+            preferImmediateDelivery: true
+        )
+    }
+
+    func remoteMovePlaylistEpisode(_ episode: WatchSyncEpisode, offset: Int) {
+        guard ensureRemoteControlAvailable() else { return }
+        guard let sourceIndex = snapshot.playlist.firstIndex(where: { $0.episodeURL == episode.episodeURL }) else { return }
+        let destinationIndex = max(0, min(sourceIndex + offset, snapshot.playlist.count - 1))
+        guard sourceIndex != destinationIndex else { return }
+
+        optimisticallyMovePlaylistEpisode(from: sourceIndex, to: destinationIndex)
+        send(
+            command: WatchCommand(
+                kind: .remoteMovePlaylistEpisode,
+                playlistID: selectedPlaylistID,
+                sourceIndex: sourceIndex,
+                destinationIndex: destinationIndex
+            ),
+            preferImmediateDelivery: true
+        )
+    }
+
+    private func ensureRemoteControlAvailable() -> Bool {
+        if isRemoteControlAvailable {
+            return true
+        }
+
+        errorMessage = "Open the iPhone app once so the watch can control playback."
+        return false
+    }
+
     private func activateSession() {
         guard let session else { return }
         session.delegate = self
@@ -409,9 +549,11 @@ final class WatchSyncStore: NSObject, ObservableObject {
         isRefreshingInbox = false
         persistSnapshot()
         enforceStorageLimit()
-        sendStorageReport(force: true)
-        startDirectDownloadsForPlaylist()
-        requestPhoneTransfersForUndownloadablePlaylist()
+        sendStorageReport()
+        if isRemoteControlEnabled == false {
+            startDirectDownloadsForPlaylist()
+            requestPhoneTransfersForUndownloadablePlaylist()
+        }
         updateComplicationSnapshot()
     }
 
@@ -490,7 +632,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
-            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
         )
         persistSnapshot()
         updateComplicationSnapshot(currentEpisodeID: episodeID, playPosition: position)
@@ -515,7 +658,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
-            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
         )
         persistSnapshot()
         updateComplicationSnapshot()
@@ -549,7 +693,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipForwardSeconds: updatedGlobalSettings.skipForwardSeconds,
             playbackSettings: updatedGlobalSettings,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
-            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
         )
         persistSnapshot()
         updateComplicationSnapshot()
@@ -671,7 +816,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
-            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
         )
         persistSnapshot()
         updateComplicationSnapshot()
@@ -699,7 +845,58 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
-            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
+        )
+        persistSnapshot()
+        updateComplicationSnapshot()
+    }
+
+    private func optimisticallyRemoveEpisodeFromPlaylist(_ episode: WatchSyncEpisode) {
+        snapshot = WatchSyncSnapshot(
+            generatedAt: .now,
+            playlist: snapshot.playlist.filter { $0.episodeURL != episode.episodeURL },
+            inbox: snapshot.inbox,
+            playlists: snapshot.playlists,
+            selectedPlaylistID: snapshot.selectedPlaylistID,
+            selectedPlaylistTitle: snapshot.selectedPlaylistTitle,
+            skipBackSeconds: snapshot.skipBackSeconds,
+            skipForwardSeconds: snapshot.skipForwardSeconds,
+            playbackSettings: snapshot.playbackSettings,
+            phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
+        )
+        persistSnapshot()
+        updateComplicationSnapshot()
+    }
+
+    private func optimisticallyMovePlaylistEpisode(from sourceIndex: Int, to destinationIndex: Int) {
+        guard sourceIndex >= 0,
+              sourceIndex < snapshot.playlist.count,
+              destinationIndex >= 0,
+              destinationIndex < snapshot.playlist.count
+        else {
+            return
+        }
+
+        var playlist = snapshot.playlist
+        let movedEpisode = playlist.remove(at: sourceIndex)
+        playlist.insert(movedEpisode, at: destinationIndex)
+
+        snapshot = WatchSyncSnapshot(
+            generatedAt: .now,
+            playlist: playlist,
+            inbox: snapshot.inbox,
+            playlists: snapshot.playlists,
+            selectedPlaylistID: snapshot.selectedPlaylistID,
+            selectedPlaylistTitle: snapshot.selectedPlaylistTitle,
+            skipBackSeconds: snapshot.skipBackSeconds,
+            skipForwardSeconds: snapshot.skipForwardSeconds,
+            playbackSettings: snapshot.playbackSettings,
+            phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
+            phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
+            phonePlaybackState: snapshot.phonePlaybackState
         )
         persistSnapshot()
         updateComplicationSnapshot()

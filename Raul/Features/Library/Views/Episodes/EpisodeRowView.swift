@@ -8,10 +8,6 @@ import SwiftUI
 import SwiftData
 
 struct EpisodeRowView: View {
-    static func == (lhs: EpisodeRowView, rhs: EpisodeRowView) -> Bool {
-        lhs.episode.url == rhs.episode.url &&
-        lhs.episode.metaData?.lastPlayed == rhs.episode.metaData?.lastPlayed
-    }
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -47,10 +43,9 @@ struct EpisodeRowView: View {
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
         ZStack {
-            CoverImageView(episode: episode)
+            BlurredCoverImageView(episode: episode)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                .blur(radius: 8)
                 //.opacity(0.45)
                 .clipped()
                 .accessibilityHidden(true)

@@ -238,7 +238,7 @@ private struct ManualPlaylistPageView: View {
         } else {
             List {
                 ForEach(episodes, id: \.persistentModelID) { episode in
-                    if let episodeURL = episode.url {
+                    if episode.url != nil {
                         ZStack {
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
@@ -270,7 +270,6 @@ private struct ManualPlaylistPageView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .id(episodeURL)
                     }
                 }
                 .onMove { indices, newOffset in

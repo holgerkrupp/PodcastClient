@@ -83,6 +83,30 @@ class Player {
         case remote
         case liveRemote
     }
+
+    private enum PlaybackPowerMode {
+        case foreground
+        case background
+
+        var progressUpdateInterval: TimeInterval {
+            switch self {
+            case .foreground: return 1
+            case .background: return 8
+            }
+        }
+
+        var progressSaveInterval: TimeInterval {
+            switch self {
+            case .foreground: return 10
+            case .background: return 45
+            }
+        }
+
+        var keepsContinuousUIProgress: Bool {
+            self == .foreground
+        }
+    }
+
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
     private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
     private static let playSessionRecoveryStartupDelayNanoseconds: UInt64 = 15_000_000_000
@@ -126,6 +150,8 @@ class Player {
     private var currentPlaybackUsesAlternateMedia = false
     private var hasStartedRecovery = false
     private var finishingEpisodeURL: URL?
+    private var isSkippingChapters = false
+    private var playbackPowerMode: PlaybackPowerMode = .foreground
 
     var playbackRate: Float = 1.0 {
         didSet {
@@ -304,7 +330,17 @@ class Player {
 
         guard endDate != nil else { return }
 
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        let interval: TimeInterval
+        let repeats: Bool
+        if playbackPowerMode.keepsContinuousUIProgress {
+            interval = 1
+            repeats = true
+        } else {
+            interval = max(endDate?.timeIntervalSinceNow ?? 1, 1)
+            repeats = false
+        }
+
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: repeats) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.updateRemainingTime()
@@ -439,11 +475,42 @@ class Player {
             chapters = []
             currentChapter = nil
             nextChapter = nil
+            configureChapterBoundaryObserver()
             return
         }
 
         chapters = currentEpisode.preferredChapters
+        configureChapterBoundaryObserver()
         RemoteCommandCenter.shared.updateSkipIntervals()
+    }
+
+    private func configureChapterBoundaryObserver() {
+        let chapterStartTimes = (chapters ?? [])
+            .compactMap(\.start)
+            .filter { $0.isFinite && $0 > 0 }
+            .sorted()
+            .map { CMTime(seconds: $0, preferredTimescale: 600) }
+
+        Task { [weak self] in
+            guard let self else { return }
+            await self.engine.setBoundaryTimeObserver(at: chapterStartTimes) { [weak self] in
+                Task { @MainActor [weak self] in
+                    await self?.handleChapterBoundary()
+                }
+            }
+        }
+    }
+
+    private func handleChapterBoundary() async {
+        guard currentPlaybackSource != .liveRemote else { return }
+
+        let currentTime = sanitizedPosition(await engine.currentTime())
+        playPosition = currentTime
+
+        guard chapters?.isEmpty == false else { return }
+        _ = updateCurrentChapter()
+        updateChapterProgress()
+        await skipOverChapters()
     }
     
     private func updateCurrentChapter() -> Bool {
@@ -748,6 +815,7 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        configureChapterBoundaryObserver()
         currentPlaybackSource = nil
         currentPlaybackUsesAlternateMedia = false
         mediaSelection = .primary
@@ -847,6 +915,7 @@ class Player {
 
         await engine.pause()
         await engine.replaceCurrentItem(with: item)
+        configureChapterBoundaryObserver()
         
         
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
@@ -870,6 +939,7 @@ class Player {
 
         await jumpTo(time: targetStartTime)
         _ = updateCurrentChapter()
+        await skipOverChapters()
         setupStaticNowPlayingInfo()
         await updateNowPlayingCover()
         if playDirectly {
@@ -896,6 +966,7 @@ class Player {
         let hadPlaybackUpdates = playbackTask != nil
 
         await engine.replaceCurrentItem(with: playback.item)
+        configureChapterBoundaryObserver()
         mediaSelection = nextSelection
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
@@ -947,6 +1018,7 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        configureChapterBoundaryObserver()
         playPosition = 0
         lastProgressSaveDate = .distantPast
 
@@ -1007,6 +1079,43 @@ class Player {
                 transitionToPlaying(updateEngineRate: true, preparePlaybackSource: false)
             }
         }
+    }
+
+    func enterBackgroundPlaybackMode() {
+        guard playbackPowerMode != .background else { return }
+        playbackPowerMode = .background
+        restartPlaybackUpdatesIfNeeded()
+        restartSleepTimerIfNeeded()
+        updateNowPlayingInfo()
+
+        Task {
+            await captureCurrentPlaybackStateFromEngine(force: true)
+        }
+    }
+
+    func enterForegroundPlaybackMode() async {
+        guard playbackPowerMode != .foreground else { return }
+        playbackPowerMode = .foreground
+        restartSleepTimerIfNeeded()
+
+        guard currentEpisodeURL != nil else { return }
+        playPosition = sanitizedPosition(await engine.currentTime())
+        if currentEpisode?.chapters?.isEmpty == false {
+            _ = updateCurrentChapter()
+            updateChapterProgress()
+        }
+        updateNowPlayingInfo()
+        restartPlaybackUpdatesIfNeeded()
+    }
+
+    private func restartPlaybackUpdatesIfNeeded() {
+        guard playbackTask != nil else { return }
+        startPlaybackUpdates()
+    }
+
+    private func restartSleepTimerIfNeeded() {
+        guard endDate != nil else { return }
+        startSleepTimer()
     }
 
     private func transitionToPlaying(updateEngineRate: Bool, preparePlaybackSource: Bool) {
@@ -1179,7 +1288,7 @@ class Player {
         stopPlaybackUpdates()
         playbackTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let stream = await engine.playbackStream()
+            let stream = await engine.playbackStream(interval: playbackPowerMode.progressUpdateInterval)
             for await event in stream {
                 guard !Task.isCancelled else { break }
                 switch event {
@@ -1247,14 +1356,12 @@ class Player {
     
     
     private var lastProgressSaveDate = Date.distantPast
-    private let progressSaveInterval: TimeInterval = 10
     private var lastNowPlayingInfoUpdateDate = Date.distantPast
-    private let nowPlayingUpdateInterval: TimeInterval = 10
     
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
         
-        if let chapters, chapters.isEmpty == false {
+        if playbackPowerMode.keepsContinuousUIProgress, let chapters, chapters.isEmpty == false {
             let chapterChange = updateCurrentChapter()
             updateChapterProgress()
             if chapterChange {
@@ -1265,14 +1372,7 @@ class Player {
         }
 
         let now = Date()
-        if now.timeIntervalSince(lastNowPlayingInfoUpdateDate) >= nowPlayingUpdateInterval {
-            updateNowPlayingInfo()
-        }
-
-        if now.timeIntervalSince(lastProgressSaveDate) >= progressSaveInterval {
-            if currentEpisode?.chapters?.isEmpty == false {
-                updateChapters()
-            }
+        if now.timeIntervalSince(lastProgressSaveDate) >= playbackPowerMode.progressSaveInterval {
             cacheCurrentPlaybackState()
             lastProgressSaveDate = now
         }
@@ -1285,6 +1385,18 @@ class Player {
     }
 
     private func skipOverChapters() async {
+        guard isSkippingChapters == false else { return }
+        guard let currentChapter else { return }
+
+        if currentChapter.shouldPlay { return }
+
+        isSkippingChapters = true
+        defer { isSkippingChapters = false }
+
+        await skipOverChaptersContinuing()
+    }
+
+    private func skipOverChaptersContinuing() async {
         guard let currentChapter else { return }
 
         if currentChapter.shouldPlay { return }
@@ -1311,7 +1423,28 @@ class Player {
         await jumpTo(time: start)
 
         // After the seek, update and re-check
-        await skipOverChapters()
+        await skipOverChaptersContinuing()
+    }
+
+    func chapterPlaybackPreferenceChanged(_ chapter: Marker, shouldPlay: Bool) {
+        chapter.shouldPlay = shouldPlay
+        configureChapterBoundaryObserver()
+
+        if let id = chapter.uuid {
+            let chapterActor = self.chapterActor
+            Task.detached(priority: .background) {
+                await chapterActor?.setShouldPlay(shouldPlay, for: id)
+            }
+        }
+
+        guard shouldPlay == false,
+              chapter == currentChapter else {
+            return
+        }
+
+        Task {
+            await skipOverChapters()
+        }
     }
     
     
@@ -1413,6 +1546,7 @@ class Player {
     }
 
     private func ensureDownloadForCurrentEpisodeIfNeeded() async {
+        guard playbackPowerMode == .foreground else { return }
         guard currentPlaybackSource == .remote,
               currentPlaybackUsesAlternateMedia == false,
               let episode = currentEpisode,

@@ -168,27 +168,36 @@ actor EpisodeActor {
     }
 
     
-    func updateDuration(fileURL: URL) async{
-      
+    func updateDuration(fileURL: URL) async {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-         print("updateDuration of \(episode.title)")
-       
-            if let localFile = episode.localFile, FileManager.default.fileExists(atPath: localFile.path){
-                do{
-                    let duration = try await AVURLAsset(url: localFile).load(.duration)
-                    let seconds = CMTimeGetSeconds(duration)
-                    if !seconds.isNaN{
-                        episode.duration = seconds
-                    }
-                     print("new duration: \(seconds)")
-                    modelContext.saveIfNeeded()
-                }catch{
-                     print(error)
-                }
-            }else{
-                 print("no local file")
+        print("updateDuration of \(episode.title)")
+
+        guard let localFile = episode.localFile,
+              FileManager.default.fileExists(atPath: localFile.path) else {
+            print("no local file")
+            return
+        }
+
+        do {
+            let duration = try await AVURLAsset(url: localFile).load(.duration)
+            let seconds = CMTimeGetSeconds(duration)
+
+            guard seconds.isFinite, seconds > 0 else {
+                print("invalid local duration: \(seconds)")
+                return
             }
-        
+
+            if let existingDuration = episode.duration,
+               abs(existingDuration - seconds) < 0.5 {
+                return
+            }
+
+            episode.duration = seconds
+            print("new duration: \(seconds)")
+            modelContext.saveIfNeeded()
+        } catch {
+            print(error)
+        }
     }
     
     func updateChapterDurations(fileURL: URL) async{
@@ -337,7 +346,7 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
 
         if let podcastFeed = episode.podcast?.feed {
-            await applyAutomaticDownloadPolicy(for: podcastFeed)
+            await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
 
@@ -387,7 +396,7 @@ actor EpisodeActor {
 
         for podcastFeed in podcastFeeds {
             await logAutoDownload("trigger/archive applying-policy feed=\(podcastFeed.absoluteString)")
-            await applyAutomaticDownloadPolicy(for: podcastFeed)
+            await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
     
@@ -473,14 +482,29 @@ actor EpisodeActor {
 
         for podcastFeed in podcastFeeds {
             await logAutoDownload("trigger/move-to-history applying-policy feed=\(podcastFeed.absoluteString)")
-            await applyAutomaticDownloadPolicy(for: podcastFeed)
+            await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
 
-    func applyAutomaticDownloadPolicy(for podcastFeed: URL) async {
+    func applyAutomaticDownloadPolicy(for podcastFeed: URL, force: Bool = false) async {
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         let playedProgressThreshold = 0.99
-        await logAutoDownload("policy/start feed=\(podcastFeed.absoluteString)")
+        let throttle = AutoDownloadPolicyThrottle.shared
+
+        switch await throttle.begin(feed: podcastFeed, force: force) {
+        case .run:
+            break
+        case .skip(let reason):
+            await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=\(reason)")
+            return
+        }
+        defer {
+            Task {
+                await throttle.finish(feed: podcastFeed)
+            }
+        }
+
+        await logAutoDownload("policy/start feed=\(podcastFeed.absoluteString) force=\(force)")
 
         guard let policy = await settingsActor.autoDownloadPolicy(for: podcastFeed) else {
             await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=no-policy")
@@ -651,7 +675,7 @@ actor EpisodeActor {
                             try await playlistActor.add(
                                 episodeURL: episodeURL,
                                 to: queuePosition,
-                                startDownload: canScheduleDownloads
+                                startDownload: false
                             )
                             await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=success")
                         } catch {
@@ -903,12 +927,13 @@ actor EpisodeActor {
             return
         }
         ensureMetadata(for: episode)
+        await updateDuration(fileURL: url)
+
         if episode.metaData?.isAvailableLocally == true,
            episode.metaData?.calculatedIsAvailableLocally == true {
             return
         }
         episode.metaData?.isAvailableLocally = true
-        await updateDuration(fileURL: url)
 
         await createChapters(url)
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)

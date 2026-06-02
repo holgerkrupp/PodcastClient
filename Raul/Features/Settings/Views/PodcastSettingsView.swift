@@ -1276,7 +1276,7 @@ struct PodcastSettingsView: View {
         if let podcastFeed = podcast?.feed {
             BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy scope=podcast feed=\(podcastFeed.absoluteString)")
             Task {
-                await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+                await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
             }
             return
         }
@@ -1293,7 +1293,7 @@ struct PodcastSettingsView: View {
                 await MainActor.run {
                     BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy feed=\(feed.absoluteString)")
                 }
-                await episodeActor.applyAutomaticDownloadPolicy(for: feed)
+                await episodeActor.applyAutomaticDownloadPolicy(for: feed, force: true)
             }
         }
     }
@@ -2191,7 +2191,7 @@ private struct PodcastOverridesManagementView: View {
         enableCustomSettings(for: podcast, in: context)
         guard let podcastFeed = podcast.feed else { return }
         Task {
-            await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed)
+            await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
 }

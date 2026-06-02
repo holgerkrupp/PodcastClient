@@ -498,7 +498,7 @@ actor PlaylistModelActor {
                         await MainActor.run {
                             BasicLogger.shared.log("[AutoDL] trigger/manual-remove applying-policy feed=\(podcastFeed.absoluteString)")
                         }
-                        await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed)
+                        await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
                     }
                 }
             }

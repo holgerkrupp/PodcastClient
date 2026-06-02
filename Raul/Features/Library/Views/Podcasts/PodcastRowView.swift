@@ -14,10 +14,9 @@ struct PodcastRowView: View {
 
     var body: some View {
         ZStack {
-            CoverImageView(podcast: podcast)
+            BlurredCoverImageView(podcast: podcast)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                .blur(radius: 8)
                 .opacity(0.45)
                 .clipped()
                 .accessibilityHidden(true)

@@ -110,7 +110,6 @@ struct InboxListView: View {
                     ForEach(episodes) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
-                                .id(episode.url)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
                             }.opacity(0)
