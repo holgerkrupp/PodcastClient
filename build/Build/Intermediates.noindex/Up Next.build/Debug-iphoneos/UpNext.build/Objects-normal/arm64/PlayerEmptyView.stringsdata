@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/PlayerEmptyView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "No episode playing.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 14
+        }
+      }
+    ]
+  },
+  "version": 1
+}

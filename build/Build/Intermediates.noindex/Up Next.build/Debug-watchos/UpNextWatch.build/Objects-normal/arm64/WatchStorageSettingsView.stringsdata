@@ -7,7 +7,15 @@
         "key": "Settings",
         "location": {
           "startingColumn": 26,
-          "startingLine": 46
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 17
         }
       },
       {
@@ -15,15 +23,39 @@
         "key": "Storage",
         "location": {
           "startingColumn": 21,
-          "startingLine": 13
+          "startingLine": 31
         }
       },
       {
         "comment": "",
         "key": "Network",
         "location": {
+          "startingColumn": 25,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remote Control iPhone",
+        "location": {
           "startingColumn": 21,
-          "startingLine": 36
+          "startingLine": 19
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback controls manage the iPhone app.",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback uses files and streams on the watch.",
+        "location": {
+          "startingColumn": 120,
+          "startingLine": 26
         }
       },
       {
@@ -31,7 +63,7 @@
         "key": "Currently using %@.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 27
+          "startingLine": 45
         }
       },
       {
@@ -39,7 +71,7 @@
         "key": "When the limit is full, Up Next still shows the episode but asks before downloading it.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 31
+          "startingLine": 49
         }
       },
       {
@@ -47,15 +79,15 @@
         "key": "Limit",
         "location": {
           "startingColumn": 21,
-          "startingLine": 15
+          "startingLine": 33
         }
       },
       {
         "comment": "",
         "key": "Allow Cellular Downloads",
         "location": {
-          "startingColumn": 21,
-          "startingLine": 38
+          "startingColumn": 25,
+          "startingLine": 57
         }
       },
       {
@@ -63,7 +95,7 @@
         "key": "Done",
         "location": {
           "startingColumn": 24,
-          "startingLine": 49
+          "startingLine": 70
         }
       }
     ]

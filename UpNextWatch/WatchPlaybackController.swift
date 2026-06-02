@@ -38,11 +38,35 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     var currentEpisode: WatchSyncEpisode? {
+        if isRemoteControlEnabled {
+            guard let remoteCurrentEpisodeID else { return fallbackEpisode }
+            return store?.episode(withID: remoteCurrentEpisodeID) ?? fallbackEpisode
+        }
+
         guard let currentEpisodeID else { return fallbackEpisode }
         return store?.episode(withID: currentEpisodeID) ?? fallbackEpisode
     }
 
+    private var isRemoteControlEnabled: Bool {
+        store?.isRemoteControlEnabled == true
+    }
+
+    private var remoteState: WatchPhonePlaybackState? {
+        store?.phonePlaybackState
+    }
+
+    private var remoteCurrentEpisodeID: String? {
+        guard isRemoteControlEnabled else { return nil }
+        return remoteState?.currentEpisodeURL
+    }
+
     var currentDuration: Double? {
+        if isRemoteControlEnabled,
+           let duration = remoteState?.duration,
+           duration > 0 {
+            return duration
+        }
+
         if let duration = currentEpisode?.duration, duration > 0 {
             return duration
         }
@@ -54,11 +78,11 @@ final class WatchPlaybackController: ObservableObject {
 
     var progress: Double {
         guard let currentDuration, currentDuration > 0 else { return 0 }
-        return min(max(playPosition / currentDuration, 0), 1)
+        return min(max(displayedPlayPosition / currentDuration, 0), 1)
     }
 
     var currentChapter: WatchSyncChapter? {
-        currentEpisode?.chapter(at: playPosition)
+        currentEpisode?.chapter(at: displayedPlayPosition)
     }
 
     var nextChapter: WatchSyncChapter? {
@@ -66,7 +90,7 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     var formattedPlaybackRate: String {
-        String(format: "%.2gx", playbackRate)
+        String(format: "%.2gx", effectivePlaybackRate)
     }
 
     func formattedPlaybackRate(for episode: WatchSyncEpisode) -> String {
@@ -80,6 +104,14 @@ final class WatchPlaybackController: ObservableObject {
 
     private var effectivePlaybackSettings: WatchPlaybackSettings {
         currentEpisode?.playbackSettings ?? store?.snapshot.playbackSettings ?? .default
+    }
+
+    private var effectivePlaybackRate: Float {
+        isRemoteControlEnabled ? (remoteState?.playbackRate ?? playbackRate) : playbackRate
+    }
+
+    var displayedPlayPosition: Double {
+        isRemoteControlEnabled ? max(remoteState?.playPosition ?? 0, 0) : playPosition
     }
 
     var skipBackSeconds: Int {
@@ -99,11 +131,19 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func isCurrentEpisode(_ episode: WatchSyncEpisode) -> Bool {
-        currentEpisodeID == episode.episodeURL
+        if isRemoteControlEnabled {
+            return remoteCurrentEpisodeID == episode.episodeURL
+        }
+
+        return currentEpisodeID == episode.episodeURL
     }
 
     func isActivelyPlaying(_ episode: WatchSyncEpisode) -> Bool {
-        isCurrentEpisode(episode) && isPlaying
+        if isRemoteControlEnabled {
+            return isCurrentEpisode(episode) && (remoteState?.isPlaying ?? false)
+        }
+
+        return isCurrentEpisode(episode) && isPlaying
     }
 
     func displayedProgress(for episode: WatchSyncEpisode) -> Double? {
@@ -116,7 +156,7 @@ final class WatchPlaybackController: ObservableObject {
 
     func displayedPosition(for episode: WatchSyncEpisode) -> Double {
         if isCurrentEpisode(episode) {
-            return playPosition
+            return displayedPlayPosition
         }
 
         return episode.playPosition ?? 0
@@ -124,7 +164,7 @@ final class WatchPlaybackController: ObservableObject {
 
     func artworkURL(for episode: WatchSyncEpisode) -> URL? {
         if isCurrentEpisode(episode) {
-            return currentEpisode?.artworkURL(at: playPosition) ?? episode.resolvedImageURL
+            return currentEpisode?.artworkURL(at: displayedPlayPosition) ?? episode.resolvedImageURL
         }
 
         return episode.artworkURL(at: episode.playPosition)
@@ -141,6 +181,15 @@ final class WatchPlaybackController: ObservableObject {
 
     func toggleCurrentPlayback() {
         guard currentEpisode != nil else { return }
+        if isRemoteControlEnabled {
+            if remoteState?.isPlaying == true {
+                store?.remotePause()
+            } else {
+                store?.remoteResume()
+            }
+            return
+        }
+
         if isPlaying {
             pause()
         } else {
@@ -149,6 +198,12 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func play(_ episode: WatchSyncEpisode, startingAt startTime: Double? = nil) {
+        if isRemoteControlEnabled {
+            fallbackEpisode = episode
+            store?.remotePlay(episode, startingAt: startTime)
+            return
+        }
+
         guard let store else {
             errorMessage = "Open the watch app again to finish setting up playback."
             return
@@ -184,6 +239,11 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func pause() {
+        if isRemoteControlEnabled {
+            store?.remotePause()
+            return
+        }
+
         player.pause()
         isPlaying = false
         isBuffering = false
@@ -192,6 +252,11 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func resume() {
+        if isRemoteControlEnabled {
+            store?.remoteResume()
+            return
+        }
+
         guard currentEpisode != nil else { return }
         player.play()
         player.rate = playbackRate
@@ -215,6 +280,11 @@ final class WatchPlaybackController: ObservableObject {
             playbackRate = newRate
         }
 
+        if isRemoteControlEnabled {
+            store?.remoteSetPlaybackRate(newRate, for: targetEpisode)
+            return
+        }
+
         if isPlaying, targetsCurrentEpisode {
             player.rate = playbackRate
         }
@@ -230,19 +300,39 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func skipBackward() {
+        if isRemoteControlEnabled {
+            store?.remoteSkipBackward()
+            return
+        }
+
         seek(to: playPosition - Double(skipBackSeconds))
     }
 
     func skipForward() {
+        if isRemoteControlEnabled {
+            store?.remoteSkipForward()
+            return
+        }
+
         seek(to: playPosition + Double(skipForwardSeconds))
     }
 
     func skipToNextChapter() {
+        if isRemoteControlEnabled {
+            store?.remoteSkipToNextChapter()
+            return
+        }
+
         guard let nextChapter else { return }
         seek(to: nextChapter.start)
     }
 
     func skipToChapterStart() {
+        if isRemoteControlEnabled {
+            store?.remoteSkipToChapterStart()
+            return
+        }
+
         guard let chapters = currentEpisode?.chapters, chapters.isEmpty == false else { return }
 
         let referenceTime = max(playPosition - 3, 0)
@@ -252,6 +342,11 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     func playChapter(_ chapter: WatchSyncChapter) {
+        if isRemoteControlEnabled {
+            store?.remoteSeek(to: chapter.start)
+            return
+        }
+
         if let currentEpisode {
             play(currentEpisode, startingAt: chapter.start)
         }

@@ -7,7 +7,7 @@
         "key": "Up Next Watch",
         "location": {
           "startingColumn": 13,
-          "startingLine": 99
+          "startingLine": 100
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Settings",
         "location": {
           "startingColumn": 45,
-          "startingLine": 62
+          "startingLine": 63
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Open watch storage and download settings",
         "location": {
           "startingColumn": 44,
-          "startingLine": 63
+          "startingLine": 64
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Refreshing inbox",
         "location": {
           "startingColumn": 71,
-          "startingLine": 81
+          "startingLine": 82
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Refresh inbox",
         "location": {
           "startingColumn": 92,
-          "startingLine": 81
+          "startingLine": 82
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Loads the latest inbox episodes from your phone",
         "location": {
           "startingColumn": 44,
-          "startingLine": 82
+          "startingLine": 83
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "OK",
         "location": {
           "startingColumn": 20,
-          "startingLine": 110
+          "startingLine": 111
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "Playlist",
         "location": {
           "startingColumn": 29,
-          "startingLine": 132
+          "startingLine": 133
         }
       },
       {
@@ -71,7 +71,7 @@
         "key": "Playlist",
         "location": {
           "startingColumn": 29,
-          "startingLine": 140
+          "startingLine": 141
         }
       },
       {
@@ -79,7 +79,7 @@
         "key": "Choose which playlist appears on the watch",
         "location": {
           "startingColumn": 28,
-          "startingLine": 142
+          "startingLine": 143
         }
       },
       {
@@ -87,7 +87,7 @@
         "key": "Cancel",
         "location": {
           "startingColumn": 20,
-          "startingLine": 138
+          "startingLine": 139
         }
       },
       {
@@ -95,7 +95,7 @@
         "key": "Now playing %@",
         "location": {
           "startingColumn": 45,
-          "startingLine": 162
+          "startingLine": 163
         }
       },
       {
@@ -103,15 +103,23 @@
         "key": "Opens the full now playing screen",
         "location": {
           "startingColumn": 44,
-          "startingLine": 163
+          "startingLine": 164
         }
       },
       {
         "comment": "",
-        "key": "Downloads prefer Wi-Fi and stay within your watch storage limit.",
+        "key": "Open the iPhone app once so the watch can control playback.",
         "location": {
-          "startingColumn": 22,
-          "startingLine": 208
+          "startingColumn": 26,
+          "startingLine": 212
+        }
+      },
+      {
+        "comment": "",
+        "key": "iPhone Remote",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 202
         }
       },
       {
@@ -119,7 +127,55 @@
         "key": "Watch Storage",
         "location": {
           "startingColumn": 26,
-          "startingLine": 197
+          "startingLine": 240
+        }
+      },
+      {
+        "comment": "",
+        "key": "Manage",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 284
+        }
+      },
+      {
+        "comment": "",
+        "key": "Manage Episode",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 289
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move Up",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 291
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move Down",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 297
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 302
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 306
         }
       },
       {
@@ -127,15 +183,15 @@
         "key": "Now Playing",
         "location": {
           "startingColumn": 30,
-          "startingLine": 238
+          "startingLine": 327
         }
       },
       {
         "comment": "",
-        "key": "The iPhone already has this file, so it should sync here when space opens up.",
+        "key": "Wait for episode to sync",
         "location": {
           "startingColumn": 26,
-          "startingLine": 350
+          "startingLine": 449
         }
       },
       {
@@ -143,7 +199,7 @@
         "key": "Now playing %@",
         "location": {
           "startingColumn": 41,
-          "startingLine": 286
+          "startingLine": 377
         }
       },
       {
@@ -151,7 +207,7 @@
         "key": "Opens full playback controls",
         "location": {
           "startingColumn": 40,
-          "startingLine": 287
+          "startingLine": 378
         }
       },
       {
@@ -159,7 +215,7 @@
         "key": "Syncing %@",
         "location": {
           "startingColumn": 41,
-          "startingLine": 325
+          "startingLine": 417
         }
       },
       {
@@ -167,7 +223,7 @@
         "key": "Syncing",
         "location": {
           "startingColumn": 34,
-          "startingLine": 314
+          "startingLine": 406
         }
       },
       {
@@ -175,7 +231,7 @@
         "key": "Pause",
         "location": {
           "startingColumn": 66,
-          "startingLine": 330
+          "startingLine": 422
         }
       },
       {
@@ -183,31 +239,55 @@
         "key": "Play",
         "location": {
           "startingColumn": 76,
-          "startingLine": 330
+          "startingLine": 422
         }
       },
       {
         "comment": "",
         "key": "Remove",
         "location": {
-          "startingColumn": 32,
-          "startingLine": 336
+          "startingColumn": 36,
+          "startingLine": 432
         }
       },
       {
         "comment": "",
         "key": "Loading",
         "location": {
-          "startingColumn": 63,
-          "startingLine": 341
+          "startingColumn": 67,
+          "startingLine": 437
         }
       },
       {
         "comment": "",
         "key": "Download",
         "location": {
-          "startingColumn": 75,
-          "startingLine": 341
+          "startingColumn": 79,
+          "startingLine": 437
+        }
+      },
+      {
+        "comment": "",
+        "key": "iPhone remote",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 501
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloaded",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 504
+        }
+      },
+      {
+        "comment": "",
+        "key": "Not downloaded",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 507
         }
       },
       {
@@ -215,7 +295,7 @@
         "key": "Inbox",
         "location": {
           "startingColumn": 34,
-          "startingLine": 425
+          "startingLine": 536
         }
       },
       {
@@ -223,7 +303,7 @@
         "key": "Pull new episodes from the phone, then send the ones you want into %@.",
         "location": {
           "startingColumn": 34,
-          "startingLine": 429
+          "startingLine": 540
         }
       },
       {
@@ -231,7 +311,7 @@
         "key": "Refreshing…",
         "location": {
           "startingColumn": 62,
-          "startingLine": 433
+          "startingLine": 544
         }
       },
       {
@@ -239,7 +319,7 @@
         "key": "Refresh Inbox",
         "location": {
           "startingColumn": 80,
-          "startingLine": 433
+          "startingLine": 544
         }
       },
       {
@@ -247,7 +327,7 @@
         "key": "Adds this episode to %@ and downloads it when available",
         "location": {
           "startingColumn": 36,
-          "startingLine": 503
+          "startingLine": 613
         }
       },
       {
@@ -255,7 +335,7 @@
         "key": "Add to %@",
         "location": {
           "startingColumn": 60,
-          "startingLine": 498
+          "startingLine": 608
         }
       },
       {
@@ -263,7 +343,7 @@
         "key": "Queue + Download",
         "location": {
           "startingColumn": 102,
-          "startingLine": 498
+          "startingLine": 608
         }
       },
       {
@@ -271,7 +351,7 @@
         "key": "Sync Now",
         "location": {
           "startingColumn": 24,
-          "startingLine": 532
+          "startingLine": 642
         }
       }
     ]

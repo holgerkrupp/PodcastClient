@@ -208,3 +208,78 @@ struct CoverImageView: View {
         }
     }
 }
+
+struct BlurredCoverImageView: View {
+    var episode: Episode? = nil
+    var podcast: Podcast? = nil
+    var imageURL: URL? = nil
+    var radius: CGFloat = 8
+
+    @State private var loadedImage: Image?
+    @State private var lastAppliedKey = ""
+
+    var body: some View {
+        Group {
+            if let loadedImage {
+                loadedImage
+                    .resizable()
+            } else if let cachedImage {
+                cachedImage
+                    .resizable()
+            } else {
+                Rectangle()
+                    .fill(Color.accent)
+            }
+        }
+        .task(id: imageKey) {
+            seedFromCacheIfPossible(for: imageKey)
+            await loadImage(for: imageKey)
+        }
+    }
+
+    private var resolvedURL: URL? {
+        if let imageURL {
+            return imageURL
+        }
+
+        if let episode {
+            return episode.imageURL ?? episode.podcast?.imageURL
+        }
+
+        return podcast?.imageURL
+    }
+
+    private var imageKey: String {
+        guard let resolvedURL else { return "none" }
+        return SharedImageRepository.blurredCacheKey(for: resolvedURL, radius: radius)
+    }
+
+    private var cachedImage: Image? {
+        guard let uiImage = SharedImageRepository.cachedBlurredImage(for: imageKey) else { return nil }
+        return Image(uiImage: uiImage)
+    }
+
+    @MainActor
+    private func seedFromCacheIfPossible(for key: String) {
+        guard key != lastAppliedKey else { return }
+        guard let uiImage = SharedImageRepository.cachedBlurredImage(for: key) else { return }
+        loadedImage = Image(uiImage: uiImage)
+        lastAppliedKey = key
+    }
+
+    @MainActor
+    private func loadImage(for key: String) async {
+        guard key != lastAppliedKey else { return }
+        guard let resolvedURL else {
+            loadedImage = nil
+            lastAppliedKey = key
+            return
+        }
+
+        if let uiImage = await ImageLoaderAndCache.loadBlurredUIImage(from: resolvedURL, radius: radius),
+           key == imageKey {
+            loadedImage = Image(uiImage: uiImage)
+            lastAppliedKey = key
+        }
+    }
+}

@@ -21,6 +21,16 @@
 				<key>CFBundleIconName</key>
 				<string>AppIcon-orange</string>
 			</dict>
+			<key>AppIcon-pride</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>AppIcon-pride</string>
+			</dict>
+			<key>AppIcon-progress</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>AppIcon-progress</string>
+			</dict>
 			<key>AppIcon-purple</key>
 			<dict>
 				<key>CFBundleIconName</key>
@@ -30,6 +40,11 @@
 			<dict>
 				<key>CFBundleIconName</key>
 				<string>AppIcon-red</string>
+			</dict>
+			<key>AppIcon-trans</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>AppIcon-trans</string>
 			</dict>
 			<key>AppIcon-yellow</key>
 			<dict>

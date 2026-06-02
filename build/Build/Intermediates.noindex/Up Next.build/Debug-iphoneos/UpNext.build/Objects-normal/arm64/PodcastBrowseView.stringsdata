@@ -1,0 +1,112 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Views/PodcastBrowseView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "More episodes load as you scroll.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 247
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading episodes...",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Episodes Yet",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episodes",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 256
+        }
+      },
+      {
+        "comment": "",
+        "key": "This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 451
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last updated: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 326
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last refresh: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 332
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open in Browser",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 410
+        }
+      },
+      {
+        "comment": "",
+        "key": "Subscribe to Alternative Feed",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 428
+        }
+      },
+      {
+        "comment": "",
+        "key": "Subscribed",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 440
+        }
+      },
+      {
+        "comment": "",
+        "key": "Subscribe",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 445
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to Up Next",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 554
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add to End",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 569
+        }
+      }
+    ]
+  },
+  "version": 1
+}

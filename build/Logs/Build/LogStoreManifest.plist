@@ -5,6 +5,49 @@
 	<key>logFormatVersion</key>
 	<integer>12</integer>
 	<key>logs</key>
-	<dict/>
+	<dict>
+		<key>B8026E6A-42DF-44C3-9E33-ABFA221C4014</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>B8026E6A-42DF-44C3-9E33-ABFA221C4014.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>1</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>Up Next project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>UpNext</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Testing project Up Next with scheme UpNext</string>
+			<key>timeStartedRecording</key>
+			<real>802074880.67474902</real>
+			<key>timeStoppedRecording</key>
+			<real>802074927.97129905</real>
+			<key>title</key>
+			<string>Testing project Up Next with scheme UpNext</string>
+			<key>uniqueIdentifier</key>
+			<string>B8026E6A-42DF-44C3-9E33-ABFA221C4014</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

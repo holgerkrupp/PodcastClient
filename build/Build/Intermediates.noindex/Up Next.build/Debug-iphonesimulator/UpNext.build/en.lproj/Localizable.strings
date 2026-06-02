@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>%@ %@</key>
+	<string>%1$@ %2$@</string>
+	<key>%@ – %@</key>
+	<string>%1$@ – %2$@</string>
+	<key>%lld file%@</key>
+	<string>%1$lld file%2$@</string>
+	<key>%lld file%@ (%@) are currently protected because their episodes are in Up Next.</key>
+	<string>%1$lld file%2$@ (%3$@) are currently protected because their episodes are in Up Next.</string>
+	<key>%lld file%@ (%@) are currently protected by archive retention settings.</key>
+	<string>%1$lld file%2$@ (%3$@) are currently protected by archive retention settings.</string>
+	<key>%lld file%@ (%@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window.</key>
+	<string>%1$lld file%2$@ (%3$@) can be removed without deleting downloads needed for Up Next or archived episodes still inside their retention window.</string>
+	<key>%lld item%@</key>
+	<string>%1$lld item%2$@</string>
+	<key>%lld. %@: %@</key>
+	<string>%1$lld. %2$@: %3$@</string>
+	<key>From %@ to %@</key>
+	<string>From %1$@ to %2$@</string>
+	<key>Heat Map (%@ – %@)</key>
+	<string>Heat Map (%1$@ – %2$@)</string>
+	<key>Jump to %@ %@</key>
+	<string>Jump to %1$@ %2$@</string>
+	<key>Play %@ %@</key>
+	<string>Play %1$@ %2$@</string>
+	<key>Title: %@ • Background: %@</key>
+	<string>Title: %1$@ • Background: %2$@</string>
+</dict>
+</plist>

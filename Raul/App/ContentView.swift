@@ -114,6 +114,7 @@ struct ContentView: View {
         .task {
             CrashBreadcrumbs.shared.record("content_view_task_started")
             await loadInboxCount()
+            await importPendingSharedEpisodeIfNeeded()
             await podcastYearShareCoordinator.evaluateAppLaunch(modelContext: modelContext)
             CrashBreadcrumbs.shared.record("content_view_task_completed")
         }
@@ -128,6 +129,7 @@ struct ContentView: View {
                     CrashBreadcrumbs.shared.record("scene_phase_active")
                     // Refresh the badge when app becomes active
                     Task { await loadInboxCount() }
+                    Task { await importPendingSharedEpisodeIfNeeded() }
                     Task { await podcastYearShareCoordinator.evaluateAppBecameActive(modelContext: modelContext) }
                     if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
                        
@@ -170,6 +172,13 @@ struct ContentView: View {
             }
 
             guard url.scheme == "upnext" else { return }
+            if let sharedEpisodeURL = sharedEpisodeURL(from: url) {
+                Task {
+                    await importSharedEpisode(from: sharedEpisodeURL)
+                }
+                return
+            }
+
             if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
                let playlistID = components.queryItems?.first(where: { $0.name == "playlistID" })?.value,
                UUID(uuidString: playlistID) != nil {
@@ -227,6 +236,33 @@ struct ContentView: View {
         }
     }
 
+    @MainActor
+    private func importPendingSharedEpisodeIfNeeded() async {
+        guard let sharedEpisodeURL = PendingSharedEpisodeImportStore.pendingURL() else {
+            return
+        }
+
+        await importSharedEpisode(from: sharedEpisodeURL)
+    }
+
+    @MainActor
+    private func importSharedEpisode(from sharedEpisodeURL: URL) async {
+        selectedTab = .inbox
+        do {
+            let importedURL = try await PodcastEpisodeShareImporter().importEpisode(
+                from: sharedEpisodeURL,
+                modelContext: modelContext
+            )
+            PendingSharedEpisodeImportStore.clear(ifMatching: sharedEpisodeURL)
+            CrashBreadcrumbs.shared.record("shared_episode_imported", details: importedURL.absoluteString)
+            BasicLogger.shared.log("Imported shared episode: \(importedURL.absoluteString)")
+            await loadInboxCount()
+        } catch {
+            BasicLogger.shared.log("Failed to import shared episode \(sharedEpisodeURL.absoluteString): \(error.localizedDescription)")
+            CrashBreadcrumbs.shared.record("shared_episode_import_failed", details: error.localizedDescription)
+        }
+    }
+
     private func refreshWidgetForSelectedPlaylist(_ playlistID: String) {
         guard let selectedID = Playlist.resolvePlaylistID(from: playlistID) else {
             Task {
@@ -256,7 +292,60 @@ struct ContentView: View {
             showOnboarding = true
         }
     }
+
+    private func sharedEpisodeURL(from url: URL) -> URL? {
+        guard url.host() == "shareEpisode",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
+            return nil
+        }
+
+        return URL(string: rawURL)
+    }
         
+}
+
+private enum PendingSharedEpisodeImportStore {
+    private static let appGroupID = "group.de.holgerkrupp.PodcastClient"
+    private static let pendingURLKey = "PendingSharedEpisodeURL"
+
+    static func pendingURL() -> URL? {
+        guard let rawValue = UserDefaults(suiteName: appGroupID)?.string(forKey: pendingURLKey) else {
+            return nil
+        }
+        guard let url = URL(string: rawValue), isSupportedSharedURL(url) else {
+            clear()
+            return nil
+        }
+
+        return url
+    }
+
+    static func clear(ifMatching url: URL) {
+        let defaults = UserDefaults(suiteName: appGroupID)
+        guard defaults?.string(forKey: pendingURLKey) == url.absoluteString else {
+            return
+        }
+        defaults?.removeObject(forKey: pendingURLKey)
+        defaults?.synchronize()
+    }
+
+    static func clear() {
+        let defaults = UserDefaults(suiteName: appGroupID)
+        defaults?.removeObject(forKey: pendingURLKey)
+        defaults?.synchronize()
+    }
+
+    private static func isSupportedSharedURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+
+        return scheme == "http"
+            || scheme == "https"
+            || scheme == "feed"
+            || scheme == "rss"
+    }
 }
 
 #Preview {

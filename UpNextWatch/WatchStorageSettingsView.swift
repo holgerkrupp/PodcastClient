@@ -14,6 +14,20 @@ struct WatchStorageSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Playback") {
+                Toggle(
+                    "Remote Control iPhone",
+                    isOn: Binding(
+                        get: { store.storageSettings.playbackMode == .remotePhone },
+                        set: { store.setPlaybackMode($0 ? .remotePhone : .local) }
+                    )
+                )
+
+                Text(store.storageSettings.playbackMode == .remotePhone ? "Playback controls manage the iPhone app." : "Playback uses files and streams on the watch.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Storage") {
                 Picker(
                     "Limit",

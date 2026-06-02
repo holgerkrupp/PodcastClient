@@ -5,6 +5,70 @@
 	<key>logFormatVersion</key>
 	<integer>12</integer>
 	<key>logs</key>
-	<dict/>
+	<dict>
+		<key>0A8DE921-65FC-4FD9-8646-895BED2784EB</key>
+		<dict>
+			<key>auxiliaryLogUniqueIdentifier</key>
+			<string>B8026E6A-42DF-44C3-9E33-ABFA221C4014</string>
+			<key>auxiliaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>1</integer>
+			</dict>
+			<key>className</key>
+			<string>IDESchemeActionsInvocationRecord</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>com.apple.dt.unit.cocoaUnitTest</string>
+			<key>fileName</key>
+			<string>Test-UpNext-2026.06.02_08-34-40-+0200.xcresult</string>
+			<key>hasAuxiliaryLog</key>
+			<true/>
+			<key>hasCoverageData</key>
+			<true/>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalCodeCoverage</key>
+				<real>0.057606955525764343</real>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>1</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>Up Next project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>UpNext</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Test UpNext</string>
+			<key>timeStartedRecording</key>
+			<real>802074880.67530096</real>
+			<key>timeStoppedRecording</key>
+			<real>802074967.25752497</real>
+			<key>title</key>
+			<string>Test UpNext</string>
+			<key>uniqueIdentifier</key>
+			<string>0A8DE921-65FC-4FD9-8646-895BED2784EB</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

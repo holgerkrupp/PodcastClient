@@ -1,0 +1,96 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Views/DownloadControllView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Downloads this episode for offline playback",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 52
+        }
+      },
+      {
+        "comment": "",
+        "key": "Deletes the local file from this device",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "Download",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 50
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove Download",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 62
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 98
+        }
+      },
+      {
+        "comment": "",
+        "key": "Continues the paused download",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 106
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pauses the active download",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 112
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stops and removes this download",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 123
+        }
+      },
+      {
+        "comment": "",
+        "key": "Resume",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 109
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 119
+        }
+      }
+    ]
+  },
+  "version": 1
+}

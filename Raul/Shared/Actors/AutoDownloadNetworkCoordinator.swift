@@ -37,28 +37,36 @@ actor AutoDownloadNetworkCoordinator {
             let canScheduleWiFiOnlyDownloads = isConnected && isWiFiLikeConnection
 
             Task {
-                await self?.logAutoDownload(
-                    "network-monitor/update connected=\(isConnected) wifiLike=\(isWiFiLikeConnection) canScheduleWiFiOnly=\(canScheduleWiFiOnlyDownloads)"
+                await self?.handleNetworkUpdate(
+                    isConnected: isConnected,
+                    isWiFiLikeConnection: isWiFiLikeConnection,
+                    canScheduleWiFiOnlyDownloads: canScheduleWiFiOnlyDownloads
                 )
-                await self?.handleNetworkUpdate(canScheduleWiFiOnlyDownloads: canScheduleWiFiOnlyDownloads)
             }
         }
 
         monitor.start(queue: monitorQueue)
     }
 
-    private func handleNetworkUpdate(canScheduleWiFiOnlyDownloads: Bool) async {
+    private func handleNetworkUpdate(
+        isConnected: Bool,
+        isWiFiLikeConnection: Bool,
+        canScheduleWiFiOnlyDownloads: Bool
+    ) async {
+        guard lastCanScheduleWiFiOnlyDownloads != canScheduleWiFiOnlyDownloads else {
+            return
+        }
+
         defer {
             lastCanScheduleWiFiOnlyDownloads = canScheduleWiFiOnlyDownloads
         }
 
+        await logAutoDownload(
+            "network-monitor/update connected=\(isConnected) wifiLike=\(isWiFiLikeConnection) canScheduleWiFiOnly=\(canScheduleWiFiOnlyDownloads)"
+        )
+
         guard canScheduleWiFiOnlyDownloads else {
             await logAutoDownload("network-monitor/skip reason=wifi-not-available")
-            return
-        }
-
-        guard lastCanScheduleWiFiOnlyDownloads != true else {
-            await logAutoDownload("network-monitor/skip reason=no-transition-to-wifi")
             return
         }
 
@@ -84,7 +92,7 @@ actor AutoDownloadNetworkCoordinator {
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
         for podcastFeed in podcastFeeds {
             await logAutoDownload("network-monitor/apply feed=\(podcastFeed.absoluteString)")
-            await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed)
+            await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
 }

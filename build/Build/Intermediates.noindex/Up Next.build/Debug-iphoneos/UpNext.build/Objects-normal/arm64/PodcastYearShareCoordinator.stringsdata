@@ -1,0 +1,72 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/PodcastYear/PodcastYearShareCoordinator.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Podcast Year",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 493
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share your podcast year",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 472
+        }
+      },
+      {
+        "comment": "",
+        "key": "Your %lld listening recap is ready. Open the share picture view to customize and export it.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 474
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open Share Pictures",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 486
+        }
+      },
+      {
+        "comment": "",
+        "key": "Close",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 497
+        }
+      },
+      {
+        "comment": "",
+        "key": "My Podcasts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 527
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 529
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 541
+        }
+      }
+    ]
+  },
+  "version": 1
+}

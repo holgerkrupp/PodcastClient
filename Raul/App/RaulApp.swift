@@ -90,6 +90,7 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
+                Player.shared.enterBackgroundPlaybackMode()
                 scheduleFeedRefresh()
                 scheduleStorageCleanup()
                 Task {
@@ -101,6 +102,7 @@ struct RaulApp: App {
                 cleanUp()
                 refreshOnActive()
                 Task {
+                    await Player.shared.enterForegroundPlaybackMode()
                     await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
                 }
                 Task {

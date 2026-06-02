@@ -26,6 +26,7 @@ final class PhoneWatchSyncController: NSObject {
     private let defaults = UserDefaults.standard
     private let maximumOutstandingFileTransfers = 2
     private let staleFileTransferTimeout: TimeInterval = 120
+    private let refreshDebounceNanoseconds: UInt64 = 750_000_000
 
     private var lastStorageReport: WatchStorageReport?
     private var pendingTransferEpisodeIDs: Set<String> = []
@@ -33,6 +34,8 @@ final class PhoneWatchSyncController: NSObject {
     private var transferProgressByEpisodeID: [String: Double] = [:]
     private var transferProgressObservers: [String: NSKeyValueObservation] = [:]
     private var lastPushedSnapshot: WatchSyncSnapshot?
+    private var lastPushedSnapshotSignature: String?
+    private var pendingRefreshTask: Task<Void, Never>?
 
     private override init() {
         super.init()
@@ -44,16 +47,37 @@ final class PhoneWatchSyncController: NSObject {
         session.activate()
     }
 
-    func refreshSnapshotAndTransfers() async {
+    func refreshSnapshotAndTransfers(forcePush: Bool = true) async {
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = nil
+        await performRefreshSnapshotAndTransfers(forcePush: forcePush)
+    }
+
+    private func refreshSnapshotAndTransfersFromDebounce() async {
+        pendingRefreshTask = nil
+        await performRefreshSnapshotAndTransfers(forcePush: false)
+    }
+
+    private func performRefreshSnapshotAndTransfers(forcePush: Bool) async {
         guard let session else { return }
         guard session.isPaired, session.isWatchAppInstalled else { return }
 
         reconcileOutstandingFileTransfers(via: session)
         let bundle = makeSnapshotBundle()
-        pushSnapshot(bundle.snapshot, via: session)
+        pushSnapshot(bundle.snapshot, via: session, force: forcePush)
         let didQueueTransfers = syncPlaylistFilesIfPossible(bundle, via: session)
         if didQueueTransfers {
-            pushSnapshot(makeSnapshotBundle().snapshot, via: session)
+            pushSnapshot(makeSnapshotBundle().snapshot, via: session, force: true)
+        }
+    }
+
+    func refreshSnapshotAndTransfersSoon() {
+        pendingRefreshTask?.cancel()
+        let delay = refreshDebounceNanoseconds
+        pendingRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled else { return }
+            await self?.refreshSnapshotAndTransfersFromDebounce()
         }
     }
 
@@ -65,20 +89,31 @@ final class PhoneWatchSyncController: NSObject {
         let playlistEntries = selection.selectedPlaylist.ordered
         let inboxEpisodes = fetchInboxEpisodes(with: context)
         let settings = fetchStandardSettings(with: context)
+        let enabledSettingsByFeed = fetchEnabledPodcastSettingsByFeed(with: context)
         let globalPlaybackSettings = makePlaybackSettings(from: settings, isPodcastSpecific: false)
         let watchPlaylists = makeSyncPlaylists(from: selection)
 
         var transferCandidates: [String: TransferCandidate] = [:]
         let playlist = playlistEntries.compactMap { entry -> WatchSyncEpisode? in
             guard let episode = entry.episode else { return nil }
-            guard let syncEpisode = makeSyncEpisode(from: episode) else { return nil }
+            guard let syncEpisode = makeSyncEpisode(
+                from: episode,
+                globalSettings: settings,
+                enabledSettingsByFeed: enabledSettingsByFeed
+            ) else { return nil }
             if let candidate = makeTransferCandidate(from: episode) {
                 transferCandidates[syncEpisode.id] = candidate
             }
             return syncEpisode
         }
 
-        let inbox = inboxEpisodes.compactMap(makeSyncEpisode(from:))
+        let inbox = inboxEpisodes.compactMap { episode in
+            makeSyncEpisode(
+                from: episode,
+                globalSettings: settings,
+                enabledSettingsByFeed: enabledSettingsByFeed
+            )
+        }
 
         return SnapshotBundle(
             snapshot: WatchSyncSnapshot(
@@ -92,9 +127,23 @@ final class PhoneWatchSyncController: NSObject {
                 skipForwardSeconds: settings.skipForward.rawValue,
                 playbackSettings: globalPlaybackSettings,
                 phoneTransferEpisodeIDs: Array(pendingTransferEpisodeIDs).sorted(),
-                phoneTransferProgressByEpisodeID: filteredTransferProgress()
+                phoneTransferProgressByEpisodeID: filteredTransferProgress(),
+                phonePlaybackState: makePhonePlaybackState()
             ),
             transferCandidates: transferCandidates
+        )
+    }
+
+    private func makePhonePlaybackState() -> WatchPhonePlaybackState {
+        let player = Player.shared
+        return WatchPhonePlaybackState(
+            generatedAt: .now,
+            currentEpisodeURL: player.currentEpisodeURL?.absoluteString,
+            playPosition: max(player.playPosition, 0),
+            duration: player.currentEpisode?.duration,
+            isPlaying: player.isPlaying,
+            isBuffering: false,
+            playbackRate: player.playbackRate
         )
     }
 
@@ -164,17 +213,17 @@ final class PhoneWatchSyncController: NSObject {
         return settings
     }
 
-    private func fetchEnabledPodcastSettings(for podcastFeed: URL?, with context: ModelContext) -> PodcastSettings? {
-        guard let podcastFeed else { return nil }
-
+    private func fetchEnabledPodcastSettingsByFeed(with context: ModelContext) -> [URL: PodcastSettings] {
         let descriptor = FetchDescriptor<PodcastSettings>(
             predicate: #Predicate<PodcastSettings> { setting in
-                setting.podcast?.feed == podcastFeed &&
                 setting.isEnabled == true
             }
         )
-
-        return try? context.fetch(descriptor).first
+        let settings = (try? context.fetch(descriptor)) ?? []
+        return settings.reduce(into: [:]) { result, setting in
+            guard let feed = setting.podcast?.feed else { return }
+            result[feed] = setting
+        }
     }
 
     private func makePlaybackSettings(from settings: PodcastSettings, isPodcastSpecific: Bool) -> WatchPlaybackSettings {
@@ -187,12 +236,14 @@ final class PhoneWatchSyncController: NSObject {
         )
     }
 
-    private func makeSyncEpisode(from episode: Episode) -> WatchSyncEpisode? {
+    private func makeSyncEpisode(
+        from episode: Episode,
+        globalSettings: PodcastSettings,
+        enabledSettingsByFeed: [URL: PodcastSettings]
+    ) -> WatchSyncEpisode? {
         guard let episodeURL = episode.url?.absoluteString else { return nil }
-        let context = ModelContext(ModelContainerManager.shared.container)
-        let globalSettings = fetchStandardSettings(with: context)
         let podcastFeed = episode.podcast?.feed
-        let podcastSettings = fetchEnabledPodcastSettings(for: podcastFeed, with: context)
+        let podcastSettings = podcastFeed.flatMap { enabledSettingsByFeed[$0] }
         let playbackSettings = makePlaybackSettings(
             from: podcastSettings ?? globalSettings,
             isPodcastSpecific: podcastSettings != nil
@@ -261,7 +312,15 @@ final class PhoneWatchSyncController: NSObject {
         return episode.fileSize
     }
 
-    private func pushSnapshot(_ snapshot: WatchSyncSnapshot, via session: WCSession) {
+    private func pushSnapshot(_ snapshot: WatchSyncSnapshot, via session: WCSession, force: Bool = false) {
+        let signature = snapshotSignature(snapshot)
+        guard force || signature != lastPushedSnapshotSignature else {
+            #if DEBUG
+            print("Watch sync skipped unchanged snapshot")
+            #endif
+            return
+        }
+
         guard let data = WatchSyncTransport.encode(snapshot) else { return }
 
         do {
@@ -269,6 +328,7 @@ final class PhoneWatchSyncController: NSObject {
                 WatchSyncTransport.snapshotContextKey: data
             ])
             lastPushedSnapshot = snapshot
+            lastPushedSnapshotSignature = signature
             #if DEBUG
             print("Watch sync pushed snapshot: playlist=\(snapshot.playlist.count), inbox=\(snapshot.inbox.count)")
             #endif
@@ -277,6 +337,66 @@ final class PhoneWatchSyncController: NSObject {
             print("Failed to push watch snapshot: \(error)")
             #endif
         }
+    }
+
+    private func snapshotSignature(_ snapshot: WatchSyncSnapshot) -> String {
+        let playlistSignature = snapshot.playlist.map(syncEpisodeSignature).joined(separator: "\n")
+        let inboxSignature = snapshot.inbox.map(syncEpisodeSignature).joined(separator: "\n")
+        let playlistsSignature = snapshot.playlists.map {
+            "\($0.id)|\($0.title)|\($0.symbolName)|\($0.isSelected)|\($0.isDefault)"
+        }.joined(separator: "\n")
+        let transferSignature = snapshot.phoneTransferEpisodeIDs.sorted().joined(separator: ",")
+        let progressSignature = snapshot.phoneTransferProgressByEpisodeID
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key):\(Int(($0.value * 100).rounded()))" }
+            .joined(separator: ",")
+        let phoneStateSignature = snapshot.phonePlaybackState.map { state in
+            let quantizedPosition = Int((state.playPosition / 15).rounded())
+            return [
+                state.currentEpisodeURL ?? "",
+                "\(quantizedPosition)",
+                "\(state.duration ?? 0)",
+                "\(state.isPlaying)",
+                "\(state.isBuffering)",
+                "\(state.playbackRate)"
+            ].joined(separator: "|")
+        } ?? ""
+
+        return [
+            playlistSignature,
+            inboxSignature,
+            playlistsSignature,
+            snapshot.selectedPlaylistID ?? "",
+            snapshot.selectedPlaylistTitle,
+            "\(snapshot.skipBackSeconds)",
+            "\(snapshot.skipForwardSeconds)",
+            "\(snapshot.playbackSettings)",
+            transferSignature,
+            progressSignature,
+            phoneStateSignature
+        ].joined(separator: "\u{1F}")
+    }
+
+    private func syncEpisodeSignature(_ episode: WatchSyncEpisode) -> String {
+        let chapterSignature = episode.chapters.map {
+            "\($0.id)|\($0.title)|\($0.start)|\($0.duration ?? 0)|\($0.imageURL ?? "")|\($0.shouldPlay)"
+        }.joined(separator: ";")
+        return [
+            episode.episodeURL,
+            episode.audioURL,
+            episode.podcastFeedURL ?? "",
+            episode.title,
+            episode.subtitle ?? "",
+            episode.podcastTitle ?? "",
+            "\(episode.publishDate?.timeIntervalSince1970 ?? 0)",
+            "\(episode.duration ?? 0)",
+            episode.imageURL ?? "",
+            "\(episode.phoneHasLocalFile)",
+            "\(episode.fileSize ?? 0)",
+            "\(Int(((episode.playPosition ?? 0) / 15).rounded()))",
+            chapterSignature,
+            "\(String(describing: episode.playbackSettings))"
+        ].joined(separator: "|")
     }
 
     @discardableResult
@@ -472,7 +592,8 @@ final class PhoneWatchSyncController: NSObject {
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
             phoneTransferEpisodeIDs: Array(pendingTransferEpisodeIDs).sorted(),
-            phoneTransferProgressByEpisodeID: filteredTransferProgress()
+            phoneTransferProgressByEpisodeID: filteredTransferProgress(),
+            phonePlaybackState: makePhonePlaybackState()
         )
     }
 
@@ -614,6 +735,96 @@ final class PhoneWatchSyncController: NSObject {
             print("Watch sync received phone fallback transfer request for \(episodeURLString)")
             #endif
             await refreshSnapshotAndTransfers()
+
+        case .remotePlayEpisode:
+            guard let episodeURLString = command.episodeURL,
+                  let episodeURL = URL(string: episodeURLString)
+            else {
+                return
+            }
+            await Player.shared.playEpisode(
+                episodeURL,
+                playDirectly: true,
+                startingAt: command.playPosition
+            )
+            await refreshSnapshotAndTransfers()
+
+        case .remotePause:
+            Player.shared.pause()
+            await refreshSnapshotAndTransfers()
+
+        case .remoteResume:
+            Player.shared.play()
+            await refreshSnapshotAndTransfers()
+
+        case .remoteSeek:
+            guard let playPosition = command.playPosition else { return }
+            await Player.shared.jumpTo(time: playPosition)
+            await refreshSnapshotAndTransfers()
+
+        case .remoteSkipBackward:
+            Player.shared.remoteSkipBack()
+            await refreshSnapshotAndTransfers()
+
+        case .remoteSkipForward:
+            Player.shared.remoteSkipForward()
+            await refreshSnapshotAndTransfers()
+
+        case .remoteSkipToChapterStart:
+            await Player.shared.skipToChapterStart()
+            await refreshSnapshotAndTransfers()
+
+        case .remoteSkipToNextChapter:
+            await Player.shared.skipToNextChapter()
+            await refreshSnapshotAndTransfers()
+
+        case .remoteSetPlaybackRate:
+            guard let playbackRate = command.playbackRate else { return }
+            Player.shared.playbackRate = playbackRate
+            await refreshSnapshotAndTransfers()
+
+        case .remoteRemovePlaylistEpisode:
+            guard let episodeURLString = command.episodeURL,
+                  let episodeURL = URL(string: episodeURLString)
+            else {
+                return
+            }
+            let context = ModelContext(ModelContainerManager.shared.container)
+            let selection = resolvePlaylistSelection(with: context)
+            let requestedPlaylistID = Playlist.resolvePlaylistID(from: command.playlistID)
+            let resolvedPlaylistID = requestedPlaylistID.flatMap { playlistID in
+                selection.manualPlaylists.first(where: { $0.id == playlistID })?.id
+            } ?? selection.selectedPlaylist.id
+
+            if let playlistActor = try? PlaylistModelActor(
+                modelContainer: ModelContainerManager.shared.container,
+                playlistID: resolvedPlaylistID
+            ) {
+                try? await playlistActor.remove(episodeURL: episodeURL)
+            }
+            await refreshSnapshotAndTransfers()
+
+        case .remoteMovePlaylistEpisode:
+            guard let sourceIndex = command.sourceIndex,
+                  let destinationIndex = command.destinationIndex
+            else {
+                return
+            }
+            let context = ModelContext(ModelContainerManager.shared.container)
+            let selection = resolvePlaylistSelection(with: context)
+            let requestedPlaylistID = Playlist.resolvePlaylistID(from: command.playlistID)
+            let resolvedPlaylistID = requestedPlaylistID.flatMap { playlistID in
+                selection.manualPlaylists.first(where: { $0.id == playlistID })?.id
+            } ?? selection.selectedPlaylist.id
+
+            if let playlistActor = try? PlaylistModelActor(
+                modelContainer: ModelContainerManager.shared.container,
+                playlistID: resolvedPlaylistID
+            ) {
+                let actorDestinationIndex = sourceIndex < destinationIndex ? destinationIndex + 1 : destinationIndex
+                try? await playlistActor.moveEntry(from: sourceIndex, to: actorDestinationIndex)
+            }
+            await refreshSnapshotAndTransfers()
         }
     }
 
@@ -739,7 +950,7 @@ enum WatchSyncCoordinator {
 
     static func refreshSoon() {
         Task { @MainActor in
-            await PhoneWatchSyncController.shared.refreshSnapshotAndTransfers()
+            PhoneWatchSyncController.shared.refreshSnapshotAndTransfersSoon()
         }
     }
 }

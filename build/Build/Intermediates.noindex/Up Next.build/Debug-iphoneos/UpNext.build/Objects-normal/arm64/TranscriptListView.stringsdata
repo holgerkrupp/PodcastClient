@@ -1,0 +1,152 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Transcripts/Views/TranscriptListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Follow captions",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "Follow playback",
+        "location": {
+          "startingColumn": 78,
+          "startingLine": 102
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop following playback",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Keep the current transcript line centered",
+        "location": {
+          "startingColumn": 72,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Following playback",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Follow playback",
+        "location": {
+          "startingColumn": 81,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Keeps captions centered around the current playback time",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 101
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search captions…",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 83
+        }
+      },
+      {
+        "comment": "",
+        "key": "Following",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "Follow",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Matching Transcript",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Caption %@",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play from %@",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 169
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play caption",
+        "location": {
+          "startingColumn": 97,
+          "startingLine": 169
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@:",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 172
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play from %@",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 167
+        }
+      },
+      {
+        "comment": "",
+        "key": "Starts playback from this caption line",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 168
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 178
+        }
+      }
+    ]
+  },
+  "version": 1
+}

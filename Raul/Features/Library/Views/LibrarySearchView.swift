@@ -211,10 +211,9 @@ struct LibrarySearchView: View {
     @ViewBuilder
     private func podcastGroupHeader(_ group: PodcastSearchResultGroup) -> some View {
         ZStack {
-            CoverImageView(imageURL: group.podcast.imageURL)
+            BlurredCoverImageView(imageURL: group.podcast.imageURL)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: groupHeaderHeight, maxHeight: groupHeaderHeight)
-                .blur(radius: 8)
                 .opacity(0.45)
                 .clipped()
                 .accessibilityHidden(true)
@@ -255,10 +254,9 @@ struct LibrarySearchView: View {
     @ViewBuilder
     private func podcastMatchRow(_ result: PodcastSearchResult) -> some View {
         ZStack {
-            CoverImageView(imageURL: result.podcast.imageURL)
+            BlurredCoverImageView(imageURL: result.podcast.imageURL)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: resultRowHeight, maxHeight: resultRowHeight)
-                .blur(radius: 8)
                 .opacity(0.45)
                 .clipped()
                 .accessibilityHidden(true)
@@ -306,10 +304,9 @@ struct LibrarySearchView: View {
     @ViewBuilder
     private func episodeMatchRow(_ result: EpisodeSearchResult) -> some View {
         ZStack {
-            CoverImageView(imageURL: result.podcast.imageURL)
+            BlurredCoverImageView(imageURL: result.podcast.imageURL)
                 .scaledToFill()
                 .frame(maxWidth: .infinity, minHeight: resultRowHeight, maxHeight: resultRowHeight)
-                .blur(radius: 8)
                 .opacity(0.45)
                 .clipped()
                 .accessibilityHidden(true)

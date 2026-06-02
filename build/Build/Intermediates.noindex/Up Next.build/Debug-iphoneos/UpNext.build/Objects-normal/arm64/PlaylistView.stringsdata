@@ -1,0 +1,152 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Playlist/Views/PlaylistView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Queue settings",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 73
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open settings",
+        "location": {
+          "startingColumn": 77,
+          "startingLine": 73
+        }
+      },
+      {
+        "comment": "",
+        "key": "Queue settings",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open playback and queue settings",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 72
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current playlist %@",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens playlist picker",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 210
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Playlist…",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 193
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open episode %@",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 250
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens this episode details screen",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 251
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove from Playlist",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 258
+        }
+      },
+      {
+        "comment": "",
+        "key": "Archive Episode",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 266
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Playlist",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 324
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 316
+        }
+      },
+      {
+        "comment": "",
+        "key": "Icon",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 320
+        }
+      },
+      {
+        "comment": "",
+        "key": "Name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 317
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 328
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 334
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist icon %@",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 388
+        }
+      }
+    ]
+  },
+  "version": 1
+}

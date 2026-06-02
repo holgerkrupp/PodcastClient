@@ -7,7 +7,7 @@
         "key": "Play %@ %@",
         "location": {
           "startingColumn": 45,
-          "startingLine": 100
+          "startingLine": 99
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Jump to %@ %@",
         "location": {
           "startingColumn": 91,
-          "startingLine": 100
+          "startingLine": 99
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Double tap to jump playback to this %@",
         "location": {
           "startingColumn": 32,
-          "startingLine": 99
+          "startingLine": 98
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "%@ %@",
         "location": {
           "startingColumn": 33,
-          "startingLine": 101
+          "startingLine": 100
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Enabled",
         "location": {
           "startingColumn": 73,
-          "startingLine": 102
+          "startingLine": 101
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Skipped",
         "location": {
           "startingColumn": 85,
-          "startingLine": 102
+          "startingLine": 101
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "",
         "location": {
           "startingColumn": 98,
-          "startingLine": 102
+          "startingLine": 101
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "Play chapter",
         "location": {
           "startingColumn": 53,
-          "startingLine": 88
+          "startingLine": 87
         }
       },
       {
@@ -71,7 +71,7 @@
         "key": "Skip chapter",
         "location": {
           "startingColumn": 75,
-          "startingLine": 88
+          "startingLine": 87
         }
       },
       {
@@ -87,7 +87,7 @@
         "key": "Play chapter",
         "location": {
           "startingColumn": 41,
-          "startingLine": 86
+          "startingLine": 85
         }
       },
       {
@@ -95,7 +95,7 @@
         "key": "Turn off to skip this chapter automatically",
         "location": {
           "startingColumn": 40,
-          "startingLine": 87
+          "startingLine": 86
         }
       },
       {

@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/UpNextTests-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/UpNextTests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/UpNextTests-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/UpNextTests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/UpNextTests-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextTests/OPMLImportSanitizerTests.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/OPMLImportSanitizerTests~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextTests/PlaylistModelActorPlaybackQueueTests.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/PlaylistModelActorPlaybackQueueTests~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextTests/ShownotesChapterExtractorTests.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/ShownotesChapterExtractorTests~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextTests/WatchSyncRemoteControlModelTests.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNextTests.build/Objects-normal/arm64/WatchSyncRemoteControlModelTests~partial.swiftmodule"
+  }
+}

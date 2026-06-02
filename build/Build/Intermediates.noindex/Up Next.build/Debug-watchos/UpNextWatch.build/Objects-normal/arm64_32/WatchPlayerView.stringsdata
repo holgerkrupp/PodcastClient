@@ -7,7 +7,7 @@
         "key": "Player",
         "location": {
           "startingColumn": 38,
-          "startingLine": 34
+          "startingLine": 38
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Playback speed",
         "location": {
           "startingColumn": 53,
-          "startingLine": 164
+          "startingLine": 159
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Double tap to cycle playback speed",
         "location": {
           "startingColumn": 52,
-          "startingLine": 166
+          "startingLine": 161
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Chapters",
         "location": {
           "startingColumn": 42,
-          "startingLine": 173
+          "startingLine": 190
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Play chapter %@",
         "location": {
           "startingColumn": 65,
-          "startingLine": 205
+          "startingLine": 235
         }
       },
       {
@@ -47,47 +47,15 @@
         "key": "Starts playback at %@",
         "location": {
           "startingColumn": 64,
-          "startingLine": 206
+          "startingLine": 236
         }
       },
       {
         "comment": "",
-        "key": "Skip chapter",
+        "key": "Play chapter",
         "location": {
-          "startingColumn": 52,
-          "startingLine": 208
-        }
-      },
-      {
-        "comment": "",
-        "key": "Skip chapter %@",
-        "location": {
-          "startingColumn": 65,
-          "startingLine": 216
-        }
-      },
-      {
-        "comment": "",
-        "key": "Off",
-        "location": {
-          "startingColumn": 86,
-          "startingLine": 217
-        }
-      },
-      {
-        "comment": "",
-        "key": "On",
-        "location": {
-          "startingColumn": 94,
-          "startingLine": 217
-        }
-      },
-      {
-        "comment": "",
-        "key": "Turn on to skip this chapter automatically",
-        "location": {
-          "startingColumn": 64,
-          "startingLine": 218
+          "startingColumn": 60,
+          "startingLine": 213
         }
       },
       {
@@ -95,7 +63,15 @@
         "key": "Episode is no longer available here.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 233
+          "startingLine": 253
+        }
+      },
+      {
+        "comment": "",
+        "key": "Progress",
+        "location": {
+          "startingColumn": 1,
+          "startingLine": 542
         }
       }
     ]

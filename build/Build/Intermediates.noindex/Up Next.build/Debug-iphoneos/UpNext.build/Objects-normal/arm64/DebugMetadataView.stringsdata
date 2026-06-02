@@ -1,0 +1,40 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Debug/Views/DebugMetadataView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "App Debug",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 124
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode Debug",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 258
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Debug",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 357
+        }
+      },
+      {
+        "comment": "",
+        "key": "#%lld",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 425
+        }
+      }
+    ]
+  },
+  "version": 1
+}

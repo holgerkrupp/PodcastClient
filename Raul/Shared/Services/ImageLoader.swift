@@ -1,4 +1,5 @@
 import Foundation
+import CoreImage
 import ImageIO
 import SwiftUI
 
@@ -6,9 +7,19 @@ actor SharedImageRepository {
     static let shared = SharedImageRepository()
 
     private var inFlightTasks: [URL: Task<UIImage?, Never>] = [:]
+    private var inFlightBlurredTasks: [String: Task<UIImage?, Never>] = [:]
+    private static let ciContext = CIContext(options: [.cacheIntermediates: true])
+
     nonisolated(unsafe) private static let memoryCache: NSCache<NSURL, UIImage> = {
         let cache = NSCache<NSURL, UIImage>()
         cache.countLimit = 120
+        cache.totalCostLimit = 1024 * 1024 * 96
+        return cache
+    }()
+
+    nonisolated(unsafe) private static let blurredMemoryCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 80
         cache.totalCostLimit = 1024 * 1024 * 96
         return cache
     }()
@@ -19,6 +30,14 @@ actor SharedImageRepository {
 
     nonisolated static func store(_ image: UIImage, for url: URL, cost: Int = 0) {
         memoryCache.setObject(image, forKey: url as NSURL, cost: cost)
+    }
+
+    nonisolated static func cachedBlurredImage(for key: String) -> UIImage? {
+        blurredMemoryCache.object(forKey: key as NSString)
+    }
+
+    nonisolated static func storeBlurredImage(_ image: UIImage, for key: String, cost: Int = 0) {
+        blurredMemoryCache.setObject(image, forKey: key as NSString, cost: cost)
     }
 
     nonisolated static func memoryCost(for image: UIImage) -> Int {
@@ -54,6 +73,51 @@ actor SharedImageRepository {
         let image = await task.value
         inFlightTasks[url] = nil
         return image
+    }
+
+    func blurredImage(for url: URL, radius: CGFloat, saveTo: URL? = nil) async -> UIImage? {
+        let key = Self.blurredCacheKey(for: url, radius: radius)
+        if let cached = Self.cachedBlurredImage(for: key) {
+            return cached
+        }
+
+        if let task = inFlightBlurredTasks[key] {
+            return await task.value
+        }
+
+        let task = Task<UIImage?, Never> {
+            guard let sourceImage = await self.image(for: url, saveTo: saveTo),
+                  let blurredImage = Self.makeBlurredImage(from: sourceImage, radius: radius) else {
+                return nil
+            }
+
+            Self.storeBlurredImage(blurredImage, for: key, cost: Self.memoryCost(for: blurredImage))
+            return blurredImage
+        }
+
+        inFlightBlurredTasks[key] = task
+        let image = await task.value
+        inFlightBlurredTasks[key] = nil
+        return image
+    }
+
+    nonisolated static func blurredCacheKey(for url: URL, radius: CGFloat) -> String {
+        "\(url.absoluteString)|blur:\(Int(radius.rounded()))"
+    }
+
+    nonisolated private static func makeBlurredImage(from image: UIImage, radius: CGFloat) -> UIImage? {
+        guard let inputImage = CIImage(image: image) else { return nil }
+
+        let clampedImage = inputImage.clampedToExtent()
+        let blurredImage = clampedImage
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
+            .cropped(to: inputImage.extent)
+
+        guard let cgImage = ciContext.createCGImage(blurredImage, from: inputImage.extent) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
     }
 }
 
@@ -150,6 +214,10 @@ class ImageLoaderAndCache: ObservableObject {
     
     nonisolated static func loadUIImage(from url: URL, saveTo: URL? = nil) async -> UIImage? {
         await SharedImageRepository.shared.image(for: url, saveTo: saveTo)
+    }
+
+    nonisolated static func loadBlurredUIImage(from url: URL, radius: CGFloat, saveTo: URL? = nil) async -> UIImage? {
+        await SharedImageRepository.shared.blurredImage(for: url, radius: radius, saveTo: saveTo)
     }
 }
 

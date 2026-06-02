@@ -260,7 +260,14 @@
       }
     },
     "%lld%%" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld%%"
+          }
+        }
+      }
     },
     "+%lld" : {
       "localizations" : {
@@ -823,7 +830,14 @@
       }
     },
     "Back button" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück-Taste"
+          }
+        }
+      }
     },
     "Back chapter" : {
       "localizations" : {
@@ -1046,7 +1060,14 @@
       }
     },
     "Chapter mode uses previous/next chapter buttons when the playing episode has chapters. Without chapters, external controls fall back to the selected seconds." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Kapitelmodus verwendet Tasten für vorheriges/nächstes Kapitel, wenn die wiedergegebene Episode Kapitel hat. Ohne Kapitel greifen externe Steuerungen auf die ausgewählten Sekunden zurück."
+          }
+        }
+      }
     },
     "Chapter Rules" : {
       "localizations" : {
@@ -1099,10 +1120,24 @@
       }
     },
     "Checking feed availability" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed-Verfügbarkeit wird geprüft"
+          }
+        }
+      }
     },
     "Checking Feed Availability" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed-Verfügbarkeit wird geprüft"
+          }
+        }
+      }
     },
     "Choose an audio output device" : {
       "localizations" : {
@@ -1366,7 +1401,14 @@
       }
     },
     "Custom mode creates a podcast-owned copy of queue placement, playback speed, skip controls, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der individuelle Modus erstellt eine podcast-eigene Kopie von Warteschlangenposition, Wiedergabegeschwindigkeit, Sprungsteuerung und Kapitelregeln. Spätere globale Änderungen wirken sich nicht mehr auf diesen Podcast aus, bis du wieder zu Global wechselst."
+          }
+        }
+      }
     },
     "Custom Settings" : {
       "localizations" : {
@@ -2009,7 +2051,14 @@
       }
     },
     "Feed unavailable: %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed nicht verfügbar: %@"
+          }
+        }
+      }
     },
     "Feed URL unavailable" : {
       "localizations" : {
@@ -2212,7 +2261,14 @@
       }
     },
     "Forward button" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorwärts-Taste"
+          }
+        }
+      }
     },
     "Forward chapter" : {
       "localizations" : {
@@ -3053,7 +3109,14 @@
       }
     },
     "Lock Screen, Control Center & CarPlay" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sperrbildschirm, Kontrollzentrum & CarPlay"
+          }
+        }
+      }
     },
     "Lunar New Year" : {
       "localizations" : {
@@ -4246,7 +4309,14 @@
       }
     },
     "OPML Import" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OPML-Import"
+          }
+        }
+      }
     },
     "OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app." : {
       "localizations" : {
@@ -5925,7 +5995,14 @@
       }
     },
     "Skip back seconds" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sekunden zurückspringen"
+          }
+        }
+      }
     },
     "Skip Backward" : {
       "localizations" : {
@@ -5958,7 +6035,14 @@
       }
     },
     "Skip Durations" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprungdauern"
+          }
+        }
+      }
     },
     "Skip forward" : {
       "localizations" : {
@@ -6001,7 +6085,14 @@
       }
     },
     "Skip forward seconds" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sekunden vorspringen"
+          }
+        }
+      }
     },
     "Skipped" : {
       "localizations" : {
@@ -6294,7 +6385,14 @@
       }
     },
     "Subscribe to All Available Podcasts" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle verfügbaren Podcasts abonnieren"
+          }
+        }
+      }
     },
     "Subscribe to All New Podcasts" : {
       "extractionState" : "stale",
@@ -6478,7 +6576,14 @@
       }
     },
     "These durations are used by the app player, shortcuts, and any external controls set to seconds." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Dauern werden vom App-Player, von Kurzbefehlen und von allen externen Steuerungen verwendet, die auf Sekunden eingestellt sind."
+          }
+        }
+      }
     },
     "These durations update the skip buttons, lock screen controls, CarPlay, shortcuts, and watch playback controls." : {
       "extractionState" : "stale",
@@ -6492,7 +6597,14 @@
       }
     },
     "These feeds returned an error code and are skipped when subscribing to all new podcasts." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Feeds haben einen Fehlercode zurückgegeben und werden beim Abonnieren aller neuen Podcasts übersprungen."
+          }
+        }
+      }
     },
     "These values apply across the app unless a podcast is switched to custom settings." : {
       "localizations" : {
@@ -6971,7 +7083,14 @@
       }
     },
     "Unavailable Feeds (%lld)" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verfügbare Feeds (%lld)"
+          }
+        }
+      }
     },
     "Unsubscribe" : {
       "localizations" : {

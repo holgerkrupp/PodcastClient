@@ -20,7 +20,7 @@ struct WatchRootView: View {
     private var pageTitle: String {
         switch selectedPage {
         case .nowPlaying:
-            return "Now Playing"
+            return store.isRemoteControlEnabled ? "iPhone" : "Now Playing"
         case .upNext:
             return store.selectedPlaylistTitle
         case .inbox:
@@ -164,7 +164,11 @@ private struct WatchPlaylistPage: View {
                         .accessibilityHint("Opens the full now playing screen")
                     }
 
-                    WatchStorageStatusCard()
+                    if store.isRemoteControlEnabled {
+                        WatchRemoteStatusCard()
+                    } else {
+                        WatchStorageStatusCard()
+                    }
 
                     if store.playlist.isEmpty {
                         WatchEmptyState(
@@ -185,6 +189,44 @@ private struct WatchPlaylistPage: View {
             }
             .scrollIndicators(.hidden)
         }
+    }
+}
+
+private struct WatchRemoteStatusCard: View {
+    @EnvironmentObject private var store: WatchSyncStore
+
+    var body: some View {
+        WatchPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("iPhone Remote")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.84))
+                    Spacer()
+                    Text(statusText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                }
+
+                if store.isPhoneReachable == false && store.hasRecentPhonePlaybackState == false {
+                    Text("Open the iPhone app once so the watch can control playback.")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.78))
+                }
+            }
+        }
+    }
+
+    private var statusText: String {
+        if store.isPhoneReachable { return "Live" }
+        if store.hasRecentPhonePlaybackState { return "Snapshot" }
+        return "Unavailable"
+    }
+
+    private var statusColor: Color {
+        if store.isPhoneReachable { return .upNextAccent }
+        if store.hasRecentPhonePlaybackState { return .orange }
+        return .red
     }
 }
 
@@ -217,6 +259,52 @@ private struct WatchStorageStatusCard: View {
     private var storageProgress: Double {
         guard store.storageSettings.maxStorageBytes > 0 else { return 0 }
         return Double(store.usedStorageBytes) / Double(store.storageSettings.maxStorageBytes)
+    }
+}
+
+private struct WatchRemotePlaylistControls: View {
+    @EnvironmentObject private var store: WatchSyncStore
+    @State private var isShowingActions = false
+    let episode: WatchSyncEpisode
+
+    private var episodeIndex: Int? {
+        store.playlist.firstIndex(where: { $0.episodeURL == episode.episodeURL })
+    }
+
+    private var canMoveUp: Bool {
+        (episodeIndex ?? 0) > 0
+    }
+
+    private var canMoveDown: Bool {
+        guard let episodeIndex else { return false }
+        return episodeIndex < store.playlist.count - 1
+    }
+
+    var body: some View {
+        Button("Manage") {
+            isShowingActions = true
+        }
+        .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
+        .disabled(store.isRemoteControlAvailable == false)
+        .confirmationDialog("Manage Episode", isPresented: $isShowingActions, titleVisibility: .visible) {
+            if canMoveUp {
+                Button("Move Up") {
+                    store.remoteMovePlaylistEpisode(episode, offset: -1)
+                }
+            }
+
+            if canMoveDown {
+                Button("Move Down") {
+                    store.remoteMovePlaylistEpisode(episode, offset: 1)
+                }
+            }
+
+            Button("Remove", role: .destructive) {
+                store.remoteRemoveFromPlaylist(episode)
+            }
+
+            Button("Cancel", role: .cancel) {}
+        }
     }
 }
 
@@ -258,7 +346,7 @@ private struct WatchNowPlayingHero: View {
                 WatchProgressBar(progress: playback.progress)
 
                 HStack {
-                    Text(watchPlaybackTime(playback.playPosition))
+                    Text(watchPlaybackTime(playback.displayedPlayPosition))
                     Spacer()
                     Text(watchPlaybackTime(playback.currentDuration ?? 0))
                 }
@@ -310,7 +398,8 @@ private struct WatchPlaylistCard: View {
                     }
                 }
 
-                if let syncProgress = store.syncProgress(for: episode),
+                if store.isRemoteControlEnabled == false,
+                   let syncProgress = store.syncProgress(for: episode),
                    store.isDownloaded(episode) == false {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
@@ -334,22 +423,29 @@ private struct WatchPlaylistCard: View {
                         playback.togglePlayback(for: episode)
                     }
                     .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
+                    .disabled(store.isRemoteControlEnabled && store.isRemoteControlAvailable == false)
 
-                    if store.isDownloaded(episode) {
-                        Button("Remove") {
-                            store.removeDownload(episode)
-                        }
-                        .buttonStyle(WatchCapsuleButtonStyle(accent: .red))
+                    if store.isRemoteControlEnabled {
+                        WatchRemotePlaylistControls(episode: episode)
                     } else {
-                        Button(store.isDownloading(episode) ? "Loading" : "Download") {
-                            store.downloadEpisode(episode)
+                        if store.isDownloaded(episode) {
+                            Button("Remove") {
+                                store.removeDownload(episode)
+                            }
+                            .buttonStyle(WatchCapsuleButtonStyle(accent: .red))
+                        } else {
+                            Button(store.isDownloading(episode) ? "Loading" : "Download") {
+                                store.downloadEpisode(episode)
+                            }
+                            .disabled(store.isDownloading(episode))
+                            .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
                         }
-                        .disabled(store.isDownloading(episode))
-                        .buttonStyle(WatchCapsuleButtonStyle(accent: .upNextAccent))
                     }
                 }
 
-                if episode.phoneHasLocalFile && store.isDownloaded(episode) == false {
+                if store.isRemoteControlEnabled == false,
+                   episode.phoneHasLocalFile,
+                   store.isDownloaded(episode) == false {
                     Text("Wait for episode to sync")
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.74))
@@ -400,7 +496,10 @@ private struct WatchPlaylistCard: View {
 
                 HStack(spacing: 6) {
                     
-                    if store.isDownloaded(episode) {
+                    if store.isRemoteControlEnabled {
+                        Image(systemName: "iphone")
+                            .accessibilityLabel("iPhone remote")
+                    } else if store.isDownloaded(episode) {
                         Image(systemName: style.sfSymbolName)
                             .accessibilityLabel("Downloaded")
                     } else {

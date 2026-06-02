@@ -25,6 +25,7 @@
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; };
 		D4C001002FB9000100000001 /* UpNextWatchComplications.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D4C004002FB9000100000001 /* UpNextWatchComplications.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E1A000012FC0000100000001 /* PodcastShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1A000022FC0000100000001 /* PodcastShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,6 +57,13 @@
 			remoteGlobalIDString = D4C010002FB9000100000001;
 			remoteInfo = UpNextWatchComplications;
 		};
+		E1A000032FC0000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 487F5C672D9D4F0C00056D08 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E1A000062FC0000100000001;
+			remoteInfo = PodcastShareExtension;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -76,6 +84,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */,
+				E1A000012FC0000100000001 /* PodcastShareExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -118,6 +127,7 @@
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0D3A0022FAD000100000001 /* UpNextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UpNextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D4C004002FB9000100000001 /* UpNextWatchComplications.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UpNextWatchComplications.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1A000022FC0000100000001 /* PodcastShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PodcastShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -198,6 +208,13 @@
 			);
 			target = D4C010002FB9000100000001 /* UpNextWatchComplications */;
 		};
+		E1A000042FC0000100000001 /* Exceptions for "PodcastShareExtension" folder in "PodcastShareExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E1A000062FC0000100000001 /* PodcastShareExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -254,6 +271,14 @@
 			path = UpNextWatchComplications;
 			sourceTree = "<group>";
 		};
+		E1A000052FC0000100000001 /* PodcastShareExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E1A000042FC0000100000001 /* Exceptions for "PodcastShareExtension" folder in "PodcastShareExtension" target */,
+			);
+			path = PodcastShareExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -302,6 +327,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1A000072FC0000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -317,6 +349,7 @@
 				B1C2D3042F10000100000001 /* UpNextWatch */,
 				D4C006002FB9000100000001 /* UpNextWatchComplications */,
 				A1B2C3042F00000100000001 /* PlayNextWidget */,
+				E1A000052FC0000100000001 /* PodcastShareExtension */,
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				C0D3A0032FAD000100000001 /* UpNextTests */,
 				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
@@ -331,6 +364,7 @@
 				B1C2D3022F10000100000001 /* UpNextWatch.app */,
 				D4C004002FB9000100000001 /* UpNextWatchComplications.appex */,
 				A1B2C3022F00000100000001 /* PlayNextWidget.appex */,
+				E1A000022FC0000100000001 /* PodcastShareExtension.appex */,
 				C0D3A0022FAD000100000001 /* UpNextTests.xctest */,
 				487F5C6F2D9D4F0C00056D08 /* UpNext.app */,
 			);
@@ -366,6 +400,7 @@
 			dependencies = (
 				B1C2D3072F10000100000001 /* PBXTargetDependency */,
 				A1B2C3072F00000100000001 /* PBXTargetDependency */,
+				E1A0000B2FC0000100000001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
@@ -481,6 +516,28 @@
 			productReference = D4C004002FB9000100000001 /* UpNextWatchComplications.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		E1A000062FC0000100000001 /* PodcastShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1A0000E2FC0000100000001 /* Build configuration list for PBXNativeTarget "PodcastShareExtension" */;
+			buildPhases = (
+				E1A000082FC0000100000001 /* Sources */,
+				E1A000072FC0000100000001 /* Frameworks */,
+				E1A000092FC0000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E1A000052FC0000100000001 /* PodcastShareExtension */,
+			);
+			name = PodcastShareExtension;
+			packageProductDependencies = (
+			);
+			productName = PodcastShareExtension;
+			productReference = E1A000022FC0000100000001 /* PodcastShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -505,6 +562,9 @@
 						TestTargetID = 487F5C6E2D9D4F0C00056D08;
 					};
 					D4C010002FB9000100000001 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					E1A000062FC0000100000001 = {
 						CreatedOnToolsVersion = 16.2;
 					};
 				};
@@ -538,6 +598,7 @@
 				B1C2D3062F10000100000001 /* UpNextWatch */,
 				D4C010002FB9000100000001 /* UpNextWatchComplications */,
 				A1B2C3062F00000100000001 /* PlayNextWidget */,
+				E1A000062FC0000100000001 /* PodcastShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -583,6 +644,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1A000092FC0000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -621,6 +689,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1A000082FC0000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -643,6 +718,11 @@
 			isa = PBXTargetDependency;
 			target = D4C010002FB9000100000001 /* UpNextWatchComplications */;
 			targetProxy = D4C002002FB9000100000001 /* PBXContainerItemProxy */;
+		};
+		E1A0000B2FC0000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E1A000062FC0000100000001 /* PodcastShareExtension */;
+			targetProxy = E1A000032FC0000100000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -786,7 +866,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -811,7 +891,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -834,7 +914,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -859,7 +939,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -878,7 +958,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -889,7 +969,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -907,7 +987,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -918,7 +998,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -936,7 +1016,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -945,7 +1025,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -965,7 +1045,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -974,7 +1054,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1042,7 +1122,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1052,7 +1132,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1072,7 +1152,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 22;
+				CURRENT_PROJECT_VERSION = 25;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1082,7 +1162,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.10;
+				MARKETING_VERSION = 2026.12;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1092,6 +1172,64 @@
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		E1A0000C2FC0000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = PodcastShareExtension/PodcastShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 25;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PodcastShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2026.12;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E1A0000D2FC0000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = PodcastShareExtension/PodcastShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 25;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PodcastShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2026.12;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -1148,6 +1286,15 @@
 			buildConfigurations = (
 				D4C012002FB9000100000001 /* Debug */,
 				D4C013002FB9000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E1A0000E2FC0000100000001 /* Build configuration list for PBXNativeTarget "PodcastShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1A0000C2FC0000100000001 /* Debug */,
+				E1A0000D2FC0000100000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

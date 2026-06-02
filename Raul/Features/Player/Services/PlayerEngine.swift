@@ -20,6 +20,8 @@ actor PlayerEngine {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var endObserver: NSObjectProtocol?
+    private var boundaryTimeObserver: Any?
+    private var periodicTimeObserver: Any?
     private var activePlaybackStreamID: UInt64 = 0
 
 
@@ -128,8 +130,31 @@ actor PlayerEngine {
         guard  avPlayer.currentItem != item else {
             return
         }
+        removeBoundaryTimeObserver()
         removeEndObserver()
         avPlayer.replaceCurrentItem(with: item)
+    }
+
+    func setBoundaryTimeObserver(
+        at times: [CMTime],
+        handler: @escaping @Sendable () -> Void
+    ) {
+        removeBoundaryTimeObserver()
+        guard times.isEmpty == false else { return }
+
+        boundaryTimeObserver = avPlayer.addBoundaryTimeObserver(
+            forTimes: times.map { NSValue(time: $0) },
+            queue: .main
+        ) {
+            handler()
+        }
+    }
+
+    func removeBoundaryTimeObserver() {
+        if let boundaryTimeObserver {
+            avPlayer.removeTimeObserver(boundaryTimeObserver)
+            self.boundaryTimeObserver = nil
+        }
     }
     
 
@@ -155,7 +180,7 @@ actor PlayerEngine {
 
     func seek(to time: CMTime) async {
         await withCheckedContinuation { continuation in
-            avPlayer.seek(to: time) { _ in
+            avPlayer.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                 continuation.resume()
             }
         }
@@ -203,25 +228,36 @@ actor PlayerEngine {
         guard streamID == activePlaybackStreamID else { return }
         removeEndObserver()
     }
+
+    private func removePeriodicTimeObserver() {
+        if let periodicTimeObserver {
+            avPlayer.removeTimeObserver(periodicTimeObserver)
+            self.periodicTimeObserver = nil
+        }
+    }
+
+    private func removePlaybackStreamObservers(for streamID: UInt64) {
+        guard streamID == activePlaybackStreamID else { return }
+        removeEndObserver()
+        removePeriodicTimeObserver()
+    }
     
     func playbackStream(interval: TimeInterval = 1.0) -> AsyncStream<PlaybackEvent> {
         let currentItem = avPlayer.currentItem
         activePlaybackStreamID &+= 1
         let streamID = activePlaybackStreamID
         removeEndObserver()
+        removePeriodicTimeObserver()
+        let safeInterval = max(interval, 0.25)
 
         return AsyncStream<PlaybackEvent> { continuation in
-            let task: Task<Void, Never> = Task { [weak self] in
-                guard let self else {
-                    continuation.finish()
-                    return
-                }
-                while !Task.isCancelled {
-                    let position = await self.currentTime()
-                    continuation.yield(.position(position))
-                    try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                }
+            let observer = avPlayer.addPeriodicTimeObserver(
+                forInterval: CMTime(seconds: safeInterval, preferredTimescale: 600),
+                queue: .main
+            ) { time in
+                continuation.yield(.position(time.seconds))
             }
+            self.periodicTimeObserver = observer
 
             let endObserver = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
@@ -230,7 +266,6 @@ actor PlayerEngine {
             ) { [weak self] _ in
                 continuation.yield(.ended)
                 continuation.finish()
-                task.cancel()
                 Task{
                     await self?.sendInterrupt(type: .finished)
                 }
@@ -238,9 +273,8 @@ actor PlayerEngine {
             self.endObserver = endObserver
 
             continuation.onTermination = { [weak self] _ in
-                task.cancel()
                 Task {
-                    await self?.removeEndObserver(for: streamID)
+                    await self?.removePlaybackStreamObservers(for: streamID)
                 }
             }
         }

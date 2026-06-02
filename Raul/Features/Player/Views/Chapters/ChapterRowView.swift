@@ -78,8 +78,7 @@ struct ChapterRowView: View {
                     Toggle("Play chapter", isOn: Binding(
                         get: { chapter.shouldPlay },
                         set: { newValue in
-                            chapter.shouldPlay = newValue
-                            
+                            player.chapterPlaybackPreferenceChanged(chapter, shouldPlay: newValue)
                         }
                     ))
                     .toggleStyle(SkipChapter())

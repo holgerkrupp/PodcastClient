@@ -23,7 +23,7 @@ struct WatchPlayerView: View {
 
     private var activePosition: Double {
         guard let episode else { return 0 }
-        return playback.isCurrentEpisode(episode) ? playback.playPosition : (episode.playPosition ?? 0)
+        return playback.isCurrentEpisode(episode) ? playback.displayedPlayPosition : (episode.playPosition ?? 0)
     }
 
     private var activeChapter: WatchSyncChapter? {

@@ -108,10 +108,74 @@
       },
       {
         "comment": "",
+        "key": "Open the iPhone app once so the watch can control playback.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 212
+        }
+      },
+      {
+        "comment": "",
+        "key": "iPhone Remote",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 202
+        }
+      },
+      {
+        "comment": "",
         "key": "Watch Storage",
         "location": {
           "startingColumn": 26,
-          "startingLine": 198
+          "startingLine": 240
+        }
+      },
+      {
+        "comment": "",
+        "key": "Manage",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 284
+        }
+      },
+      {
+        "comment": "",
+        "key": "Manage Episode",
+        "location": {
+          "startingColumn": 29,
+          "startingLine": 288
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move Up",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 290
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move Down",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 296
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remove",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 301
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 305
         }
       },
       {
@@ -119,7 +183,7 @@
         "key": "Now Playing",
         "location": {
           "startingColumn": 30,
-          "startingLine": 239
+          "startingLine": 326
         }
       },
       {
@@ -127,7 +191,7 @@
         "key": "Wait for episode to sync",
         "location": {
           "startingColumn": 26,
-          "startingLine": 353
+          "startingLine": 447
         }
       },
       {
@@ -135,7 +199,7 @@
         "key": "Now playing %@",
         "location": {
           "startingColumn": 41,
-          "startingLine": 289
+          "startingLine": 376
         }
       },
       {
@@ -143,7 +207,7 @@
         "key": "Opens full playback controls",
         "location": {
           "startingColumn": 40,
-          "startingLine": 290
+          "startingLine": 377
         }
       },
       {
@@ -151,7 +215,7 @@
         "key": "Syncing %@",
         "location": {
           "startingColumn": 41,
-          "startingLine": 328
+          "startingLine": 416
         }
       },
       {
@@ -159,7 +223,7 @@
         "key": "Syncing",
         "location": {
           "startingColumn": 34,
-          "startingLine": 317
+          "startingLine": 405
         }
       },
       {
@@ -167,7 +231,7 @@
         "key": "Pause",
         "location": {
           "startingColumn": 66,
-          "startingLine": 333
+          "startingLine": 421
         }
       },
       {
@@ -175,31 +239,39 @@
         "key": "Play",
         "location": {
           "startingColumn": 76,
-          "startingLine": 333
+          "startingLine": 421
         }
       },
       {
         "comment": "",
         "key": "Remove",
         "location": {
-          "startingColumn": 32,
-          "startingLine": 339
+          "startingColumn": 36,
+          "startingLine": 430
         }
       },
       {
         "comment": "",
         "key": "Loading",
         "location": {
-          "startingColumn": 63,
-          "startingLine": 344
+          "startingColumn": 67,
+          "startingLine": 435
         }
       },
       {
         "comment": "",
         "key": "Download",
         "location": {
-          "startingColumn": 75,
-          "startingLine": 344
+          "startingColumn": 79,
+          "startingLine": 435
+        }
+      },
+      {
+        "comment": "",
+        "key": "iPhone remote",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 499
         }
       },
       {
@@ -207,7 +279,7 @@
         "key": "Downloaded",
         "location": {
           "startingColumn": 49,
-          "startingLine": 405
+          "startingLine": 502
         }
       },
       {
@@ -215,7 +287,7 @@
         "key": "Not downloaded",
         "location": {
           "startingColumn": 49,
-          "startingLine": 408
+          "startingLine": 505
         }
       },
       {
@@ -223,7 +295,7 @@
         "key": "Inbox",
         "location": {
           "startingColumn": 34,
-          "startingLine": 437
+          "startingLine": 534
         }
       },
       {
@@ -231,7 +303,7 @@
         "key": "Pull new episodes from the phone, then send the ones you want into %@.",
         "location": {
           "startingColumn": 34,
-          "startingLine": 441
+          "startingLine": 538
         }
       },
       {
@@ -239,7 +311,7 @@
         "key": "Refreshing…",
         "location": {
           "startingColumn": 62,
-          "startingLine": 445
+          "startingLine": 542
         }
       },
       {
@@ -247,7 +319,7 @@
         "key": "Refresh Inbox",
         "location": {
           "startingColumn": 80,
-          "startingLine": 445
+          "startingLine": 542
         }
       },
       {
@@ -255,7 +327,7 @@
         "key": "Adds this episode to %@ and downloads it when available",
         "location": {
           "startingColumn": 36,
-          "startingLine": 514
+          "startingLine": 611
         }
       },
       {
@@ -263,7 +335,7 @@
         "key": "Add to %@",
         "location": {
           "startingColumn": 60,
-          "startingLine": 509
+          "startingLine": 606
         }
       },
       {
@@ -271,7 +343,7 @@
         "key": "Queue + Download",
         "location": {
           "startingColumn": 102,
-          "startingLine": 509
+          "startingLine": 606
         }
       },
       {
@@ -279,7 +351,7 @@
         "key": "Sync Now",
         "location": {
           "startingColumn": 24,
-          "startingLine": 543
+          "startingLine": 640
         }
       }
     ]

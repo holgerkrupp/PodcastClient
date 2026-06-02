@@ -1,0 +1,144 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Views/ListeningTimeByPodcastChart.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Total Listening Time per Podcast",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ – %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 105
+        }
+      },
+      {
+        "comment": "",
+        "key": "No listening data yet.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 111
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast listening distribution",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 123
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show summary",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening summary",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "Previous week",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows listening stats for the previous week",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 83
+        }
+      },
+      {
+        "comment": "",
+        "key": "Summary",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 84
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show summary",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows listening stats aggregated across all weeks",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 90
+        }
+      },
+      {
+        "comment": "",
+        "key": "Next week",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows listening stats for the following week",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening Time",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 117
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 120
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening breakdown",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 128
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld. %@: %@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 133
+        }
+      }
+    ]
+  },
+  "version": 1
+}

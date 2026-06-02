@@ -586,10 +586,9 @@ private struct PodcastBrowseEpisodeRowView: View {
             GeometryReader { proxy in
                 Color.clear
                     .overlay {
-                        CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
+                        BlurredCoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
                             .scaledToFill()
                             .frame(width: proxy.size.width, height: proxy.size.height)
-                            .blur(radius: 8)
                             .opacity(0.45)
                             .clipped()
                     }

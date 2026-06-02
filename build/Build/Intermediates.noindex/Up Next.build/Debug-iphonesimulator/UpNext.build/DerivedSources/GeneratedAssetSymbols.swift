@@ -82,11 +82,20 @@ extension DeveloperToolsSupport.ImageResource {
     /// The "orange" asset catalog image resource.
     static let orange = DeveloperToolsSupport.ImageResource(name: "orange", bundle: resourceBundle)
 
+    /// The "pride" asset catalog image resource.
+    static let pride = DeveloperToolsSupport.ImageResource(name: "pride", bundle: resourceBundle)
+
+    /// The "progress" asset catalog image resource.
+    static let progress = DeveloperToolsSupport.ImageResource(name: "progress", bundle: resourceBundle)
+
     /// The "purple" asset catalog image resource.
     static let purple = DeveloperToolsSupport.ImageResource(name: "purple", bundle: resourceBundle)
 
     /// The "red" asset catalog image resource.
     static let red = DeveloperToolsSupport.ImageResource(name: "red", bundle: resourceBundle)
+
+    /// The "trans" asset catalog image resource.
+    static let trans = DeveloperToolsSupport.ImageResource(name: "trans", bundle: resourceBundle)
 
     /// The "yellow" asset catalog image resource.
     static let yellow = DeveloperToolsSupport.ImageResource(name: "yellow", bundle: resourceBundle)
@@ -313,6 +322,24 @@ extension AppKit.NSImage {
 #endif
     }
 
+    /// The "pride" asset catalog image.
+    static var pride: AppKit.NSImage {
+#if !targetEnvironment(macCatalyst)
+        .init(resource: .pride)
+#else
+        .init()
+#endif
+    }
+
+    /// The "progress" asset catalog image.
+    static var progress: AppKit.NSImage {
+#if !targetEnvironment(macCatalyst)
+        .init(resource: .progress)
+#else
+        .init()
+#endif
+    }
+
     /// The "purple" asset catalog image.
     static var purple: AppKit.NSImage {
 #if !targetEnvironment(macCatalyst)
@@ -326,6 +353,15 @@ extension AppKit.NSImage {
     static var red: AppKit.NSImage {
 #if !targetEnvironment(macCatalyst)
         .init(resource: .red)
+#else
+        .init()
+#endif
+    }
+
+    /// The "trans" asset catalog image.
+    static var trans: AppKit.NSImage {
+#if !targetEnvironment(macCatalyst)
+        .init(resource: .trans)
 #else
         .init()
 #endif
@@ -483,6 +519,24 @@ extension UIKit.UIImage {
 #endif
     }
 
+    /// The "pride" asset catalog image.
+    static var pride: UIKit.UIImage {
+#if !os(watchOS)
+        .init(resource: .pride)
+#else
+        .init()
+#endif
+    }
+
+    /// The "progress" asset catalog image.
+    static var progress: UIKit.UIImage {
+#if !os(watchOS)
+        .init(resource: .progress)
+#else
+        .init()
+#endif
+    }
+
     /// The "purple" asset catalog image.
     static var purple: UIKit.UIImage {
 #if !os(watchOS)
@@ -496,6 +550,15 @@ extension UIKit.UIImage {
     static var red: UIKit.UIImage {
 #if !os(watchOS)
         .init(resource: .red)
+#else
+        .init()
+#endif
+    }
+
+    /// The "trans" asset catalog image.
+    static var trans: UIKit.UIImage {
+#if !os(watchOS)
+        .init(resource: .trans)
 #else
         .init()
 #endif

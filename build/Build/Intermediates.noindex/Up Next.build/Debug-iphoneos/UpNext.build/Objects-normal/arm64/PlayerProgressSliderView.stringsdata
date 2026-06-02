@@ -1,0 +1,40 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/PlayerProgressSliderView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Playback position",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 97
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 98
+        }
+      },
+      {
+        "comment": "",
+        "key": "Adjusts the current playback position",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback scrubbing is disabled",
+        "location": {
+          "startingColumn": 87,
+          "startingLine": 99
+        }
+      }
+    ]
+  },
+  "version": 1
+}

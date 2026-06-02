@@ -8,6 +8,7 @@
 import SwiftData
 import Foundation
 import BasicLogger
+import mp3ChapterReader
 
 enum PodcastFeedSwitchError: LocalizedError {
     case feedAlreadyExists
@@ -180,6 +181,31 @@ actor PodcastModelActor {
     ) {
         guard let episode = fetchEpisode(byURL: episodeURL) else { return }
         episode.refreshFeedExternalFiles(from: episodeData)
+        modelContext.saveIfNeeded()
+    }
+
+    private func fillMissingRemoteMP3DurationIfNeeded(
+        episodeID: PersistentIdentifier,
+        episodeURL: URL?,
+        currentDuration: TimeInterval?
+    ) async {
+        guard currentDuration == nil || currentDuration == 0,
+              let episodeURL,
+              episodeURL.pathExtension.lowercased() == "mp3" else {
+            return
+        }
+
+        guard let duration = try? await RemoteMP3DurationReader.duration(from: episodeURL),
+              duration > 0 else {
+            return
+        }
+
+        guard let episode = modelContext.model(for: episodeID) as? Episode,
+              episode.duration == nil || episode.duration == 0 else {
+            return
+        }
+
+        episode.duration = duration
         modelContext.saveIfNeeded()
     }
 
@@ -648,6 +674,11 @@ actor PodcastModelActor {
                     existingEpisode.update(from: episodeData)
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
                     existingEpisode.refreshOptionalTags(from: episodeData)
+                    await fillMissingRemoteMP3DurationIfNeeded(
+                        episodeID: existingEpisode.persistentModelID,
+                        episodeURL: existingEpisode.url,
+                        currentDuration: existingEpisode.duration
+                    )
                     modelContext.saveIfNeeded()
                     continue
                 }
@@ -659,6 +690,13 @@ actor PodcastModelActor {
                     print("already existing")
                     await linkEpisodeToPodcast(episodeURL, feed)
                     refreshFeedExternalFiles(for: episodeURL, from: episodeData)
+                    if let existingEpisode = fetchEpisode(byURL: episodeURL) {
+                        await fillMissingRemoteMP3DurationIfNeeded(
+                            episodeID: existingEpisode.persistentModelID,
+                            episodeURL: existingEpisode.url,
+                            currentDuration: existingEpisode.duration
+                        )
+                    }
                     continue
                 }
 
@@ -666,6 +704,11 @@ actor PodcastModelActor {
 
                 print("newly created")
                 modelContext.insert(episode)
+                await fillMissingRemoteMP3DurationIfNeeded(
+                    episodeID: episode.persistentModelID,
+                    episodeURL: episode.url,
+                    currentDuration: episode.duration
+                )
 
                 let episodeActor = EpisodeActor(modelContainer: modelContainer)
                 if silent == false {

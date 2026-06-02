@@ -81,6 +81,26 @@
 			<key>catalogPath</key>
 			<string>/Users/holgerkrupp/Developer/PodcastClient/Raul/Assets.xcassets</string>
 			<key>objcSymbol</key>
+			<string>ACImageNamePride</string>
+			<key>relativePath</key>
+			<string>./iconPreviews/pride.imageset</string>
+			<key>swiftSymbol</key>
+			<string>pride</string>
+		</dict>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/holgerkrupp/Developer/PodcastClient/Raul/Assets.xcassets</string>
+			<key>objcSymbol</key>
+			<string>ACImageNameProgress</string>
+			<key>relativePath</key>
+			<string>./iconPreviews/progress.imageset</string>
+			<key>swiftSymbol</key>
+			<string>progress</string>
+		</dict>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/holgerkrupp/Developer/PodcastClient/Raul/Assets.xcassets</string>
+			<key>objcSymbol</key>
 			<string>ACImageNamePurple</string>
 			<key>relativePath</key>
 			<string>./iconPreviews/purple.imageset</string>
@@ -96,6 +116,16 @@
 			<string>./iconPreviews/red.imageset</string>
 			<key>swiftSymbol</key>
 			<string>red</string>
+		</dict>
+		<dict>
+			<key>catalogPath</key>
+			<string>/Users/holgerkrupp/Developer/PodcastClient/Raul/Assets.xcassets</string>
+			<key>objcSymbol</key>
+			<string>ACImageNameTrans</string>
+			<key>relativePath</key>
+			<string>./iconPreviews/trans.imageset</string>
+			<key>swiftSymbol</key>
+			<string>trans</string>
 		</dict>
 		<dict>
 			<key>catalogPath</key>
