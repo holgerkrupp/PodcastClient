@@ -107,6 +107,19 @@ class Player {
         }
     }
 
+    private struct EpisodeUnloadSnapshot {
+        let episodeURL: URL
+        let playPosition: Double
+        let maxPlayPosition: Double
+        let chapterID: UUID?
+        let chapterProgress: Double?
+        let playProgress: Double
+        let isArchived: Bool
+        let isHistory: Bool
+        let isCompleted: Bool
+        let savedAt: Date
+    }
+
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
     private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
     private static let playSessionRecoveryStartupDelayNanoseconds: UInt64 = 15_000_000_000
@@ -767,7 +780,9 @@ class Player {
         }
 
         guard let remoteURL = episode.url else { return nil }
-        return (AVPlayerItem(url: remoteURL), .remote, false)
+        let item = AVPlayerItem(url: remoteURL)
+        item.preferredForwardBufferDuration = 0
+        return (item, .remote, false)
     }
 
     private func shouldRequeueEpisodeOnUnload(_ episode: Episode, episodeURL: URL) async -> Bool {
@@ -792,6 +807,99 @@ class Player {
             BasicLogger.shared.log("skip requeue on unload: episode no longer queued \(episodeURL.absoluteString)")
         }
         return isCurrentlyQueued
+    }
+
+    private func snapshotCurrentEpisodeForFastSwitch(episodeURL: URL) async -> EpisodeUnloadSnapshot? {
+        guard currentEpisodeURL == episodeURL,
+              currentPlaybackSource != .liveRemote else {
+            return nil
+        }
+
+        playPosition = sanitizedPosition(await engine.currentTime())
+        if currentEpisode?.chapters?.isEmpty == false {
+            _ = updateCurrentChapter()
+            updateChapterProgress()
+        }
+
+        let currentPlayPosition = sanitizedPosition(playPosition)
+        let currentMaxPosition = max(
+            sanitizedPosition(currentEpisode?.metaData?.maxPlayposition),
+            currentPlayPosition
+        )
+
+        currentEpisode?.metaData?.playPosition = currentPlayPosition
+        currentEpisode?.metaData?.maxPlayposition = currentMaxPosition
+
+        PlaybackProgressDefaultsStore.update(
+            episodeURL: episodeURL,
+            playPosition: currentPlayPosition,
+            maxPlayPosition: currentMaxPosition,
+            chapterID: currentChapter?.uuid,
+            chapterProgress: chapterProgress
+        )
+
+        let snapshot = EpisodeUnloadSnapshot(
+            episodeURL: episodeURL,
+            playPosition: currentPlayPosition,
+            maxPlayPosition: currentMaxPosition,
+            chapterID: currentChapter?.uuid,
+            chapterProgress: chapterProgress,
+            playProgress: currentEpisode?.playProgress ?? 0,
+            isArchived: currentEpisode?.metaData?.isArchived == true || currentEpisode?.metaData?.status == .archived,
+            isHistory: currentEpisode?.metaData?.isHistory == true || currentEpisode?.metaData?.status == .history,
+            isCompleted: currentEpisode?.metaData?.completionDate != nil,
+            savedAt: Date()
+        )
+
+        stopPlaybackUpdates()
+        return snapshot
+    }
+
+    private func finishFastSwitchUnload(_ snapshot: EpisodeUnloadSnapshot) async {
+        await episodeActor?.setLastPlayed(episodeURL: snapshot.episodeURL, to: snapshot.savedAt)
+        await episodeActor?.setPlayPosition(
+            episodeURL: snapshot.episodeURL,
+            position: snapshot.playPosition,
+            force: true
+        )
+
+        if let chapterID = snapshot.chapterID,
+           let chapterProgress = snapshot.chapterProgress {
+            await chapterActor?.setChapterProgress(chapterProgress, for: chapterID)
+        }
+
+        PlaybackProgressDefaultsStore.removeProgress(for: snapshot.episodeURL)
+
+        let shouldRequeueUnfinishedEpisode: Bool
+        if snapshot.isArchived {
+            BasicLogger.shared.log("skip requeue on fast switch unload: archived episode \(snapshot.episodeURL.absoluteString)")
+            shouldRequeueUnfinishedEpisode = false
+        } else if snapshot.isHistory {
+            BasicLogger.shared.log("skip requeue on fast switch unload: history episode \(snapshot.episodeURL.absoluteString)")
+            shouldRequeueUnfinishedEpisode = false
+        } else if snapshot.isCompleted {
+            BasicLogger.shared.log("skip requeue on fast switch unload: completed episode \(snapshot.episodeURL.absoluteString)")
+            shouldRequeueUnfinishedEpisode = false
+        } else {
+            let activePlaylistActor = activePlaybackPlaylistActor()
+            shouldRequeueUnfinishedEpisode = (try? await activePlaylistActor?.containsEpisodeURL(snapshot.episodeURL)) ?? false
+            if shouldRequeueUnfinishedEpisode == false {
+                BasicLogger.shared.log("skip requeue on fast switch unload: episode no longer queued \(snapshot.episodeURL.absoluteString)")
+            }
+        }
+
+        BasicLogger.shared.log(
+            "fastSwitchUnload url=\(snapshot.episodeURL.absoluteString) playProgress=\(snapshot.playProgress)"
+        )
+
+        if snapshot.playProgress >= progressThreshold {
+            await episodeActor?.setCompletionDate(episodeURL: snapshot.episodeURL)
+            await episodeActor?.moveToHistory(episodeURL: snapshot.episodeURL)
+        } else if shouldRequeueUnfinishedEpisode {
+            try? await activePlaybackPlaylistActor()?.add(episodeURL: snapshot.episodeURL, to: .front)
+        }
+
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
@@ -822,6 +930,7 @@ class Player {
         lastProgressSaveDate = .distantPast
         lastArtworkIdentifier = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
+        WatchSyncCoordinator.refreshSoon(force: true)
 
         if finishedPlayback || episode.playProgress >= progressThreshold {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
@@ -843,8 +952,11 @@ class Player {
               let episode = await fetchEpisode(with: episodeURL) else { return }
 
         let previousEpisodeURL = currentEpisodeURL
+        let fastSwitchUnloadSnapshot: EpisodeUnloadSnapshot?
         if let currentEpisodeURL, currentEpisodeURL != episodeURL {
-            await unloadEpisode(episodeURL: currentEpisodeURL)
+            fastSwitchUnloadSnapshot = await snapshotCurrentEpisodeForFastSwitch(episodeURL: currentEpisodeURL)
+        } else {
+            fastSwitchUnloadSnapshot = nil
         }
 
         let selectedMedia = normalizedMediaSelection(
@@ -858,7 +970,6 @@ class Player {
         currentEpisodeURL = episodeURL
         finishingEpisodeURL = nil
         mediaSelection = selectedMedia
-        await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
         if playDirectly {
             if currentEpisode?.metaData == nil {
                 let metadata = EpisodeMetaData()
@@ -866,7 +977,9 @@ class Player {
                 currentEpisode?.metaData = metadata
             }
             currentEpisode?.metaData?.lastPlayed = Date()
-            await episodeActor?.setLastPlayed(episodeURL: episodeURL)
+            Task {
+                await episodeActor?.setLastPlayed(episodeURL: episodeURL)
+            }
         }
         loadSkipDurations()
         lastProgressSaveDate = Date()
@@ -913,12 +1026,15 @@ class Player {
             }
         }
 
+        if let fastSwitchUnloadSnapshot {
+            Task {
+                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
+            }
+        }
+
         await engine.pause()
         await engine.replaceCurrentItem(with: item)
         configureChapterBoundaryObserver()
-        
-        
-        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
 
         BasicLogger.shared.log(
             "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
@@ -937,13 +1053,30 @@ class Player {
             inMemoryPosition: inMemoryResumePosition
         )
 
-        await jumpTo(time: targetStartTime)
+        if targetStartTime > 0.5 {
+            await jumpTo(time: targetStartTime)
+        } else {
+            playPosition = 0
+            updateNowPlayingInfo()
+            _ = updateCurrentChapter()
+            updateChapterProgress()
+            cacheCurrentPlaybackState()
+        }
         _ = updateCurrentChapter()
         await skipOverChapters()
         setupStaticNowPlayingInfo()
-        await updateNowPlayingCover()
         if playDirectly {
-            play()
+            await playPreparedEpisode()
+        }
+
+        Task {
+            await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
+            await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+
+        Task {
+            await updateNowPlayingCover(for: episodeURL)
         }
     }
 
@@ -1125,6 +1258,7 @@ class Player {
         initRemoteCommandCenter()
         isPlaying = true
         updateNowPlayingInfo()
+        WatchSyncCoordinator.refreshSoon(force: true)
 
         let desiredRate = playbackRate
         let position = playPosition
@@ -1166,6 +1300,7 @@ class Player {
             if currentEpisode != nil, currentPlaybackSource != .liveRemote {
                 await playSessionTracker.pauseSession(at: playPosition)
             }
+            WatchSyncCoordinator.refreshSoon(force: true)
         }
     }
     
@@ -1200,6 +1335,11 @@ class Player {
     func play(){
         loadPlayBackSpeed()
         transitionToPlaying(updateEngineRate: true, preparePlaybackSource: true)
+    }
+
+    private func playPreparedEpisode() async {
+        transitionToPlaying(updateEngineRate: false, preparePlaybackSource: true)
+        await engine.setRate(playbackRate)
     }
     
     
@@ -1647,6 +1787,7 @@ class Player {
             lastArtworkIdentifier = nil
             return
         }
+        let coverEpisodeURL = episode.url
 
         let targetSize = CGSize(width: 600, height: 600)
 
@@ -1662,6 +1803,7 @@ class Player {
                 from: chapterImageData,
                 maxPixelSize: max(targetSize.width, targetSize.height)
             ) {
+                guard currentEpisodeURL == coverEpisodeURL else { return }
                 lastArtworkIdentifier = identifier
                 nowPlayingInfoActor.setArtwork(image)
                 return
@@ -1693,13 +1835,21 @@ class Player {
                 continue
             }
 
+            guard currentEpisodeURL == coverEpisodeURL else { return }
             lastArtworkIdentifier = identifier
             nowPlayingInfoActor.setArtwork(resizedImage)
             return
         }
 
+        guard currentEpisodeURL == coverEpisodeURL else { return }
         nowPlayingInfoActor.setArtwork(nil)
         lastArtworkIdentifier = nil
+    }
+
+    private func updateNowPlayingCover(for episodeURL: URL) async {
+        guard currentEpisodeURL == episodeURL else { return }
+        await updateNowPlayingCover()
+        guard currentEpisodeURL == episodeURL else { return }
     }
     
     private static func downscale(image: UIImage, to size: CGSize) -> UIImage? {

@@ -32,6 +32,8 @@ actor PlayerEngine {
         }catch{
             // print("Audio session setup failed:", error)
         }
+
+         avPlayer.automaticallyWaitsToMinimizeStalling = false
         
          Task {
              await self.addInterruptionObserver()
