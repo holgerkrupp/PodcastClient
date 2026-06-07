@@ -1,0 +1,30 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/App/AnimatedLaunchView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AnimatedLaunchView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AnimatedLaunchView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AnimatedLaunchView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AnimatedLaunchView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AnimatedLaunchView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/App/ContentView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ContentView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ContentView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ContentView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ContentView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/App/LogoView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/LogoView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/LogoView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/LogoView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/LogoView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/LogoView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Views/ListeningTimeByPodcastChart.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ListeningTimeByPodcastChart.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ListeningTimeByPodcastChart.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ListeningTimeByPodcastChart.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ListeningTimeByPodcastChart.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ListeningTimeByPodcastChart.swiftdeps"
+  }
+}

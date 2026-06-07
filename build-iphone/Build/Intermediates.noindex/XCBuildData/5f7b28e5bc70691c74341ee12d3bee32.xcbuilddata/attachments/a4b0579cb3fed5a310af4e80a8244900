@@ -1,0 +1,59 @@
+{
+  "" : {
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications-primary.dia",
+    "emit-module-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications-primary-emit-module.dia",
+    "pch" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications-primary.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatchComplications/UpNextWatchComplications.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplications~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatchComplications/UpNextWatchComplicationsBundle.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/UpNextWatchComplicationsBundle~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchComplicationSnapshot.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchComplicationSnapshot~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchSyncModels.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/WatchSyncModels~partial.swiftmodule"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.bc",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-watchos/UpNextWatchComplications.build/Objects-normal/arm64_32/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

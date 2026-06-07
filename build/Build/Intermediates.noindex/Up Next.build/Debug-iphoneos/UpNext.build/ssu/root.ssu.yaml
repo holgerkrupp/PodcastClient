@@ -155,6 +155,74 @@ variables:
   - locale: en
     synomyms:
     - Up Next
+- name: PodcastShareShortcutAspectRatio
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Hochformat
+    - Quadratisch
+    - Querformat
+  - locale: en
+    synomyms:
+    - Portrait
+    - Square
+    - Landscape
+- name: PodcastShareShortcutDesign
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Podium Top 3
+    - Billboard Top 10
+    - Cover-Raster
+    - Cover-Collage
+    - Cover-Wolke
+    - Wiedergabezeit-Balken
+    - Wiedergabezeit-Kreis
+    - Jahresrückblick
+    - Calendar
+    - Year Calendar
+  - locale: en
+    synomyms:
+    - Podium Top 3
+    - Billboard Top 10
+    - Cover Grid
+    - Cover Collage
+    - Cover Cloud
+    - Playtime Bars
+    - Playtime Pie
+    - Stats Wrapped
+    - Calendar
+    - Year Calendar
+- name: PodcastShareShortcutTiming
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Aktueller Zeitraum
+    - Vorheriger Zeitraum
+  - locale: en
+    synomyms:
+    - Current Period
+    - Previous Period
+- name: PodcastShareShortcutPeriod
+  type: ssu/parameter
+  definitions:
+  - locale: de
+    synomyms:
+    - Tag
+    - Woche
+    - Monat
+    - Jahr
+    - Forever
+  - locale: en
+    synomyms:
+    - Day
+    - Week
+    - Month
+    - Year
+    - Forever
 - name: PodcastShareShortcutBackground
   type: ssu/parameter
   definitions:
@@ -222,68 +290,6 @@ variables:
     - Lunar New Year
     - Midsummer
     - Halloween
-- name: PodcastShareShortcutTiming
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Aktueller Zeitraum
-    - Vorheriger Zeitraum
-  - locale: en
-    synomyms:
-    - Current Period
-    - Previous Period
-- name: PodcastShareShortcutAspectRatio
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Hochformat
-    - Quadratisch
-    - Querformat
-  - locale: en
-    synomyms:
-    - Portrait
-    - Square
-    - Landscape
-- name: PodcastShareShortcutDesign
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Podium Top 3
-    - Billboard Top 10
-    - Cover-Raster
-    - Cover-Collage
-    - Cover-Wolke
-    - Wiedergabezeit-Balken
-    - Wiedergabezeit-Kreis
-    - Jahresrückblick
-  - locale: en
-    synomyms:
-    - Podium Top 3
-    - Billboard Top 10
-    - Cover Grid
-    - Cover Collage
-    - Cover Cloud
-    - Playtime Bars
-    - Playtime Pie
-    - Stats Wrapped
-- name: PodcastShareShortcutPeriod
-  type: ssu/parameter
-  definitions:
-  - locale: de
-    synomyms:
-    - Tag
-    - Woche
-    - Monat
-    - Jahr
-  - locale: en
-    synomyms:
-    - Day
-    - Week
-    - Month
-    - Year
 - name: +prefix
   type: ssu/expansion
   definitions:

@@ -7,7 +7,7 @@
         "key": "Import / Export",
         "location": {
           "startingColumn": 26,
-          "startingLine": 302
+          "startingLine": 307
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Podcasts.opml",
         "location": {
           "startingColumn": 68,
-          "startingLine": 127
+          "startingLine": 186
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Actions",
         "location": {
           "startingColumn": 22,
-          "startingLine": 194
+          "startingLine": 253
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Import from another app, review your feeds, then subscribe only to what is new.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 196
+          "startingLine": 255
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Import from Other Apps",
         "location": {
           "startingColumn": 22,
-          "startingLine": 207
+          "startingLine": 266
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "OPML moves podcast subscriptions only. Playback history, queues, and episode progress usually stay in the original app.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 209
+          "startingLine": 268
         }
       },
       {
@@ -55,31 +55,7 @@
         "key": "Import Preview",
         "location": {
           "startingColumn": 26,
-          "startingLine": 222
-        }
-      },
-      {
-        "comment": "",
-        "key": "Subscribe to All New Podcasts",
-        "location": {
-          "startingColumn": 34,
-          "startingLine": 234
-        }
-      },
-      {
-        "comment": "",
-        "key": "Ready to Subscribe (%lld)",
-        "location": {
-          "startingColumn": 26,
-          "startingLine": 270
-        }
-      },
-      {
-        "comment": "",
-        "key": "Already in Library (%lld)",
-        "location": {
-          "startingColumn": 26,
-          "startingLine": 284
+          "startingLine": 289
         }
       },
       {
@@ -87,7 +63,7 @@
         "key": "Move Subscriptions in Minutes",
         "location": {
           "startingColumn": 26,
-          "startingLine": 321
+          "startingLine": 336
         }
       },
       {
@@ -95,7 +71,7 @@
         "key": "Import from OPML, review what is new, and export your current library whenever you need it.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 323
+          "startingLine": 338
         }
       },
       {
@@ -103,15 +79,15 @@
         "key": "%lld",
         "location": {
           "startingColumn": 30,
-          "startingLine": 410
+          "startingLine": 424
         }
       },
       {
         "comment": "",
         "key": "Install Apple Podcasts Shortcut",
         "location": {
-          "startingColumn": 30,
-          "startingLine": 431
+          "startingColumn": 18,
+          "startingLine": 461
         }
       },
       {
@@ -119,7 +95,103 @@
         "key": "%lld",
         "location": {
           "startingColumn": 18,
-          "startingLine": 465
+          "startingLine": 485
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 523
+        }
+      },
+      {
+        "comment": "",
+        "key": "OPML Import",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 825
+        }
+      },
+      {
+        "comment": "",
+        "key": "Import Preview",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 727
+        }
+      },
+      {
+        "comment": "",
+        "key": "Unavailable Feeds (%lld)",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 752
+        }
+      },
+      {
+        "comment": "",
+        "key": "These feeds returned an error code and are skipped when subscribing to all new podcasts.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 754
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ready to Subscribe (%lld)",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 790
+        }
+      },
+      {
+        "comment": "",
+        "key": "Already in Library (%lld)",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 807
+        }
+      },
+      {
+        "comment": "",
+        "key": "Checking Feed Availability",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 832
+        }
+      },
+      {
+        "comment": "",
+        "key": "Subscribe to All Available Podcasts",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 832
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 865
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 899
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 927
         }
       }
     ]

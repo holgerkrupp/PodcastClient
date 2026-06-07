@@ -111,7 +111,7 @@
         "key": "Podcasts",
         "location": {
           "startingColumn": 17,
-          "startingLine": 929
+          "startingLine": 988
         }
       },
       {
@@ -119,7 +119,7 @@
         "key": "Player Controls",
         "location": {
           "startingColumn": 17,
-          "startingLine": 457
+          "startingLine": 459
         }
       },
       {
@@ -127,7 +127,7 @@
         "key": "Live Notifications",
         "location": {
           "startingColumn": 17,
-          "startingLine": 549
+          "startingLine": 551
         }
       },
       {
@@ -135,7 +135,7 @@
         "key": "Transcriptions",
         "location": {
           "startingColumn": 17,
-          "startingLine": 503
+          "startingLine": 505
         }
       },
       {
@@ -143,7 +143,7 @@
         "key": "Sideloading",
         "location": {
           "startingColumn": 17,
-          "startingLine": 809
+          "startingLine": 813
         }
       },
       {
@@ -159,7 +159,7 @@
         "key": "Integrations",
         "location": {
           "startingColumn": 17,
-          "startingLine": 944
+          "startingLine": 1003
         }
       },
       {
@@ -167,7 +167,7 @@
         "key": "Maintenance",
         "location": {
           "startingColumn": 17,
-          "startingLine": 973
+          "startingLine": 1032
         }
       },
       {
@@ -175,7 +175,7 @@
         "key": "Help",
         "location": {
           "startingColumn": 17,
-          "startingLine": 1015
+          "startingLine": 1074
         }
       },
       {
@@ -183,7 +183,7 @@
         "key": "Debug",
         "location": {
           "startingColumn": 17,
-          "startingLine": 1043
+          "startingLine": 1102
         }
       },
       {
@@ -191,7 +191,7 @@
         "key": "Playback",
         "location": {
           "startingColumn": 17,
-          "startingLine": 615
+          "startingLine": 617
         }
       },
       {
@@ -199,7 +199,7 @@
         "key": "Queue & Downloads",
         "location": {
           "startingColumn": 17,
-          "startingLine": 666
+          "startingLine": 670
         }
       },
       {
@@ -207,7 +207,7 @@
         "key": "Podcast Sections",
         "location": {
           "startingColumn": 17,
-          "startingLine": 785
+          "startingLine": 789
         }
       },
       {
@@ -215,7 +215,7 @@
         "key": "Live Notifications",
         "location": {
           "startingColumn": 17,
-          "startingLine": 575
+          "startingLine": 577
         }
       },
       {
@@ -223,7 +223,7 @@
         "key": "Global Settings",
         "location": {
           "startingColumn": 17,
-          "startingLine": 914
+          "startingLine": 973
         }
       },
       {
@@ -335,7 +335,7 @@
         "key": "When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 432
+          "startingLine": 434
         }
       },
       {
@@ -364,10 +364,58 @@
       },
       {
         "comment": "",
+        "key": "Speeds through sustained quiet sections during normal audio episode playback.",
+        "location": {
+          "startingColumn": 14,
+          "startingLine": 851
+        }
+      },
+      {
+        "comment": "",
+        "key": "Low preserves longer pauses and word boundaries. Higher levels shorten more silence.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 872
+        }
+      },
+      {
+        "comment": "",
+        "key": "Balances voice levels, removes low-frequency rumble, and controls loud peaks during normal audio playback.",
+        "location": {
+          "startingColumn": 14,
+          "startingLine": 888
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reduce silence gaps",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 841
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reduction level",
+        "location": {
+          "startingColumn": 17,
+          "startingLine": 857
+        }
+      },
+      {
+        "comment": "",
+        "key": "Voice enhancement",
+        "location": {
+          "startingColumn": 13,
+          "startingLine": 878
+        }
+      },
+      {
+        "comment": "",
         "key": "Skip Durations",
         "location": {
           "startingColumn": 14,
-          "startingLine": 836
+          "startingLine": 895
         }
       },
       {
@@ -375,7 +423,7 @@
         "key": "These durations are used by the app player, shortcuts, and any external controls set to seconds.",
         "location": {
           "startingColumn": 14,
-          "startingLine": 869
+          "startingLine": 928
         }
       },
       {
@@ -383,7 +431,7 @@
         "key": "Lock Screen, Control Center & CarPlay",
         "location": {
           "startingColumn": 14,
-          "startingLine": 875
+          "startingLine": 934
         }
       },
       {
@@ -391,7 +439,7 @@
         "key": "Chapter mode uses previous/next chapter buttons when the playing episode has chapters. Without chapters, external controls fall back to the selected seconds.",
         "location": {
           "startingColumn": 14,
-          "startingLine": 908
+          "startingLine": 967
         }
       },
       {
@@ -399,7 +447,7 @@
         "key": "Skip back seconds",
         "location": {
           "startingColumn": 13,
-          "startingLine": 840
+          "startingLine": 899
         }
       },
       {
@@ -407,7 +455,7 @@
         "key": "Skip forward seconds",
         "location": {
           "startingColumn": 13,
-          "startingLine": 855
+          "startingLine": 914
         }
       },
       {
@@ -415,7 +463,7 @@
         "key": "Back button",
         "location": {
           "startingColumn": 13,
-          "startingLine": 879
+          "startingLine": 938
         }
       },
       {
@@ -423,7 +471,7 @@
         "key": "Forward button",
         "location": {
           "startingColumn": 13,
-          "startingLine": 894
+          "startingLine": 953
         }
       },
       {
@@ -431,7 +479,7 @@
         "key": "Archive file retention",
         "location": {
           "startingColumn": 32,
-          "startingLine": 427
+          "startingLine": 429
         }
       },
       {
@@ -439,7 +487,7 @@
         "key": "When enabled, the next queue item starts automatically after an episode finishes.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 469
+          "startingLine": 471
         }
       },
       {
@@ -447,7 +495,7 @@
         "key": "These control whether playback scrubbing is available inside the app and through system playback controls.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 495
+          "startingLine": 497
         }
       },
       {
@@ -455,7 +503,7 @@
         "key": "Continuous playback",
         "location": {
           "startingColumn": 17,
-          "startingLine": 459
+          "startingLine": 461
         }
       },
       {
@@ -463,7 +511,7 @@
         "key": "Now Playing slider",
         "location": {
           "startingColumn": 17,
-          "startingLine": 474
+          "startingLine": 476
         }
       },
       {
@@ -471,7 +519,7 @@
         "key": "Lock screen slider",
         "location": {
           "startingColumn": 17,
-          "startingLine": 485
+          "startingLine": 487
         }
       },
       {
@@ -479,7 +527,7 @@
         "key": "When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 541
+          "startingLine": 543
         }
       },
       {
@@ -487,7 +535,7 @@
         "key": "Save episode transcriptions",
         "location": {
           "startingColumn": 17,
-          "startingLine": 505
+          "startingLine": 507
         }
       },
       {
@@ -495,7 +543,7 @@
         "key": "Delete Transcript Data",
         "location": {
           "startingColumn": 27,
-          "startingLine": 519
+          "startingLine": 521
         }
       },
       {
@@ -503,7 +551,7 @@
         "key": "Allow live event notifications",
         "location": {
           "startingColumn": 28,
-          "startingLine": 551
+          "startingLine": 553
         }
       },
       {
@@ -511,7 +559,7 @@
         "key": "Live event notifications",
         "location": {
           "startingColumn": 63,
-          "startingLine": 551
+          "startingLine": 553
         }
       },
       {
@@ -519,7 +567,7 @@
         "key": "When this is off, no podcast can schedule notifications for podcast:liveItem events.",
         "location": {
           "startingColumn": 20,
-          "startingLine": 566
+          "startingLine": 568
         }
       },
       {
@@ -527,7 +575,7 @@
         "key": "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.",
         "location": {
           "startingColumn": 20,
-          "startingLine": 567
+          "startingLine": 569
         }
       },
       {
@@ -535,7 +583,7 @@
         "key": "When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 593
+          "startingLine": 595
         }
       },
       {
@@ -543,7 +591,7 @@
         "key": "This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 599
+          "startingLine": 601
         }
       },
       {
@@ -551,7 +599,7 @@
         "key": "This podcast currently does not support Live event information.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 606
+          "startingLine": 608
         }
       },
       {
@@ -559,7 +607,7 @@
         "key": "Live event notifications",
         "location": {
           "startingColumn": 25,
-          "startingLine": 579
+          "startingLine": 581
         }
       },
       {
@@ -567,7 +615,7 @@
         "key": "Live event information supported",
         "location": {
           "startingColumn": 27,
-          "startingLine": 597
+          "startingLine": 599
         }
       },
       {
@@ -575,7 +623,7 @@
         "key": "Live event information unavailable",
         "location": {
           "startingColumn": 23,
-          "startingLine": 604
+          "startingLine": 606
         }
       },
       {
@@ -583,7 +631,7 @@
         "key": "Inbox keeps new episodes out of Up Next. Top and Bottom place them directly into your selected playlist.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 618
+          "startingLine": 620
         }
       },
       {
@@ -591,7 +639,7 @@
         "key": "This speed is used when playback starts. The player speed control also writes back here.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 639
+          "startingLine": 641
         }
       },
       {
@@ -599,7 +647,7 @@
         "key": "When an episode is archived, its downloaded file is kept for this duration before automatic cleanup can remove it.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 661
+          "startingLine": 665
         }
       },
       {
@@ -607,7 +655,7 @@
         "key": "Default speed",
         "location": {
           "startingColumn": 32,
-          "startingLine": 633
+          "startingLine": 635
         }
       },
       {
@@ -615,7 +663,7 @@
         "key": "Archive file retention",
         "location": {
           "startingColumn": 32,
-          "startingLine": 656
+          "startingLine": 660
         }
       },
       {
@@ -623,7 +671,7 @@
         "key": "Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 780
+          "startingLine": 784
         }
       },
       {
@@ -631,7 +679,7 @@
         "key": "New episodes go to",
         "location": {
           "startingColumn": 17,
-          "startingLine": 668
+          "startingLine": 672
         }
       },
       {
@@ -639,7 +687,7 @@
         "key": "Default playlist for auto-add",
         "location": {
           "startingColumn": 17,
-          "startingLine": 683
+          "startingLine": 687
         }
       },
       {
@@ -647,7 +695,7 @@
         "key": "Auto-download unplayed episodes",
         "location": {
           "startingColumn": 17,
-          "startingLine": 696
+          "startingLine": 700
         }
       },
       {
@@ -655,7 +703,7 @@
         "key": "Selection",
         "location": {
           "startingColumn": 21,
-          "startingLine": 739
+          "startingLine": 743
         }
       },
       {
@@ -663,7 +711,7 @@
         "key": "Network",
         "location": {
           "startingColumn": 21,
-          "startingLine": 754
+          "startingLine": 758
         }
       },
       {
@@ -671,7 +719,7 @@
         "key": "Include back catalog episodes",
         "location": {
           "startingColumn": 21,
-          "startingLine": 769
+          "startingLine": 773
         }
       },
       {
@@ -679,7 +727,7 @@
         "key": "Keep available",
         "location": {
           "startingColumn": 36,
-          "startingLine": 732
+          "startingLine": 736
         }
       },
       {
@@ -687,7 +735,7 @@
         "key": "%lld",
         "location": {
           "startingColumn": 30,
-          "startingLine": 733
+          "startingLine": 737
         }
       },
       {
@@ -695,7 +743,7 @@
         "key": "When enabled, the app watches the iCloud Drive > Up Next root and imports audio files from there when you open the iCloud Drive view. Turning it off stops discovery, but keeps existing sideloaded items in the database.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 820
+          "startingLine": 824
         }
       },
       {
@@ -703,7 +751,7 @@
         "key": "Supported formats include MP3, AAC, M4A, M4B, WAV, CAF, AIFF, and any other audio type AVFoundation can open.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 824
+          "startingLine": 828
         }
       },
       {
@@ -711,7 +759,7 @@
         "key": "Setting up the iCloud folder...",
         "location": {
           "startingColumn": 30,
-          "startingLine": 829
+          "startingLine": 833
         }
       },
       {
@@ -719,7 +767,7 @@
         "key": "Enable Sideloading",
         "location": {
           "startingColumn": 23,
-          "startingLine": 816
+          "startingLine": 820
         }
       },
       {
@@ -727,7 +775,7 @@
         "key": "Rebuilding analytics…",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1002
+          "startingLine": 1061
         }
       },
       {
@@ -735,7 +783,7 @@
         "key": "Remove Duplicate Podcasts",
         "location": {
           "startingColumn": 20,
-          "startingLine": 1073
+          "startingLine": 1132
         }
       },
       {
@@ -743,7 +791,7 @@
         "key": "App Icon",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1374
+          "startingLine": 1446
         }
       },
       {
@@ -751,7 +799,7 @@
         "key": "Using Up Next",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1593
+          "startingLine": 1665
         }
       },
       {
@@ -759,7 +807,7 @@
         "key": "Up Next Basics",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1562
+          "startingLine": 1634
         }
       },
       {
@@ -767,7 +815,7 @@
         "key": "Queue Behavior",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1568
+          "startingLine": 1640
         }
       },
       {
@@ -775,7 +823,7 @@
         "key": "Chapter Skip Keywords",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1574
+          "startingLine": 1646
         }
       },
       {
@@ -783,7 +831,7 @@
         "key": "Siri & Shortcuts Intents",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1580
+          "startingLine": 1652
         }
       },
       {
@@ -791,7 +839,7 @@
         "key": "Accessibility",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1586
+          "startingLine": 1658
         }
       },
       {
@@ -799,7 +847,7 @@
         "key": "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1563
+          "startingLine": 1635
         }
       },
       {
@@ -807,7 +855,7 @@
         "key": "Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1564
+          "startingLine": 1636
         }
       },
       {
@@ -815,7 +863,7 @@
         "key": "When an episode finishes, continuous playback can automatically start the next item from Up Next.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1565
+          "startingLine": 1637
         }
       },
       {
@@ -823,7 +871,7 @@
         "key": "New episodes can be placed at the front, end, or not added automatically, depending on your settings.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1569
+          "startingLine": 1641
         }
       },
       {
@@ -831,7 +879,7 @@
         "key": "The currently playing episode is kept pinned at the top while playback is active.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1570
+          "startingLine": 1642
         }
       },
       {
@@ -839,7 +887,7 @@
         "key": "You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1571
+          "startingLine": 1643
         }
       },
       {
@@ -847,7 +895,7 @@
         "key": "Chapter rules let you skip recurring segments like intro, ads, or outro.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1575
+          "startingLine": 1647
         }
       },
       {
@@ -855,7 +903,7 @@
         "key": "Rules are checked against chapter titles and can use operators like contains, starts with, or ends with.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1576
+          "startingLine": 1648
         }
       },
       {
@@ -863,7 +911,7 @@
         "key": "Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1577
+          "startingLine": 1649
         }
       },
       {
@@ -871,7 +919,7 @@
         "key": "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1581
+          "startingLine": 1653
         }
       },
       {
@@ -879,7 +927,7 @@
         "key": "In Apple Shortcuts, search for Up Next to add these actions to personal automations.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1582
+          "startingLine": 1654
         }
       },
       {
@@ -887,7 +935,7 @@
         "key": "For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1583
+          "startingLine": 1655
         }
       },
       {
@@ -895,7 +943,7 @@
         "key": "VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1587
+          "startingLine": 1659
         }
       },
       {
@@ -903,7 +951,7 @@
         "key": "For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1588
+          "startingLine": 1660
         }
       },
       {
@@ -911,7 +959,7 @@
         "key": "Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1589
+          "startingLine": 1661
         }
       },
       {
@@ -919,7 +967,7 @@
         "key": "Shortcuts",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1652
+          "startingLine": 1724
         }
       },
       {
@@ -927,7 +975,7 @@
         "key": "Automatic Backgrounds",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1641
+          "startingLine": 1713
         }
       },
       {
@@ -935,7 +983,7 @@
         "key": "Useful Outputs",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1646
+          "startingLine": 1718
         }
       },
       {
@@ -943,7 +991,7 @@
         "key": "Up Next actions are available in Apple Shortcuts. Search for “Up Next” when adding an action to a shortcut or personal automation.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1604
+          "startingLine": 1676
         }
       },
       {
@@ -951,7 +999,7 @@
         "key": "Open Shortcuts",
         "location": {
           "startingColumn": 27,
-          "startingLine": 1607
+          "startingLine": 1679
         }
       },
       {
@@ -959,7 +1007,7 @@
         "key": "Apple Shortcuts",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1610
+          "startingLine": 1682
         }
       },
       {
@@ -967,7 +1015,7 @@
         "key": "Automatic for Period picks the background from the data period, not from the day the shortcut runs. A shortcut running on 1 June with Previous Period uses May’s background.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1642
+          "startingLine": 1714
         }
       },
       {
@@ -975,7 +1023,7 @@
         "key": "For yearly images, Automatic for Period uses the New Year background. For day, week, and month images, it uses the month containing the listening history.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1643
+          "startingLine": 1715
         }
       },
       {
@@ -983,7 +1031,7 @@
         "key": "Generate Podcast Share Image returns a PNG file. Shortcuts can pass that file to Save File, Save to Photo Album, Messages, Mail, or Share Sheet.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1647
+          "startingLine": 1719
         }
       },
       {
@@ -991,7 +1039,7 @@
         "key": "To create multiple designs, add the Generate Podcast Share Image action more than once with different design values.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1648
+          "startingLine": 1720
         }
       },
       {
@@ -999,7 +1047,7 @@
         "key": "%lld",
         "location": {
           "startingColumn": 18,
-          "startingLine": 1696
+          "startingLine": 1768
         }
       },
       {
@@ -1007,7 +1055,7 @@
         "key": "Following Global Defaults",
         "location": {
           "startingColumn": 42,
-          "startingLine": 1748
+          "startingLine": 1820
         }
       },
       {
@@ -1015,7 +1063,7 @@
         "key": "Using Podcast Defaults",
         "location": {
           "startingColumn": 72,
-          "startingLine": 1748
+          "startingLine": 1820
         }
       },
       {
@@ -1023,7 +1071,7 @@
         "key": "Chapter Rules",
         "location": {
           "startingColumn": 30,
-          "startingLine": 1791
+          "startingLine": 1863
         }
       },
       {
@@ -1031,7 +1079,7 @@
         "key": "These chapter rules could not be loaded.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1786
+          "startingLine": 1858
         }
       },
       {
@@ -1039,7 +1087,7 @@
         "key": "Chapter Rules",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1856
+          "startingLine": 1928
         }
       },
       {
@@ -1047,7 +1095,7 @@
         "key": "How It Works",
         "location": {
           "startingColumn": 21,
-          "startingLine": 1813
+          "startingLine": 1885
         }
       },
       {
@@ -1055,7 +1103,7 @@
         "key": "Rules",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1829
+          "startingLine": 1901
         }
       },
       {
@@ -1063,7 +1111,7 @@
         "key": "Rules compare against chapter titles and mark matching chapters to be skipped.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1840
+          "startingLine": 1912
         }
       },
       {
@@ -1071,7 +1119,7 @@
         "key": "Add Rule",
         "location": {
           "startingColumn": 31,
-          "startingLine": 1849
+          "startingLine": 1921
         }
       },
       {
@@ -1079,7 +1127,7 @@
         "key": "Use rules for repeated segments like ads, intros, and credits. Each rule checks the chapter title with a match style such as contains or starts with.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 1920
+          "startingLine": 1992
         }
       },
       {
@@ -1087,7 +1135,7 @@
         "key": "Automatic Chapter Filtering",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1911
+          "startingLine": 1983
         }
       },
       {
@@ -1095,7 +1143,7 @@
         "key": "Matching chapter titles will be marked to skip as soon as chapter data is loaded.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1914
+          "startingLine": 1986
         }
       },
       {
@@ -1103,7 +1151,7 @@
         "key": "No rules yet",
         "location": {
           "startingColumn": 35,
-          "startingLine": 1938
+          "startingLine": 2010
         }
       },
       {
@@ -1111,7 +1159,7 @@
         "key": "No rules applied",
         "location": {
           "startingColumn": 52,
-          "startingLine": 1938
+          "startingLine": 2010
         }
       },
       {
@@ -1119,7 +1167,7 @@
         "key": "Add a rule to skip recurring chapters like ads, intros, or credits.",
         "location": {
           "startingColumn": 23,
-          "startingLine": 1943
+          "startingLine": 2015
         }
       },
       {
@@ -1127,7 +1175,7 @@
         "key": "This settings scope does not currently skip any chapters automatically.",
         "location": {
           "startingColumn": 23,
-          "startingLine": 1944
+          "startingLine": 2016
         }
       },
       {
@@ -1135,7 +1183,7 @@
         "key": "Needs keyword",
         "location": {
           "startingColumn": 26,
-          "startingLine": 1972
+          "startingLine": 2044
         }
       },
       {
@@ -1143,7 +1191,7 @@
         "key": "Rule %lld",
         "location": {
           "startingColumn": 23,
-          "startingLine": 1966
+          "startingLine": 2038
         }
       },
       {
@@ -1151,7 +1199,7 @@
         "key": "Remove rule %lld",
         "location": {
           "startingColumn": 37,
-          "startingLine": 1985
+          "startingLine": 2057
         }
       },
       {
@@ -1159,7 +1207,7 @@
         "key": "Deletes this chapter skip rule",
         "location": {
           "startingColumn": 36,
-          "startingLine": 1986
+          "startingLine": 2058
         }
       },
       {
@@ -1167,7 +1215,7 @@
         "key": "Match style",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1990
+          "startingLine": 2062
         }
       },
       {
@@ -1175,7 +1223,7 @@
         "key": "Match style",
         "location": {
           "startingColumn": 24,
-          "startingLine": 1994
+          "startingLine": 2066
         }
       },
       {
@@ -1183,7 +1231,7 @@
         "key": "Keyword or phrase",
         "location": {
           "startingColumn": 22,
-          "startingLine": 2003
+          "startingLine": 2075
         }
       },
       {
@@ -1191,7 +1239,7 @@
         "key": "e.g. ad break, intro, credits",
         "location": {
           "startingColumn": 27,
-          "startingLine": 2007
+          "startingLine": 2079
         }
       },
       {
@@ -1199,7 +1247,7 @@
         "key": "This rule has no keyword yet.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 2048
+          "startingLine": 2120
         }
       },
       {
@@ -1207,7 +1255,7 @@
         "key": "Rule %lld",
         "location": {
           "startingColumn": 23,
-          "startingLine": 2035
+          "startingLine": 2107
         }
       },
       {
@@ -1215,7 +1263,7 @@
         "key": "App Controls",
         "location": {
           "startingColumn": 26,
-          "startingLine": 2118
+          "startingLine": 2190
         }
       },
       {
@@ -1223,7 +1271,7 @@
         "key": "Playback Continuation",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2072
+          "startingLine": 2144
         }
       },
       {
@@ -1231,7 +1279,7 @@
         "key": "Player Controls",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2089
+          "startingLine": 2161
         }
       },
       {
@@ -1239,7 +1287,7 @@
         "key": "When enabled, the next queue item starts automatically after an episode finishes.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 2084
+          "startingLine": 2156
         }
       },
       {
@@ -1247,7 +1295,7 @@
         "key": "Continuous playback",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2074
+          "startingLine": 2146
         }
       },
       {
@@ -1255,7 +1303,7 @@
         "key": "These control whether playback scrubbing is available inside the app and through system playback controls.",
         "location": {
           "startingColumn": 22,
-          "startingLine": 2112
+          "startingLine": 2184
         }
       },
       {
@@ -1263,7 +1311,7 @@
         "key": "Now Playing slider",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2091
+          "startingLine": 2163
         }
       },
       {
@@ -1271,7 +1319,7 @@
         "key": "Lock screen slider",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2102
+          "startingLine": 2174
         }
       },
       {
@@ -1279,7 +1327,7 @@
         "key": "Podcast Overrides",
         "location": {
           "startingColumn": 26,
-          "startingLine": 2186
+          "startingLine": 2258
         }
       },
       {
@@ -1287,7 +1335,7 @@
         "key": "Custom Settings",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2142
+          "startingLine": 2214
         }
       },
       {
@@ -1295,7 +1343,7 @@
         "key": "Using Global Defaults",
         "location": {
           "startingColumn": 21,
-          "startingLine": 2160
+          "startingLine": 2232
         }
       },
       {
@@ -1303,7 +1351,7 @@
         "key": "No podcasts are using custom settings yet.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 2144
+          "startingLine": 2216
         }
       },
       {
@@ -1311,7 +1359,7 @@
         "key": "All podcasts already use custom settings.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 2162
+          "startingLine": 2234
         }
       },
       {
@@ -1319,7 +1367,7 @@
         "key": "Use Custom",
         "location": {
           "startingColumn": 36,
-          "startingLine": 2174
+          "startingLine": 2246
         }
       }
     ]

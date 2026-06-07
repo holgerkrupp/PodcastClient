@@ -6,7 +6,7 @@
 	<integer>12</integer>
 	<key>logs</key>
 	<dict>
-		<key>B8026E6A-42DF-44C3-9E33-ABFA221C4014</key>
+		<key>0873D9E0-2AC3-4E65-8C29-33C88323FCCE</key>
 		<dict>
 			<key>className</key>
 			<string>IDECommandLineBuildLog</string>
@@ -15,13 +15,13 @@
 			<key>domainType</key>
 			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
 			<key>fileName</key>
-			<string>B8026E6A-42DF-44C3-9E33-ABFA221C4014.xcactivitylog</string>
+			<string>0873D9E0-2AC3-4E65-8C29-33C88323FCCE.xcactivitylog</string>
 			<key>hasPrimaryLog</key>
 			<true/>
 			<key>primaryObservable</key>
 			<dict>
 				<key>highLevelStatus</key>
-				<string>W</string>
+				<string>S</string>
 				<key>totalNumberOfAnalyzerIssues</key>
 				<integer>0</integer>
 				<key>totalNumberOfErrors</key>
@@ -29,7 +29,7 @@
 				<key>totalNumberOfTestFailures</key>
 				<integer>0</integer>
 				<key>totalNumberOfWarnings</key>
-				<integer>1</integer>
+				<integer>0</integer>
 			</dict>
 			<key>schemeIdentifier-containerName</key>
 			<string>Up Next project</string>
@@ -40,13 +40,13 @@
 			<key>signature</key>
 			<string>Testing project Up Next with scheme UpNext</string>
 			<key>timeStartedRecording</key>
-			<real>802074880.67474902</real>
+			<real>802431463.55782604</real>
 			<key>timeStoppedRecording</key>
-			<real>802074927.97129905</real>
+			<real>802431489.31780303</real>
 			<key>title</key>
 			<string>Testing project Up Next with scheme UpNext</string>
 			<key>uniqueIdentifier</key>
-			<string>B8026E6A-42DF-44C3-9E33-ABFA221C4014</string>
+			<string>0873D9E0-2AC3-4E65-8C29-33C88323FCCE</string>
 		</dict>
 	</dict>
 </dict>

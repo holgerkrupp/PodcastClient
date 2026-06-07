@@ -1,0 +1,37 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/App/AppDelegate.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AppDelegate.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AppDelegate.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AppDelegate.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AppDelegate.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AppDelegate.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/App/ModelContainerManager.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ModelContainerManager.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ModelContainerManager.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ModelContainerManager.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ModelContainerManager.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/ModelContainerManager.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/CarPlay/Controllers/CarPlaySceneDelegate.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CarPlaySceneDelegate.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CarPlaySceneDelegate.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CarPlaySceneDelegate.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CarPlaySceneDelegate.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CarPlaySceneDelegate.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchComplicationSnapshot.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchComplicationSnapshot.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchComplicationSnapshot.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchComplicationSnapshot.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchComplicationSnapshot.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchComplicationSnapshot.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchSyncModels.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchSyncModels.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchSyncModels.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchSyncModels.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchSyncModels.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/WatchSyncModels.swiftdeps"
+  }
+}

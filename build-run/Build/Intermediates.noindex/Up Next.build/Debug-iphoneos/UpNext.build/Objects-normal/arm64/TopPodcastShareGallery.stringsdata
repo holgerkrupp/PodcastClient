@@ -1,0 +1,168 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Statistics/TopPodcastShareGallery.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Share Top Podcasts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 132
+        }
+      },
+      {
+        "comment": "",
+        "key": "Top podcast share pictures are available when the statistics show all podcasts.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Share Pictures",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "Customize",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title: %@ • Background: %@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 92
+        }
+      },
+      {
+        "comment": "",
+        "key": "Designs",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 125
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Selected Image",
+        "location": {
+          "startingColumn": 66,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Selected Images",
+        "location": {
+          "startingColumn": 91,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Customize",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 391
+        }
+      },
+      {
+        "comment": "",
+        "key": "Title",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 341
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reset to Default",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 345
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Picture Title",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 349
+        }
+      },
+      {
+        "comment": "",
+        "key": "This title is used for every share picture preview and export.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 351
+        }
+      },
+      {
+        "comment": "",
+        "key": "Aspect Ratio",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 357
+        }
+      },
+      {
+        "comment": "",
+        "key": "The selected ratio is applied to every share picture preview and export.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 359
+        }
+      },
+      {
+        "comment": "",
+        "key": "Monthly backgrounds in Year Calendar",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 363
+        }
+      },
+      {
+        "comment": "",
+        "key": "Year Calendar",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 365
+        }
+      },
+      {
+        "comment": "",
+        "key": "Applies the existing January to December backgrounds to the mini month blocks in the Year Calendar design.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 367
+        }
+      },
+      {
+        "comment": "",
+        "key": "Background",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 386
+        }
+      },
+      {
+        "comment": "",
+        "key": "Background changes are applied to every share picture preview and export.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 388
+        }
+      }
+    ]
+  },
+  "version": 1
+}

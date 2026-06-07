@@ -1,0 +1,30 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/CleanUpActor.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CleanUpActor.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CleanUpActor.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CleanUpActor.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CleanUpActor.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CleanUpActor.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/NowPlayingInfoActor.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/NowPlayingInfoActor.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/NowPlayingInfoActor.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/NowPlayingInfoActor.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/NowPlayingInfoActor.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/NowPlayingInfoActor.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/SubscriptionActor.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SubscriptionActor.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SubscriptionActor.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SubscriptionActor.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SubscriptionActor.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SubscriptionActor.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/TranscriptionItem.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/TranscriptionItem.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/TranscriptionItem.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/TranscriptionItem.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/TranscriptionItem.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/TranscriptionItem.swiftdeps"
+  }
+}

@@ -65,6 +65,18 @@ struct WatchRootView: View {
                     }
                 }
 
+                if selectedPage == .nowPlaying, store.isRemoteControlEnabled {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            selectedPage = .upNext
+                        } label: {
+                            Label("Playlist", systemImage: "list.bullet")
+                        }
+                        .foregroundStyle(.white)
+                        .accessibilityHint("Returns to the watch playlist")
+                    }
+                }
+
                 if selectedPage == .inbox {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {

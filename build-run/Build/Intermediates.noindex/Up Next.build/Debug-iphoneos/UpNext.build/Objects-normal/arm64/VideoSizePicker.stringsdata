@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/VideoSizePicker.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Video Size",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 46
+        }
+      }
+    ]
+  },
+  "version": 1
+}

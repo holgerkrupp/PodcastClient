@@ -5,7 +5,17 @@ import SwiftUI
 class ModelContainerManager: ObservableObject {
     nonisolated static let appGroupID = "group.de.holgerkrupp.PodcastClient"
 
-    let container: ModelContainer
+    @Published private(set) var preparedContainer: ModelContainer?
+    @Published private(set) var initializationError: String?
+    @Published private(set) var isInitializing = false
+    private var preparationTask: Task<ModelContainer, Error>?
+
+    var container: ModelContainer {
+        guard let preparedContainer else {
+            preconditionFailure("ModelContainer accessed before preparation completed")
+        }
+        return preparedContainer
+    }
     
     static let shared = ModelContainerManager()
 
@@ -18,54 +28,70 @@ class ModelContainerManager: ObservableObject {
     }
 
     
-    init() {
+    func prepareContainer() async {
+        guard preparedContainer == nil else { return }
+
+        let task: Task<ModelContainer, Error>
+        if let preparationTask {
+            task = preparationTask
+        } else {
+            isInitializing = true
+            initializationError = nil
+            CrashBreadcrumbs.shared.record("model_container_initialization_started")
+
+            let newTask = Task.detached(priority: .userInitiated) {
+                try Self.makeContainer()
+            }
+            preparationTask = newTask
+            task = newTask
+        }
+
         do {
-            if let sharedContainerURL = Self.sharedContainerURL {
-                
-                let configuration = ModelConfiguration(
-                    url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
-                    cloudKitDatabase: .automatic
-                )
-                
-                container = try ModelContainer(
-                    for: Podcast.self,
-                        PodcastMetaData.self,
-                        Episode.self,
-                        EpisodeMetaData.self,
-                        Playlist.self,
-                        PlaylistEntry.self,
-                        Marker.self,
-                        Bookmark.self,
-                        RateSegment.self,
-                        PlaySession.self,
-                        ListeningStat.self,
-                        PlaySessionSummary.self,
-                        TranscriptionRecord.self,
-                    configurations: configuration
-                )
-                
-            } else {
-                // print("⚠️ Shared container URL not found. Falling back to in-memory store.")
-                let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
-                container = try ModelContainer(
-                    for: Podcast.self,
-                        PodcastMetaData.self,
-                        Episode.self,
-                        EpisodeMetaData.self,
-                        Playlist.self,
-                        PlaylistEntry.self,
-                        Marker.self,
-                    Bookmark.self,
-                    RateSegment.self,
-                    PlaySession.self,
-                    ListeningStat.self,
-                    PlaySessionSummary.self,
-                    TranscriptionRecord.self,
-                    configurations: configuration
-                )
+            let preparedContainer = try await task.value
+            if self.preparedContainer == nil {
+                self.preparedContainer = preparedContainer
+                CrashBreadcrumbs.shared.record("model_container_initialization_completed")
             }
         } catch {
-            fatalError("❌ Failed to initialize ModelContainer: \(error)")
+            if initializationError == nil {
+                initializationError = error.localizedDescription
+                CrashBreadcrumbs.shared.record(
+                    "model_container_initialization_failed",
+                    details: error.localizedDescription
+                )
+            }
         }
+
+        preparationTask = nil
+        isInitializing = false
+    }
+
+    nonisolated private static func makeContainer() throws -> ModelContainer {
+        let configuration: ModelConfiguration
+        if let sharedContainerURL = sharedContainerURL {
+            configuration = ModelConfiguration(
+                url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
+                cloudKitDatabase: .automatic
+            )
+        } else {
+            configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        }
+
+        return try ModelContainer(
+            for: Podcast.self,
+                PodcastMetaData.self,
+                Episode.self,
+                EpisodeMetaData.self,
+                Playlist.self,
+                PlaylistEntry.self,
+                Marker.self,
+                Bookmark.self,
+                RateSegment.self,
+                PlaySession.self,
+                ListeningStat.self,
+                PlaySessionSummary.self,
+                TranscriptionRecord.self,
+            configurations: configuration
+        )
     }
 }

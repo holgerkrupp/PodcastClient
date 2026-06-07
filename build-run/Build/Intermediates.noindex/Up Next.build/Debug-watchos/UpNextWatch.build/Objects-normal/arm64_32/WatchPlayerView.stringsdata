@@ -1,0 +1,80 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchPlayerView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Player",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 38
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback speed",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 159
+        }
+      },
+      {
+        "comment": "",
+        "key": "Double tap to cycle playback speed",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 161
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapters",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 190
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter %@",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 235
+        }
+      },
+      {
+        "comment": "",
+        "key": "Starts playback at %@",
+        "location": {
+          "startingColumn": 64,
+          "startingLine": 236
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play chapter",
+        "location": {
+          "startingColumn": 60,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode is no longer available here.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 253
+        }
+      },
+      {
+        "comment": "",
+        "key": "Progress",
+        "location": {
+          "startingColumn": 1,
+          "startingLine": 542
+        }
+      }
+    ]
+  },
+  "version": 1
+}

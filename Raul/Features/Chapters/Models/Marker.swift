@@ -98,6 +98,10 @@ class Marker: Identifiable, Equatable, Hashable{
         guard let duration = duration, let progress = progress else { return nil }
         return max(0, duration * (1 - progress))
     }
+
+    @Transient var displayTitle: String {
+        episode?.displayTitle(for: self) ?? title
+    }
     
     @Transient var end:Double? {
         if endTime != nil{

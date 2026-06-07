@@ -48,6 +48,7 @@ struct PodcastDetailView: View {
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
     @State private var refreshProgress: Double = 0
+    @State private var refreshProgressMessage: String?
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
@@ -57,6 +58,7 @@ struct PodcastDetailView: View {
     @State private var showPodroll: Bool = false
     @State private var showDebugMetadata: Bool = false
     @State private var liveNotificationMessage: String?
+    @State private var hasAttemptedInitialFeedImport = false
     @AppStorage("EpisodeSortOption") private var sortOptionRawValue: String = EpisodeSortOption.newestFirst.rawValue
     private var sortOption: EpisodeSortOption {
         get { EpisodeSortOption(rawValue: sortOptionRawValue) ?? .newestFirst }
@@ -98,6 +100,13 @@ struct PodcastDetailView: View {
         displayedEpisodeLimit < filteredEpisodes.count
     }
 
+    private var needsInitialFeedImport: Bool {
+        podcast.isSubscribed
+            && podcast.feed != nil
+            && podcast.metaData?.lastRefresh == nil
+            && (podcast.episodes?.isEmpty ?? true)
+    }
+
     private var currentLiveItem: PodcastLiveItem? {
         liveItems.first { $0.status == .live }
     }
@@ -134,6 +143,35 @@ struct PodcastDetailView: View {
         )
     }
 
+    private var refreshProgressCard: some View {
+        let progress = max(refreshProgress, 0.02)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text(refreshProgressMessage ?? "Refreshing podcast")
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                Spacer()
+                Text("\(Int(refreshProgress * 100))%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: progress, total: 1)
+                .tint(.accentColor)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.accentColor.opacity(0.2), lineWidth: 1)
+        }
+    }
+
     
     init(podcast: Podcast) {
         self._podcast = Bindable(wrappedValue: podcast)
@@ -165,6 +203,11 @@ struct PodcastDetailView: View {
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
+                        }
+
+                        if isLoading {
+                            refreshProgressCard
+                                .padding(.top, 6)
                         }
                         
                         HStack {
@@ -441,6 +484,7 @@ struct PodcastDetailView: View {
             .searchable(text: $searchText)
             .task {
                 applyEpisodeFilters()
+                await refreshEpisodesIfNeeded()
             }
             .task(id: podcast.imageURL) {
                 await loadBackgroundImage()
@@ -652,6 +696,7 @@ struct PodcastDetailView: View {
 
         isLoading = true
         refreshProgress = 0
+        refreshProgressMessage = "Preparing refresh"
         errorMessage = nil
         if let feed = podcast.feed{
             do {
@@ -660,6 +705,7 @@ struct PodcastDetailView: View {
                 _ =  try await actor.updatePodcast(feed, force: true) { update in
                     await MainActor.run {
                         refreshProgress = update.fractionCompleted
+                        refreshProgressMessage = update.message
                     }
                 }
                 podcast.message = nil
@@ -674,8 +720,17 @@ struct PodcastDetailView: View {
             await MainActor.run {
                 isLoading = false
                 refreshProgress = 0
+                refreshProgressMessage = nil
             }
         }
+    }
+
+    private func refreshEpisodesIfNeeded() async {
+        guard hasAttemptedInitialFeedImport == false else { return }
+        guard needsInitialFeedImport else { return }
+
+        hasAttemptedInitialFeedImport = true
+        await refreshEpisodes()
     }
 
     private func toggleSubscriptionStatus() async {
@@ -686,18 +741,20 @@ struct PodcastDetailView: View {
     private func switchToAlternativeFeed(_ alternativeFeed: PodcastAlternativeFeed) async {
         guard isSwitchingAlternativeFeed == false else { return }
 
-        await MainActor.run {
-            isSwitchingAlternativeFeed = true
-            isLoading = true
-            refreshProgress = 0
-            errorMessage = nil
-        }
+            await MainActor.run {
+                isSwitchingAlternativeFeed = true
+                isLoading = true
+                refreshProgress = 0
+                refreshProgressMessage = "Switching feed"
+                errorMessage = nil
+            }
 
         do {
             let actor = PodcastModelActor(modelContainer: modelContext.container)
             try await actor.switchPodcastFeed(podcast.persistentModelID, to: alternativeFeed) { update in
                 await MainActor.run {
                     refreshProgress = update.fractionCompleted
+                    refreshProgressMessage = update.message
                 }
             }
             await MainActor.run {
@@ -714,6 +771,7 @@ struct PodcastDetailView: View {
             isSwitchingAlternativeFeed = false
             isLoading = false
             refreshProgress = 0
+            refreshProgressMessage = nil
         }
     }
 

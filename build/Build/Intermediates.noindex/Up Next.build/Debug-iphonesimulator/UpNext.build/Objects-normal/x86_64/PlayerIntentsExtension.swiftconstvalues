@@ -2428,7 +2428,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 285,
+        "line": 286,
         "valueKind": "InitCall",
         "value": {
           "type": "AppIntents.TypeDisplayRepresentation",
@@ -2454,7 +2454,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 286,
+        "line": 287,
         "valueKind": "Dictionary",
         "value": [
           {
@@ -2504,6 +2504,18 @@
               "valueKind": "RawLiteral",
               "value": "Year"
             }
+          },
+          {
+            "key": {
+              "valueKind": "Enum",
+              "value": {
+                "name": "forever"
+              }
+            },
+            "value": {
+              "valueKind": "RawLiteral",
+              "value": "Forever"
+            }
           }
         ]
       },
@@ -2514,7 +2526,7 @@
         "isStatic": "false",
         "isComputed": "true",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 293,
+        "line": 295,
         "valueKind": "Runtime"
       },
       {
@@ -2548,6 +2560,12 @@
             "value": {
               "name": "year"
             }
+          },
+          {
+            "valueKind": "Enum",
+            "value": {
+              "name": "forever"
+            }
           }
         ]
       },
@@ -2576,6 +2594,10 @@
       {
         "name": "year",
         "rawValue": "year"
+      },
+      {
+        "name": "forever",
+        "rawValue": "forever"
       }
     ]
   },
@@ -2584,7 +2606,7 @@
     "mangledTypeName": "6UpNext26PodcastShareShortcutTimingO",
     "kind": "enum",
     "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-    "line": 307,
+    "line": 311,
     "conformances": [
       "Swift.Equatable",
       "Swift.Hashable",
@@ -2703,7 +2725,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 311,
+        "line": 315,
         "valueKind": "InitCall",
         "value": {
           "type": "AppIntents.TypeDisplayRepresentation",
@@ -2729,7 +2751,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 312,
+        "line": 316,
         "valueKind": "Dictionary",
         "value": [
           {
@@ -2805,7 +2827,7 @@
     "mangledTypeName": "6UpNext31PodcastShareShortcutAspectRatioO",
     "kind": "enum",
     "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-    "line": 318,
+    "line": 322,
     "conformances": [
       "Swift.Equatable",
       "Swift.Hashable",
@@ -2924,7 +2946,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 323,
+        "line": 327,
         "valueKind": "InitCall",
         "value": {
           "type": "AppIntents.TypeDisplayRepresentation",
@@ -2950,7 +2972,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 324,
+        "line": 328,
         "valueKind": "Dictionary",
         "value": [
           {
@@ -2998,7 +3020,7 @@
         "isStatic": "false",
         "isComputed": "true",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 330,
+        "line": 334,
         "valueKind": "Runtime"
       },
       {
@@ -3058,7 +3080,7 @@
     "mangledTypeName": "6UpNext26PodcastShareShortcutDesignO",
     "kind": "enum",
     "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-    "line": 342,
+    "line": 346,
     "conformances": [
       "Swift.Equatable",
       "Swift.Hashable",
@@ -3177,7 +3199,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 352,
+        "line": 358,
         "valueKind": "InitCall",
         "value": {
           "type": "AppIntents.TypeDisplayRepresentation",
@@ -3203,7 +3225,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 353,
+        "line": 359,
         "valueKind": "Dictionary",
         "value": [
           {
@@ -3301,6 +3323,30 @@
               "valueKind": "RawLiteral",
               "value": "Stats Wrapped"
             }
+          },
+          {
+            "key": {
+              "valueKind": "Enum",
+              "value": {
+                "name": "calendar"
+              }
+            },
+            "value": {
+              "valueKind": "RawLiteral",
+              "value": "Calendar"
+            }
+          },
+          {
+            "key": {
+              "valueKind": "Enum",
+              "value": {
+                "name": "yearCalendar"
+              }
+            },
+            "value": {
+              "valueKind": "RawLiteral",
+              "value": "Year Calendar"
+            }
           }
         ]
       },
@@ -3311,7 +3357,7 @@
         "isStatic": "false",
         "isComputed": "true",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 364,
+        "line": 372,
         "valueKind": "Runtime"
       },
       {
@@ -3369,6 +3415,18 @@
             "value": {
               "name": "statistics"
             }
+          },
+          {
+            "valueKind": "Enum",
+            "value": {
+              "name": "calendar"
+            }
+          },
+          {
+            "valueKind": "Enum",
+            "value": {
+              "name": "yearCalendar"
+            }
           }
         ]
       },
@@ -3413,6 +3471,14 @@
       {
         "name": "statistics",
         "rawValue": "statistics"
+      },
+      {
+        "name": "calendar",
+        "rawValue": "calendar"
+      },
+      {
+        "name": "yearCalendar",
+        "rawValue": "yearCalendar"
       }
     ]
   },
@@ -3421,7 +3487,7 @@
     "mangledTypeName": "6UpNext30PodcastShareShortcutBackgroundO",
     "kind": "enum",
     "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-    "line": 386,
+    "line": 398,
     "conformances": [
       "Swift.Equatable",
       "Swift.Hashable",
@@ -3540,7 +3606,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 418,
+        "line": 430,
         "valueKind": "InitCall",
         "value": {
           "type": "AppIntents.TypeDisplayRepresentation",
@@ -3566,7 +3632,7 @@
         "isStatic": "true",
         "isComputed": "false",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 419,
+        "line": 431,
         "valueKind": "Dictionary",
         "value": [
           {
@@ -3938,7 +4004,7 @@
         "isStatic": "false",
         "isComputed": "true",
         "file": "/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift",
-        "line": 452,
+        "line": 464,
         "valueKind": "Runtime"
       },
       {

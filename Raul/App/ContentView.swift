@@ -223,11 +223,10 @@ struct ContentView: View {
     @MainActor
     private func loadInboxCount() async {
         CrashBreadcrumbs.shared.record("load_inbox_count_started")
-        let predicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
-        let descriptor = FetchDescriptor<EpisodeMetaData>(predicate: predicate)
+        let counter = InboxCountLoader(container: modelContext.container)
 
         do {
-            inboxCount = try modelContext.fetch(descriptor).count
+            inboxCount = try await counter.count()
             CrashBreadcrumbs.shared.record("load_inbox_count_success", details: "count=\(inboxCount)")
         } catch {
             BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
@@ -303,6 +302,20 @@ struct ContentView: View {
         return URL(string: rawURL)
     }
         
+}
+
+private actor InboxCountLoader {
+    private let container: ModelContainer
+
+    init(container: ModelContainer) {
+        self.container = container
+    }
+
+    func count() throws -> Int {
+        let context = ModelContext(container)
+        let predicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
+        return try context.fetchCount(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
+    }
 }
 
 private enum PendingSharedEpisodeImportStore {

@@ -1,0 +1,400 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Podcasts/PodcastListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Library",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 143
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Unsubscribed Podcasts",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 105
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Podcasts",
+        "location": {
+          "startingColumn": 87,
+          "startingLine": 105
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcasts kept in the database but excluded from refresh will appear here.",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "No podcasts are stored in the library yet.",
+        "location": {
+          "startingColumn": 154,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search Library",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "All Episodes",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recently Played Episodes",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Downloaded Episodes",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 70
+        }
+      },
+      {
+        "comment": "",
+        "key": "Side loaded",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "All Bookmarks",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlists",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 85
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening History",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 90
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open podcast %@",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 125
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens this podcast details screen",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast scope",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 164
+        }
+      },
+      {
+        "comment": "",
+        "key": "Library scope",
+        "location": {
+          "startingColumn": 72,
+          "startingLine": 164
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast scope",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 162
+        }
+      },
+      {
+        "comment": "",
+        "key": "Filter library by subscribed, not subscribed, or all podcasts",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 163
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast Scope",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 154
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search library",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 173
+        }
+      },
+      {
+        "comment": "",
+        "key": "Library search",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 173
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search library",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "Search podcasts, episodes, chapters, and transcripts",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 172
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh podcasts",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 196
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh library",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 196
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing podcasts",
+        "location": {
+          "startingColumn": 59,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh podcasts",
+        "location": {
+          "startingColumn": 83,
+          "startingLine": 194
+        }
+      },
+      {
+        "comment": "",
+        "key": "Updates all podcast feeds in your library",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 195
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlists",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 244
+        }
+      },
+      {
+        "comment": "",
+        "key": "No playlists yet.",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create playlist",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Adds a new playlist",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 253
+        }
+      },
+      {
+        "comment": "",
+        "key": "Default",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 345
+        }
+      },
+      {
+        "comment": "",
+        "key": "New Playlist",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 371
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 363
+        }
+      },
+      {
+        "comment": "",
+        "key": "Icon",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 367
+        }
+      },
+      {
+        "comment": "",
+        "key": "Name",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 364
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 375
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 381
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playlist icon %@",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 435
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sideloading",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 504
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh sideloading",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 534
+        }
+      },
+      {
+        "comment": "",
+        "key": "Update sideloading",
+        "location": {
+          "startingColumn": 78,
+          "startingLine": 534
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refreshing sideloading folder",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 532
+        }
+      },
+      {
+        "comment": "",
+        "key": "Refresh sideloading folder",
+        "location": {
+          "startingColumn": 86,
+          "startingLine": 532
+        }
+      },
+      {
+        "comment": "",
+        "key": "Fetches reloads your sideloading folder",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 533
+        }
+      },
+      {
+        "comment": "",
+        "key": "Your Sideloading Folder is empty",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 569
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open Settings",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 583
+        }
+      }
+    ]
+  },
+  "version": 1
+}

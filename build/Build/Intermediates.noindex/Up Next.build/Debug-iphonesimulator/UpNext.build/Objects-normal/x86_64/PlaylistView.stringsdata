@@ -95,7 +95,7 @@
         "key": "New Playlist",
         "location": {
           "startingColumn": 30,
-          "startingLine": 324
+          "startingLine": 323
         }
       },
       {
@@ -103,7 +103,7 @@
         "key": "Playlist",
         "location": {
           "startingColumn": 25,
-          "startingLine": 316
+          "startingLine": 315
         }
       },
       {
@@ -111,7 +111,7 @@
         "key": "Icon",
         "location": {
           "startingColumn": 25,
-          "startingLine": 320
+          "startingLine": 319
         }
       },
       {
@@ -119,7 +119,7 @@
         "key": "Name",
         "location": {
           "startingColumn": 31,
-          "startingLine": 317
+          "startingLine": 316
         }
       },
       {
@@ -127,7 +127,7 @@
         "key": "Cancel",
         "location": {
           "startingColumn": 28,
-          "startingLine": 328
+          "startingLine": 327
         }
       },
       {
@@ -135,7 +135,7 @@
         "key": "Create",
         "location": {
           "startingColumn": 28,
-          "startingLine": 334
+          "startingLine": 333
         }
       },
       {
@@ -143,7 +143,7 @@
         "key": "Playlist icon %@",
         "location": {
           "startingColumn": 37,
-          "startingLine": 388
+          "startingLine": 387
         }
       }
     ]

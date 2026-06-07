@@ -1,0 +1,11 @@
+{
+  "source" : "ExtractedAppShortcutsMetadata",
+  "tables" : {
+    "Localizable" : [
+      {
+        "key" : "Show ${playlist}"
+      }
+    ]
+  },
+  "version" : 2
+}

@@ -1,0 +1,104 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/PlayerView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Episode debug metadata",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 54
+        }
+      },
+      {
+        "comment": "",
+        "key": "Switch to audio",
+        "location": {
+          "startingColumn": 109,
+          "startingLine": 76
+        }
+      },
+      {
+        "comment": "",
+        "key": "Switch to video",
+        "location": {
+          "startingColumn": 129,
+          "startingLine": 76
+        }
+      },
+      {
+        "comment": "",
+        "key": "Changes the current episode between the audio enclosure and alternate video stream",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share episode link at current time",
+        "location": {
+          "startingColumn": 77,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens the share sheet with the current playback timestamp",
+        "location": {
+          "startingColumn": 76,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open in Browser",
+        "location": {
+          "startingColumn": 67,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "Switch to Audio",
+        "location": {
+          "startingColumn": 102,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Switch to Video",
+        "location": {
+          "startingColumn": 122,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share",
+        "location": {
+          "startingColumn": 96,
+          "startingLine": 96
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode debug metadata",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 135
+        }
+      },
+      {
+        "comment": "",
+        "key": "Full Size",
+        "location": {
+          "startingColumn": 1,
+          "startingLine": 177
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -16,6 +16,7 @@
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Chapters/Models/AIChapter.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Chapters/Models/Marker.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Chapters/Services/ShownotesChapterExtractor.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Chapters/SkipChapter.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Debug/Views/DebugMetadataView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Models/DownloadItem.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Services/DownloadedFilesManager.swift
@@ -46,6 +47,8 @@
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Onboarding/OnboardingView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Classes/Player.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Services/AudioClipExporter.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Services/AudioPlaybackProcessor.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Services/AudioSilenceGapDetector.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Services/PlayerEngine.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Chapters/ChapterListView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Chapters/ChapterRowView.swift
@@ -54,6 +57,11 @@
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/PlayerProgressSliderView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/SkipNextView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/SleepTimerView.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Statistics/TopPodcastShareBackgrounds.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Statistics/TopPodcastShareGallery.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Statistics/TopPodcastShareModels.swift
+/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Statistics/TopPodcastShareRendering.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/AudioClipExportView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/PlayerControllView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/PlayerEmptyView.swift
@@ -71,6 +79,7 @@
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Podcast/Views/SocialView.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/PodcastYear/PodcastYearShareCoordinator.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Actors/iTunesSearchActor.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Services/PodcastEpisodeShareImporter.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Services/PodcastFeedResolver.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Services/SubscriptionManager.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/ViewModels/SearchViewModel.swift
@@ -106,6 +115,7 @@
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Models/Podcast/PodcastNamespaceOptionalTags.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Models/Podcast/SubscriptionProgress.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/AutoDownloadNetworkCoordinator.swift
+/Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/AutoDownloadPolicyThrottle.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/CleanUpActor.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/EpisodeActor.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Actors/NowPlayingInfoActor.swift
@@ -135,7 +145,6 @@
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Utilities/Debouce.swift
 /Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Views/CircularProgressView.swift
 /Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchComplicationSnapshot.swift
-/Users/holgerkrupp/Developer/PodcastClient/PlayerIntentsExtension/PlayerIntentsExtension.swift
 /Users/holgerkrupp/Developer/PodcastClient/WatchShared/WatchSyncModels.swift
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/DerivedSources/GeneratedAssetSymbols.swift
 /Users/holgerkrupp/Developer/PodcastClient/build/Build/Intermediates.noindex/Up Next.build/Debug-iphonesimulator/UpNext.build/DerivedSources/GeneratedStringSymbols_Localizable.swift

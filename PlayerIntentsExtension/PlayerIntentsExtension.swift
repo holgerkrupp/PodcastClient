@@ -281,13 +281,15 @@ enum PodcastShareShortcutPeriod: String, AppEnum {
     case week
     case month
     case year
+    case forever
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Podcast Share Period")
     static let caseDisplayRepresentations: [PodcastShareShortcutPeriod: DisplayRepresentation] = [
         .day: "Day",
         .week: "Week",
         .month: "Month",
-        .year: "Year"
+        .year: "Year",
+        .forever: "Forever"
     ]
 
     var summaryPeriod: PlaySessionSummaryPeriod {
@@ -300,6 +302,8 @@ enum PodcastShareShortcutPeriod: String, AppEnum {
             return .month
         case .year:
             return .year
+        case .forever:
+            return .forever
         }
     }
 }
@@ -348,6 +352,8 @@ enum PodcastShareShortcutDesign: String, AppEnum {
     case horizontalBars
     case pieChart
     case statistics
+    case calendar
+    case yearCalendar
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Podcast Share Design")
     static let caseDisplayRepresentations: [PodcastShareShortcutDesign: DisplayRepresentation] = [
@@ -358,7 +364,9 @@ enum PodcastShareShortcutDesign: String, AppEnum {
         .coverCloud: "Cover Cloud",
         .horizontalBars: "Playtime Bars",
         .pieChart: "Playtime Pie",
-        .statistics: "Stats Wrapped"
+        .statistics: "Stats Wrapped",
+        .calendar: "Calendar",
+        .yearCalendar: "Year Calendar"
     ]
 
     var shareDesign: TopPodcastShareDesign {
@@ -379,6 +387,10 @@ enum PodcastShareShortcutDesign: String, AppEnum {
             return .pieChart
         case .statistics:
             return .statistics
+        case .calendar:
+            return .calendar
+        case .yearCalendar:
+            return .yearCalendar
         }
     }
 }
@@ -472,6 +484,9 @@ private struct PodcastShareShortcutRenderer {
         let targetDate = targetDate(for: request.period, timing: request.timing)
         let start = periodStart(for: targetDate, period: request.period)
         let end = nextPeriodStart(from: start, period: request.period)
+        guard request.design.supports(period: request.period) else {
+            throw PodcastShareShortcutError.noListeningHistory
+        }
         let rollups = try podcastRollups(in: start..<end, period: request.period, context: context)
         guard rollups.count >= request.design.minimumItemCount else {
             throw PodcastShareShortcutError.noListeningHistory
@@ -479,14 +494,20 @@ private struct PodcastShareShortcutRenderer {
 
         let designRollups = request.design.usesAllItems ? rollups : Array(rollups.prefix(request.design.itemLimit))
         let items = await topPodcastShareItems(from: designRollups)
+        let timelineEntries = await topPodcastShareTimelineEntries(
+            from: try timelineRollups(in: start..<end, context: context)
+        )
         let totalListeningSeconds = rollups.reduce(0) { $0 + $1.totalSeconds }
         let renderSize = TopPodcastShareAspect.renderSize(for: request.aspectRatio.videoSize)
         let background = resolvedBackground(request.background, for: start, period: request.period)
+        let shareDateRangeLabel = request.period == .forever
+            ? historyDateRangeLabel(in: start..<end, context: context)
+            : dateRangeLabel(start: start, end: end)
         let image = renderTopPodcastShareImage(
             items: items,
             design: request.design,
             periodLabel: sharePeriodLabel(for: start, period: request.period),
-            dateRangeLabel: dateRangeLabel(start: start, end: end),
+            dateRangeLabel: shareDateRangeLabel,
             totalListeningSeconds: totalListeningSeconds,
             shareTitle: request.title,
             background: background,
@@ -498,6 +519,10 @@ private struct PodcastShareShortcutRenderer {
                 period: request.period,
                 context: context
             ),
+            period: request.period,
+            periodStart: start,
+            timelineEntries: timelineEntries,
+            usesMonthlyMiniMonthBackgrounds: false,
             durationFormatter: formatDuration
         )
 
@@ -526,7 +551,7 @@ private struct PodcastShareShortcutRenderer {
         let coversByTitle = Dictionary(grouping: podcasts, by: \.title)
             .mapValues { $0.first?.imageURL }
 
-        let summaries = try summaries(in: range, period: period, context: context)
+        let summaries = try bestSummaries(in: range, period: period, context: context)
         let summaryRollups = rollups(
             from: summaries,
             coversByFeed: coversByFeed,
@@ -555,6 +580,9 @@ private struct PodcastShareShortcutRenderer {
 
         if period == .year {
             return .newYear
+        }
+        if period == .forever {
+            return .current
         }
 
         switch calendar.component(.month, from: periodStart) {
@@ -600,12 +628,150 @@ private struct PodcastShareShortcutRenderer {
         }
     }
 
+    private func bestSummaries(
+        in range: Range<Date>,
+        period: PlaySessionSummaryPeriod,
+        context: ModelContext
+    ) throws -> [PlaySessionSummary] {
+        if period != .forever {
+            return try summaries(in: range, period: period, context: context)
+        }
+
+        for fallbackPeriod in [PlaySessionSummaryPeriod.year, .month, .week, .day] {
+            let values = try summaries(in: range, period: fallbackPeriod, context: context)
+            if !values.isEmpty {
+                return values
+            }
+        }
+        return []
+    }
+
     private func listeningStats(in range: Range<Date>, context: ModelContext) throws -> [ListeningStat] {
         let descriptor = FetchDescriptor<ListeningStat>()
         return try context.fetch(descriptor).filter { stat in
             guard let startOfHour = stat.startOfHour else { return false }
             return range.contains(startOfHour)
         }
+    }
+
+    private func timelineRollups(
+        in range: Range<Date>,
+        context: ModelContext
+    ) throws -> [TopPodcastShareTimelineRollup] {
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        let coversByFeed = Dictionary(
+            grouping: podcasts.compactMap { podcast -> (String, URL?)? in
+                guard let feed = podcast.feed?.absoluteString else { return nil }
+                return (feed, podcast.imageURL)
+            },
+            by: \.0
+        )
+        .mapValues { $0.first?.1 }
+        let coversByTitle = Dictionary(grouping: podcasts, by: \.title)
+            .mapValues { $0.first?.imageURL }
+
+        let statRollups: [TopPodcastShareTimelineRollup] = try listeningStats(in: range, context: context).compactMap { stat -> TopPodcastShareTimelineRollup? in
+            guard let date = stat.startOfHour, let totalSeconds = stat.totalSeconds, totalSeconds > 0 else { return nil }
+            let feed = stat.podcastFeed
+            let name = stat.podcastName ?? "Unknown Podcast"
+            return TopPodcastShareTimelineRollup(
+                date: date,
+                podcastName: name,
+                podcastFeed: feed,
+                coverURL: feed.flatMap { coversByFeed[$0.absoluteString] ?? nil } ?? coversByTitle[name] ?? nil,
+                totalSeconds: totalSeconds
+            )
+        }
+
+        let daysWithHourlyStats = Set(statRollups.map { calendar.startOfDay(for: $0.date) })
+        let daySummaryRollups: [TopPodcastShareTimelineRollup] = try summaries(in: range, period: .day, context: context).compactMap { summary -> TopPodcastShareTimelineRollup? in
+            guard
+                let date = summary.periodStart,
+                !daysWithHourlyStats.contains(calendar.startOfDay(for: date)),
+                let totalSeconds = summary.totalSeconds,
+                totalSeconds > 0
+            else {
+                return nil
+            }
+
+            let feed = summary.podcastFeed
+            let name = summary.podcastName ?? "Unknown Podcast"
+            return TopPodcastShareTimelineRollup(
+                date: date,
+                podcastName: name,
+                podcastFeed: feed,
+                coverURL: feed.flatMap { coversByFeed[$0.absoluteString] ?? nil } ?? coversByTitle[name] ?? nil,
+                totalSeconds: totalSeconds
+            )
+        }
+
+        let weekRollups = try fallbackSummaryRollups(
+            summaries: summaries(in: range, period: .week, context: context),
+            period: .week,
+            existingRollups: statRollups + daySummaryRollups,
+            coversByFeed: coversByFeed,
+            coversByTitle: coversByTitle
+        )
+        let monthRollups = try fallbackSummaryRollups(
+            summaries: summaries(in: range, period: .month, context: context),
+            period: .month,
+            existingRollups: statRollups + daySummaryRollups + weekRollups,
+            coversByFeed: coversByFeed,
+            coversByTitle: coversByTitle
+        )
+
+        return (statRollups + daySummaryRollups + weekRollups + monthRollups)
+        .sorted { $0.date < $1.date }
+    }
+
+    private func fallbackSummaryRollups(
+        summaries: [PlaySessionSummary],
+        period: PlaySessionSummaryPeriod,
+        existingRollups: [TopPodcastShareTimelineRollup],
+        coversByFeed: [String: URL?],
+        coversByTitle: [String: URL?]
+    ) throws -> [TopPodcastShareTimelineRollup] {
+        summaries.compactMap { summary -> TopPodcastShareTimelineRollup? in
+            guard
+                let date = summary.periodStart,
+                let totalSeconds = summary.totalSeconds,
+                totalSeconds > 0,
+                !existingRollups.contains(where: { rollup in
+                    rollup.podcastFeed == summary.podcastFeed
+                    && isDate(rollup.date, inPeriodStarting: date, period: period)
+                })
+            else {
+                return nil
+            }
+
+            let feed = summary.podcastFeed
+            let name = summary.podcastName ?? "Unknown Podcast"
+            return TopPodcastShareTimelineRollup(
+                date: date,
+                podcastName: name,
+                podcastFeed: feed,
+                coverURL: feed.flatMap { coversByFeed[$0.absoluteString] ?? nil } ?? coversByTitle[name] ?? nil,
+                totalSeconds: totalSeconds,
+                coveragePeriod: period
+            )
+        }
+    }
+
+    private func isDate(_ date: Date, inPeriodStarting periodStart: Date, period: PlaySessionSummaryPeriod) -> Bool {
+        let end: Date
+        switch period {
+        case .day:
+            end = calendar.date(byAdding: .day, value: 1, to: periodStart) ?? periodStart
+        case .week:
+            end = calendar.date(byAdding: .weekOfYear, value: 1, to: periodStart) ?? periodStart
+        case .month:
+            end = calendar.date(byAdding: .month, value: 1, to: periodStart) ?? periodStart
+        case .year:
+            end = calendar.date(byAdding: .year, value: 1, to: periodStart) ?? periodStart
+        case .forever:
+            end = .distantFuture
+        }
+        return date >= periodStart && date < end
     }
 
     private func rollups(
@@ -677,7 +843,7 @@ private struct PodcastShareShortcutRenderer {
 
         return TopPodcastShareStats(
             title: sharePeriodLabel(for: start, period: period),
-            dateRangeLabel: dateRangeLabel(start: start, end: end),
+            dateRangeLabel: period == .forever ? historyDateRangeLabel(in: start..<end, context: context) : dateRangeLabel(start: start, end: end),
             topPodcastName: topPodcast?.podcastName ?? "No data yet",
             topPodcastListeningTime: topPodcast.map { formatDuration($0.totalSeconds) } ?? "0m",
             totalListeningTime: formatDuration(rollups.reduce(0) { $0 + $1.totalSeconds }),
@@ -707,7 +873,10 @@ private struct PodcastShareShortcutRenderer {
             return "No data yet"
         }
 
-        let symbols = DateFormatter().weekdaySymbols ?? []
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = calendar
+        let symbols = formatter.weekdaySymbols ?? []
         let symbolIndex = busiest.key - 1
         guard symbols.indices.contains(symbolIndex) else { return "No data yet" }
         return symbols[symbolIndex]
@@ -750,6 +919,8 @@ private struct PodcastShareShortcutRenderer {
             return calendar.date(byAdding: .month, value: -1, to: now) ?? now
         case .year:
             return calendar.date(byAdding: .year, value: -1, to: now) ?? now
+        case .forever:
+            return now
         }
     }
 
@@ -763,6 +934,8 @@ private struct PodcastShareShortcutRenderer {
             return calendar.dateInterval(of: .month, for: date)?.start ?? calendar.startOfDay(for: date)
         case .year:
             return calendar.dateInterval(of: .year, for: date)?.start ?? calendar.startOfDay(for: date)
+        case .forever:
+            return .distantPast
         }
     }
 
@@ -776,26 +949,31 @@ private struct PodcastShareShortcutRenderer {
             return calendar.date(byAdding: .month, value: 1, to: date) ?? date
         case .year:
             return calendar.date(byAdding: .year, value: 1, to: date) ?? date
+        case .forever:
+            return .distantFuture
         }
     }
 
     private func sharePeriodLabel(for date: Date, period: PlaySessionSummaryPeriod) -> String {
         switch period {
         case .day:
-            return date.formatted(date: .abbreviated, time: .omitted)
+            return localizedDateString(for: date)
         case .week:
-            let components = calendar.dateComponents([.weekOfYear, .yearForWeekOfYear], from: date)
-            let week = components.weekOfYear ?? 0
-            let year = components.yearForWeekOfYear ?? calendar.component(.year, from: date)
-            return "Week \(week), \(year)"
+            let end = calendar.date(byAdding: .day, value: 6, to: date) ?? date
+            return dateRangeLabel(start: date, end: end)
         case .month:
-            return date.formatted(.dateTime.month(.wide).year())
+            return localizedMonthYearString(for: date)
         case .year:
-            return date.formatted(.dateTime.year())
+            return localizedYearString(for: date)
+        case .forever:
+            return "Forever"
         }
     }
 
     private func dateRangeLabel(start: Date, end: Date) -> String {
+        if start == .distantPast {
+            return "All time"
+        }
         let inclusiveEnd = calendar.date(byAdding: .day, value: -1, to: end) ?? end
         let cappedEnd = min(inclusiveEnd, calendar.startOfDay(for: Date()))
         if calendar.isDate(start, inSameDayAs: cappedEnd) {
@@ -810,12 +988,71 @@ private struct PodcastShareShortcutRenderer {
         return formatter.string(from: start, to: cappedEnd)
     }
 
+    private func historyDateRangeLabel(in range: Range<Date>, context: ModelContext) -> String {
+        var preciseStarts: [Date] = []
+        var preciseEnds: [Date] = []
+        var summaryStarts: [Date] = []
+        var summaryEnds: [Date] = []
+
+        let summaries = (try? context.fetch(FetchDescriptor<PlaySessionSummary>())) ?? []
+        for summary in summaries {
+            guard let start = summary.periodStart, range.contains(start) else { continue }
+            summaryStarts.append(start)
+            if
+                let rawPeriod = summary.periodKind,
+                let period = PlaySessionSummaryPeriod(rawValue: rawPeriod)
+            {
+                summaryEnds.append(calendarEnd(for: start, period: period))
+            } else {
+                summaryEnds.append(start)
+            }
+        }
+
+        let stats = (try? listeningStats(in: range, context: context)) ?? []
+        preciseStarts.append(contentsOf: stats.compactMap(\.startOfHour))
+        preciseEnds.append(contentsOf: stats.compactMap(\.startOfHour))
+
+        let sessions = ((try? context.fetch(FetchDescriptor<PlaySession>())) ?? []).filter { session in
+            guard let start = session.startTime else { return false }
+            return range.contains(start)
+        }
+        preciseStarts.append(contentsOf: sessions.compactMap(\.startTime))
+        preciseEnds.append(contentsOf: sessions.compactMap { $0.endTime ?? $0.startTime })
+
+        guard let start = preciseStarts.min() ?? summaryStarts.min() else {
+            return "All time"
+        }
+        let end = preciseEnds.max() ?? summaryEnds.max() ?? start
+        return dateRangeLabel(start: start, end: min(end, calendar.startOfDay(for: Date())))
+    }
+
+    private func calendarEnd(for start: Date, period: PlaySessionSummaryPeriod) -> Date {
+        let exclusiveEnd = nextPeriodStart(from: start, period: period)
+        return calendar.date(byAdding: .day, value: -1, to: exclusiveEnd) ?? start
+    }
+
     private func localizedDateString(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = .autoupdatingCurrent
         formatter.calendar = calendar
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    private func localizedMonthYearString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = calendar
+        formatter.setLocalizedDateFormatFromTemplate("MMMM y")
+        return formatter.string(from: date)
+    }
+
+    private func localizedYearString(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.calendar = calendar
+        formatter.setLocalizedDateFormatFromTemplate("y")
         return formatter.string(from: date)
     }
 

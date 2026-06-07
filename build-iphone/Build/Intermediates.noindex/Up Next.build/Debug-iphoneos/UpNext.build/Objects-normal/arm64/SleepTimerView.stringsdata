@@ -1,0 +1,16 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/SleepTimerView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Off",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 36
+        }
+      }
+    ]
+  },
+  "version": 1
+}

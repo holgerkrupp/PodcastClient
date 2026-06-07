@@ -17,6 +17,7 @@ struct ImportExportView: View {
     @State private var newPodcasts: [PodcastFeed] = []
     @State private var fileURL: URL?
     @State private var isPreparingExport = false
+    @State private var isImportingOPML = false
     @State private var isSubscribing = false
     @State private var isCheckingImportedFeeds = false
     @State private var showsImportPreview = false
@@ -125,14 +126,16 @@ struct ImportExportView: View {
                     importing = true
                 } label: {
                     actionCard(
-                        title: "Import OPML",
-                        subtitle: "Choose an OPML or XML file and preview what is new.",
-                        icon: "square.and.arrow.down.on.square.fill",
+                        title: isImportingOPML ? "Importing OPML" : "Import OPML",
+                        subtitle: isImportingOPML ? (importProgress?.message ?? "Preparing import preview...") : "Choose an OPML or XML file and preview what is new.",
+                        icon: isImportingOPML ? "hourglass" : "square.and.arrow.down.on.square.fill",
                         tint: .cyan,
-                        trailingIcon: "chevron.right"
+                        trailingIcon: isImportingOPML ? "clock" : "chevron.right"
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(isImportingOPML || isCheckingImportedFeeds || isSubscribing)
+                .opacity(isImportingOPML || isCheckingImportedFeeds || isSubscribing ? 0.6 : 1)
                 .fileImporter(
                     isPresented: $importing,
                     allowedContentTypes: [.opml, .xml]
@@ -142,20 +145,37 @@ struct ImportExportView: View {
                         let modelContainer = context.container
                         let fileURL = file.absoluteURL
                         Task {
+                            await MainActor.run {
+                                isImportingOPML = true
+                                isCheckingImportedFeeds = false
+                                isSubscribing = false
+                                importErrorMessage = nil
+                                importProgress = SubscriptionProgressUpdate(0, "Preparing OPML import")
+                                newPodcasts = []
+                            }
                             let imported = await Task.detached(priority: .utility) {
-                                await SubscriptionManager(modelContainer: modelContainer).read(file: fileURL) ?? []
+                                await SubscriptionManager(modelContainer: modelContainer).read(file: fileURL) { update in
+                                    await MainActor.run {
+                                        importProgress = update
+                                    }
+                                } ?? []
                             }.value
                             await MainActor.run {
-                                importErrorMessage = nil
-                                importProgress = nil
-                                isSubscribing = false
                                 newPodcasts = imported
                                 showsImportPreview = imported.isEmpty == false
+                                importProgress = SubscriptionProgressUpdate(0.82, imported.isEmpty ? "No subscriptions found" : "Checking feed availability")
                             }
                             await validateImportedFeeds(imported)
+                            await MainActor.run {
+                                isImportingOPML = false
+                                importProgress = imported.isEmpty
+                                    ? nil
+                                    : SubscriptionProgressUpdate(1, "Import preview ready")
+                            }
                         }
                     case .failure(let error):
                         importErrorMessage = error.localizedDescription
+                        isImportingOPML = false
                     }
                 }
                 .listRowSeparator(.hidden)
@@ -259,24 +279,11 @@ struct ImportExportView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
 
-                    if isSubscribing || importProgress != nil {
+                    if isImportingOPML || isCheckingImportedFeeds || isSubscribing || importProgress != nil {
                         importProgressCard
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
-                    }
-
-                    if isCheckingImportedFeeds {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                            Text("Checking feed availability")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 14)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
                     }
                 } header: {
                     Text("Import Preview")
@@ -302,6 +309,8 @@ struct ImportExportView: View {
             OPMLImportPreviewView(
                 newPodcasts: $newPodcasts,
                 isCheckingImportedFeeds: isCheckingImportedFeeds,
+                isSubscribing: isSubscribing,
+                importProgress: importProgress,
                 feedPreviewLoader: feedPreviewLoader,
                 onSubscribeAll: subscribePendingPodcasts
             )
@@ -497,20 +506,27 @@ struct ImportExportView: View {
     }
 
     private var importProgressCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let progress = importProgress?.fractionCompleted ?? 0
+        let tint = importProgressTint
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Image(systemName: isSubscribing ? "arrow.down.circle.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(isSubscribing ? Color.green : Color.secondary)
+                if isImportingOPML || isCheckingImportedFeeds || isSubscribing {
+                    ProgressView()
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(tint)
+                }
                 Text(importProgress?.message ?? "Preparing subscription")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("\(Int((importProgress?.fractionCompleted ?? 0) * 100))%")
+                Text("\(Int(progress * 100))%")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
-            ProgressView(value: importProgress?.fractionCompleted ?? 0)
-                .tint(.green)
+            ProgressView(value: progress)
+                .tint(tint)
         }
         .padding(14)
         .background(
@@ -519,8 +535,20 @@ struct ImportExportView: View {
         )
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.green.opacity(0.2), lineWidth: 1)
+                .strokeBorder(tint.opacity(0.2), lineWidth: 1)
         }
+    }
+
+    private var importProgressTint: Color {
+        if isSubscribing {
+            return .green
+        }
+
+        if isImportingOPML || isCheckingImportedFeeds {
+            return .cyan
+        }
+
+        return .secondary
     }
 
     private func prepareExportFileIfNeeded() async {
@@ -562,23 +590,41 @@ struct ImportExportView: View {
 
         await MainActor.run {
             isCheckingImportedFeeds = true
+            importProgress = SubscriptionProgressUpdate(0.84, "Checking 0 of \(feedsToCheck.count) feeds")
+        }
+
+        let maximumConcurrentChecks = 8
+        var iterator = feedsToCheck.makeIterator()
+        var started = 0
+        var completed = 0
+
+        func addNextFeedCheck(to group: inout TaskGroup<(PodcastFeed, URLstatus?)>) {
+            guard started < feedsToCheck.count, let feed = iterator.next(), let url = feed.url else { return }
+
+            started += 1
+            group.addTask {
+                let status = try? await url.status()
+                return (feed, status ?? URLstatus(statusCode: nil, newURL: nil, lastRequest: Date()))
+            }
         }
 
         await withTaskGroup(of: (PodcastFeed, URLstatus?).self) { group in
-            for feed in feedsToCheck {
-                guard let url = feed.url else { continue }
-
-                group.addTask {
-                    let status = try? await url.status()
-                    return (feed, status ?? URLstatus(statusCode: nil, newURL: nil, lastRequest: Date()))
-                }
+            for _ in 0..<min(maximumConcurrentChecks, feedsToCheck.count) {
+                addNextFeedCheck(to: &group)
             }
 
             for await (feed, status) in group {
+                completed += 1
+                let fraction = 0.84 + (Double(completed) / Double(feedsToCheck.count)) * 0.14
                 await MainActor.run {
                     feed.status = status
                     feed.existing = allPodcasts.contains { $0.isSubscribed && feed.matchesExistingPodcast($0) }
+                    importProgress = SubscriptionProgressUpdate(
+                        fraction,
+                        "Checking \(completed) of \(feedsToCheck.count) feeds"
+                    )
                 }
+                addNextFeedCheck(to: &group)
             }
         }
 
@@ -641,6 +687,8 @@ private struct OPMLImportPreviewView: View {
     @Query private var allPodcasts: [Podcast]
     @Binding var newPodcasts: [PodcastFeed]
     let isCheckingImportedFeeds: Bool
+    let isSubscribing: Bool
+    let importProgress: SubscriptionProgressUpdate?
     let feedPreviewLoader: OPMLImportFeedPreviewLoader
     let onSubscribeAll: () -> Void
 
@@ -681,16 +729,10 @@ private struct OPMLImportPreviewView: View {
 
             if isCheckingImportedFeeds {
                 Section {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Checking feed availability")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
+                    importProgressCard
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0, leading: 14, bottom: 8, trailing: 14))
                 }
             }
 
@@ -715,17 +757,24 @@ private struct OPMLImportPreviewView: View {
 
             if !subscribablePendingPodcasts.isEmpty {
                 Section {
-                    Button {
-                        onSubscribeAll()
-                    } label: {
-                        subscribeAllCard
+                    if isSubscribing {
+                        subscriptionProgressCard
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
+                    } else {
+                        Button {
+                            onSubscribeAll()
+                        } label: {
+                            subscribeAllCard
+                        }
+                        .disabled(isCheckingImportedFeeds)
+                        .buttonStyle(.plain)
+                        .opacity(isCheckingImportedFeeds ? 0.55 : 1)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
                     }
-                    .disabled(isCheckingImportedFeeds)
-                    .buttonStyle(.plain)
-                    .opacity(isCheckingImportedFeeds ? 0.55 : 1)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
 
                     ForEach(subscribablePendingPodcasts, id: \.url) { newPodcastFeed in
                         SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
@@ -804,6 +853,68 @@ private struct OPMLImportPreviewView: View {
         }
     }
 
+    private var subscriptionProgressCard: some View {
+        let progress = importProgress?.fractionCompleted ?? 0
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text(importProgress?.message ?? "Subscribing")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(Int(progress * 100))%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: progress)
+                .tint(.green)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.green.opacity(0.22), Color.green.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.24), lineWidth: 1)
+        }
+    }
+
+    private var importProgressCard: some View {
+        let progress = importProgress?.fractionCompleted ?? 0
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text(importProgress?.message ?? "Checking feed availability")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(Int(progress * 100))%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ProgressView(value: progress)
+                .tint(.cyan)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.cyan.opacity(0.2), lineWidth: 1)
+        }
+    }
+
     private func previewStat(title: String, count: Int, tint: Color) -> some View {
         HStack(spacing: 6) {
             Circle()
@@ -829,6 +940,7 @@ private struct OPMLImportPreviewView: View {
     }
 
     private func loadPreviewIfNeeded(for feed: PodcastFeed) async {
+        guard isSubscribing == false else { return }
         guard feed.existing == false, feed.status?.isDeadFeedResponse != true else { return }
         guard feed.needsRemotePreview, let url = feed.url else { return }
         guard let resolvedFeed = await feedPreviewLoader.preview(for: url) else { return }

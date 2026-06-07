@@ -1,0 +1,117 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "basiclogger",
+          "kind" : "fileSystem",
+          "location" : "/Users/holgerkrupp/Developer/BasicLogger",
+          "name" : "BasicLogger"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/holgerkrupp/Developer/BasicLogger"
+        },
+        "subpath" : "basiclogger"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "deviceinfo",
+          "kind" : "fileSystem",
+          "location" : "/Users/holgerkrupp/Developer/DeviceInfo",
+          "name" : "DeviceInfo"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/holgerkrupp/Developer/DeviceInfo"
+        },
+        "subpath" : "deviceinfo"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "fyyd-swift",
+          "kind" : "fileSystem",
+          "location" : "/Users/holgerkrupp/Developer/fyyd-swift",
+          "name" : "fyyd-swift"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/holgerkrupp/Developer/fyyd-swift"
+        },
+        "subpath" : "fyyd-swift"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "gloweffects",
+          "kind" : "fileSystem",
+          "location" : "/Users/holgerkrupp/Developer/GlowEffects",
+          "name" : "GlowEffects"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/holgerkrupp/Developer/GlowEffects"
+        },
+        "subpath" : "gloweffects"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "mp3chapterreader",
+          "kind" : "fileSystem",
+          "location" : "/Users/holgerkrupp/Developer/mp3ChapterReader",
+          "name" : "mp3ChapterReader"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Users/holgerkrupp/Developer/mp3ChapterReader"
+        },
+        "subpath" : "mp3chapterreader"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "richtext",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/nuPlay/RichText/",
+          "name" : "RichText"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "3d645782db67d09c6e7f16481c0c0e6b9787e45b",
+            "version" : "3.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "RichText"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swipeactions",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/c-villain/SwipeActions",
+          "name" : "SwipeActions"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "1fe7b4e2cea808b50f9dbdb64796153bd1f9edfe",
+            "version" : "0.4.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "SwipeActions"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

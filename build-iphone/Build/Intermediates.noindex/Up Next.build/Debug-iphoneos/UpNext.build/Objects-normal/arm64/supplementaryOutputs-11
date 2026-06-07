@@ -1,0 +1,23 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Views/PodcastSearchView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PodcastSearchView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PodcastSearchView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PodcastSearchView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PodcastSearchView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PodcastSearchView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Settings/Views/CreatedByView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CreatedByView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CreatedByView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CreatedByView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CreatedByView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/CreatedByView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Settings/Views/StorageManagementView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/StorageManagementView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/StorageManagementView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/StorageManagementView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/StorageManagementView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/StorageManagementView.swiftdeps"
+  }
+}

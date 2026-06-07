@@ -1,0 +1,4 @@
+module DeviceInfo {
+header "DeviceInfo-Swift.h"
+export *
+}

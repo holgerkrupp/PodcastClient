@@ -1,0 +1,24 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Shared/Services/NotificationManager.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Open Notification Settings",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 215
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enable Notifications",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 212
+        }
+      }
+    ]
+  },
+  "version": 1
+}

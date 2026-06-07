@@ -1,0 +1,312 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/StatisticsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Listening History",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 530
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening Trend",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 344
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening Habits",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 373
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ Sessions",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 451
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recent %@",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 494
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Podcast",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 213
+        }
+      },
+      {
+        "comment": "",
+        "key": "All Podcasts",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 214
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move to previous %@",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 228
+        }
+      },
+      {
+        "comment": "",
+        "key": "Move to next %@",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 249
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 225
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 247
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Top Podcasts",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 281
+        }
+      },
+      {
+        "comment": "",
+        "key": "Y-axis: listening time per %@.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 345
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 351
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 352
+        }
+      },
+      {
+        "comment": "",
+        "key": "When you usually listen",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 375
+        }
+      },
+      {
+        "comment": "",
+        "key": "Weekday totals and an hour-by-weekday heat map based on your listening history.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 377
+        }
+      },
+      {
+        "comment": "",
+        "key": "Weekday",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 383
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 384
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share Top Podcasts",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 420
+        }
+      },
+      {
+        "comment": "",
+        "key": "Top Podcasts",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 444
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading listening data for this %@.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 456
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start listening to see your summarized playback history here.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 462
+        }
+      },
+      {
+        "comment": "",
+        "key": "No listening sessions in this %@.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 468
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading History",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 454
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Listening History",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 460
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Sessions",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 466
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show Recent Play Sessions",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 484
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show All Play Sessions",
+        "location": {
+          "startingColumn": 92,
+          "startingLine": 484
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1122
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hour By Weekday",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1165
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 1174
+        }
+      },
+      {
+        "comment": "",
+        "key": "Less",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1204
+        }
+      },
+      {
+        "comment": "",
+        "key": "More",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1214
+        }
+      },
+      {
+        "comment": "",
+        "key": "From %@ to %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1703
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ended cleanly",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 1697
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recovered / interrupted",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 1697
+        }
+      }
+    ]
+  },
+  "version": 1
+}

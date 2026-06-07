@@ -1,0 +1,520 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/PlayerControllView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 172
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "All settings",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "AirPlay",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "Choose an audio output device",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens all settings",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 59
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 50
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open captions",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open transcript",
+        "location": {
+          "startingColumn": 80,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open full transcript",
+        "location": {
+          "startingColumn": 45,
+          "startingLine": 108
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens the transcript list and jumps to the current playback line",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 109
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hide captions",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hide transcript",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show captions",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 152
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show transcript",
+        "location": {
+          "startingColumn": 88,
+          "startingLine": 152
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open captions",
+        "location": {
+          "startingColumn": 61,
+          "startingLine": 164
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open transcript",
+        "location": {
+          "startingColumn": 84,
+          "startingLine": 164
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hide inline transcript",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "Removes the transcript panel below the artwork",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 141
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show inline transcript",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 150
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows the transcript panel below the artwork",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 151
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open full transcript",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 162
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens the full transcript in a sheet",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 163
+        }
+      },
+      {
+        "comment": "",
+        "key": "Jump to max play position",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 206
+        }
+      },
+      {
+        "comment": "",
+        "key": "Jumps to the furthest point you have listened to in this episode",
+        "location": {
+          "startingColumn": 48,
+          "startingLine": 207
+        }
+      },
+      {
+        "comment": "",
+        "key": "max play position",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 193
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback speed",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Speed",
+        "location": {
+          "startingColumn": 77,
+          "startingLine": 234
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sleep timer",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Timer",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback speed",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 231
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens playback speed controls",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 233
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sleep timer",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 249
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens sleep timer controls",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 251
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback Speed",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 297
+        }
+      },
+      {
+        "comment": "",
+        "key": "Sleep Timer",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 315
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop after this episode",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 322
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip back",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 417
+        }
+      },
+      {
+        "comment": "",
+        "key": "Back %lld seconds",
+        "location": {
+          "startingColumn": 68,
+          "startingLine": 417
+        }
+      },
+      {
+        "comment": "",
+        "key": "Play",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 437
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 437
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback",
+        "location": {
+          "startingColumn": 78,
+          "startingLine": 437
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip forward",
+        "location": {
+          "startingColumn": 49,
+          "startingLine": 455
+        }
+      },
+      {
+        "comment": "",
+        "key": "Forward %lld seconds",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 455
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip back %lld seconds",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 415
+        }
+      },
+      {
+        "comment": "",
+        "key": "Moves playback backward by %lld seconds",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 416
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pause playback",
+        "location": {
+          "startingColumn": 56,
+          "startingLine": 435
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start playback",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 435
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pauses the current episode",
+        "location": {
+          "startingColumn": 55,
+          "startingLine": 436
+        }
+      },
+      {
+        "comment": "",
+        "key": "Starts playing the current episode",
+        "location": {
+          "startingColumn": 86,
+          "startingLine": 436
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip forward %lld seconds",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 453
+        }
+      },
+      {
+        "comment": "",
+        "key": "Moves playback forward by %lld seconds",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 454
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip Back",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 403
+        }
+      },
+      {
+        "comment": "",
+        "key": "Skip Forward",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 441
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bookmark",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 511
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add bookmark",
+        "location": {
+          "startingColumn": 71,
+          "startingLine": 511
+        }
+      },
+      {
+        "comment": "",
+        "key": "Share audio clip",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 474
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create audio clip",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 475
+        }
+      },
+      {
+        "comment": "",
+        "key": "Opens clip export for the current episode",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 476
+        }
+      },
+      {
+        "comment": "",
+        "key": "Add bookmark",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 509
+        }
+      },
+      {
+        "comment": "",
+        "key": "Saves the current playback position as a bookmark",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 510
+        }
+      },
+      {
+        "comment": "",
+        "key": "Create audio clip",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 462
+        }
+      },
+      {
+        "comment": "",
+        "key": "Bookmark",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 498
+        }
+      }
+    ]
+  },
+  "version": 1
+}

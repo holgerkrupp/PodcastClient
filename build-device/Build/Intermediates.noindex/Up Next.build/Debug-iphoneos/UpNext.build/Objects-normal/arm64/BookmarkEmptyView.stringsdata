@@ -1,0 +1,24 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Bookmarks/BookmarkEmptyView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "No Bookmarks saved for this podcast.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 13
+        }
+      },
+      {
+        "comment": "",
+        "key": "You have not saved a bookmark yet. Tap the bookmark icon during playback to add a bookmark. Bookmarking allows you to listen to a segment of an episode later on. It also works in CarPlay or by saying 'Bookmark this in Up Next'.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 16
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -27,12 +27,45 @@ struct PodcastFeedDocument: Sendable {
     let sourceURL: URL
 }
 
+struct KnownPodcastEpisodeIdentifiers: Sendable {
+    var guids: Set<String> = []
+    var urls: Set<String> = []
+
+    var isEmpty: Bool {
+        guids.isEmpty && urls.isEmpty
+    }
+
+    func contains(episodeData: [String: Any]) -> Bool {
+        let guid = episodeData["guid"] as? String
+            ?? episodeData["podcast:guid"] as? String
+
+        if let guid, guid.isEmpty == false, guids.contains(guid) {
+            return true
+        }
+
+        if let enclosureURL = EpisodeMedia.playableEnclosure(from: episodeData["enclosure"] as? [[String: Any]])?["url"] as? String,
+           enclosureURL.isEmpty == false,
+           urls.contains(enclosureURL) {
+            return true
+        }
+
+        if let link = episodeData["link"] as? String,
+           link.isEmpty == false,
+           urls.contains(link) {
+            return true
+        }
+
+        return false
+    }
+}
+
 
 
 class PodcastParser:NSObject, XMLParserDelegate{
     
     var episodeDeepLinks: [String] = []
     var maximumEpisodeCount: Int?
+    var knownEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
     private(set) var parseError: Error?
 
     var episodeDict = [String: Any]()
@@ -64,6 +97,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var episodeSocialArray = [[String: Any]]()
     private var currentFundingURL: String = ""
     private var didHitEpisodeLimit = false
+    private var didStopAtKnownEpisode = false
 
     
     var podcastPeopleArray = [[String: Any]]()
@@ -166,6 +200,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         currentPerson.removeAll()
         currentPersonName = ""
         didHitEpisodeLimit = false
+        didStopAtKnownEpisode = false
         parseError = nil
 
         podcastOptionalTags = PodcastNamespaceOptionalTags()
@@ -400,6 +435,18 @@ class PodcastParser:NSObject, XMLParserDelegate{
                         episodeOptionalTags = PodcastNamespaceOptionalTags()
                     }
                     episodeDeepLinks.removeAll()
+                    if knownEpisodeIdentifiers.isEmpty == false,
+                       knownEpisodeIdentifiers.contains(episodeData: episodeDict) {
+                        didStopAtKnownEpisode = true
+                        enclosureArray.removeAll()
+                        externalFilesArray.removeAll()
+                        if currentElements.count > 0 {
+                            currentElements.removeLast()
+                        }
+                        parser.abortParsing()
+                        return
+                    }
+
                     episodesArray.append(episodeDict) // add the episode dictionary to the Podcast Dictionary
                     enclosureArray.removeAll()
                     externalFilesArray.removeAll()
@@ -549,21 +596,36 @@ extension PodcastParser {
         return PodcastFeedDocument(data: data, sourceURL: response.url ?? url)
     }
 
-    static func fetchPage(from url: URL, maximumEpisodes: Int? = nil) async throws -> PodcastFeedPage {
+    static func fetchPage(
+        from url: URL,
+        maximumEpisodes: Int? = nil,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
+    ) async throws -> PodcastFeedPage {
         let document = try await downloadFeed(from: url)
-        return try await parsePage(from: document, maximumEpisodes: maximumEpisodes)
+        return try await parsePage(
+            from: document,
+            maximumEpisodes: maximumEpisodes,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers
+        )
     }
 
-    static func parsePage(from document: PodcastFeedDocument, maximumEpisodes: Int? = nil) async throws -> PodcastFeedPage {
+    static func parsePage(
+        from document: PodcastFeedDocument,
+        maximumEpisodes: Int? = nil,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
+    ) async throws -> PodcastFeedPage {
         try await Task.detached(priority: .utility) {
             let parser = PodcastParser()
             parser.maximumEpisodeCount = maximumEpisodes
+            parser.knownEpisodeIdentifiers = knownEpisodeIdentifiers
 
             let xmlParser = XMLParser(data: document.data)
             xmlParser.delegate = parser
 
             let parsedSuccessfully = xmlParser.parse()
-            if parsedSuccessfully == false, parser.didHitEpisodeLimit == false {
+            if parsedSuccessfully == false,
+               parser.didHitEpisodeLimit == false,
+               parser.didStopAtKnownEpisode == false {
                 let error = parser.parseError ?? xmlParser.parserError
                 let nsError = error as NSError?
                 if nsError?.domain == XMLParser.errorDomain,
@@ -621,7 +683,8 @@ extension PodcastParser {
                 feed: podcastFeed,
                 episodes: episodes,
                 nextPageURL: nextPageURL,
-                isPartial: parser.didHitEpisodeLimit
+                isPartial: parser.didHitEpisodeLimit || parser.didStopAtKnownEpisode,
+                didStopAtKnownEpisode: parser.didStopAtKnownEpisode
             )
         }.value
     }
@@ -629,14 +692,20 @@ extension PodcastParser {
     /// Fetches and aggregates all podcast data and episodes from all paged feed documents, following RFC 5005.
     /// - Parameter url: The URL of the first (or any) feed page.
     /// - Returns: The merged podcast dictionary with all episodes.
-    static func fetchAllPages(from url: URL) async throws -> [String: Any] {
+    static func fetchAllPages(
+        from url: URL,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
+    ) async throws -> [String: Any] {
         print("fetching all pages from: \(url)")
         var nextURL: URL? = url
         var allEpisodes: [Any] = []
         var podcastHeader: [String: Any] = [:]
         var seenFirstHeader = false
         while let currentURL = nextURL {
-            let page = try await fetchPage(from: currentURL)
+            let page = try await fetchPage(
+                from: currentURL,
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers
+            )
             // On the first page, get header
             if !seenFirstHeader {
                 podcastHeader = page.parsedFeed
@@ -645,7 +714,9 @@ extension PodcastParser {
             // Always append episodes
             allEpisodes.append(contentsOf: page.episodes.map(\.rawEpisodeData))
             // Advance to next page if present
-            if let next = page.nextPageURL {
+            if page.didStopAtKnownEpisode {
+                nextURL = nil
+            } else if let next = page.nextPageURL {
                 nextURL = next
             } else {
                 nextURL = nil

@@ -1,0 +1,30 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Onboarding/OnboardingView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/OnboardingView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/OnboardingView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/OnboardingView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/OnboardingView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/OnboardingView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Chapters/PlayerChapterView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerChapterView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerChapterView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerChapterView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerChapterView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerChapterView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/PlayerProgressSliderView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerProgressSliderView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerProgressSliderView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerProgressSliderView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerProgressSliderView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/PlayerProgressSliderView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Controls/SkipNextView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SkipNextView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SkipNextView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SkipNextView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SkipNextView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-iphone/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/SkipNextView.swiftdeps"
+  }
+}

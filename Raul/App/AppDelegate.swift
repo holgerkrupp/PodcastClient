@@ -7,6 +7,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     // This is where the system gives us a completion handler
     // when background URLSession events are delivered
     var backgroundSessionCompletionHandler: (() -> Void)?
+    private var playbackStateFlushTask: Task<Void, Never>?
+    private var playbackStateBackgroundTaskID = UIBackgroundTaskIdentifier.invalid
 
     func applicationWillResignActive(_ application: UIApplication) {
         flushPlaybackState(reason: "will_resign_active")
@@ -17,7 +19,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        flushPlaybackState(reason: "will_terminate")
+        CrashBreadcrumbs.shared.record("player_playback_state_cache_requested", details: "will_terminate")
+        guard ModelContainerManager.shared.preparedContainer != nil else { return }
+        Player.shared.cachePlaybackStateForRecovery()
     }
 
     func application(_ application: UIApplication,
@@ -51,23 +55,27 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private func flushPlaybackState(reason: String) {
         CrashBreadcrumbs.shared.record("player_playback_state_flush_requested", details: reason)
 
+        guard ModelContainerManager.shared.preparedContainer != nil else { return }
         guard Player.shared.currentEpisodeURL != nil else { return }
+        Player.shared.cachePlaybackStateForRecovery()
+        guard playbackStateFlushTask == nil else { return }
 
-        var backgroundTaskID = UIBackgroundTaskIdentifier.invalid
-        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SavePlaybackState") {
-            if backgroundTaskID != .invalid {
-                UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                backgroundTaskID = .invalid
-            }
+        playbackStateBackgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "SavePlaybackState") { [weak self] in
+            self?.playbackStateFlushTask?.cancel()
+            self?.finishPlaybackStateFlush()
         }
 
-        Task {
+        playbackStateFlushTask = Task { [weak self] in
             await Player.shared.captureCurrentPlaybackStateFromEngine(force: true)
-            if backgroundTaskID != .invalid {
-                UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                backgroundTaskID = .invalid
-            }
+            self?.finishPlaybackStateFlush()
         }
+    }
+
+    private func finishPlaybackStateFlush() {
+        playbackStateFlushTask = nil
+        guard playbackStateBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(playbackStateBackgroundTaskID)
+        playbackStateBackgroundTaskID = .invalid
     }
 
     static func scheduleAutomaticTranscriptionProcessingIfNeeded() async {
@@ -107,6 +115,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private func handleAutomaticTranscriptionProcessing(task: BGProcessingTask) {
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_started")
         let processingTask = Task(priority: .utility) {
+            await ModelContainerManager.shared.prepareContainer()
+            guard ModelContainerManager.shared.preparedContainer != nil else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
             await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
             guard Task.isCancelled == false else {
                 task.setTaskCompleted(success: false)

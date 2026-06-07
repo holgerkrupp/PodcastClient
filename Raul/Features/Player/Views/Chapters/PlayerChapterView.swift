@@ -66,7 +66,7 @@ struct PlayerChapterView: View {
                                 
                             } label: {
                                 VStack{
-                                    Text(player.currentChapter?.title ?? "unknown current Chapter")
+                                    Text(player.currentChapter?.displayTitle ?? "unknown current Chapter")
                                         .foregroundStyle(Color.primary)
                                         .minimumScaleFactor(0.5)
                                     if let remaining = player.currentChapter?.remainingTime {

@@ -19,6 +19,10 @@ struct ChapterRowView: View {
         isCurrentChapter ?? (player.currentChapter == chapter)
     }
 
+    private var title: String {
+        chapter.displayTitle
+    }
+
     var body: some View {
 
             HStack {
@@ -31,7 +35,7 @@ struct ChapterRowView: View {
                 }
                 
                 VStack(alignment: .leading) {
-                    Text(chapter.title)
+                    Text(title)
                         .font(.title3)
 
                     if differentiateWithoutColor {
@@ -96,8 +100,8 @@ struct ChapterRowView: View {
             }
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Double tap to jump playback to this \(markerLabel)")
-            .accessibilityInputLabels([Text("Play \(markerLabel) \(chapter.title)"), Text("Jump to \(markerLabel) \(chapter.title)")])
-            .accessibilityLabel("\(markerLabel.capitalized) \(chapter.title)")
+            .accessibilityInputLabels([Text("Play \(markerLabel) \(title)"), Text("Jump to \(markerLabel) \(title)")])
+            .accessibilityLabel("\(markerLabel.capitalized) \(title)")
             .accessibilityValue(showsPlayToggle ? (chapter.shouldPlay ? "Enabled" : "Skipped") : "")
             .accessibilityAction {
                 Task {

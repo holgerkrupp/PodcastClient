@@ -1,0 +1,48 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Search/Views/PodcastCategoryView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "No podcasts found",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading categories...",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading podcasts...",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "No podcasts found",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading podcasts...",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 87
+        }
+      }
+    ]
+  },
+  "version": 1
+}

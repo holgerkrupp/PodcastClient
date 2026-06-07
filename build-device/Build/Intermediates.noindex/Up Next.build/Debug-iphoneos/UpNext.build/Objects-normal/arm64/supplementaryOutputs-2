@@ -1,0 +1,30 @@
+{
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Views/DownloadControllView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadControllView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadControllView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadControllView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadControllView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadControllView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Downloads/Views/DownloadedEpisodesView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadedEpisodesView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadedEpisodesView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadedEpisodesView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadedEpisodesView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/DownloadedEpisodesView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Bookmarks/BookmarkEmptyView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/BookmarkEmptyView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/BookmarkEmptyView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/BookmarkEmptyView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/BookmarkEmptyView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/BookmarkEmptyView.swiftdeps"
+  },
+  "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Library/Views/Episodes/AllEpisodesListView.swift" : {
+    "const-values" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AllEpisodesListView.swiftconstvalues",
+    "dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AllEpisodesListView.d",
+    "diagnostics" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AllEpisodesListView.dia",
+    "object" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AllEpisodesListView.o",
+    "swift-dependencies" : "/Users/holgerkrupp/Developer/PodcastClient/build-device/Build/Intermediates.noindex/Up Next.build/Debug-iphoneos/UpNext.build/Objects-normal/arm64/AllEpisodesListView.swiftdeps"
+  }
+}

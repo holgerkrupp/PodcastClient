@@ -7,7 +7,7 @@
         "key": "More episodes load as you scroll.",
         "location": {
           "startingColumn": 30,
-          "startingLine": 247
+          "startingLine": 248
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Episodes",
         "location": {
           "startingColumn": 22,
-          "startingLine": 256
+          "startingLine": 257
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to.",
         "location": {
           "startingColumn": 18,
-          "startingLine": 451
+          "startingLine": 452
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Last updated: %@",
         "location": {
           "startingColumn": 26,
-          "startingLine": 326
+          "startingLine": 327
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "Last refresh: %@",
         "location": {
           "startingColumn": 26,
-          "startingLine": 332
+          "startingLine": 333
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "Open in Browser",
         "location": {
           "startingColumn": 27,
-          "startingLine": 410
+          "startingLine": 411
         }
       },
       {
@@ -71,7 +71,7 @@
         "key": "Subscribe to Alternative Feed",
         "location": {
           "startingColumn": 27,
-          "startingLine": 428
+          "startingLine": 429
         }
       },
       {
@@ -79,7 +79,7 @@
         "key": "Subscribed",
         "location": {
           "startingColumn": 27,
-          "startingLine": 440
+          "startingLine": 441
         }
       },
       {
@@ -87,23 +87,55 @@
         "key": "Subscribe",
         "location": {
           "startingColumn": 27,
-          "startingLine": 445
+          "startingLine": 446
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode type: %@",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 525
+        }
+      },
+      {
+        "comment": "",
+        "key": "Not downloaded",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 555
+        }
+      },
+      {
+        "comment": "",
+        "key": "Has content",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 559
+        }
+      },
+      {
+        "comment": "",
+        "key": "Has links",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 564
         }
       },
       {
         "comment": "",
         "key": "Add to Up Next",
         "location": {
-          "startingColumn": 53,
-          "startingLine": 554
+          "startingColumn": 35,
+          "startingLine": 579
         }
       },
       {
         "comment": "",
         "key": "Add to End",
         "location": {
-          "startingColumn": 53,
-          "startingLine": 569
+          "startingColumn": 35,
+          "startingLine": 594
         }
       }
     ]

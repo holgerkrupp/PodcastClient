@@ -1,0 +1,48 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Chapters/ChapterListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Marker type",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 144
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter list tab",
+        "location": {
+          "startingColumn": 41,
+          "startingLine": 153
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapters",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 133
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter source",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "Chapter source",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 215
+        }
+      }
+    ]
+  },
+  "version": 1
+}

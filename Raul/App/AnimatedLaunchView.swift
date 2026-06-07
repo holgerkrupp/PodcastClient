@@ -1,13 +1,39 @@
 import SwiftUI
+import UIKit
+
+struct ModelContainerLaunchView: View {
+    let errorMessage: String?
+    let retry: () -> Void
+
+    var body: some View {
+        ZStack {
+            AnimatedLaunchView(isFinishing: false)
+
+            if let errorMessage {
+                VStack(spacing: 12) {
+                    Text("Up Next could not open its library.")
+                        .font(.headline)
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Button("Try Again", action: retry)
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding()
+            }
+        }
+    }
+}
 
 struct AppLaunchContainerView<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let content: Content
 
-    @State private var didStartSequence = false
     @State private var isLaunchVisible = true
-    @State private var isLaunchFinishing = false
 
     init(@ViewBuilder content: () -> Content) {
         self.content = content()
@@ -16,41 +42,167 @@ struct AppLaunchContainerView<Content: View>: View {
     var body: some View {
         ZStack {
             content
-                .allowsHitTesting(!isLaunchVisible)
 
             if isLaunchVisible {
-                AnimatedLaunchView(isFinishing: isLaunchFinishing)
+                CompositorLaunchView(reduceMotion: reduceMotion) {
+                    isLaunchVisible = false
+                }
                     .transition(.opacity)
                     .zIndex(1)
+                    .allowsHitTesting(false)
             }
-        }
-        .task {
-            guard !didStartSequence else { return }
-            didStartSequence = true
-            await runLaunchSequence()
         }
     }
+}
 
-    @MainActor
-    private func runLaunchSequence() async {
+private struct CompositorLaunchView: UIViewRepresentable {
+    let reduceMotion: Bool
+    let completion: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(completion: completion)
+    }
+
+    func makeUIView(context: Context) -> LaunchCurtainUIView {
+        let view = LaunchCurtainUIView(
+            colors: AnimatedLaunchView.activeStripeColors.map(UIColor.init),
+            reduceMotion: reduceMotion
+        )
+        view.animationDidComplete = context.coordinator.complete
+        return view
+    }
+
+    func updateUIView(_ uiView: LaunchCurtainUIView, context: Context) {}
+
+    final class Coordinator {
+        private var didComplete = false
+        private let completion: () -> Void
+
+        init(completion: @escaping () -> Void) {
+            self.completion = completion
+        }
+
+        func complete() {
+            guard !didComplete else { return }
+            didComplete = true
+            completion()
+        }
+    }
+}
+
+private final class LaunchCurtainUIView: UIView, CAAnimationDelegate {
+    var animationDidComplete: (() -> Void)?
+
+    private let colors: [UIColor]
+    private let reduceMotion: Bool
+    private var bandLayers: [CALayer] = []
+    private let markLayer = CALayer()
+    private var didStart = false
+
+    init(colors: [UIColor], reduceMotion: Bool) {
+        self.colors = colors
+        self.reduceMotion = reduceMotion
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        layer.masksToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard !didStart, bounds.width > 0, bounds.height > 0 else { return }
+        didStart = true
+        buildLayers()
+        startAnimation()
+    }
+
+    private func buildLayers() {
+        let bandHeight = bounds.height / CGFloat(colors.count)
+
+        for (index, color) in colors.enumerated() {
+            let band = CALayer()
+            let minY = floor(CGFloat(index) * bandHeight)
+            let maxY = index == colors.count - 1
+                ? bounds.height
+                : floor(CGFloat(index + 1) * bandHeight)
+            band.frame = CGRect(x: 0, y: minY, width: bounds.width, height: maxY - minY)
+            band.backgroundColor = color.cgColor
+            layer.addSublayer(band)
+            bandLayers.append(band)
+        }
+
+        guard let image = UIImage(named: "LaunchMark") else { return }
+        let markWidth = min(bounds.width * 0.28, 140)
+        let markHeight = markWidth * image.size.height / image.size.width
+        markLayer.contents = image.cgImage
+        markLayer.contentsGravity = .resizeAspect
+        markLayer.contentsScale = image.scale
+        markLayer.frame = CGRect(
+            x: bounds.midX - markWidth / 2,
+            y: bounds.midY - markHeight / 2,
+            width: markWidth,
+            height: markHeight
+        )
+        layer.addSublayer(markLayer)
+    }
+
+    private func startAnimation() {
+        let now = layer.convertTime(CACurrentMediaTime(), from: nil)
+
         if reduceMotion {
-            try? await Task.sleep(for: .milliseconds(220))
-            withAnimation(.easeOut(duration: 0.18)) {
-                isLaunchVisible = false
-            }
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            fade.duration = 0.16
+            fade.beginTime = now
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            fade.delegate = self
+            layer.opacity = 0
+            layer.add(fade, forKey: "launchFade")
             return
         }
 
-        try? await Task.sleep(for: .milliseconds(360))
+        let duration: CFTimeInterval = 0.9
+        let stagger: CFTimeInterval = 0.055
 
-        withAnimation(.easeInOut(duration: 0.95)) {
-            isLaunchFinishing = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (index, band) in bandLayers.enumerated() {
+            let travel = -bounds.height - CGFloat(index) * 18
+            band.transform = CATransform3DMakeTranslation(0, travel, 0)
+
+            let animation = CABasicAnimation(keyPath: "transform.translation.y")
+            animation.fromValue = 0
+            animation.toValue = travel
+            animation.duration = duration
+            animation.beginTime = now + Double(index) * stagger
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            if index == bandLayers.count - 1 {
+                animation.delegate = self
+            }
+            band.add(animation, forKey: "launchCurtain")
         }
 
-        try? await Task.sleep(for: .milliseconds(980))
+        markLayer.opacity = 0
+        markLayer.transform = CATransform3DMakeScale(0.96, 0.96, 1)
+        CATransaction.commit()
 
-        withAnimation(.easeOut(duration: 0.18)) {
-            isLaunchVisible = false
+        let markFade = CABasicAnimation(keyPath: "opacity")
+        markFade.fromValue = 1
+        markFade.toValue = 0
+        markFade.duration = 0.16
+        markFade.beginTime = now
+        markFade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        markLayer.add(markFade, forKey: "launchMarkFade")
+    }
+
+    nonisolated func animationDidStop(_ anim: CAAnimation, finished flag: Bool) {
+        Task { @MainActor [weak self] in
+            self?.animationDidComplete?()
         }
     }
 }
@@ -59,7 +211,7 @@ struct AnimatedLaunchView: View {
     let isFinishing: Bool
 
     // Your default 6-color palette fallback
-    private let defaultStripeColors: [Color] = [
+    private static let defaultStripeColors: [Color] = [
         Color(.displayP3, red: 0.4685, green: 0.7231, blue: 0.3381, opacity: 1),
         Color(.displayP3, red: 0.9526, green: 0.7310, blue: 0.2930, opacity: 1),
         Color(.displayP3, red: 0.9033, green: 0.5332, blue: 0.2329, opacity: 1),
@@ -69,7 +221,7 @@ struct AnimatedLaunchView: View {
     ]
 
     // Dynamically look up colors based on the currently chosen app icon
-    private var activeStripeColors: [Color] {
+    fileprivate static var activeStripeColors: [Color] {
         let currentID = AlternateAppIcon.currentIdentifier
         
         // 1. Fallback if it's the primary icon
@@ -103,7 +255,7 @@ struct AnimatedLaunchView: View {
             ZStack {
                 LaunchBarsCurtainView(
                     layout: layout,
-                    colors: activeStripeColors, // Pass the dynamic colors here
+                    colors: Self.activeStripeColors,
                     isFinishing: isFinishing
                 )
 

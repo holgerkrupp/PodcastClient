@@ -394,6 +394,67 @@ class EpisodeDownloadStatus{
         chaptersForDisplay()
     }
 
+    func displayTitle(for chapter: Marker) -> String {
+        let ownTitle = chapter.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isUsableChapterTitle(ownTitle, for: chapter) {
+            return ownTitle
+        }
+
+        if let matchedTitle = matchingChapterTitle(for: chapter) {
+            return matchedTitle
+        }
+
+        return ownTitle.isEmpty ? "Untitled chapter" : ownTitle
+    }
+
+    private func matchingChapterTitle(for chapter: Marker) -> String? {
+        let start = chapter.start ?? 0
+        let titleSourcePreference: [MarkerType] = [.podlove, .mp4, .ai, .extracted, .mp3]
+        let candidateTypes = titleSourcePreference.filter { $0 != chapter.type }
+
+        return (chapters ?? [])
+            .filter { candidate in
+                candidate.id != chapter.id
+                    && candidateTypes.contains(candidate.type)
+                    && abs((candidate.start ?? 0) - start) <= 1.0
+                    && isUsableChapterTitle(candidate.title, for: candidate)
+            }
+            .sorted { lhs, rhs in
+                let lhsDelta = abs((lhs.start ?? 0) - start)
+                let rhsDelta = abs((rhs.start ?? 0) - start)
+                if lhsDelta != rhsDelta {
+                    return lhsDelta < rhsDelta
+                }
+                let lhsTypeIndex = candidateTypes.firstIndex(of: lhs.type) ?? Int.max
+                let rhsTypeIndex = candidateTypes.firstIndex(of: rhs.type) ?? Int.max
+                return lhsTypeIndex < rhsTypeIndex
+            }
+            .first?
+            .title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isUsableChapterTitle(_ title: String, for chapter: Marker) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+
+        if chapter.type == .mp3, looksLikeMP3ChapterElementID(trimmed) {
+            return false
+        }
+
+        return true
+    }
+
+    private func looksLikeMP3ChapterElementID(_ title: String) -> Bool {
+        let normalized = title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalized.range(
+            of: #"^(ch|chap|chapter)[-_]?\d+$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     @Transient var soundbitesForDisplay: [Marker] {
         let storedSoundbites = (chapters ?? [])
             .filter { $0.type == .soundbite }
@@ -801,8 +862,14 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
     /// Playback durations per session
     var playbackDurations: CodableArray<TimeInterval>?
 
+    /// Time saved per playback session by reducing silence gaps.
+    var silenceGapTimeSavedDurations: CodableArray<TimeInterval>?
+
     /// Accumulated listening time
     var totalListenTime: TimeInterval = 0
+
+    /// Accumulated time saved by reducing silence gaps.
+    var totalSilenceGapTimeSaved: TimeInterval = 0
 
     /// Speeds used per session
     var playbackSpeeds: CodableArray<Double>?
@@ -817,6 +884,7 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
     init() {
         self.playbackStartTimes = CodableArray([])
         self.playbackDurations = CodableArray([])
+        self.silenceGapTimeSavedDurations = CodableArray([])
         self.playbackSpeeds = CodableArray([])
                
     }

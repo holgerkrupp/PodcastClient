@@ -6,14 +6,14 @@
 	<integer>12</integer>
 	<key>logs</key>
 	<dict>
-		<key>0A8DE921-65FC-4FD9-8646-895BED2784EB</key>
+		<key>75564098-FA20-45EB-832C-F36562C3A8C7</key>
 		<dict>
 			<key>auxiliaryLogUniqueIdentifier</key>
-			<string>B8026E6A-42DF-44C3-9E33-ABFA221C4014</string>
+			<string>0873D9E0-2AC3-4E65-8C29-33C88323FCCE</string>
 			<key>auxiliaryObservable</key>
 			<dict>
 				<key>highLevelStatus</key>
-				<string>W</string>
+				<string>S</string>
 				<key>totalNumberOfAnalyzerIssues</key>
 				<integer>0</integer>
 				<key>totalNumberOfErrors</key>
@@ -21,7 +21,7 @@
 				<key>totalNumberOfTestFailures</key>
 				<integer>0</integer>
 				<key>totalNumberOfWarnings</key>
-				<integer>1</integer>
+				<integer>0</integer>
 			</dict>
 			<key>className</key>
 			<string>IDESchemeActionsInvocationRecord</string>
@@ -30,7 +30,7 @@
 			<key>domainType</key>
 			<string>com.apple.dt.unit.cocoaUnitTest</string>
 			<key>fileName</key>
-			<string>Test-UpNext-2026.06.02_08-34-40-+0200.xcresult</string>
+			<string>Test-UpNext-2026.06.06_11-37-43-+0200.xcresult</string>
 			<key>hasAuxiliaryLog</key>
 			<true/>
 			<key>hasCoverageData</key>
@@ -40,9 +40,9 @@
 			<key>primaryObservable</key>
 			<dict>
 				<key>highLevelStatus</key>
-				<string>W</string>
+				<string>S</string>
 				<key>totalCodeCoverage</key>
-				<real>0.057606955525764343</real>
+				<real>0.055622504194135301</real>
 				<key>totalNumberOfAnalyzerIssues</key>
 				<integer>0</integer>
 				<key>totalNumberOfErrors</key>
@@ -50,7 +50,7 @@
 				<key>totalNumberOfTestFailures</key>
 				<integer>0</integer>
 				<key>totalNumberOfWarnings</key>
-				<integer>1</integer>
+				<integer>0</integer>
 			</dict>
 			<key>schemeIdentifier-containerName</key>
 			<string>Up Next project</string>
@@ -61,13 +61,13 @@
 			<key>signature</key>
 			<string>Test UpNext</string>
 			<key>timeStartedRecording</key>
-			<real>802074880.67530096</real>
+			<real>802431463.55860698</real>
 			<key>timeStoppedRecording</key>
-			<real>802074967.25752497</real>
+			<real>802431524.32384002</real>
 			<key>title</key>
 			<string>Test UpNext</string>
 			<key>uniqueIdentifier</key>
-			<string>0A8DE921-65FC-4FD9-8646-895BED2784EB</string>
+			<string>75564098-FA20-45EB-832C-F36562C3A8C7</string>
 		</dict>
 	</dict>
 </dict>

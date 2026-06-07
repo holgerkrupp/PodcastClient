@@ -63,8 +63,8 @@ class CarPlayPlayNext {
             let currentEpisodeURL = current.url
             let interfaceController = self.interfaceController
             let nowPlayingItem = CPListItem(
-                text: current.title,
-                detailText: current.desc ?? current.title,
+                text: carPlayText(current.title),
+                detailText: carPlayText(current.desc ?? current.title),
                 image: currentImage
             )
             nowPlayingItem.userInfo = current
@@ -100,8 +100,8 @@ class CarPlayPlayNext {
         let items = queueEpisodes.enumerated().map { index, episode in
             let cover = images?[index] ?? UIImage()
             let item = CPListItem(
-                text: episode.title ?? "",
-                detailText: episode.desc ?? episode.title ?? "",
+                text: carPlayText(episode.title),
+                detailText: carPlayText(episode.desc ?? episode.title),
                 image: cover
             )
             item.userInfo = episode
@@ -152,6 +152,12 @@ class CarPlayPlayNext {
     
     private func refreshEpisodeList() async{
         self.episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
+    }
+
+    private func carPlayText(_ text: String?) -> String {
+        guard let text else { return "" }
+        return (text.decodeHTML() ?? text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func returnToNowPlaying() {

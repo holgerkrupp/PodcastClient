@@ -4,10 +4,18 @@
     "Localizable": [
       {
         "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 156
+        }
+      },
+      {
+        "comment": "",
         "key": "Live notification",
         "location": {
           "startingColumn": 16,
-          "startingLine": 565
+          "startingLine": 609
         }
       },
       {
@@ -15,7 +23,7 @@
         "key": "This podcast stays in the database, but it is skipped by bulk refresh.",
         "location": {
           "startingColumn": 34,
-          "startingLine": 332
+          "startingLine": 375
         }
       },
       {
@@ -23,7 +31,7 @@
         "key": "Open podroll",
         "location": {
           "startingColumn": 49,
-          "startingLine": 243
+          "startingLine": 286
         }
       },
       {
@@ -31,7 +39,7 @@
         "key": "Shows podcasts recommended by this podcast",
         "location": {
           "startingColumn": 48,
-          "startingLine": 244
+          "startingLine": 287
         }
       },
       {
@@ -39,7 +47,7 @@
         "key": "Unsubscribe",
         "location": {
           "startingColumn": 55,
-          "startingLine": 296
+          "startingLine": 339
         }
       },
       {
@@ -47,7 +55,7 @@
         "key": "Subscribe",
         "location": {
           "startingColumn": 71,
-          "startingLine": 296
+          "startingLine": 339
         }
       },
       {
@@ -55,7 +63,7 @@
         "key": "Last updated: %@",
         "location": {
           "startingColumn": 38,
-          "startingLine": 158
+          "startingLine": 196
         }
       },
       {
@@ -63,7 +71,7 @@
         "key": "Last refresh: %@",
         "location": {
           "startingColumn": 38,
-          "startingLine": 164
+          "startingLine": 202
         }
       },
       {
@@ -71,7 +79,7 @@
         "key": "Open podcast website",
         "location": {
           "startingColumn": 53,
-          "startingLine": 194
+          "startingLine": 237
         }
       },
       {
@@ -79,7 +87,7 @@
         "key": "Podcast debug metadata",
         "location": {
           "startingColumn": 49,
-          "startingLine": 205
+          "startingLine": 248
         }
       },
       {
@@ -87,7 +95,7 @@
         "key": "Podroll",
         "location": {
           "startingColumn": 39,
-          "startingLine": 240
+          "startingLine": 283
         }
       },
       {
@@ -95,7 +103,7 @@
         "key": "Switch Alternative Feed",
         "location": {
           "startingColumn": 43,
-          "startingLine": 318
+          "startingLine": 361
         }
       },
       {
@@ -103,7 +111,7 @@
         "key": "Open episode %@",
         "location": {
           "startingColumn": 45,
-          "startingLine": 384
+          "startingLine": 427
         }
       },
       {
@@ -111,7 +119,7 @@
         "key": "Opens this episode details screen",
         "location": {
           "startingColumn": 44,
-          "startingLine": 385
+          "startingLine": 428
         }
       },
       {
@@ -119,7 +127,7 @@
         "key": "Sort episodes",
         "location": {
           "startingColumn": 53,
-          "startingLine": 509
+          "startingLine": 553
         }
       },
       {
@@ -127,7 +135,7 @@
         "key": "Episode sort",
         "location": {
           "startingColumn": 76,
-          "startingLine": 509
+          "startingLine": 553
         }
       },
       {
@@ -135,7 +143,7 @@
         "key": "Episode sort and visibility",
         "location": {
           "startingColumn": 41,
-          "startingLine": 507
+          "startingLine": 551
         }
       },
       {
@@ -143,7 +151,7 @@
         "key": "Choose episode sort order and hide played episodes",
         "location": {
           "startingColumn": 40,
-          "startingLine": 508
+          "startingLine": 552
         }
       },
       {
@@ -151,7 +159,7 @@
         "key": "Sort by",
         "location": {
           "startingColumn": 32,
-          "startingLine": 492
+          "startingLine": 536
         }
       },
       {
@@ -159,7 +167,7 @@
         "key": "Hide played Episodes",
         "location": {
           "startingColumn": 35,
-          "startingLine": 502
+          "startingLine": 546
         }
       },
       {
@@ -167,7 +175,7 @@
         "key": "Podcast settings",
         "location": {
           "startingColumn": 53,
-          "startingLine": 519
+          "startingLine": 563
         }
       },
       {
@@ -175,7 +183,7 @@
         "key": "Open settings",
         "location": {
           "startingColumn": 79,
-          "startingLine": 519
+          "startingLine": 563
         }
       },
       {
@@ -183,7 +191,7 @@
         "key": "Podcast settings",
         "location": {
           "startingColumn": 41,
-          "startingLine": 517
+          "startingLine": 561
         }
       },
       {
@@ -191,7 +199,7 @@
         "key": "Open settings for this podcast",
         "location": {
           "startingColumn": 40,
-          "startingLine": 518
+          "startingLine": 562
         }
       },
       {
@@ -199,7 +207,7 @@
         "key": "Refresh podcast",
         "location": {
           "startingColumn": 53,
-          "startingLine": 540
+          "startingLine": 584
         }
       },
       {
@@ -207,7 +215,7 @@
         "key": "Update podcast",
         "location": {
           "startingColumn": 78,
-          "startingLine": 540
+          "startingLine": 584
         }
       },
       {
@@ -215,7 +223,7 @@
         "key": "Refreshing podcast",
         "location": {
           "startingColumn": 53,
-          "startingLine": 538
+          "startingLine": 582
         }
       },
       {
@@ -223,7 +231,7 @@
         "key": "Refresh podcast",
         "location": {
           "startingColumn": 76,
-          "startingLine": 538
+          "startingLine": 582
         }
       },
       {
@@ -231,7 +239,7 @@
         "key": "Downloads the latest episodes from this podcast feed",
         "location": {
           "startingColumn": 40,
-          "startingLine": 539
+          "startingLine": 583
         }
       },
       {
@@ -239,7 +247,7 @@
         "key": "Archive all episodes",
         "location": {
           "startingColumn": 53,
-          "startingLine": 553
+          "startingLine": 597
         }
       },
       {
@@ -247,7 +255,7 @@
         "key": "Archive podcast episodes",
         "location": {
           "startingColumn": 83,
-          "startingLine": 553
+          "startingLine": 597
         }
       },
       {
@@ -255,7 +263,7 @@
         "key": "Archive all episodes",
         "location": {
           "startingColumn": 41,
-          "startingLine": 551
+          "startingLine": 595
         }
       },
       {
@@ -263,7 +271,7 @@
         "key": "Marks all episodes in this podcast as archived",
         "location": {
           "startingColumn": 40,
-          "startingLine": 552
+          "startingLine": 596
         }
       },
       {
@@ -271,7 +279,7 @@
         "key": "OK",
         "location": {
           "startingColumn": 20,
-          "startingLine": 566
+          "startingLine": 610
         }
       },
       {
@@ -279,7 +287,7 @@
         "key": "Live Now: %@",
         "location": {
           "startingColumn": 27,
-          "startingLine": 772
+          "startingLine": 830
         }
       },
       {
@@ -287,7 +295,7 @@
         "key": "Notify Me: %@",
         "location": {
           "startingColumn": 25,
-          "startingLine": 783
+          "startingLine": 841
         }
       },
       {
@@ -295,7 +303,7 @@
         "key": "Open Live Page",
         "location": {
           "startingColumn": 23,
-          "startingLine": 798
+          "startingLine": 856
         }
       },
       {
@@ -303,7 +311,7 @@
         "key": "Play Live Stream",
         "location": {
           "startingColumn": 23,
-          "startingLine": 822
+          "startingLine": 880
         }
       }
     ]

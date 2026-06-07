@@ -1,0 +1,104 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/UpNextWatch/WatchStorageSettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "Storage",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Network",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 55
+        }
+      },
+      {
+        "comment": "",
+        "key": "Remote Control iPhone",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 19
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback controls manage the iPhone app.",
+        "location": {
+          "startingColumn": 75,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Playback uses files and streams on the watch.",
+        "location": {
+          "startingColumn": 120,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Currently using %@.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "When the limit is full, Up Next still shows the episode but asks before downloading it.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 49
+        }
+      },
+      {
+        "comment": "",
+        "key": "Limit",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 33
+        }
+      },
+      {
+        "comment": "",
+        "key": "Allow Cellular Downloads",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 57
+        }
+      },
+      {
+        "comment": "",
+        "key": "Done",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 70
+        }
+      }
+    ]
+  },
+  "version": 1
+}

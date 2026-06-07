@@ -327,7 +327,7 @@
         "key": "Podcast Share Period",
         "location": {
           "startingColumn": 76,
-          "startingLine": 285
+          "startingLine": 286
         }
       },
       {
@@ -335,7 +335,7 @@
         "key": "Day",
         "location": {
           "startingColumn": 15,
-          "startingLine": 287
+          "startingLine": 288
         }
       },
       {
@@ -343,7 +343,7 @@
         "key": "Week",
         "location": {
           "startingColumn": 16,
-          "startingLine": 288
+          "startingLine": 289
         }
       },
       {
@@ -351,7 +351,7 @@
         "key": "Month",
         "location": {
           "startingColumn": 17,
-          "startingLine": 289
+          "startingLine": 290
         }
       },
       {
@@ -359,7 +359,15 @@
         "key": "Year",
         "location": {
           "startingColumn": 16,
-          "startingLine": 290
+          "startingLine": 291
+        }
+      },
+      {
+        "comment": "",
+        "key": "Forever",
+        "location": {
+          "startingColumn": 19,
+          "startingLine": 292
         }
       },
       {
@@ -367,7 +375,7 @@
         "key": "Podcast Share Timing",
         "location": {
           "startingColumn": 76,
-          "startingLine": 311
+          "startingLine": 315
         }
       },
       {
@@ -375,7 +383,7 @@
         "key": "Current Period",
         "location": {
           "startingColumn": 19,
-          "startingLine": 313
+          "startingLine": 317
         }
       },
       {
@@ -383,7 +391,7 @@
         "key": "Previous Period",
         "location": {
           "startingColumn": 20,
-          "startingLine": 314
+          "startingLine": 318
         }
       },
       {
@@ -391,7 +399,7 @@
         "key": "Podcast Share Aspect Ratio",
         "location": {
           "startingColumn": 76,
-          "startingLine": 323
+          "startingLine": 327
         }
       },
       {
@@ -399,7 +407,7 @@
         "key": "Portrait",
         "location": {
           "startingColumn": 20,
-          "startingLine": 325
+          "startingLine": 329
         }
       },
       {
@@ -407,7 +415,7 @@
         "key": "Square",
         "location": {
           "startingColumn": 18,
-          "startingLine": 326
+          "startingLine": 330
         }
       },
       {
@@ -415,7 +423,7 @@
         "key": "Landscape",
         "location": {
           "startingColumn": 21,
-          "startingLine": 327
+          "startingLine": 331
         }
       },
       {
@@ -423,7 +431,7 @@
         "key": "Podcast Share Design",
         "location": {
           "startingColumn": 76,
-          "startingLine": 352
+          "startingLine": 358
         }
       },
       {
@@ -431,7 +439,7 @@
         "key": "Podium Top 3",
         "location": {
           "startingColumn": 18,
-          "startingLine": 354
+          "startingLine": 360
         }
       },
       {
@@ -439,7 +447,7 @@
         "key": "Billboard Top 10",
         "location": {
           "startingColumn": 21,
-          "startingLine": 355
+          "startingLine": 361
         }
       },
       {
@@ -447,7 +455,7 @@
         "key": "Cover Grid",
         "location": {
           "startingColumn": 21,
-          "startingLine": 356
+          "startingLine": 362
         }
       },
       {
@@ -455,7 +463,7 @@
         "key": "Cover Collage",
         "location": {
           "startingColumn": 24,
-          "startingLine": 357
+          "startingLine": 363
         }
       },
       {
@@ -463,7 +471,7 @@
         "key": "Cover Cloud",
         "location": {
           "startingColumn": 22,
-          "startingLine": 358
+          "startingLine": 364
         }
       },
       {
@@ -471,7 +479,7 @@
         "key": "Playtime Bars",
         "location": {
           "startingColumn": 26,
-          "startingLine": 359
+          "startingLine": 365
         }
       },
       {
@@ -479,7 +487,7 @@
         "key": "Playtime Pie",
         "location": {
           "startingColumn": 20,
-          "startingLine": 360
+          "startingLine": 366
         }
       },
       {
@@ -487,7 +495,23 @@
         "key": "Stats Wrapped",
         "location": {
           "startingColumn": 22,
-          "startingLine": 361
+          "startingLine": 367
+        }
+      },
+      {
+        "comment": "",
+        "key": "Calendar",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 368
+        }
+      },
+      {
+        "comment": "",
+        "key": "Year Calendar",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 369
         }
       },
       {
@@ -495,7 +519,7 @@
         "key": "Podcast Share Background",
         "location": {
           "startingColumn": 76,
-          "startingLine": 418
+          "startingLine": 430
         }
       },
       {
@@ -503,7 +527,7 @@
         "key": "Automatic for Period",
         "location": {
           "startingColumn": 21,
-          "startingLine": 420
+          "startingLine": 432
         }
       },
       {
@@ -511,7 +535,7 @@
         "key": "Boring",
         "location": {
           "startingColumn": 19,
-          "startingLine": 421
+          "startingLine": 433
         }
       },
       {
@@ -519,7 +543,7 @@
         "key": "Rainbow",
         "location": {
           "startingColumn": 19,
-          "startingLine": 422
+          "startingLine": 434
         }
       },
       {
@@ -527,7 +551,7 @@
         "key": "45 Gradient",
         "location": {
           "startingColumn": 27,
-          "startingLine": 423
+          "startingLine": 435
         }
       },
       {
@@ -535,7 +559,7 @@
         "key": "White",
         "location": {
           "startingColumn": 17,
-          "startingLine": 424
+          "startingLine": 436
         }
       },
       {
@@ -543,7 +567,7 @@
         "key": "Black",
         "location": {
           "startingColumn": 17,
-          "startingLine": 425
+          "startingLine": 437
         }
       },
       {
@@ -551,7 +575,7 @@
         "key": "January",
         "location": {
           "startingColumn": 19,
-          "startingLine": 426
+          "startingLine": 438
         }
       },
       {
@@ -559,7 +583,7 @@
         "key": "February",
         "location": {
           "startingColumn": 20,
-          "startingLine": 427
+          "startingLine": 439
         }
       },
       {
@@ -567,7 +591,7 @@
         "key": "March",
         "location": {
           "startingColumn": 17,
-          "startingLine": 428
+          "startingLine": 440
         }
       },
       {
@@ -575,7 +599,7 @@
         "key": "April",
         "location": {
           "startingColumn": 17,
-          "startingLine": 429
+          "startingLine": 441
         }
       },
       {
@@ -583,7 +607,7 @@
         "key": "May",
         "location": {
           "startingColumn": 15,
-          "startingLine": 430
+          "startingLine": 442
         }
       },
       {
@@ -591,7 +615,7 @@
         "key": "June",
         "location": {
           "startingColumn": 16,
-          "startingLine": 431
+          "startingLine": 443
         }
       },
       {
@@ -599,7 +623,7 @@
         "key": "July",
         "location": {
           "startingColumn": 16,
-          "startingLine": 432
+          "startingLine": 444
         }
       },
       {
@@ -607,7 +631,7 @@
         "key": "August",
         "location": {
           "startingColumn": 18,
-          "startingLine": 433
+          "startingLine": 445
         }
       },
       {
@@ -615,7 +639,7 @@
         "key": "September",
         "location": {
           "startingColumn": 21,
-          "startingLine": 434
+          "startingLine": 446
         }
       },
       {
@@ -623,7 +647,7 @@
         "key": "October",
         "location": {
           "startingColumn": 19,
-          "startingLine": 435
+          "startingLine": 447
         }
       },
       {
@@ -631,7 +655,7 @@
         "key": "November",
         "location": {
           "startingColumn": 20,
-          "startingLine": 436
+          "startingLine": 448
         }
       },
       {
@@ -639,7 +663,7 @@
         "key": "December",
         "location": {
           "startingColumn": 20,
-          "startingLine": 437
+          "startingLine": 449
         }
       },
       {
@@ -647,7 +671,7 @@
         "key": "New Year",
         "location": {
           "startingColumn": 19,
-          "startingLine": 438
+          "startingLine": 450
         }
       },
       {
@@ -655,7 +679,7 @@
         "key": "Carnival",
         "location": {
           "startingColumn": 20,
-          "startingLine": 439
+          "startingLine": 451
         }
       },
       {
@@ -663,7 +687,7 @@
         "key": "Christmas",
         "location": {
           "startingColumn": 21,
-          "startingLine": 440
+          "startingLine": 452
         }
       },
       {
@@ -671,7 +695,7 @@
         "key": "Easter",
         "location": {
           "startingColumn": 18,
-          "startingLine": 441
+          "startingLine": 453
         }
       },
       {
@@ -679,7 +703,7 @@
         "key": "Ramadan",
         "location": {
           "startingColumn": 19,
-          "startingLine": 442
+          "startingLine": 454
         }
       },
       {
@@ -687,7 +711,7 @@
         "key": "Eid al-Fitr",
         "location": {
           "startingColumn": 21,
-          "startingLine": 443
+          "startingLine": 455
         }
       },
       {
@@ -695,7 +719,7 @@
         "key": "Hanukkah",
         "location": {
           "startingColumn": 20,
-          "startingLine": 444
+          "startingLine": 456
         }
       },
       {
@@ -703,7 +727,7 @@
         "key": "Holi",
         "location": {
           "startingColumn": 16,
-          "startingLine": 445
+          "startingLine": 457
         }
       },
       {
@@ -711,7 +735,7 @@
         "key": "Diwali",
         "location": {
           "startingColumn": 18,
-          "startingLine": 446
+          "startingLine": 458
         }
       },
       {
@@ -719,7 +743,7 @@
         "key": "Lunar New Year",
         "location": {
           "startingColumn": 24,
-          "startingLine": 447
+          "startingLine": 459
         }
       },
       {
@@ -727,7 +751,7 @@
         "key": "Midsummer",
         "location": {
           "startingColumn": 21,
-          "startingLine": 448
+          "startingLine": 460
         }
       },
       {
@@ -735,7 +759,7 @@
         "key": "Halloween",
         "location": {
           "startingColumn": 21,
-          "startingLine": 449
+          "startingLine": 461
         }
       }
     ]

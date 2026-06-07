@@ -1,0 +1,232 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Settings/Views/TranscriptionSettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Transcriptions",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 162
+        }
+      },
+      {
+        "comment": "",
+        "key": "On-Device Transcription",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 23
+        }
+      },
+      {
+        "comment": "",
+        "key": "Captions & Audio Descriptions",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 96
+        }
+      },
+      {
+        "comment": "",
+        "key": "Installed Models",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 106
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recent Transcriptions",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 114
+        }
+      },
+      {
+        "comment": "",
+        "key": "When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 85
+        }
+      },
+      {
+        "comment": "",
+        "key": "Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shorter snippets follow playback more closely and are better for word-level highlighting, but they create more transcript rows.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "Automatic on-device transcriptions",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Only while charging",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 39
+        }
+      },
+      {
+        "comment": "",
+        "key": "Engine",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 70
+        }
+      },
+      {
+        "comment": "",
+        "key": "Preset",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 73
+        }
+      },
+      {
+        "comment": "",
+        "key": "Installed Models",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 76
+        }
+      },
+      {
+        "comment": "",
+        "key": "Supported Models",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "Max snippet length",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "%.1fs",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "Apple SpeechTranscriber",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Transcription",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 74
+        }
+      },
+      {
+        "comment": "",
+        "key": "None",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading…",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 68,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Episode transcripts are used as captions inside the player and transcript screens.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 97
+        }
+      },
+      {
+        "comment": "",
+        "key": "This app plays spoken-word audio and does not include separate audio-description tracks. Chapter titles and transcripts provide descriptive context instead.",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 100
+        }
+      },
+      {
+        "comment": "",
+        "key": "Recent on-device transcriptions will appear here once you create one.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 119
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Transcriptions Yet",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 117
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ of episode length",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 153
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -165,10 +165,20 @@ class Player {
     private var finishingEpisodeURL: URL?
     private var isSkippingChapters = false
     private var playbackPowerMode: PlaybackPowerMode = .foreground
+    private var reduceSilenceGapsEnabled = false
+    private var silenceGapReductionLevel: SilenceGapReductionLevel = .low
+    private var voiceEnhancementEnabled = false
+    private var silenceGapReductionActive = false
+    private var silenceGapReductionStartedAt: Date?
+    private var pendingSilenceGapTimeSavedSeconds: TimeInterval = 0
+#if !os(watchOS)
+    private var currentAudioPlaybackProcessor: AudioPlaybackProcessor?
+#endif
 
     var playbackRate: Float = 1.0 {
         didSet {
             guard playbackRate != oldValue else { return }
+            accumulateSilenceGapTimeSaved(normalRate: oldValue)
             let rate = playbackRate
             Task { [weak self] in
                 await self?.applyPlaybackRate(rate, persist: true)
@@ -389,6 +399,10 @@ class Player {
                 self?.loadPlayBackSpeed()
                 self?.loadSkipDurations()
                 self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
+                await self?.loadPlaybackAudioProcessingSettings()
+                if let currentItem = self?.videoPlayer.currentItem {
+                    await self?.configurePlaybackAudioProcessing(for: currentItem)
+                }
                 if let lockscreenEnable = await self?.settingsActor?.getLockScreenSliderEnable() {
                     RemoteCommandCenter.shared.updateLockScreenScrubbableState(lockscreenEnable)
                 }
@@ -417,7 +431,10 @@ class Player {
     
     private func applyPlaybackRate(_ playbackRate: Float, persist: Bool) async {
         if isPlaying{
-            await engine.setRate(playbackRate)
+            let effectiveRate = silenceGapReductionActive
+                ? AudioSilenceGapDetector.silenceReducedRate(for: playbackRate, level: silenceGapReductionLevel)
+                : playbackRate
+            await engine.setRate(effectiveRate)
             if persist {
                 await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.feed , to: playbackRate)
             }
@@ -472,6 +489,136 @@ class Player {
             skipBackBehavior = await settingsActor?.getSkipBackBehavior(for: podcastFeed) ?? .seconds
             RemoteCommandCenter.shared.updateSkipIntervals()
         }
+    }
+
+    private func loadPlaybackAudioProcessingSettings() async {
+        let podcastFeed = currentEpisode?.podcast?.feed
+        reduceSilenceGapsEnabled = await settingsActor?.getReduceSilenceGapsEnabled(for: podcastFeed) ?? false
+        silenceGapReductionLevel = await settingsActor?.getSilenceGapReductionLevel(for: podcastFeed) ?? .low
+        voiceEnhancementEnabled = await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false
+    }
+
+    private func accumulateSilenceGapTimeSaved(upTo date: Date = Date(), normalRate: Float? = nil) {
+        guard let startedAt = silenceGapReductionStartedAt else { return }
+        let elapsed = date.timeIntervalSince(startedAt)
+        let baseRate = max(Double(normalRate ?? playbackRate), 0)
+        let reducedRate = Double(
+            AudioSilenceGapDetector.silenceReducedRate(
+                for: Float(baseRate),
+                level: silenceGapReductionLevel
+            )
+        )
+
+        if elapsed.isFinite, elapsed > 0, baseRate > 0, reducedRate > baseRate {
+            pendingSilenceGapTimeSavedSeconds += elapsed * ((reducedRate / baseRate) - 1)
+        }
+        silenceGapReductionStartedAt = date
+    }
+
+    private func startSilenceGapTimeSavedMeasurement() {
+        guard silenceGapReductionStartedAt == nil else { return }
+        silenceGapReductionStartedAt = Date()
+    }
+
+    private func stopSilenceGapTimeSavedMeasurement() {
+        accumulateSilenceGapTimeSaved()
+        silenceGapReductionStartedAt = nil
+    }
+
+    private func flushSilenceGapTimeSaved() async {
+        if silenceGapReductionActive {
+            accumulateSilenceGapTimeSaved()
+        }
+
+        let savedSeconds = pendingSilenceGapTimeSavedSeconds
+        pendingSilenceGapTimeSavedSeconds = 0
+
+        guard savedSeconds.isFinite, savedSeconds > 0 else { return }
+        await playSessionTracker.recordSilenceGapTimeSaved(savedSeconds)
+    }
+
+    private func resetSilenceGapReduction(updateEngine: Bool = true) {
+        guard silenceGapReductionActive else { return }
+        stopSilenceGapTimeSavedMeasurement()
+        silenceGapReductionActive = false
+        guard updateEngine, isPlaying else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await flushSilenceGapTimeSaved()
+            await engine.setRate(playbackRate)
+        }
+    }
+
+    private func setSilenceGapReductionActive(_ isActive: Bool) {
+        guard reduceSilenceGapsEnabled,
+              currentEpisode != nil,
+              currentPlaybackSource != .liveRemote,
+              currentPlaybackUsesAlternateMedia == false,
+              currentPlaybackIsVideo == false else {
+            resetSilenceGapReduction()
+            return
+        }
+
+        guard silenceGapReductionActive != isActive else { return }
+        if isActive {
+            startSilenceGapTimeSavedMeasurement()
+        } else {
+            stopSilenceGapTimeSavedMeasurement()
+        }
+        silenceGapReductionActive = isActive
+        guard isPlaying else { return }
+
+        let rate = isActive
+            ? AudioSilenceGapDetector.silenceReducedRate(for: playbackRate, level: silenceGapReductionLevel)
+            : playbackRate
+
+        Task { [weak self] in
+            guard let self else { return }
+            if isActive == false {
+                await flushSilenceGapTimeSaved()
+            }
+            await engine.setRate(rate)
+        }
+    }
+
+    private func configurePlaybackAudioProcessing(for item: AVPlayerItem) async {
+        resetSilenceGapReduction(updateEngine: false)
+        await flushSilenceGapTimeSaved()
+#if !os(watchOS)
+        currentAudioPlaybackProcessor = nil
+        item.audioMix = nil
+
+        guard currentPlaybackSource != .liveRemote,
+              currentPlaybackUsesAlternateMedia == false,
+              currentPlaybackIsVideo == false,
+              reduceSilenceGapsEnabled || voiceEnhancementEnabled else {
+            return
+        }
+
+        guard let audioTrack = try? await item.asset.loadTracks(withMediaType: .audio).first else {
+            return
+        }
+
+        let processor = AudioPlaybackProcessor(
+            reduceSilenceGapsEnabled: reduceSilenceGapsEnabled,
+            silenceGapReductionLevel: silenceGapReductionLevel,
+            voiceEnhancementEnabled: voiceEnhancementEnabled
+        ) { [weak self] isReducing in
+            Task { @MainActor [weak self] in
+                self?.setSilenceGapReductionActive(isReducing)
+            }
+        }
+
+        guard let tap = processor.makeTap() else { return }
+
+        let parameters = AVMutableAudioMixInputParameters(track: audioTrack)
+        parameters.audioTapProcessor = tap
+
+        let audioMix = AVMutableAudioMix()
+        audioMix.inputParameters = [parameters]
+        item.audioMix = audioMix
+        currentAudioPlaybackProcessor = processor
+#endif
     }
     
     func fetchEpisode(with url: URL?) async -> Episode? {
@@ -662,13 +809,15 @@ class Player {
 
         for (episodeURLString, cached) in cachedProgress {
             guard let episodeURL = URL(string: episodeURLString) else { continue }
-            await episodeActor?.applyCachedPlaybackProgress(
+            let didPersist = await episodeActor?.applyCachedPlaybackProgress(
                 episodeURL: episodeURL,
                 playPosition: sanitizedPosition(cached.playPosition),
                 maxPlayPosition: sanitizedPosition(cached.maxPlayPosition),
                 chapterProgresses: cached.chapterProgresses
-            )
-            PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+            ) ?? false
+            if didPersist {
+                PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+            }
         }
     }
 
@@ -676,29 +825,36 @@ class Player {
         guard let currentEpisodeURL else { return }
         guard currentPlaybackSource != .liveRemote else { return }
 
+        cacheCurrentPlaybackState()
         let currentPlayPosition = sanitizedPosition(playPosition)
         let currentChapterProgress = chapterProgress
         let currentChapterID = currentChapter?.uuid
-        let episodeActor = self.episodeActor
-        let chapterActor = self.chapterActor
-
-        await episodeActor?.setLastPlayed(episodeURL: currentEpisodeURL)
-        await episodeActor?.setPlayPosition(
-            episodeURL: currentEpisodeURL,
-            position: currentPlayPosition,
-            force: force
+        let currentMaxPosition = max(
+            sanitizedPosition(currentEpisode?.metaData?.maxPlayposition),
+            currentPlayPosition
         )
-
-        currentEpisode?.metaData?.playPosition = currentPlayPosition
-        if currentPlayPosition > (currentEpisode?.metaData?.maxPlayposition ?? 0.0) {
-            currentEpisode?.metaData?.maxPlayposition = currentPlayPosition
-        }
-
+        let chapterProgresses: [String: Double]
         if let currentChapterID, let currentChapterProgress {
-            await chapterActor?.setChapterProgress(currentChapterProgress, for: currentChapterID)
+            chapterProgresses = [currentChapterID.uuidString: currentChapterProgress]
+        } else {
+            chapterProgresses = [:]
         }
 
-        PlaybackProgressDefaultsStore.removeProgress(for: currentEpisodeURL)
+        let didPersist = await episodeActor?.applyCachedPlaybackProgress(
+            episodeURL: currentEpisodeURL,
+            playPosition: currentPlayPosition,
+            maxPlayPosition: currentMaxPosition,
+            chapterProgresses: chapterProgresses,
+            lastPlayed: Date()
+        ) ?? false
+
+        if didPersist {
+            PlaybackProgressDefaultsStore.removeProgress(for: currentEpisodeURL)
+        }
+    }
+
+    func cachePlaybackStateForRecovery() {
+        cacheCurrentPlaybackState()
     }
 
     func captureCurrentPlaybackStateFromEngine(force: Bool = true) async {
@@ -927,6 +1083,11 @@ class Player {
         currentPlaybackSource = nil
         currentPlaybackUsesAlternateMedia = false
         mediaSelection = .primary
+        resetSilenceGapReduction(updateEngine: false)
+        await flushSilenceGapTimeSaved()
+#if !os(watchOS)
+        currentAudioPlaybackProcessor = nil
+#endif
         lastProgressSaveDate = .distantPast
         lastArtworkIdentifier = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
@@ -982,6 +1143,7 @@ class Player {
             }
         }
         loadSkipDurations()
+        await loadPlaybackAudioProcessingSettings()
         lastProgressSaveDate = Date()
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
@@ -1033,6 +1195,7 @@ class Player {
         }
 
         await engine.pause()
+        await configurePlaybackAudioProcessing(for: item)
         await engine.replaceCurrentItem(with: item)
         configureChapterBoundaryObserver()
 
@@ -1098,11 +1261,13 @@ class Player {
         let preservedRate = playbackRate
         let hadPlaybackUpdates = playbackTask != nil
 
-        await engine.replaceCurrentItem(with: playback.item)
-        configureChapterBoundaryObserver()
         mediaSelection = nextSelection
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
+        await loadPlaybackAudioProcessingSettings()
+        await configurePlaybackAudioProcessing(for: playback.item)
+        await engine.replaceCurrentItem(with: playback.item)
+        configureChapterBoundaryObserver()
         await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
 
         playPosition = preservedPosition
@@ -1155,7 +1320,10 @@ class Player {
         playPosition = 0
         lastProgressSaveDate = .distantPast
 
-        await engine.replaceCurrentItem(with: AVPlayerItem(url: url))
+        await loadPlaybackAudioProcessingSettings()
+        let item = AVPlayerItem(url: url)
+        await configurePlaybackAudioProcessing(for: item)
+        await engine.replaceCurrentItem(with: item)
         setupStaticNowPlayingInfo()
         await updateNowPlayingCover()
         play()
@@ -1261,13 +1429,16 @@ class Player {
         WatchSyncCoordinator.refreshSoon(force: true)
 
         let desiredRate = playbackRate
+        let desiredEngineRate = silenceGapReductionActive
+            ? AudioSilenceGapDetector.silenceReducedRate(for: desiredRate, level: silenceGapReductionLevel)
+            : desiredRate
         let position = playPosition
         let currentEpisodeURL = currentEpisode?.url
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         Task {
-            if updateEngineRate, await engine.getRate() != desiredRate {
-                await engine.setRate(desiredRate)
+            if updateEngineRate, await engine.getRate() != desiredEngineRate {
+                await engine.setRate(desiredEngineRate)
             }
 
             if preparePlaybackSource {
@@ -1289,6 +1460,7 @@ class Player {
 
     private func transitionToPaused(pauseEngine: Bool) {
         isPlaying = false
+        resetSilenceGapReduction(updateEngine: false)
         stopPlaybackUpdates()
         updateNowPlayingInfo()
         Task {
@@ -1298,6 +1470,7 @@ class Player {
             await captureCurrentPlaybackStateFromEngine(force: true)
 
             if currentEpisode != nil, currentPlaybackSource != .liveRemote {
+                await flushSilenceGapTimeSaved()
                 await playSessionTracker.pauseSession(at: playPosition)
             }
             WatchSyncCoordinator.refreshSoon(force: true)
@@ -1723,6 +1896,8 @@ class Player {
         let preservedRate = playbackRate
         let hadPlaybackUpdates = playbackTask != nil
 
+        await loadPlaybackAudioProcessingSettings()
+        await configurePlaybackAudioProcessing(for: replacementItem)
         await engine.replaceCurrentItem(with: replacementItem)
         currentPlaybackSource = .local
         await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))

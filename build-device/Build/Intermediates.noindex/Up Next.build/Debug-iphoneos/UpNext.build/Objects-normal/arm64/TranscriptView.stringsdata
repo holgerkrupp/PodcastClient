@@ -1,0 +1,24 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Transcripts/Views/TranscriptView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Current caption",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@:",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 49
+        }
+      }
+    ]
+  },
+  "version": 1
+}

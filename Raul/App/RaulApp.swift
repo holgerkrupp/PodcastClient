@@ -29,28 +29,28 @@ struct RaulApp: App {
     
     init() {
         CrashBreadcrumbs.shared.record("raul_app_init_start")
-        _ = Player.shared
-        WatchSyncCoordinator.activate()
         CrashBreadcrumbs.shared.record("raul_app_init_completed")
     }
 
     var body: some Scene {
         WindowGroup {
-            AppLaunchContainerView{
-                ContentView()
-                    .modelContainer(modelContainerManager.container)
+            if let container = modelContainerManager.preparedContainer {
+                AppLaunchContainerView{
+                    ContentView()
+                    .modelContainer(container)
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
                 
                     .onAppear {
                         CrashBreadcrumbs.shared.record("root_view_on_appear")
+                        WatchSyncCoordinator.activate()
                         let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
                         Task {
                             await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
-                                modelContainer: modelContainerManager.container
+                                modelContainer: container
                             )
-                            await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
+                            await PlayNextWidgetSync.refresh(using: container)
                             WatchSyncCoordinator.refreshSoon()
                         }
                         Task {
@@ -58,11 +58,11 @@ struct RaulApp: App {
                         }
                         Task {
                             await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
-                                modelContainer: modelContainerManager.container
+                                modelContainer: container
                             )
                         }
                         Task {
-                            let actor = EpisodeActor(modelContainer: modelContainerManager.container)
+                            let actor = EpisodeActor(modelContainer: container)
                             await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
                         }
                         UIDevice.current.isBatteryMonitoringEnabled = true
@@ -116,9 +116,23 @@ struct RaulApp: App {
                             await runAutomaticTranscriptionSweep(reason: "power state changed")
                         }
                     }
+                }
+            } else {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
+                    }
+                )
+                .task {
+                    await modelContainerManager.prepareContainer()
+                }
             }
         }
         .onChange(of: phase, {
+            guard modelContainerManager.preparedContainer != nil else { return }
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
@@ -153,11 +167,14 @@ struct RaulApp: App {
         })
 
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
+            guard let container = await MainActor.run(body: {
+                modelContainerManager.preparedContainer
+            }) else { return }
            //  await BasicLogger.shared.log("started checkFeedUpdates in Background")
             await scheduleFeedRefresh()
             CrashBreadcrumbs.shared.record("skip_storage_cleanup_in_feed_refresh_task")
        
-            await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
+            await SubscriptionManager(modelContainer: container).bgupdateFeeds()
 
             
         }
@@ -184,28 +201,29 @@ struct RaulApp: App {
 
 
     func refreshOnActive(){
+        guard let container = modelContainerManager.preparedContainer else { return }
         WatchSyncCoordinator.refreshSoon()
         Task {
-            await PlayNextWidgetSync.refresh(using: modelContainerManager.container)
+            await PlayNextWidgetSync.refresh(using: container)
         }
         if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
             Task .detached {
-                await SubscriptionManager(modelContainer: modelContainerManager.container).bgupdateFeeds()
+                await SubscriptionManager(modelContainer: container).bgupdateFeeds()
             }
         }
     }
     
     
     func cleanUp()  {
+        guard let container = modelContainerManager.preparedContainer else { return }
         if let lastCleanup = getLastForegroundDownloadCleanupDate(),
            Date().timeIntervalSince(lastCleanup) < BackgroundTaskConfiguration.foregroundDownloadCleanupMinimumInterval {
             return
         }
 
         setLastForegroundDownloadCleanupDate()
-        let modelContainer = modelContainerManager.container
         Task.detached(priority: .utility) {
-            let janitor = CleanUpActor(modelContainer: modelContainer)
+            let janitor = CleanUpActor(modelContainer: container)
             await janitor.cleanUpOldDownloads()
         }
     }
@@ -295,6 +313,7 @@ struct RaulApp: App {
     }
 
     func runScheduledStorageCleanupIfNeeded(minimumInterval: TimeInterval, reason: String) async {
+        guard let container = modelContainerManager.preparedContainer else { return }
         CrashBreadcrumbs.shared.record("storage_cleanup_check_started", details: reason)
         if let lastCleanup = getLastStorageCleanupDate(),
            Date().timeIntervalSince(lastCleanup) < minimumInterval {
@@ -303,9 +322,9 @@ struct RaulApp: App {
         }
 
         do {
-            let result = try await StorageManagementService(modelContainer: modelContainerManager.container)
+            let result = try await StorageManagementService(modelContainer: container)
                 .deleteFilesOutsideUpNext()
-            let chapterImageResult = await EpisodeActor(modelContainer: modelContainerManager.container)
+            let chapterImageResult = await EpisodeActor(modelContainer: container)
                 .maintainChapterImageStorage()
             setLastStorageCleanupDate()
             downloadedFilesManager.rescanDownloadedFiles()

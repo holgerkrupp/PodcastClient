@@ -7,7 +7,7 @@
         "key": "Listening History",
         "location": {
           "startingColumn": 26,
-          "startingLine": 829
+          "startingLine": 568
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Listening Trend",
         "location": {
           "startingColumn": 25,
-          "startingLine": 652
+          "startingLine": 352
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Listening Habits",
         "location": {
           "startingColumn": 25,
-          "startingLine": 681
+          "startingLine": 411
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "%@ Sessions",
         "location": {
           "startingColumn": 21,
-          "startingLine": 756
+          "startingLine": 489
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Recent %@",
         "location": {
           "startingColumn": 25,
-          "startingLine": 793
+          "startingLine": 532
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Period",
         "location": {
           "startingColumn": 24,
-          "startingLine": 559
+          "startingLine": 210
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "Podcast",
         "location": {
           "startingColumn": 24,
-          "startingLine": 566
+          "startingLine": 217
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "All Podcasts",
         "location": {
           "startingColumn": 26,
-          "startingLine": 567
+          "startingLine": 218
         }
       },
       {
@@ -71,7 +71,7 @@
         "key": "Move to previous %@",
         "location": {
           "startingColumn": 46,
-          "startingLine": 581
+          "startingLine": 232
         }
       },
       {
@@ -79,7 +79,7 @@
         "key": "Move to next %@",
         "location": {
           "startingColumn": 46,
-          "startingLine": 601
+          "startingLine": 253
         }
       },
       {
@@ -87,7 +87,7 @@
         "key": "",
         "location": {
           "startingColumn": 31,
-          "startingLine": 578
+          "startingLine": 229
         }
       },
       {
@@ -95,7 +95,7 @@
         "key": "",
         "location": {
           "startingColumn": 31,
-          "startingLine": 599
+          "startingLine": 251
         }
       },
       {
@@ -103,7 +103,7 @@
         "key": "Share Top Podcasts",
         "location": {
           "startingColumn": 27,
-          "startingLine": 617
+          "startingLine": 285
         }
       },
       {
@@ -111,23 +111,55 @@
         "key": "Y-axis: listening time per %@.",
         "location": {
           "startingColumn": 26,
-          "startingLine": 653
+          "startingLine": 353
         }
       },
       {
         "comment": "",
-        "key": "Period",
+        "key": "Year",
         "location": {
-          "startingColumn": 39,
-          "startingLine": 659
+          "startingColumn": 43,
+          "startingLine": 360
         }
       },
       {
         "comment": "",
         "key": "Listening",
         "location": {
-          "startingColumn": 39,
-          "startingLine": 660
+          "startingColumn": 43,
+          "startingLine": 361
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 367
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 368
+        }
+      },
+      {
+        "comment": "",
+        "key": "Period",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 374
+        }
+      },
+      {
+        "comment": "",
+        "key": "Listening",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 375
         }
       },
       {
@@ -135,7 +167,7 @@
         "key": "When you usually listen",
         "location": {
           "startingColumn": 30,
-          "startingLine": 683
+          "startingLine": 413
         }
       },
       {
@@ -143,7 +175,7 @@
         "key": "Weekday totals and an hour-by-weekday heat map based on your listening history.",
         "location": {
           "startingColumn": 30,
-          "startingLine": 685
+          "startingLine": 415
         }
       },
       {
@@ -151,7 +183,7 @@
         "key": "Weekday",
         "location": {
           "startingColumn": 43,
-          "startingLine": 691
+          "startingLine": 421
         }
       },
       {
@@ -159,7 +191,7 @@
         "key": "Listening",
         "location": {
           "startingColumn": 43,
-          "startingLine": 692
+          "startingLine": 422
         }
       },
       {
@@ -167,7 +199,7 @@
         "key": "Share Top Podcasts",
         "location": {
           "startingColumn": 31,
-          "startingLine": 725
+          "startingLine": 458
         }
       },
       {
@@ -175,7 +207,15 @@
         "key": "Top Podcasts",
         "location": {
           "startingColumn": 30,
-          "startingLine": 749
+          "startingLine": 482
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading listening data for this %@.",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 494
         }
       },
       {
@@ -183,7 +223,7 @@
         "key": "Start listening to see your summarized playback history here.",
         "location": {
           "startingColumn": 43,
-          "startingLine": 761
+          "startingLine": 500
         }
       },
       {
@@ -191,7 +231,15 @@
         "key": "No listening sessions in this %@.",
         "location": {
           "startingColumn": 43,
-          "startingLine": 767
+          "startingLine": 506
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading History",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 492
         }
       },
       {
@@ -199,7 +247,7 @@
         "key": "No Listening History",
         "location": {
           "startingColumn": 25,
-          "startingLine": 759
+          "startingLine": 498
         }
       },
       {
@@ -207,15 +255,31 @@
         "key": "No Sessions",
         "location": {
           "startingColumn": 25,
-          "startingLine": 765
+          "startingLine": 504
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show Recent Play Sessions",
+        "location": {
+          "startingColumn": 62,
+          "startingLine": 522
         }
       },
       {
         "comment": "",
         "key": "Show All Play Sessions",
         "location": {
-          "startingColumn": 33,
-          "startingLine": 783
+          "startingColumn": 92,
+          "startingLine": 522
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1315
         }
       },
       {
@@ -223,7 +287,7 @@
         "key": "Hour By Weekday",
         "location": {
           "startingColumn": 18,
-          "startingLine": 1179
+          "startingLine": 1372
         }
       },
       {
@@ -231,7 +295,7 @@
         "key": "",
         "location": {
           "startingColumn": 30,
-          "startingLine": 1188
+          "startingLine": 1381
         }
       },
       {
@@ -239,7 +303,7 @@
         "key": "Less",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1218
+          "startingLine": 1411
         }
       },
       {
@@ -247,7 +311,7 @@
         "key": "More",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1228
+          "startingLine": 1421
         }
       },
       {
@@ -255,7 +319,7 @@
         "key": "From %@ to %@",
         "location": {
           "startingColumn": 22,
-          "startingLine": 1640
+          "startingLine": 1950
         }
       },
       {
@@ -263,7 +327,7 @@
         "key": "Ended cleanly",
         "location": {
           "startingColumn": 45,
-          "startingLine": 1634
+          "startingLine": 1944
         }
       },
       {
@@ -271,183 +335,7 @@
         "key": "Recovered / interrupted",
         "location": {
           "startingColumn": 63,
-          "startingLine": 1634
-        }
-      },
-      {
-        "comment": "",
-        "key": "Share Top Podcasts",
-        "location": {
-          "startingColumn": 26,
-          "startingLine": 1790
-        }
-      },
-      {
-        "comment": "",
-        "key": "Top podcast share pictures are available when the statistics show all podcasts.",
-        "location": {
-          "startingColumn": 39,
-          "startingLine": 1748
-        }
-      },
-      {
-        "comment": "",
-        "key": "No Share Pictures",
-        "location": {
-          "startingColumn": 21,
-          "startingLine": 1746
-        }
-      },
-      {
-        "comment": "",
-        "key": "Customize",
-        "location": {
-          "startingColumn": 31,
-          "startingLine": 1759
-        }
-      },
-      {
-        "comment": "",
-        "key": "Title: %@ • Background: %@",
-        "location": {
-          "startingColumn": 26,
-          "startingLine": 1762
-        }
-      },
-      {
-        "comment": "",
-        "key": "Designs",
-        "location": {
-          "startingColumn": 26,
-          "startingLine": 1783
-        }
-      },
-      {
-        "comment": "",
-        "key": "Share Selected Image",
-        "location": {
-          "startingColumn": 66,
-          "startingLine": 1800
-        }
-      },
-      {
-        "comment": "",
-        "key": "Share Selected Images",
-        "location": {
-          "startingColumn": 91,
-          "startingLine": 1800
-        }
-      },
-      {
-        "comment": "",
-        "key": "Customize",
-        "location": {
-          "startingColumn": 26,
-          "startingLine": 1982
-        }
-      },
-      {
-        "comment": "",
-        "key": "Title",
-        "location": {
-          "startingColumn": 27,
-          "startingLine": 1940
-        }
-      },
-      {
-        "comment": "",
-        "key": "Reset to Default",
-        "location": {
-          "startingColumn": 24,
           "startingLine": 1944
-        }
-      },
-      {
-        "comment": "",
-        "key": "Share Picture Title",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 1948
-        }
-      },
-      {
-        "comment": "",
-        "key": "This title is used for every share picture preview and export.",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 1950
-        }
-      },
-      {
-        "comment": "",
-        "key": "Aspect Ratio",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 1956
-        }
-      },
-      {
-        "comment": "",
-        "key": "The selected ratio is applied to every share picture preview and export.",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 1958
-        }
-      },
-      {
-        "comment": "",
-        "key": "Background",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 1977
-        }
-      },
-      {
-        "comment": "",
-        "key": "Background changes are applied to every share picture preview and export.",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 1979
-        }
-      },
-      {
-        "comment": "",
-        "key": "total listening time",
-        "location": {
-          "startingColumn": 18,
-          "startingLine": 3622
-        }
-      },
-      {
-        "comment": "",
-        "key": "Up Next",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 3788
-        }
-      },
-      {
-        "comment": "",
-        "key": "#%lld",
-        "location": {
-          "startingColumn": 22,
-          "startingLine": 4088
-        }
-      },
-      {
-        "comment": "",
-        "key": "%lld",
-        "location": {
-          "startingColumn": 18,
-          "startingLine": 4107
-        }
-      },
-      {
-        "comment": "",
-        "key": "+%lld more",
-        "location": {
-          "startingColumn": 18,
-          "startingLine": 4322
         }
       }
     ]

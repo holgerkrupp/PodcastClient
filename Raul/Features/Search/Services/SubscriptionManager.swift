@@ -69,23 +69,41 @@ actor SubscriptionManager:NSObject{
         }
     }
     
-    func read(file url: URL) -> [PodcastFeed]?{
+    func read(file url: URL, progress: SubscriptionProgressHandler? = nil) async -> [PodcastFeed]?{
         var newPodcasts: [PodcastFeed] = []
         
         // print("subscriptionmanager: read \(url.absoluteString)")
         guard url.startAccessingSecurityScopedResource() else {
             return nil
         }
+        defer {
+            url.stopAccessingSecurityScopedResource()
+        }
 
-        
+        if let progress {
+            await progress(SubscriptionProgressUpdate(0.05, "Opening OPML file"))
+        }
+
         if let data = try? Data(contentsOf: url){
+            if let progress {
+                await progress(SubscriptionProgressUpdate(0.2, "Reading subscriptions"))
+            }
             fetchData()
+            if let progress {
+                await progress(SubscriptionProgressUpdate(0.35, "Parsing OPML"))
+            }
             if parseOPMLData(data) || parseSanitizedOPMLData(data) {
                 let feeds = opmlParser.podcastFeeds
                 if feeds.isEmpty == false {
+                    if let progress {
+                        await progress(SubscriptionProgressUpdate(0.65, "Comparing with library"))
+                    }
                     newPodcasts = feeds
                     for index in newPodcasts.indices {
                         newPodcasts[index].existing = podcasts.contains { newPodcasts[index].matchesExistingPodcast($0) }
+                    }
+                    if let progress {
+                        await progress(SubscriptionProgressUpdate(0.8, "Preparing import preview"))
                     }
                     
                 }
@@ -374,14 +392,15 @@ actor SubscriptionManager:NSObject{
         //    for the crucial insertion step.
         
         var newPodcastFeeds: Set<URL> = []
+        let importTotal = max(newPodcasts.count, 1)
+
+        if let progress {
+            await progress(SubscriptionProgressUpdate(0.02, "Preparing subscriptions"))
+        }
         
-        for podcastFeed in newPodcasts {
+        for (index, podcastFeed) in newPodcasts.enumerated() {
             guard let url = podcastFeed.url else { continue }
 
-            
-            
-            
-            
             // Check if podcast with this feed URL already exists (if PodcastFeed.existing is not reliable)
             let descriptor = FetchDescriptor<Podcast>(
                 predicate: #Predicate<Podcast> { $0.feed == url }
@@ -407,34 +426,54 @@ actor SubscriptionManager:NSObject{
                 }
                
             }
+
+            if let progress {
+                let completed = index + 1
+                let fraction = 0.02 + (Double(completed) / Double(importTotal)) * 0.18
+                await progress(
+                    SubscriptionProgressUpdate(
+                        fraction,
+                        "Adding \(completed) of \(newPodcasts.count) subscriptions"
+                    )
+                )
+            }
         }
-        
-        dump(newPodcastFeeds)
         
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
+        if let progress {
+            await progress(SubscriptionProgressUpdate(0.22, "Saving subscriptions"))
+        }
         modelContext.saveIfNeeded()
         await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         
-        do{
-            let worker = PodcastModelActor(modelContainer: self.modelContainer)
-            let feeds = Array(newPodcastFeeds)
-            let total = max(feeds.count, 1)
+        if let progress {
+            await progress(
+                SubscriptionProgressUpdate(
+                    1.0,
+                    "Subscriptions added. Episodes will import in the background."
+                )
+            )
+        }
 
-            for (index, feed) in feeds.enumerated() {
-                print("updating podcast: \(feed)")
-                _ = try await worker.updatePodcast(feed, force: true, silent: true) { update in
-                    guard let progress else { return }
-                    let overall = (Double(index) + update.fractionCompleted) / Double(total)
-                    await progress(SubscriptionProgressUpdate(overall, update.message))
+        scheduleBackgroundFeedImport(for: Array(newPodcastFeeds))
+    }
+
+    private nonisolated func scheduleBackgroundFeedImport(for feeds: [URL]) {
+        let modelContainer = self.modelContainer
+        Task.detached(priority: .utility) {
+            let worker = PodcastModelActor(modelContainer: modelContainer)
+
+            for feed in feeds {
+                do {
+                    print("background importing podcast: \(feed)")
+                    _ = try await worker.updatePodcast(feed, force: true, silent: true)
+                } catch {
+                    print("could not import podcast feed \(feed): \(error)")
                 }
             }
-            if let progress {
-                await progress(SubscriptionProgressUpdate(1.0, "Subscription complete"))
-            }
+
             await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        }catch{
-            print("could not refresh podcasts")
         }
     }
     
@@ -471,43 +510,34 @@ actor SubscriptionManager:NSObject{
         timeBudget: TimeInterval
     ) async -> TimedPodcastUpdateResult {
         let worker = PodcastModelActor(modelContainer: modelContainer)
-        let updateTask = Task(priority: .utility) {
-            try? await worker.updatePodcast(feed)
+        let deadline = Date().addingTimeInterval(timeBudget)
+
+        do {
+            let updated = try await worker.updatePodcast(feed, silent: true, deadline: deadline)
+            return Date() >= deadline ? .timedOut : .completed(updated)
+        } catch is CancellationError {
+            return .timedOut
+        } catch {
+            return .completed(false)
         }
-        let timeoutNanoseconds = UInt64(max(timeBudget, 0) * 1_000_000_000)
-
-        let outcome = await withTaskGroup(of: TimedPodcastUpdateResult.self, returning: TimedPodcastUpdateResult.self) { group in
-            group.addTask {
-                .completed(await updateTask.value)
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-                return .timedOut
-            }
-
-            let first = await group.next() ?? .timedOut
-            group.cancelAll()
-            return first
-        }
-
-        if case .timedOut = outcome {
-            updateTask.cancel()
-        }
-
-        return outcome
     }
 
     
     func bgupdateFeeds() async{
+        guard await FeedRefreshRunCoordinator.shared.begin() else {
+            CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
+            return
+        }
+
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
       
        //  await BasicLogger.shared.log("bgupdateFeeds")
         
         let startedAt = Date()
-        let maxPodcastsPerRun = 3
-        let maxRuntime: TimeInterval = 20
-        let perPodcastRuntimeLimit: TimeInterval = 8
+        let maxPodcastsPerRun = 2
+        let maxRuntime: TimeInterval = 18
+        let perPodcastRuntimeLimit: TimeInterval = 6
 
         setLastRefreshDate()
         fetchData()
@@ -555,6 +585,7 @@ actor SubscriptionManager:NSObject{
             details: "processed=\(processed),updated=\(updated),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
         )
         WatchSyncCoordinator.refreshSoon()
+        await FeedRefreshRunCoordinator.shared.finish()
     }
     
     func getLastRefreshDate() -> Date? {
@@ -611,6 +642,22 @@ actor SubscriptionManager:NSObject{
 
 
 
+}
+
+private actor FeedRefreshRunCoordinator {
+    static let shared = FeedRefreshRunCoordinator()
+
+    private var isRunning = false
+
+    func begin() -> Bool {
+        guard isRunning == false else { return false }
+        isRunning = true
+        return true
+    }
+
+    func finish() {
+        isRunning = false
+    }
 }
 
 extension String {

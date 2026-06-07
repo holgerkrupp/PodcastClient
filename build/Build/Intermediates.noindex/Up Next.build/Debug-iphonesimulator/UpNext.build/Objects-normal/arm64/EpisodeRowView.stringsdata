@@ -7,7 +7,7 @@
         "key": "Episode type: %@",
         "location": {
           "startingColumn": 53,
-          "startingLine": 75
+          "startingLine": 70
         }
       },
       {
@@ -15,7 +15,7 @@
         "key": "Has bookmarks",
         "location": {
           "startingColumn": 53,
-          "startingLine": 84
+          "startingLine": 79
         }
       },
       {
@@ -23,7 +23,7 @@
         "key": "Played",
         "location": {
           "startingColumn": 57,
-          "startingLine": 115
+          "startingLine": 110
         }
       },
       {
@@ -31,7 +31,7 @@
         "key": "Downloaded",
         "location": {
           "startingColumn": 57,
-          "startingLine": 118
+          "startingLine": 113
         }
       },
       {
@@ -39,7 +39,7 @@
         "key": "Not downloaded",
         "location": {
           "startingColumn": 57,
-          "startingLine": 121
+          "startingLine": 116
         }
       },
       {
@@ -47,7 +47,7 @@
         "key": "Has chapters",
         "location": {
           "startingColumn": 57,
-          "startingLine": 126
+          "startingLine": 121
         }
       },
       {
@@ -55,7 +55,7 @@
         "key": "Has transcript",
         "location": {
           "startingColumn": 57,
-          "startingLine": 130
+          "startingLine": 125
         }
       },
       {
@@ -63,7 +63,7 @@
         "key": "Now Playing",
         "location": {
           "startingColumn": 39,
-          "startingLine": 172
+          "startingLine": 167
         }
       },
       {
@@ -71,7 +71,7 @@
         "key": "Now Playing",
         "location": {
           "startingColumn": 39,
-          "startingLine": 180
+          "startingLine": 175
         }
       }
     ]

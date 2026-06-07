@@ -1,0 +1,16 @@
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Environment\ keys/HapticFeedbackTypeKey.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Environment\ keys/HapticsEnabledKey.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Environment\ keys/Identifier.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Environment\ keys/SensitivityKey.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Foundation/AnimationTokens.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Foundation/Hashable+extension.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Support/HapticsProvider.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Support/Measurements.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Support/PreviewFormatting.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/Support/Sensitivity.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/SwipeActions.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/ViewModifiers/DisableMultitouchModifier.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/ViewModifiers/MeasureSizeModifier.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/ViewModifiers/SwipeActionModifier.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/ViewModifiers/SwipeHintModifier.swift
+/Users/holgerkrupp/Developer/PodcastClient/build-device/SourcePackages/checkouts/SwipeActions/Sources/SwipeActions/ViewModifiers/ValueChangedModifier.swift

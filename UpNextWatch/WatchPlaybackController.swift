@@ -9,6 +9,7 @@ final class WatchPlaybackController: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
     @Published private(set) var playbackRate: Float = 1.0
+    @Published private var remoteProgressTick = Date()
     @Published var errorMessage: String?
 
     private weak var store: WatchSyncStore?
@@ -18,6 +19,7 @@ final class WatchPlaybackController: ObservableObject {
     private var interruptionObserver: NSObjectProtocol?
     private var playbackStatusObservation: NSKeyValueObservation?
     private var playbackRateObservation: NSKeyValueObservation?
+    private var remoteProgressTimer: Timer?
     private var currentSourceURL: URL?
     private var fallbackEpisode: WatchSyncEpisode?
     private var lastSyncedPosition: Double = 0
@@ -31,6 +33,7 @@ final class WatchPlaybackController: ObservableObject {
         installTimeObserver()
         installPlaybackStateObservers()
         installAudioSessionObservers()
+        installRemoteProgressTimer()
     }
 
     func attach(store: WatchSyncStore) {
@@ -86,7 +89,7 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     var nextChapter: WatchSyncChapter? {
-        currentEpisode?.chapters.first(where: { $0.start > playPosition + 0.5 })
+        currentEpisode?.chapters.first(where: { $0.start > displayedPlayPosition + 0.5 })
     }
 
     var formattedPlaybackRate: String {
@@ -111,7 +114,17 @@ final class WatchPlaybackController: ObservableObject {
     }
 
     var displayedPlayPosition: Double {
-        isRemoteControlEnabled ? max(remoteState?.playPosition ?? 0, 0) : playPosition
+        guard isRemoteControlEnabled else { return playPosition }
+        guard let remoteState else { return 0 }
+
+        let playbackRate = max(Double(remoteState.playbackRate), 0)
+        let elapsed = remoteState.isPlaying ? remoteProgressTick.timeIntervalSince(remoteState.generatedAt) * playbackRate : 0
+        let estimatedPosition = max(remoteState.playPosition + elapsed, 0)
+        if let duration = remoteState.duration, duration > 0 {
+            return min(estimatedPosition, duration)
+        }
+
+        return estimatedPosition
     }
 
     var skipBackSeconds: Int {
@@ -426,6 +439,21 @@ final class WatchPlaybackController: ObservableObject {
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             Task { @MainActor in
                 self?.handleAudioSessionInterruption(typeValue: typeValue)
+            }
+        }
+    }
+
+    private func installRemoteProgressTimer() {
+        remoteProgressTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self,
+                      self.isRemoteControlEnabled,
+                      self.remoteState?.isPlaying == true
+                else {
+                    return
+                }
+
+                self.remoteProgressTick = .now
             }
         }
     }

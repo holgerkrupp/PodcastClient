@@ -143,7 +143,7 @@
         "key": "Matched in podcast metadata",
         "location": {
           "startingColumn": 26,
-          "startingLine": 283
+          "startingLine": 281
         }
       },
       {
@@ -151,7 +151,7 @@
         "key": "Play from %@",
         "location": {
           "startingColumn": 41,
-          "startingLine": 359
+          "startingLine": 356
         }
       },
       {
@@ -159,7 +159,7 @@
         "key": "Play from transcript match",
         "location": {
           "startingColumn": 31,
-          "startingLine": 353
+          "startingLine": 350
         }
       },
       {
@@ -167,7 +167,7 @@
         "key": "This podcast could not be loaded.",
         "location": {
           "startingColumn": 35,
-          "startingLine": 1021
+          "startingLine": 1018
         }
       },
       {
@@ -175,7 +175,7 @@
         "key": "Podcast Unavailable",
         "location": {
           "startingColumn": 17,
-          "startingLine": 1019
+          "startingLine": 1016
         }
       },
       {
@@ -183,7 +183,7 @@
         "key": "This episode could not be loaded.",
         "location": {
           "startingColumn": 35,
-          "startingLine": 1038
+          "startingLine": 1035
         }
       },
       {
@@ -191,7 +191,7 @@
         "key": "Episode Unavailable",
         "location": {
           "startingColumn": 17,
-          "startingLine": 1036
+          "startingLine": 1033
         }
       }
     ]

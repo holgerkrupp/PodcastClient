@@ -1,8 +1,0 @@
-Target dependency graph (4 targets)
-Target 'UpNextWatch' in project 'Up Next'
-➜ Explicit dependency on target 'UpNextWatchComplications' in project 'Up Next'
-➜ Explicit dependency on target 'DeviceInfo' in project 'DeviceInfo'
-Target 'DeviceInfo' in project 'DeviceInfo'
-➜ Explicit dependency on target 'DeviceInfo' in project 'DeviceInfo'
-Target 'DeviceInfo' in project 'DeviceInfo' (no dependencies)
-Target 'UpNextWatchComplications' in project 'Up Next' (no dependencies)

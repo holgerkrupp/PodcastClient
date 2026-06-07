@@ -1,5 +1,40 @@
 {
   "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/App/RaulApp.swift",
-  "tables": {},
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Please Switch to the App Store Version",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 95
+        }
+      },
+      {
+        "comment": "",
+        "key": "Later",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 99
+        }
+      },
+      {
+        "comment": "",
+        "key": "Go to App Store",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 104
+        }
+      },
+      {
+        "comment": "",
+        "key": "This TestFlight version will no longer be updated. Please download the official version of Up Next to keep using the app and save your data.",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 107
+        }
+      }
+    ]
+  },
   "version": 1
 }

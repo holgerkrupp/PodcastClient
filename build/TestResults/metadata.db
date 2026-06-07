@@ -13,12 +13,75 @@
 				<key>testPreservesExistingXMLAndNumericEntities</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.00054204463958740234</real>
+					<real>0.0011409521102905273</real>
 				</dict>
 				<key>testSanitizesUnescapedAttributeCharactersFromAppleShortcutOPML</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.00066006183624267578</real>
+					<real>0.00055098533630371094</real>
+				</dict>
+			</dict>
+			<key>PlaybackAudioEnhancementTests</key>
+			<dict>
+				<key>testAudioEnhancementSettingsFallbackToGlobalDefaults</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.10058796405792236</real>
+				</dict>
+				<key>testAudioEnhancementSettingsUseEnabledPodcastOverrides</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.015311956405639648</real>
+				</dict>
+				<key>testLowSilenceReductionWaitsLongerAndUsesGentlerRate</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.00040996074676513672</real>
+				</dict>
+				<key>testPlaybackRateSavingsDoesNotDoubleCountOverlappingUnorderedSegments</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.0058130025863647461</real>
+				</dict>
+				<key>testPlaybackRateTimeSavedPersistsInStatsAndSummaries</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.12044692039489746</real>
+				</dict>
+				<key>testSilenceDetectorStartsAfterSustainedQuietAudio</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.00034201145172119141</real>
+				</dict>
+				<key>testSilenceDetectorStopsWhenAudioReturns</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.00028491020202636719</real>
+				</dict>
+				<key>testSilenceGapTimeSavedPersistsForSessionEpisodeAndStats</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.024703025817871094</real>
+				</dict>
+				<key>testSilenceReducedRateIsClamped</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.00044000148773193359</real>
+				</dict>
+				<key>testVoiceEnhancerGraduallyRaisesQuietSpeech</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.057787895202636719</real>
+				</dict>
+				<key>testVoiceEnhancerLimitsFullScalePeaks</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.010732054710388184</real>
+				</dict>
+				<key>testVoiceEnhancerRejectsSteadyLowFrequencyOffset</key>
+				<dict>
+					<key>mrnet</key>
+					<real>0.0093270540237426758</real>
 				</dict>
 			</dict>
 			<key>PlaylistModelActorPlaybackQueueTests</key>
@@ -26,32 +89,32 @@
 				<key>testActivePlaybackPlaylistFallsBackToDefaultWhenStoredSelectionIsStale</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.10773396492004395</real>
+					<real>0.041647911071777344</real>
 				</dict>
 				<key>testActivePlaybackPlaylistUsesStoredSelectedPlaylist</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.054633021354675293</real>
+					<real>0.012562990188598633</real>
 				</dict>
 				<key>testNextEpisodeAfterCurrentWhenCurrentIsFirst</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.013130903244018555</real>
+					<real>0.010824918746948242</real>
 				</dict>
 				<key>testNextEpisodeAfterCurrentWhenCurrentIsInMiddle</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.011421918869018555</real>
+					<real>0.01143801212310791</real>
 				</dict>
 				<key>testNextEpisodeFallsBackToFirstWhenCurrentIsAbsent</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.010222911834716797</real>
+					<real>0.011216998100280762</real>
 				</dict>
 				<key>testNextEpisodeReturnsNilForEmptySelectedPlaylist</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.0075820684432983398</real>
+					<real>0.0081779956817626953</real>
 				</dict>
 			</dict>
 			<key>ShownotesChapterExtractorTests</key>
@@ -59,12 +122,12 @@
 				<key>testExtractsChapterMarksFromDifferentShownoteFormats</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.27127504348754883</real>
+					<real>0.27002394199371338</real>
 				</dict>
 				<key>testRequiresAtLeastTwoChapterMarks</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.012343049049377441</real>
+					<real>0.013466954231262207</real>
 				</dict>
 			</dict>
 			<key>WatchSyncRemoteControlModelTests</key>
@@ -72,17 +135,17 @@
 				<key>testLegacySnapshotDecodesWithoutPhonePlaybackState</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.0016739368438720703</real>
+					<real>0.0016970634460449219</real>
 				</dict>
 				<key>testLegacyStorageSettingsDefaultToLocalPlayback</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.0012359619140625</real>
+					<real>0.0010470151901245117</real>
 				</dict>
 				<key>testRemoteMoveCommandRoundTripsIndexes</key>
 				<dict>
 					<key>mrnet</key>
-					<real>0.0013120174407958984</real>
+					<real>0.0010439157485961914</real>
 				</dict>
 			</dict>
 		</dict>

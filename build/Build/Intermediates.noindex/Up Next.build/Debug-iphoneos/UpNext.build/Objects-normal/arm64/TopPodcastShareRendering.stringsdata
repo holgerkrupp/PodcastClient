@@ -1,0 +1,112 @@
+{
+  "source": "/Users/holgerkrupp/Developer/PodcastClient/Raul/Features/Player/Views/Statistics/TopPodcastShareRendering.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "total listening time",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 665
+        }
+      },
+      {
+        "comment": "",
+        "key": "Up Next",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 831
+        }
+      },
+      {
+        "comment": "",
+        "key": "#%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 1131
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1150
+        }
+      },
+      {
+        "comment": "",
+        "key": "+%lld more",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1365
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 1948
+        }
+      },
+      {
+        "comment": "",
+        "key": "No plays",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 2029
+        }
+      },
+      {
+        "comment": "",
+        "key": "No plays",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 2093
+        }
+      },
+      {
+        "comment": "",
+        "key": "No plays",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 2161
+        }
+      },
+      {
+        "comment": "",
+        "key": "No plays",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 2222
+        }
+      },
+      {
+        "comment": "",
+        "key": "No plays",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 2290
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld active hours",
+        "location": {
+          "startingColumn": 57,
+          "startingLine": 2290
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 2378
+        }
+      }
+    ]
+  },
+  "version": 1
+}

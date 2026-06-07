@@ -1,0 +1,312 @@
+{
+  "version" : 2,
+  "source" : "\/Users\/holgerkrupp\/Developer\/PodcastClient\/PlayerIntentsExtension\/PlayerIntentsExtension.swift",
+  "tables" : {
+    "AppShortcuts" : [
+      {
+        "location" : {
+          "startingColumn" : 0,
+          "startingLine" : 146
+        },
+        "key" : "Bookmark this in ${applicationName}",
+        "values" : [
+          "Bookmark this in ${applicationName}",
+          "Save a bookmark in ${applicationName}",
+          "Bookmark the current position in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "BookmarkCurrentPlaybackIntent",
+            "index" : 0,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Bookmark This"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Resume playback in ${applicationName}",
+        "values" : [
+          "Resume playback in ${applicationName}",
+          "Play last episode in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "ResumePlaybackIntent",
+            "index" : 1,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Resume Playback"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Pause playback in ${applicationName}",
+        "values" : [
+          "Pause playback in ${applicationName}",
+          "Pause ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "PausePlaybackIntent",
+            "index" : 2,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Pause Playback"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Skip forward in ${applicationName}",
+        "values" : [
+          "Skip forward in ${applicationName}",
+          "Jump ahead in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "SkipForwardIntent",
+            "index" : 3,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Skip Forward"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Skip back in ${applicationName}",
+        "values" : [
+          "Skip back in ${applicationName}",
+          "Jump back in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "SkipBackwardIntent",
+            "index" : 4,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Skip Backward"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Play Up Next in ${applicationName}",
+        "values" : [
+          "Play Up Next in ${applicationName}",
+          "Start Up Next in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "PlayFirstUpNextIntent",
+            "index" : 5,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Play Up Next"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Play next episode in ${applicationName}",
+        "values" : [
+          "Play next episode in ${applicationName}",
+          "Play what's next in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "PlayNextUpNextIntent",
+            "index" : 6,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Play Next Up Next Episode"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Move this episode to the end in ${applicationName}",
+        "values" : [
+          "Move this episode to the end in ${applicationName}",
+          "Send current episode to the end in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "MoveCurrentEpisodeToEndIntent",
+            "index" : 7,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Move Current To End"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Remove this from Up Next in ${applicationName}",
+        "values" : [
+          "Remove this from Up Next in ${applicationName}",
+          "Remove current episode in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+
+            },
+            "actionIdentifier" : "RemoveCurrentFromUpNextIntent",
+            "index" : 8,
+            "parameterDisplayRepresentations" : {
+
+            },
+            "title" : "Remove Current From Up Next"
+          }
+        ]
+      },
+      {
+        "location" : {
+          "startingLine" : 146,
+          "startingColumn" : 0
+        },
+        "key" : "Generate podcast share image in ${applicationName}",
+        "values" : [
+          "Generate podcast share image in ${applicationName}",
+          "Create podcast stats image in ${applicationName}"
+        ],
+        "appShortcutMetadata" : [
+          {
+            "parameterTypes" : {
+              "period" : "PodcastShareShortcutPeriod",
+              "timing" : "PodcastShareShortcutTiming",
+              "design" : "PodcastShareShortcutDesign",
+              "aspectRatio" : "PodcastShareShortcutAspectRatio",
+              "background" : "PodcastShareShortcutBackground"
+            },
+            "actionIdentifier" : "GeneratePodcastShareImageIntent",
+            "index" : 9,
+            "parameterDisplayRepresentations" : {
+              "PodcastShareShortcutDesign" : [
+                "Podium Top 3",
+                "Billboard Top 10",
+                "Cover Grid",
+                "Cover Collage",
+                "Cover Cloud",
+                "Playtime Bars",
+                "Playtime Pie",
+                "Stats Wrapped",
+                "Calendar",
+                "Year Calendar"
+              ],
+              "PodcastShareShortcutAspectRatio" : [
+                "Portrait",
+                "Square",
+                "Landscape"
+              ],
+              "PodcastShareShortcutTiming" : [
+                "Current Period",
+                "Previous Period"
+              ],
+              "PodcastShareShortcutPeriod" : [
+                "Day",
+                "Week",
+                "Month",
+                "Year",
+                "Forever"
+              ],
+              "PodcastShareShortcutBackground" : [
+                "Automatic for Period",
+                "Boring",
+                "Rainbow",
+                "45 Gradient",
+                "White",
+                "Black",
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+                "New Year",
+                "Carnival",
+                "Christmas",
+                "Easter",
+                "Ramadan",
+                "Eid al-Fitr",
+                "Hanukkah",
+                "Holi",
+                "Diwali",
+                "Lunar New Year",
+                "Midsummer",
+                "Halloween"
+              ]
+            },
+            "title" : "Generate Podcast Share Image"
+          }
+        ]
+      }
+    ]
+  }
+}
