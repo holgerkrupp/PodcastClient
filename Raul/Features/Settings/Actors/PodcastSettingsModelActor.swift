@@ -250,6 +250,9 @@ actor PodcastSettingsModelActor {
             let standardSettings = await standardSettings()
             newSettings.isEnabled = true
             newSettings.playbackSpeed = standardSettings.playbackSpeed
+            newSettings.reduceSilenceGapsEnabled = standardSettings.reduceSilenceGapsEnabled
+            newSettings.silenceGapReductionLevel = standardSettings.silenceGapReductionLevel
+            newSettings.voiceEnhancementEnabled = standardSettings.voiceEnhancementEnabled
             newSettings.skipForward = standardSettings.skipForward
             newSettings.skipBack = standardSettings.skipBack
             newSettings.skipForwardBehavior = standardSettings.skipForwardBehavior
@@ -315,6 +318,36 @@ actor PodcastSettingsModelActor {
        //  await BasicLogger.shared.log("custom PlaybackSpeed: \(playbackSpeed.formatted())")
 
         return playbackSpeed
+    }
+
+    func getReduceSilenceGapsEnabled(for podcastFeed: URL?) async -> Bool {
+        if let podcastFeed,
+           let settings = await fetchPodcastSettings(for: podcastFeed),
+           settings.isEnabled {
+            return settings.reduceSilenceGapsEnabled
+        }
+
+        return await standardSettings().reduceSilenceGapsEnabled
+    }
+
+    func getSilenceGapReductionLevel(for podcastFeed: URL?) async -> SilenceGapReductionLevel {
+        if let podcastFeed,
+           let settings = await fetchPodcastSettings(for: podcastFeed),
+           settings.isEnabled {
+            return settings.silenceGapReductionLevel
+        }
+
+        return await standardSettings().silenceGapReductionLevel
+    }
+
+    func getVoiceEnhancementEnabled(for podcastFeed: URL?) async -> Bool {
+        if let podcastFeed,
+           let settings = await fetchPodcastSettings(for: podcastFeed),
+           settings.isEnabled {
+            return settings.voiceEnhancementEnabled
+        }
+
+        return await standardSettings().voiceEnhancementEnabled
     }
 
     func getSkipForwardStep(for podcastFeed: URL?) async -> SkipSteps {

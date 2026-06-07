@@ -25,6 +25,31 @@ enum PodcastFeedSwitchError: LocalizedError {
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
 
+    private func checkRefreshDeadline(_ deadline: Date?) throws {
+        try Task.checkCancellation()
+        if let deadline, Date() >= deadline {
+            throw CancellationError()
+        }
+    }
+
+    private func knownEpisodeIdentifiers(for podcast: Podcast) -> KnownPodcastEpisodeIdentifiers {
+        var identifiers = KnownPodcastEpisodeIdentifiers()
+
+        for episode in podcast.episodes ?? [] {
+            if let guid = episode.guid, guid.isEmpty == false {
+                identifiers.guids.insert(guid)
+            }
+            if let url = episode.url?.absoluteString, url.isEmpty == false {
+                identifiers.urls.insert(url)
+            }
+            if let link = episode.link?.absoluteString, link.isEmpty == false {
+                identifiers.urls.insert(link)
+            }
+        }
+
+        return identifiers
+    }
+
     private func reportProgress(
         _ update: SubscriptionProgressUpdate,
         using progressHandler: SubscriptionProgressHandler?
@@ -109,7 +134,11 @@ actor PodcastModelActor {
         modelContext.saveIfNeeded()
     }
     
-    func linkEpisodeToPodcast(_ episodeURL: URL, _ podcastFeed: URL) async {
+    func linkEpisodeToPodcast(
+        _ episodeURL: URL,
+        _ podcastFeed: URL,
+        savesImmediately: Bool = true
+    ) async {
    
         guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return }
         let episodedescriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.url == episodeURL })
@@ -119,7 +148,9 @@ actor PodcastModelActor {
             episode.podcast = podcast
         }
       
-        modelContext.saveIfNeeded()
+        if savesImmediately {
+            modelContext.saveIfNeeded()
+        }
     }
 
     private func episodeIdentifier(from episodeData: [String: Any]) -> String? {
@@ -177,11 +208,14 @@ actor PodcastModelActor {
 
     private func refreshFeedExternalFiles(
         for episodeURL: URL,
-        from episodeData: [String: Any]
+        from episodeData: [String: Any],
+        savesImmediately: Bool = true
     ) {
         guard let episode = fetchEpisode(byURL: episodeURL) else { return }
         episode.refreshFeedExternalFiles(from: episodeData)
-        modelContext.saveIfNeeded()
+        if savesImmediately {
+            modelContext.saveIfNeeded()
+        }
     }
 
     private func fillMissingRemoteMP3DurationIfNeeded(
@@ -413,9 +447,10 @@ actor PodcastModelActor {
         _ podcastFeed: URL,
         force: Bool? = false,
         silent: Bool? = false,
+        deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
-        try Task.checkCancellation()
+        try checkRefreshDeadline(deadline)
         // Fetch podcast just long enough to snapshot IDs & primitives
         guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
         guard let feedURL = podcast.feed else { return false }
@@ -437,42 +472,49 @@ actor PodcastModelActor {
 
         // Snapshot some plain values if needed
         let titleSnapshot = podcast.title
+        let knownEpisodeIdentifiers = force == true
+            ? KnownPodcastEpisodeIdentifiers()
+            : knownEpisodeIdentifiers(for: podcast)
 
         // ⚠️ After this point: do not use `podcast` directly across awaits
         // ----------------------------------------------------------------
 
         // Update messages (still safe, no await yet)
-        if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
-            freshMeta.message = "Refreshing Podcast ..."
-            freshMeta.isUpdating = true
+        if silent != true {
+            if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                freshMeta.message = "Refreshing Podcast ..."
+                freshMeta.isUpdating = true
+            }
+            modelContext.saveIfNeeded()
         }
         /*
         if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
             freshPodcast.message = "Refreshing Podcast ..."
         }
          */
-        modelContext.saveIfNeeded()
         await reportProgress(SubscriptionProgressUpdate(0.12, "Checking feed status"), using: progress)
-        try Task.checkCancellation()
+        try checkRefreshDeadline(deadline)
 
         // --- FIRST await boundary ---
         if force == false {
             guard await checkIfFeedHasBeenUpdated(podcastFeed) != false else {
                 print("\(titleSnapshot) not updated")
 
-                if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
-                    freshMeta.isUpdating = false
-                    freshMeta.message = nil
+                if silent != true {
+                    if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                        freshMeta.isUpdating = false
+                        freshMeta.message = nil
+                    }
+                    if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                        freshPodcast.message = nil
+                    }
+                    modelContext.saveIfNeeded()
                 }
-                if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
-                    freshPodcast.message = nil
-                }
-                modelContext.saveIfNeeded()
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
                 return false
             }
         }
-        try Task.checkCancellation()
+        try checkRefreshDeadline(deadline)
 
         // --- SECOND await boundary ---
         guard
@@ -483,16 +525,21 @@ actor PodcastModelActor {
         }
          
         // Safe updates again
-        freshMeta.message = "Reading Podcast Feed."
-        freshPodcast.message = "Reading Podcast Feed."
-        modelContext.saveIfNeeded()
+        if silent != true {
+            freshMeta.message = "Reading Podcast Feed."
+            freshPodcast.message = "Reading Podcast Feed."
+            modelContext.saveIfNeeded()
+        }
         await reportProgress(SubscriptionProgressUpdate(0.32, "Downloading and parsing feed"), using: progress)
-        try Task.checkCancellation()
+        try checkRefreshDeadline(deadline)
 
         do {
             // Parse XML
-            let fullPodcast = try await PodcastParser.fetchAllPages(from: feedURL)
-            try Task.checkCancellation()
+            let fullPodcast = try await PodcastParser.fetchAllPages(
+                from: feedURL,
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers
+            )
+            try checkRefreshDeadline(deadline)
 
             guard
                 let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
@@ -502,21 +549,26 @@ actor PodcastModelActor {
             }
 
             // Update podcast details safely
-            finalMeta.message = "Updating Podcast details"
-            finalPodcast.message = "Updating Podcast details"
-            modelContext.saveIfNeeded()
+            if silent != true {
+                finalMeta.message = "Updating Podcast details"
+                finalPodcast.message = "Updating Podcast details"
+                modelContext.saveIfNeeded()
+            }
             await reportProgress(SubscriptionProgressUpdate(0.56, "Updating podcast details"), using: progress)
 
             try await updateDetails(
                 finalPodcast,
                 fullPodcast: fullPodcast,
                 silent: silent,
+                deadline: deadline,
                 progress: progress
             )
 
-            finalPodcast.message = nil
-            finalMeta.message = nil
-            finalMeta.isUpdating = false
+            if silent != true {
+                finalPodcast.message = nil
+                finalMeta.message = nil
+                finalMeta.isUpdating = false
+            }
             finalMeta.feedUpdated = true
             await updateLastRefresh(for: finalMeta.persistentModelID)
             modelContext.saveIfNeeded()
@@ -524,14 +576,16 @@ actor PodcastModelActor {
 
             return true
         } catch is CancellationError {
-            if let cancelledMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
-                cancelledMeta.isUpdating = false
-                cancelledMeta.message = nil
+            if silent != true {
+                if let cancelledMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                    cancelledMeta.isUpdating = false
+                    cancelledMeta.message = nil
+                }
+                if let cancelledPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                    cancelledPodcast.message = nil
+                }
+                modelContext.saveIfNeeded()
             }
-            if let cancelledPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
-                cancelledPodcast.message = nil
-            }
-            modelContext.saveIfNeeded()
             await reportProgress(SubscriptionProgressUpdate(1.0, "Refresh paused"), using: progress)
             return false
         } catch {
@@ -544,11 +598,13 @@ actor PodcastModelActor {
             )
             if let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
                 failedMeta.isUpdating = false
-                failedMeta.message = nil
+                if silent != true {
+                    failedMeta.message = nil
+                }
                 failedMeta.feedUpdateCheckDate = Date()
                 failedMeta.feedUpdated = nil
             }
-            if let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+            if silent != true, let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
                 failedPodcast.message = nil
             }
             modelContext.saveIfNeeded()
@@ -561,6 +617,7 @@ actor PodcastModelActor {
         _ podcast: Podcast,
         fullPodcast: [String : Any],
         silent: Bool? = false,
+        deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws {
         print("updateDetails for \(podcast.title)")
@@ -578,8 +635,10 @@ actor PodcastModelActor {
             dateString: fullPodcast["lastBuildDate"] as? String ?? ""
         )
 
-        podcast.metaData?.message = "Updating Podcast details"
-        podcast.message = "Updating Podcast details"
+        if silent != true {
+            podcast.metaData?.message = "Updating Podcast details"
+            podcast.message = "Updating Podcast details"
+        }
 
         if let fundingArr = fullPodcast["funding"] as? [[String: String]] {
             podcast.funding = fundingArr.compactMap { dict in
@@ -648,19 +707,38 @@ actor PodcastModelActor {
         }
 
         if let episodesData = fullPodcast["episodes"] as? [[String: Any]] {
-            podcast.metaData?.message = "Updating Podcast Episodes"
-            podcast.message = "Updating Podcast Episodes"
+            if silent != true {
+                podcast.metaData?.message = "Updating Podcast Episodes"
+                podcast.message = "Updating Podcast Episodes"
+            }
             await reportProgress(SubscriptionProgressUpdate(0.7, "Creating database entries"), using: progress)
 
             let totalEpisodes = max(episodesData.count, 1)
+            let podcastTitle = podcast.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let progressPodcastTitle = podcastTitle.isEmpty ? "podcast" : podcastTitle
+            var unsavedSilentEpisodeChanges = 0
+            let shouldProcessNewEpisodes = silent != true
+                && podcast.metaData?.lastRefresh != nil
+                && (podcast.episodes?.isEmpty == false)
+            let existingEpisodes = podcast.episodes ?? []
+            var existingEpisodesByGUID: [String: Episode] = [:]
+            var existingEpisodesByURL: [URL: Episode] = [:]
+            for episode in existingEpisodes {
+                if let guid = episode.guid, guid.isEmpty == false {
+                    existingEpisodesByGUID[guid] = episode
+                }
+                if let url = episode.url {
+                    existingEpisodesByURL[url] = episode
+                }
+            }
 
             for (index, episodeData) in episodesData.enumerated() {
-                try Task.checkCancellation()
+                try checkRefreshDeadline(deadline)
                 let episodeProgress = 0.7 + (Double(index) / Double(totalEpisodes)) * 0.25
                 await reportProgress(
                     SubscriptionProgressUpdate(
                         episodeProgress,
-                        "Importing episodes \(index + 1)/\(episodesData.count)"
+                        "Importing episodes for \(progressPodcastTitle) \(index + 1)/\(episodesData.count)"
                     ),
                     using: progress
                 )
@@ -668,18 +746,32 @@ actor PodcastModelActor {
                 let episodeIdentifier = episodeIdentifier(from: episodeData)
                 let candidateEpisodeURL = episodeURL(from: episodeData)
 
-                if let existingEpisode = podcast.episodes?.first(where: {
-                    ($0.guid != nil && $0.guid == episodeIdentifier) || ($0.url != nil && $0.url == candidateEpisodeURL)
-                }) {
+                if let existingEpisode = episodeIdentifier.flatMap({ existingEpisodesByGUID[$0] })
+                    ?? candidateEpisodeURL.flatMap({ existingEpisodesByURL[$0] }) {
                     existingEpisode.update(from: episodeData)
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
                     existingEpisode.refreshOptionalTags(from: episodeData)
-                    await fillMissingRemoteMP3DurationIfNeeded(
-                        episodeID: existingEpisode.persistentModelID,
-                        episodeURL: existingEpisode.url,
-                        currentDuration: existingEpisode.duration
-                    )
-                    modelContext.saveIfNeeded()
+                    if let guid = existingEpisode.guid, guid.isEmpty == false {
+                        existingEpisodesByGUID[guid] = existingEpisode
+                    }
+                    if let url = existingEpisode.url {
+                        existingEpisodesByURL[url] = existingEpisode
+                    }
+                    if silent == true {
+                        unsavedSilentEpisodeChanges += 1
+                    } else {
+                        await fillMissingRemoteMP3DurationIfNeeded(
+                            episodeID: existingEpisode.persistentModelID,
+                            episodeURL: existingEpisode.url,
+                            currentDuration: existingEpisode.duration
+                        )
+                        modelContext.saveIfNeeded()
+                    }
+
+                    if silent == true, unsavedSilentEpisodeChanges >= 25 {
+                        modelContext.saveIfNeeded()
+                        unsavedSilentEpisodeChanges = 0
+                    }
                     continue
                 }
 
@@ -688,14 +780,35 @@ actor PodcastModelActor {
                 if let episodeURL = existingEpisodeURL(identifier: episodeIdentifier, episodeURL: candidateEpisodeURL),
                    let feed = podcast.feed {
                     print("already existing")
-                    await linkEpisodeToPodcast(episodeURL, feed)
-                    refreshFeedExternalFiles(for: episodeURL, from: episodeData)
-                    if let existingEpisode = fetchEpisode(byURL: episodeURL) {
+                    await linkEpisodeToPodcast(
+                        episodeURL,
+                        feed,
+                        savesImmediately: silent != true
+                    )
+                    refreshFeedExternalFiles(
+                        for: episodeURL,
+                        from: episodeData,
+                        savesImmediately: silent != true
+                    )
+                    if silent == true {
+                        unsavedSilentEpisodeChanges += 1
+                    } else if let existingEpisode = fetchEpisode(byURL: episodeURL) {
                         await fillMissingRemoteMP3DurationIfNeeded(
                             episodeID: existingEpisode.persistentModelID,
                             episodeURL: existingEpisode.url,
                             currentDuration: existingEpisode.duration
                         )
+                        if let guid = existingEpisode.guid, guid.isEmpty == false {
+                            existingEpisodesByGUID[guid] = existingEpisode
+                        }
+                        if let url = existingEpisode.url {
+                            existingEpisodesByURL[url] = existingEpisode
+                        }
+                    }
+
+                    if silent == true, unsavedSilentEpisodeChanges >= 25 {
+                        modelContext.saveIfNeeded()
+                        unsavedSilentEpisodeChanges = 0
                     }
                     continue
                 }
@@ -704,14 +817,22 @@ actor PodcastModelActor {
 
                 print("newly created")
                 modelContext.insert(episode)
-                await fillMissingRemoteMP3DurationIfNeeded(
-                    episodeID: episode.persistentModelID,
-                    episodeURL: episode.url,
-                    currentDuration: episode.duration
-                )
+                if let guid = episode.guid, guid.isEmpty == false {
+                    existingEpisodesByGUID[guid] = episode
+                }
+                if let url = episode.url {
+                    existingEpisodesByURL[url] = episode
+                }
+                if silent != true {
+                    await fillMissingRemoteMP3DurationIfNeeded(
+                        episodeID: episode.persistentModelID,
+                        episodeURL: episode.url,
+                        currentDuration: episode.duration
+                    )
+                }
 
                 let episodeActor = EpisodeActor(modelContainer: modelContainer)
-                if silent == false {
+                if shouldProcessNewEpisodes {
                     print("NOT SILENT")
                     if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7) {
                         print("episode is old")
@@ -733,17 +854,27 @@ actor PodcastModelActor {
                 } else {
                     print("SILENT")
                     suppressFromInbox(episode, reason: .backCatalogImport)
-                    modelContext.saveIfNeeded()
+                    unsavedSilentEpisodeChanges += 1
                     if let episodeURL = episode.url {
                         EpisodeActor.scheduleRemoteChapterFetch(
                             episodeURL: episodeURL,
                             modelContainer: modelContainer
                         )
                     }
+
+                    if unsavedSilentEpisodeChanges >= 25 {
+                        modelContext.saveIfNeeded()
+                        unsavedSilentEpisodeChanges = 0
+                    }
                 }
             }
 
+            if silent == true, unsavedSilentEpisodeChanges > 0 {
+                modelContext.saveIfNeeded()
+            }
+
             await reportProgress(SubscriptionProgressUpdate(0.96, "Finalizing library updates"), using: progress)
+            try checkRefreshDeadline(deadline)
 
             if let podcastFeed = podcast.feed {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: podcastFeed)
@@ -893,36 +1024,43 @@ actor PodcastModelActor {
         )
     }
     
-    func refreshAllPodcasts() async throws {
-      //  let descriptor = FetchDescriptor<Podcast>()
-        
+    func refreshAllPodcasts(
+        progress: (@Sendable (_ completed: Int, _ total: Int) async -> Void)? = nil
+    ) async throws {
         let descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { podcast in
-                podcast.metaData != nil && podcast.metaData!.isSubscribed != false
+                podcast.metaData?.isSubscribed != false
             }
         )
-        
-        
-        
+
         let podcasts = try modelContext.fetch(descriptor)
-        let feeds = podcasts.map(\.feed)
+        let feeds = podcasts.compactMap(\.feed)
+        let maxConcurrent = 2
+        await progress?(0, feeds.count)
+        guard feeds.isEmpty == false else { return }
 
-        let semaphore = AsyncSemaphore(value: 5) // 👈 max 5 at a time
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            var nextIndex = 0
+            var completed = 0
 
-        await withThrowingTaskGroup(of: Void.self) { group in
-            for feed in feeds {
-                if let feed{
-                    group.addTask {
-                        await semaphore.wait()
-                        do {
-                            let worker = PodcastModelActor(modelContainer: self.modelContainer)
-                            _ = try await worker.updatePodcast(feed)
-                        } catch {
-                            throw error
-                        }
-                        await semaphore.signal()
-                    }
+            func enqueueNext() {
+                guard nextIndex < feeds.count else { return }
+                let feed = feeds[nextIndex]
+                nextIndex += 1
+                group.addTask {
+                    let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                    _ = try await worker.updatePodcast(feed)
                 }
+            }
+
+            for _ in 0..<min(maxConcurrent, feeds.count) {
+                enqueueNext()
+            }
+
+            while try await group.next() != nil {
+                completed += 1
+                await progress?(completed, feeds.count)
+                enqueueNext()
             }
         }
     }

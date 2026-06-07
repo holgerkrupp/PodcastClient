@@ -305,27 +305,33 @@ actor EpisodeActor {
         episodeURL: URL,
         playPosition: Double,
         maxPlayPosition: Double,
-        chapterProgresses: [String: Double]
-    ) async {
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        chapterProgresses: [String: Double],
+        lastPlayed: Date? = nil
+    ) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
         ensureMetadata(for: episode)
 
         let storedMaxPosition = episode.metaData?.maxPlayposition ?? 0.0
         episode.metaData?.playPosition = playPosition
         episode.metaData?.maxPlayposition = max(storedMaxPosition, maxPlayPosition, playPosition)
+        if let lastPlayed {
+            episode.metaData?.lastPlayed = lastPlayed
+        }
 
         for (chapterIDString, progress) in chapterProgresses {
             guard let chapterID = UUID(uuidString: chapterIDString) else { continue }
-            let predicate = #Predicate<Marker> { chapter in
-                chapter.uuid == chapterID
-            }
-
-            if let chapter = try? modelContext.fetch(FetchDescriptor<Marker>(predicate: predicate)).first {
+            if let chapter = episode.chapters?.first(where: { $0.uuid == chapterID }) {
                 chapter.progress = progress
             }
         }
 
-        modelContext.saveIfNeeded()
+        guard modelContext.hasChanges else { return true }
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            return false
+        }
     }
 
     func playbackStateSnapshot(for episodeURL: URL) async -> EpisodePlaybackStateSnapshot? {
@@ -392,7 +398,7 @@ actor EpisodeActor {
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
 
         for podcastFeed in podcastFeeds {
             await logAutoDownload("trigger/archive applying-policy feed=\(podcastFeed.absoluteString)")
@@ -415,7 +421,7 @@ actor EpisodeActor {
             episode.metaData?.systemSuppressionReason = nil
         }
         modelContext.saveIfNeeded()
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     func suppressEpisodeFromInbox(
@@ -477,7 +483,7 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-            WatchSyncCoordinator.refreshSoon()
+            WatchSyncCoordinator.refreshSoon(force: true)
         }
 
         for podcastFeed in podcastFeeds {
@@ -913,7 +919,7 @@ actor EpisodeActor {
         }
         
         modelContext.saveIfNeeded()
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     func markEpisodeAvailable(fileURL: URL) async {
@@ -955,7 +961,7 @@ actor EpisodeActor {
             )
         }
         modelContext.saveIfNeeded()
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
     
     // NEW: Delegate to TranscriptionManager
@@ -1581,22 +1587,77 @@ actor EpisodeActor {
         }
     }
     
-    private func parse(chapters: [String: Any]) -> [Marker]?{
-        if let chaptersDict = chapters["Chapters"] as? [String:[String:Any]]{
-            var chapters: [Marker] = []
-            for chapter in chaptersDict {
-                let newChaper = Marker()
-                newChaper.title = chapter.value["TIT2"] as? String ?? ""
-                newChaper.start = chapter.value["startTime"] as? Double ?? 0
-                newChaper.duration = (chapter.value["endTime"] as? Double ?? 0) - (newChaper.start ?? 0)
-                newChaper.type = .mp3
-                if let imagedata = (chapter.value["APIC"] as? [String:Any])?["Data"] as? Data{
-                    newChaper.imageData = imagedata
-                } else { }
-                chapters.append(newChaper)
-            }
-            return chapters
+    private func parse(chapters: [String: Any]) -> [Marker]? {
+        guard let chaptersDict = chapters["Chapters"] as? [String: Any] else {
+            return nil
         }
+
+        let parsedChapters = chaptersDict.compactMap { elementID, value -> Marker? in
+            guard let chapterData = value as? [String: Any] else {
+                return nil
+            }
+
+            let chapter = Marker()
+            chapter.title = chapterTitle(from: chapterData, elementID: elementID)
+            chapter.start = chapterData["startTime"] as? Double ?? 0
+            chapter.duration = (chapterData["endTime"] as? Double ?? 0) - (chapter.start ?? 0)
+            chapter.type = .mp3
+            if let imageData = (chapterData["APIC"] as? [String: Any])?["Data"] as? Data {
+                chapter.imageData = imageData
+            }
+            return chapter
+        }
+
+        return parsedChapters.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+
+    private func chapterTitle(from chapterData: [String: Any], elementID: String) -> String {
+        let titleCandidates = [
+            chapterData["TIT2"],
+            chapterData["Title"],
+            chapterData["TIT3"],
+            chapterData["TIT1"]
+        ]
+
+        for candidate in titleCandidates {
+            if let title = firstNonEmptyString(from: candidate) {
+                return title
+            }
+        }
+
+        return elementID
+    }
+
+    private func firstNonEmptyString(from value: Any?) -> String? {
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        if let strings = value as? [String] {
+            return strings.lazy.compactMap { self.firstNonEmptyString(from: $0) }.first
+        }
+
+        if let values = value as? [Any] {
+            return values.lazy.compactMap { self.firstNonEmptyString(from: $0) }.first
+        }
+
+        if let dictionary = value as? [String: Any] {
+            let nestedCandidates = [
+                dictionary["Value"],
+                dictionary["Title"],
+                dictionary["Description"],
+                dictionary["Text"],
+                dictionary["rawText"]
+            ]
+
+            for candidate in nestedCandidates {
+                if let string = firstNonEmptyString(from: candidate) {
+                    return string
+                }
+            }
+        }
+
         return nil
     }
     

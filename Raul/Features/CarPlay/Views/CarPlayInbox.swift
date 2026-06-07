@@ -46,8 +46,8 @@ class CarPlayInbox {
 
         let items = episodes.enumerated().map { index, episode in
             let item = CPListItem(
-                text: episode.title,
-                detailText: episode.subtitle ?? episode.desc ?? episode.displayPodcastTitle,
+                text: carPlayText(episode.title),
+                detailText: carPlayText(episode.subtitle ?? episode.desc ?? episode.displayPodcastTitle),
                 image: images[index] ?? UIImage()
             )
             item.userInfo = episode.summary
@@ -118,5 +118,11 @@ class CarPlayInbox {
     private func loadImage(for episode: EpisodeSummary) async -> UIImage? {
         guard let imageURL = episode.cover ?? episode.podcastCover else { return nil }
         return await ImageLoaderAndCache.loadUIImage(from: imageURL)
+    }
+
+    private func carPlayText(_ text: String?) -> String {
+        guard let text else { return "" }
+        return (text.decodeHTML() ?? text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

@@ -8,18 +8,24 @@ final class ListeningStat: Identifiable {
     var podcastFeed: URL?
     var podcastName: String?
     var totalSeconds: Double?
+    var silenceGapTimeSavedSeconds: Double?
+    var playbackRateTimeSavedSeconds: Double?
 
     init(
         id: UUID? = nil,
         startOfHour: Date? = nil,
         podcastFeed: URL? = nil,
         podcastName: String? = nil,
-        totalSeconds: Double? = nil
+        totalSeconds: Double? = nil,
+        silenceGapTimeSavedSeconds: Double? = nil,
+        playbackRateTimeSavedSeconds: Double? = nil
     ) {
         self.id = id
         self.startOfHour = startOfHour
         self.podcastFeed = podcastFeed
         self.podcastName = podcastName
         self.totalSeconds = totalSeconds
+        self.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
+        self.playbackRateTimeSavedSeconds = playbackRateTimeSavedSeconds
     }
 }

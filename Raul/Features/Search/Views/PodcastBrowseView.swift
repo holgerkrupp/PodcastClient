@@ -230,6 +230,7 @@ struct PodcastBrowseView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .ignoresSafeArea()
                     }
 
                     if viewModel.isLoadingMore {
@@ -463,6 +464,7 @@ private struct PodcastBrowseEpisodeRowView: View {
     @State private var isQueueing = false
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
+    @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
 
     private var displayTime: String {
         let duration = episode.duration ?? 0
@@ -471,6 +473,17 @@ private struct PodcastBrowseEpisodeRowView: View {
 
     private var publishText: String {
         episode.publishDate?.formatted(date: .abbreviated, time: .omitted) ?? "Unknown Date"
+    }
+
+    private var episodeTypeBadgeText: String? {
+        switch episode.type {
+        case .trailer:
+            return "Trailer"
+        case .bonus:
+            return "Bonus"
+        case .full, .unknown, nil:
+            return nil
+        }
     }
 
     private func startQueue(_ position: Playlist.Position) {
@@ -486,11 +499,33 @@ private struct PodcastBrowseEpisodeRowView: View {
 
     var body: some View {
         ZStack {
+            BlurredCoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
+                .scaledToFill()
+                .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
+                .clipped()
+                .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
-                    CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
-                        .frame(width: artworkSize, height: artworkSize)
-                        .accessibilityHidden(true)
+                    ZStack {
+                        CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
+                            .frame(width: artworkSize, height: artworkSize)
+                            .accessibilityHidden(true)
+
+                        if let episodeTypeBadgeText {
+                            Text(episodeTypeBadgeText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .padding(6)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .accessibilityLabel("Episode type: \(episodeTypeBadgeText)")
+                        }
+                    }
+                    .frame(width: artworkSize, height: artworkSize)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(alignment: .top) {
@@ -515,84 +550,82 @@ private struct PodcastBrowseEpisodeRowView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        if let author = episode.author, author.isEmpty == false {
-                            Text(author)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
+                        HStack(spacing: 10) {
+                            Image(systemName: "cloud")
+                                .accessibilityLabel("Not downloaded")
 
-                        if let subtitle = episode.subtitle, subtitle.isEmpty == false {
-                            Text(subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
-
-                        if let desc = episode.desc, desc.isEmpty == false {
-                            Text(desc)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(3)
-                        }
-                        
-                        GlassEffectContainer(spacing: 20.0) {
-                            HStack(spacing: 0.0) {
-                                Button {
-                                    startQueue(.front)
-                                } label: {
-                                    Image(systemName: "arrow.up.to.line")
-                                        .symbolRenderingMode(.hierarchical)
-                                        .scaledToFit()
-                                        .padding(5)
-                                        .minimumScaleFactor(0.5)
-                                        .frame(width: 50)
-                                }
-                                .buttonStyle(.glass(.clear))
-                                .clipShape(Circle())
-                                .disabled(isQueueing)
-                                .accessibilityLabel("Add to Up Next")
-                                
-                                Button {
-                                    startQueue(.end)
-                                } label: {
-                                    Image(systemName: "arrow.down.to.line")
-                                        .symbolRenderingMode(.hierarchical)
-                                        .scaledToFit()
-                                        .padding(5)
-                                        .minimumScaleFactor(0.5)
-                                        .frame(width: 50)
-                                }
-                                .buttonStyle(.glass(.clear))
-                                .clipShape(Circle())
-                                .disabled(isQueueing)
-                                .accessibilityLabel("Add to End")
-                                
-                                Spacer()
-                                
-                                if isQueueing {
-                                    ProgressView()
-                                }
+                            if episode.content != nil {
+                                Image(systemName: "quote.bubble")
+                                    .accessibilityLabel("Has content")
                             }
+
+                            if episode.deeplinks.isEmpty == false {
+                                Image(systemName: "link")
+                                    .accessibilityLabel("Has links")
+                            }
+
+                            Spacer()
                         }
+                        .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                 }
+
+                GlassEffectContainer(spacing: 20.0) {
+                    HStack(spacing: 0.0) {
+                        Button {
+                            startQueue(.front)
+                        } label: {
+                            Label("Add to Up Next", systemImage: "arrow.up.to.line")
+                                .labelStyle(.iconOnly)
+                                .symbolRenderingMode(.hierarchical)
+                                .scaledToFit()
+                                .padding(5)
+                                .minimumScaleFactor(0.5)
+                                .frame(width: 50)
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .clipShape(Circle())
+                        .disabled(isQueueing)
+
+                        Button {
+                            startQueue(.end)
+                        } label: {
+                            Label("Add to End", systemImage: "arrow.down.to.line")
+                                .labelStyle(.iconOnly)
+                                .symbolRenderingMode(.hierarchical)
+                                .scaledToFit()
+                                .padding(5)
+                                .minimumScaleFactor(0.5)
+                                .frame(width: 50)
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .clipShape(Circle())
+                        .disabled(isQueueing)
+
+                        Spacer()
+
+                        if isQueueing {
+                            ProgressView()
+                        }
+                    }
+                }
+                .frame(minHeight: controlsHeight)
             }
             .padding(8)
+            .background(
+                Rectangle()
+                    .fill(.thinMaterial)
+            )
         }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .overlay {
-                        BlurredCoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
-                            .scaledToFill()
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                            .opacity(0.45)
-                            .clipped()
-                    }
-            }
+        .overlay(alignment: .bottomLeading) {
+            Rectangle()
+                .fill(Color.accent.opacity(0.18))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: 4)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .accessibilityHidden(true)
         }
     }
 }

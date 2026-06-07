@@ -273,7 +273,7 @@ final class PhoneWatchSyncController: NSObject {
         episode.preferredChapters.map { chapter in
             WatchSyncChapter(
                 id: chapterSyncID(for: chapter),
-                title: chapter.title,
+                title: chapter.displayTitle,
                 start: chapter.start ?? 0,
                 duration: chapter.duration,
                 imageURL: chapter.image?.absoluteString,
@@ -351,10 +351,8 @@ final class PhoneWatchSyncController: NSObject {
             .map { "\($0.key):\(Int(($0.value * 100).rounded()))" }
             .joined(separator: ",")
         let phoneStateSignature = snapshot.phonePlaybackState.map { state in
-            let quantizedPosition = Int((state.playPosition / 15).rounded())
             return [
                 state.currentEpisodeURL ?? "",
-                "\(quantizedPosition)",
                 "\(state.duration ?? 0)",
                 "\(state.isPlaying)",
                 "\(state.isBuffering)",
@@ -393,7 +391,6 @@ final class PhoneWatchSyncController: NSObject {
             episode.imageURL ?? "",
             "\(episode.phoneHasLocalFile)",
             "\(episode.fileSize ?? 0)",
-            "\(Int(((episode.playPosition ?? 0) / 15).rounded()))",
             chapterSignature,
             "\(String(describing: episode.playbackSettings))"
         ].joined(separator: "|")
@@ -948,9 +945,13 @@ enum WatchSyncCoordinator {
         }
     }
 
-    static func refreshSoon() {
+    static func refreshSoon(force: Bool = false) {
         Task { @MainActor in
-            PhoneWatchSyncController.shared.refreshSnapshotAndTransfersSoon()
+            if force {
+                await PhoneWatchSyncController.shared.refreshSnapshotAndTransfers(forcePush: true)
+            } else {
+                PhoneWatchSyncController.shared.refreshSnapshotAndTransfersSoon()
+            }
         }
     }
 }

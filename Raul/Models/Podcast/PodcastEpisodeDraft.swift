@@ -66,4 +66,5 @@ struct PodcastFeedPage: @unchecked Sendable {
     let episodes: [PodcastEpisodeDraft]
     let nextPageURL: URL?
     let isPartial: Bool
+    let didStopAtKnownEpisode: Bool
 }

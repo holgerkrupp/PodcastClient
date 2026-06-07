@@ -30,7 +30,7 @@ class CarPlayChapterMarkList {
         
         let items = loadedChapters.enumerated().map { idx, chapter in
             let item = CPListItem(
-                text: chapter.title,
+                text: chapter.displayTitle,
                 detailText: chapter.start != nil ? formattedTime(chapter.start!) : nil,
                 image: images[idx] ?? UIImage()
             )

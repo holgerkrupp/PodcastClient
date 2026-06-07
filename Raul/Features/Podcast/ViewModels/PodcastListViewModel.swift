@@ -21,16 +21,7 @@ class PodcastListViewModel: ObservableObject {
     }
     
     func refreshPodcasts() async {
-        isLoading = true
-        errorMessage = nil
-        
-        do {
-            try await podcastActor.refreshAllPodcasts()
-        } catch {
-            errorMessage = "Failed to refresh podcasts: \(error.localizedDescription)"
-        }
-        
-        isLoading = false
+        await refreshAllPodcasts()
     }
     
     func deletePodcast(_ podcast: Podcast) async {
@@ -106,76 +97,24 @@ class PodcastListViewModel: ObservableObject {
     }
     
     func refreshAllPodcasts() async {
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { podcast in
-                podcast.metaData?.isSubscribed != false
-            }
-        )
-        guard let podcasts = try? modelContainer.mainContext.fetch(descriptor) else { return }
-        let feeds = podcasts.map(\.feed)
+        guard isLoading == false else { return }
         isLoading = true
-        let modelContainer = self.modelContainer
-        let total = feeds.count
-        self.completed = 0
-        self.total = total
+        errorMessage = nil
+        completed = 0
+        total = 0
+        defer { isLoading = false }
 
-        let maxConcurrent = 10  // limit parallel requests
-
-        // Run the actual refresh off the MainActor
-        Task.detached {
-            var index = 0
-
-            do {
-                if total == 0 {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    return
-                }
-
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    // Kick off the first N tasks
-                    for _ in 0..<min(maxConcurrent, total) {
-                        
-                        let feed = feeds[index]
-                        if let feed{
-                            group.addTask {
-                                let worker = PodcastModelActor(modelContainer: modelContainer)
-                                _ = try? await worker.updatePodcast(feed)
-                            }
-                            index += 1
-                        }
-                    }
-                    // As each finishes, update progress + enqueue another
-                    for try await _ in group {
-                        await MainActor.run {
-                            self.completed += 1
-                        }
-
-                        if index < total {
-                            let feed = feeds[index]
-                            if let feed{
-                                group.addTask {
-                                    let worker = PodcastModelActor(modelContainer: modelContainer)
-                                    _ = try? await worker.updatePodcast(feed)
-                                }
-                                index += 1
-                            }
-                        }else{
-                            await MainActor.run {
-                                self.isLoading = false
-                                
-                            }
-                        }
-                    }
-                }
-            } catch {
+        do {
+            try await podcastActor.refreshAllPodcasts { completed, total in
                 await MainActor.run {
-                    self.errorMessage = error.localizedDescription
+                    self.completed = completed
+                    self.total = total
                 }
             }
+            lastFetchDate = Date()
+        } catch {
+            errorMessage = error.localizedDescription
         }
-        
     }
     
     

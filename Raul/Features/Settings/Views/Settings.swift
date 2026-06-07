@@ -33,6 +33,9 @@ class PodcastSettings {
     var playnextPosition:Playlist.Position = Playlist.Position.none
     var defaultPlaylistID: UUID?
     var playbackSpeed:Float? = 1.0
+    var reduceSilenceGapsEnabled: Bool = false
+    var silenceGapReductionLevelRawValue: String? = SilenceGapReductionLevel.low.rawValue
+    var voiceEnhancementEnabled: Bool = false
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
     var cutFront:Float? // how much to cut from the front / Intro
     var cutEnd:Float? // how much to cut from the end / Outro
@@ -122,6 +125,26 @@ class PodcastSettings {
         set {
             skipBackBehaviorRawValue = newValue.rawValue
         }
+    }
+
+    @Transient
+    var silenceGapReductionLevel: SilenceGapReductionLevel {
+        get {
+            SilenceGapReductionLevel(rawValue: silenceGapReductionLevelRawValue ?? "") ?? .low
+        }
+        set {
+            silenceGapReductionLevelRawValue = newValue.rawValue
+        }
+    }
+}
+
+enum SilenceGapReductionLevel: String, Codable, CaseIterable, Hashable, Sendable {
+    case low
+    case medium
+    case high
+
+    var settingsLabel: String {
+        rawValue.capitalized
     }
 }
 
@@ -527,7 +550,7 @@ final class SideloadingCoordinator: NSObject {
 
         if didChange {
             NotificationCenter.default.post(name: .sideLoadedDidChange, object: nil)
-            WatchSyncCoordinator.refreshSoon()
+            WatchSyncCoordinator.refreshSoon(force: true)
         }
     }
 

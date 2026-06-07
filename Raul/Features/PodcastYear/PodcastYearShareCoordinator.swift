@@ -107,7 +107,7 @@ final class PodcastYearShareCoordinator: ObservableObject {
             )
             .reduce(0) { $0 + $1.totalSeconds }
 
-            let summaryTotals = PlaySessionSummaryPeriod.allCases.map { period in
+            let summaryTotals = PlaySessionSummaryPeriod.allCases.filter { $0 != .forever }.map { period in
                 let total = fetchSummaryRollups(
                     period: period,
                     periodStart: periodStart,

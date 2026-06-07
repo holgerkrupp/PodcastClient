@@ -411,6 +411,8 @@ struct PodcastSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            playbackEnhancementToggles(settings: settings)
+
             skipDurationPickers(settings: settings)
 
             Stepper(
@@ -640,6 +642,8 @@ struct PodcastSettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            playbackEnhancementToggles(settings: settings)
+
             skipDurationPickers(settings: settings)
 
             Stepper(
@@ -829,6 +833,61 @@ struct PodcastSettingsView: View {
                 ProgressView("Setting up the iCloud folder...")
             }
         }
+    }
+
+    @ViewBuilder
+    private func playbackEnhancementToggles(settings: PodcastSettings) -> some View {
+        Toggle(
+            "Reduce silence gaps",
+            isOn: Binding(
+                get: { settings.reduceSilenceGapsEnabled },
+                set: {
+                    settings.reduceSilenceGapsEnabled = $0
+                    saveAndNotify()
+                }
+            )
+        )
+
+        Text("Speeds through sustained quiet sections during normal audio episode playback.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        if settings.reduceSilenceGapsEnabled {
+            Picker(
+                "Reduction level",
+                selection: Binding(
+                    get: { settings.silenceGapReductionLevel },
+                    set: {
+                        settings.silenceGapReductionLevel = $0
+                        saveAndNotify()
+                    }
+                )
+            ) {
+                ForEach(SilenceGapReductionLevel.allCases, id: \.self) { level in
+                    Text(level.settingsLabel).tag(level)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text("Low preserves longer pauses and word boundaries. Higher levels shorten more silence.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+
+        Toggle(
+            "Voice enhancement",
+            isOn: Binding(
+                get: { settings.voiceEnhancementEnabled },
+                set: {
+                    settings.voiceEnhancementEnabled = $0
+                    saveAndNotify()
+                }
+            )
+        )
+
+        Text("Balances voice levels, removes low-frequency rumble, and controls loud peaks during normal audio playback.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder
@@ -1182,7 +1241,7 @@ struct PodcastSettingsView: View {
 
     private func postSettingsDidChange() {
         NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     private func refreshTranscriptLineCount() async {
@@ -2248,6 +2307,9 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         let settings = PodcastSettings(podcast: podcast)
         settings.isEnabled = true
         settings.playbackSpeed = globalSettings.playbackSpeed
+        settings.reduceSilenceGapsEnabled = globalSettings.reduceSilenceGapsEnabled
+        settings.silenceGapReductionLevel = globalSettings.silenceGapReductionLevel
+        settings.voiceEnhancementEnabled = globalSettings.voiceEnhancementEnabled
         settings.skipForward = globalSettings.skipForward
         settings.skipBack = globalSettings.skipBack
         settings.skipForwardBehavior = globalSettings.skipForwardBehavior

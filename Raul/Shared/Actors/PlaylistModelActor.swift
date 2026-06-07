@@ -277,8 +277,20 @@ actor PlaylistModelActor {
         }
     }
 
-    func orderedEpisodeSummaries() throws -> [EpisodeSummary] {
-        try orderedEpisodes().map { episode in
+    func orderedEpisodeSummaries(limit: Int? = nil) throws -> [EpisodeSummary] {
+        guard let playlist = try fetchPlaylist() else { return [] }
+
+        let episodes: [Episode]
+        if playlist.isSmartPlaylist {
+            let ordered = try orderedEpisodes(for: playlist)
+            episodes = limit.map { Array(ordered.prefix($0)) } ?? ordered
+        } else {
+            let orderedEntries = playlist.ordered
+            let limitedEntries = limit.map { Array(orderedEntries.prefix($0)) } ?? orderedEntries
+            episodes = limitedEntries.compactMap { $0.episode }
+        }
+
+        return episodes.map { episode in
             EpisodeSummary(
                 url: episode.url,
                 title: episode.title,
@@ -347,7 +359,7 @@ actor PlaylistModelActor {
         }
         await restoreQueuedChapterImages(for: episodeURL)
         await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     /// Add/move an episode within the playlist.
@@ -407,7 +419,7 @@ actor PlaylistModelActor {
         await restoreQueuedChapterImages(for: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     /// Add/move an episode with explicit index control within the visual order.
@@ -465,7 +477,7 @@ actor PlaylistModelActor {
         await restoreQueuedChapterImages(for: episodeURL)
 
         await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
-        WatchSyncCoordinator.refreshSoon()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     func remove(episodeURL: URL, triggerAutoDownload: Bool = true) throws {
@@ -487,7 +499,7 @@ actor PlaylistModelActor {
             modelContext.saveIfNeeded()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
-                WatchSyncCoordinator.refreshSoon()
+                WatchSyncCoordinator.refreshSoon(force: true)
             }
 
             if triggerAutoDownload && affectedPodcastFeeds.isEmpty == false {
@@ -541,7 +553,7 @@ actor PlaylistModelActor {
             normalizeOrder()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
-                WatchSyncCoordinator.refreshSoon()
+                WatchSyncCoordinator.refreshSoon(force: true)
             }
         }
     }
@@ -578,7 +590,7 @@ actor PlaylistModelActor {
 
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: playlists)
-            WatchSyncCoordinator.refreshSoon()
+            WatchSyncCoordinator.refreshSoon(force: true)
         }
     }
 

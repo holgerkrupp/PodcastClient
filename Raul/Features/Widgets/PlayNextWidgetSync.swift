@@ -45,8 +45,22 @@ enum PlayNextWidgetSync {
     static let legacyFileName = "play-next-widget.json"
     static let catalogFileName = "play-next-widget-playlists.json"
     static let snapshotFilePrefix = "play-next-widget-"
+    private static let refreshCoordinator = PlayNextWidgetRefreshCoordinator()
+    private static let snapshotItemLimit = 12
 
     static func refresh(
+        using container: ModelContainer? = nil,
+        currentEpisodeURL: URL? = nil,
+        playlistIDs: Set<UUID>? = nil
+    ) async {
+        await refreshCoordinator.refresh(
+            using: container,
+            currentEpisodeURL: currentEpisodeURL,
+            playlistIDs: playlistIDs
+        )
+    }
+
+    fileprivate static func performRefresh(
         using container: ModelContainer? = nil,
         currentEpisodeURL: URL? = nil,
         playlistIDs: Set<UUID>? = nil
@@ -106,14 +120,14 @@ enum PlayNextWidgetSync {
             guard let playlistActor = try? PlaylistModelActor(modelContainer: resolvedContainer, playlistID: playlistID) else {
                 continue
             }
-            let episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
+            let episodes = (try? await playlistActor.orderedEpisodeSummaries(limit: snapshotItemLimit)) ?? []
             await writeSnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL, playlistID: playlistID)
         }
 
         // Keep the legacy file in sync so existing widgets continue to work.
         if let defaultPlaylistID,
            let playlistActor = try? PlaylistModelActor(modelContainer: resolvedContainer, playlistID: defaultPlaylistID) {
-            let episodes = (try? await playlistActor.orderedEpisodeSummaries()) ?? []
+            let episodes = (try? await playlistActor.orderedEpisodeSummaries(limit: snapshotItemLimit)) ?? []
             await writeLegacySnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL)
         }
 
@@ -339,5 +353,66 @@ enum PlayNextWidgetSync {
             WidgetCenter.shared.reloadAllTimelines()
         }
         #endif
+    }
+}
+
+private actor PlayNextWidgetRefreshCoordinator {
+    private struct Request {
+        var container: ModelContainer?
+        var currentEpisodeURL: URL?
+        var playlistIDs: Set<UUID>?
+
+        func merged(with newer: Request) -> Request {
+            let mergedPlaylistIDs: Set<UUID>?
+            if playlistIDs == nil || newer.playlistIDs == nil {
+                mergedPlaylistIDs = nil
+            } else {
+                mergedPlaylistIDs = playlistIDs!.union(newer.playlistIDs!)
+            }
+
+            return Request(
+                container: newer.container ?? container,
+                currentEpisodeURL: newer.currentEpisodeURL ?? currentEpisodeURL,
+                playlistIDs: mergedPlaylistIDs
+            )
+        }
+    }
+
+    private var isRefreshing = false
+    private var pendingRequest: Request?
+
+    func refresh(
+        using container: ModelContainer?,
+        currentEpisodeURL: URL?,
+        playlistIDs: Set<UUID>?
+    ) async {
+        var request = Request(
+            container: container,
+            currentEpisodeURL: currentEpisodeURL,
+            playlistIDs: playlistIDs
+        )
+
+        if isRefreshing {
+            pendingRequest = pendingRequest?.merged(with: request) ?? request
+            return
+        }
+
+        isRefreshing = true
+
+        while true {
+            await PlayNextWidgetSync.performRefresh(
+                using: request.container,
+                currentEpisodeURL: request.currentEpisodeURL,
+                playlistIDs: request.playlistIDs
+            )
+
+            guard let nextRequest = pendingRequest else {
+                isRefreshing = false
+                return
+            }
+
+            pendingRequest = nil
+            request = nextRequest
+        }
     }
 }
