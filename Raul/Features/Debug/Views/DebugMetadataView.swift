@@ -45,6 +45,8 @@ struct AppDebugMetadataView: View {
                 DebugRow("Never Checked Podcasts", value: "\(podcasts.filter { $0.metaData?.feedUpdateCheckDate == nil }.count)")
                 DebugRow("Feeds Marked Updated", value: "\(podcasts.filter { $0.metaData?.feedUpdated == true }.count)")
                 DebugRow("Metadata Updating", value: "\(podcasts.filter { $0.metaData?.isUpdating == true }.count)")
+                DebugRow("Feeds With Failure Streak", value: "\(podcasts.filter { ($0.metaData?.consecutiveFeedFailureCount ?? 0) > 0 }.count)")
+                DebugRow("Likely Abandoned Feeds", value: "\(likelyAbandonedPodcasts.count)")
             }
 
             DebugSection("Library Counts") {
@@ -120,6 +122,18 @@ struct AppDebugMetadataView: View {
                     ("Episodes", "\(podcast.episodes?.count ?? 0)")
                 ]
             }
+
+            DebugCollectionSection(title: "Likely Abandoned Podcasts", items: likelyAbandonedPodcasts) { podcast in
+                [
+                    ("Title", podcast.title),
+                    ("Feed", podcast.feed?.absoluteString),
+                    ("HTTP Status", podcast.metaData?.lastFeedFailureStatusCode.map(String.init)),
+                    ("Failures", podcast.metaData.map { "\($0.consecutiveFeedFailureCount)" }),
+                    ("First Failure", podcast.metaData?.firstConsecutiveFeedFailureDate.map(DebugFormat.date)),
+                    ("Last Failure", podcast.metaData?.lastFeedFailureDate.map(DebugFormat.date)),
+                    ("Error", podcast.metaData?.lastFeedFailureMessage)
+                ]
+            }
         }
         .navigationTitle("App Debug")
         .navigationBarTitleDisplayMode(.inline)
@@ -162,6 +176,15 @@ struct AppDebugMetadataView: View {
             .sorted { ($0.metaData?.lastRefresh ?? .distantPast) > ($1.metaData?.lastRefresh ?? .distantPast) }
             .prefix(10)
             .map { $0 }
+    }
+
+    private var likelyAbandonedPodcasts: [Podcast] {
+        return podcasts
+            .filter { $0.metaData?.isFeedLikelyAbandoned == true }
+            .sorted {
+                ($0.metaData?.firstConsecutiveFeedFailureDate ?? .distantFuture)
+                    < ($1.metaData?.firstConsecutiveFeedFailureDate ?? .distantFuture)
+            }
     }
 }
 
@@ -289,6 +312,11 @@ struct PodcastDebugMetadataView: View {
                     DebugRow("Last Refresh", date: metaData.lastRefresh)
                     DebugRow("Feed Updated", value: metaData.feedUpdated?.description)
                     DebugRow("Feed Update Check Date", date: metaData.feedUpdateCheckDate)
+                    DebugRow("Consecutive Failures", value: "\(metaData.consecutiveFeedFailureCount)")
+                    DebugRow("First Failure", date: metaData.firstConsecutiveFeedFailureDate)
+                    DebugRow("Last Failure", date: metaData.lastFeedFailureDate)
+                    DebugRow("Last HTTP Status", value: metaData.lastFeedFailureStatusCode.map(String.init))
+                    DebugRow("Last Feed Error", value: metaData.lastFeedFailureMessage, limit: 240)
                     DebugRow("Subscription Date", date: metaData.subscriptionDate)
                     DebugRow("Is Updating", value: metaData.isUpdating.description)
                     DebugRow("Message", value: metaData.message)

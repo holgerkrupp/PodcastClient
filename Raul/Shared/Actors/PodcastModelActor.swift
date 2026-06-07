@@ -7,6 +7,7 @@
 
 import SwiftData
 import Foundation
+import OSLog
 import BasicLogger
 import mp3ChapterReader
 
@@ -21,9 +22,60 @@ enum PodcastFeedSwitchError: LocalizedError {
     }
 }
 
+struct PodcastBulkRefreshError: LocalizedError {
+    let failedCount: Int
+    let totalCount: Int
+
+    var errorDescription: String? {
+        "\(failedCount) of \(totalCount) podcast feeds could not be refreshed."
+    }
+}
+
 @ModelActor
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
+    private static let refreshLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
+        category: "PodcastRefresh"
+    )
+
+    private static func logRefresh(_ message: String) {
+        refreshLogger.info("\(message, privacy: .public)")
+        Task { @MainActor in
+            BasicLogger.shared.log("[PodcastRefresh] \(message)")
+        }
+    }
+
+    private static func feedFailureStatusCode(from error: Error) -> Int? {
+        guard case PodcastParserError.couldNotLoad(_, let statusCode) = error else {
+            return nil
+        }
+        return statusCode
+    }
+
+    private func recordFeedRefreshSuccess(metadataID: PersistentIdentifier) {
+        guard let metadata = modelContext.model(for: metadataID) as? PodcastMetaData else { return }
+        metadata.consecutiveFeedFailureCount = 0
+        metadata.firstConsecutiveFeedFailureDate = nil
+        metadata.lastFeedFailureDate = nil
+        metadata.lastFeedFailureStatusCode = nil
+        metadata.lastFeedFailureMessage = nil
+    }
+
+    private func recordFeedRefreshFailure(
+        metadataID: PersistentIdentifier,
+        error: Error
+    ) {
+        guard let metadata = modelContext.model(for: metadataID) as? PodcastMetaData else { return }
+        let now = Date()
+        if metadata.consecutiveFeedFailureCount == 0 {
+            metadata.firstConsecutiveFeedFailureDate = now
+        }
+        metadata.consecutiveFeedFailureCount += 1
+        metadata.lastFeedFailureDate = now
+        metadata.lastFeedFailureStatusCode = Self.feedFailureStatusCode(from: error)
+        metadata.lastFeedFailureMessage = error.localizedDescription
+    }
 
     private func checkRefreshDeadline(_ deadline: Date?) throws {
         try Task.checkCancellation()
@@ -447,9 +499,27 @@ actor PodcastModelActor {
         _ podcastFeed: URL,
         force: Bool? = false,
         silent: Bool? = false,
+        resolveExistingMissingDurations: Bool = true,
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
+        let refreshStartedAt = ContinuousClock.now
+        var statusDuration: Duration = .zero
+        var downloadAndParseDuration: Duration = .zero
+        var databaseDuration: Duration = .zero
+
+        func logRefreshResult(_ result: String) {
+            let totalDuration = refreshStartedAt.duration(to: .now)
+            Self.logRefresh(
+                "feed=\(podcastFeed.absoluteString) "
+                    + "result=\(result) "
+                    + "status=\(Self.milliseconds(statusDuration))ms "
+                    + "download_parse=\(Self.milliseconds(downloadAndParseDuration))ms "
+                    + "database=\(Self.milliseconds(databaseDuration))ms "
+                    + "total=\(Self.milliseconds(totalDuration))ms"
+            )
+        }
+
         try checkRefreshDeadline(deadline)
         // Fetch podcast just long enough to snapshot IDs & primitives
         guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
@@ -497,7 +567,10 @@ actor PodcastModelActor {
 
         // --- FIRST await boundary ---
         if force == false {
-            guard await checkIfFeedHasBeenUpdated(podcastFeed) != false else {
+            let statusStartedAt = ContinuousClock.now
+            let feedWasUpdated = await checkIfFeedHasBeenUpdated(podcastFeed)
+            statusDuration = statusStartedAt.duration(to: .now)
+            guard feedWasUpdated != false else {
                 print("\(titleSnapshot) not updated")
 
                 if silent != true {
@@ -510,7 +583,12 @@ actor PodcastModelActor {
                     }
                     modelContext.saveIfNeeded()
                 }
+                if let metaIDRef {
+                    recordFeedRefreshSuccess(metadataID: metaIDRef)
+                    modelContext.saveIfNeeded()
+                }
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
+                logRefreshResult("not-modified")
                 return false
             }
         }
@@ -535,10 +613,12 @@ actor PodcastModelActor {
 
         do {
             // Parse XML
+            let downloadAndParseStartedAt = ContinuousClock.now
             let fullPodcast = try await PodcastParser.fetchAllPages(
                 from: feedURL,
                 knownEpisodeIdentifiers: knownEpisodeIdentifiers
             )
+            downloadAndParseDuration = downloadAndParseStartedAt.duration(to: .now)
             try checkRefreshDeadline(deadline)
 
             guard
@@ -556,10 +636,12 @@ actor PodcastModelActor {
             }
             await reportProgress(SubscriptionProgressUpdate(0.56, "Updating podcast details"), using: progress)
 
+            let databaseStartedAt = ContinuousClock.now
             try await updateDetails(
                 finalPodcast,
                 fullPodcast: fullPodcast,
                 silent: silent,
+                resolveExistingMissingDurations: resolveExistingMissingDurations,
                 deadline: deadline,
                 progress: progress
             )
@@ -570,9 +652,12 @@ actor PodcastModelActor {
                 finalMeta.isUpdating = false
             }
             finalMeta.feedUpdated = true
+            recordFeedRefreshSuccess(metadataID: finalMeta.persistentModelID)
             await updateLastRefresh(for: finalMeta.persistentModelID)
             modelContext.saveIfNeeded()
+            databaseDuration = databaseStartedAt.duration(to: .now)
             await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription complete"), using: progress)
+            logRefreshResult("updated")
 
             return true
         } catch is CancellationError {
@@ -587,6 +672,7 @@ actor PodcastModelActor {
                 modelContext.saveIfNeeded()
             }
             await reportProgress(SubscriptionProgressUpdate(1.0, "Refresh paused"), using: progress)
+            logRefreshResult("cancelled")
             return false
         } catch {
             let nsError = error as NSError
@@ -604,11 +690,13 @@ actor PodcastModelActor {
                 failedMeta.feedUpdateCheckDate = Date()
                 failedMeta.feedUpdated = nil
             }
+            recordFeedRefreshFailure(metadataID: metaIDRef, error: error)
             if silent != true, let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
                 failedPodcast.message = nil
             }
             modelContext.saveIfNeeded()
             await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription failed"), using: progress)
+            logRefreshResult("failed")
             throw error
         }
     }
@@ -617,6 +705,7 @@ actor PodcastModelActor {
         _ podcast: Podcast,
         fullPodcast: [String : Any],
         silent: Bool? = false,
+        resolveExistingMissingDurations: Bool = true,
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws {
@@ -759,12 +848,14 @@ actor PodcastModelActor {
                     }
                     if silent == true {
                         unsavedSilentEpisodeChanges += 1
-                    } else {
+                    } else if resolveExistingMissingDurations {
                         await fillMissingRemoteMP3DurationIfNeeded(
                             episodeID: existingEpisode.persistentModelID,
                             episodeURL: existingEpisode.url,
                             currentDuration: existingEpisode.duration
                         )
+                    }
+                    if silent != true {
                         modelContext.saveIfNeeded()
                     }
 
@@ -793,11 +884,13 @@ actor PodcastModelActor {
                     if silent == true {
                         unsavedSilentEpisodeChanges += 1
                     } else if let existingEpisode = fetchEpisode(byURL: episodeURL) {
-                        await fillMissingRemoteMP3DurationIfNeeded(
-                            episodeID: existingEpisode.persistentModelID,
-                            episodeURL: existingEpisode.url,
-                            currentDuration: existingEpisode.duration
-                        )
+                        if resolveExistingMissingDurations {
+                            await fillMissingRemoteMP3DurationIfNeeded(
+                                episodeID: existingEpisode.persistentModelID,
+                                episodeURL: existingEpisode.url,
+                                currentDuration: existingEpisode.duration
+                            )
+                        }
                         if let guid = existingEpisode.guid, guid.isEmpty == false {
                             existingEpisodesByGUID[guid] = existingEpisode
                         }
@@ -823,7 +916,7 @@ actor PodcastModelActor {
                 if let url = episode.url {
                     existingEpisodesByURL[url] = episode
                 }
-                if silent != true {
+                if shouldProcessNewEpisodes {
                     await fillMissingRemoteMP3DurationIfNeeded(
                         episodeID: episode.persistentModelID,
                         episodeURL: episode.url,
@@ -1035,13 +1128,15 @@ actor PodcastModelActor {
 
         let podcasts = try modelContext.fetch(descriptor)
         let feeds = podcasts.compactMap(\.feed)
-        let maxConcurrent = 2
+        let maxConcurrent = 6
+        let refreshStartedAt = ContinuousClock.now
         await progress?(0, feeds.count)
         guard feeds.isEmpty == false else { return }
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
+        let failed = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
             var nextIndex = 0
             var completed = 0
+            var failed = 0
 
             func enqueueNext() {
                 guard nextIndex < feeds.count else { return }
@@ -1049,7 +1144,15 @@ actor PodcastModelActor {
                 nextIndex += 1
                 group.addTask {
                     let worker = PodcastModelActor(modelContainer: self.modelContainer)
-                    _ = try await worker.updatePodcast(feed)
+                    do {
+                        _ = try await worker.updatePodcast(
+                            feed,
+                            resolveExistingMissingDurations: false
+                        )
+                        return true
+                    } catch {
+                        return false
+                    }
                 }
             }
 
@@ -1057,12 +1160,34 @@ actor PodcastModelActor {
                 enqueueNext()
             }
 
-            while try await group.next() != nil {
+            while let succeeded = await group.next() {
                 completed += 1
+                if succeeded == false {
+                    failed += 1
+                }
                 await progress?(completed, feeds.count)
                 enqueueNext()
             }
+
+            let totalDuration = refreshStartedAt.duration(to: .now)
+            Self.logRefresh(
+                "bulk feeds=\(feeds.count) "
+                    + "concurrency=\(maxConcurrent) "
+                    + "failed=\(failed) "
+                    + "total=\(Self.milliseconds(totalDuration))ms"
+            )
+            return failed
         }
+
+        if failed > 0 {
+            throw PodcastBulkRefreshError(failedCount: failed, totalCount: feeds.count)
+        }
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Int64 {
+        let components = duration.components
+        return components.seconds * 1_000
+            + Int64(components.attoseconds / 1_000_000_000_000_000)
     }
 }
 

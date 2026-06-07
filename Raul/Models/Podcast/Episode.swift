@@ -524,7 +524,18 @@ class EpisodeDownloadStatus{
     }
   
     private func updateEpisodeData(from episodeData: [String: Any]) {
-        self.duration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
+        let feedDuration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
+        let hasLocalFile = localFile.map {
+            FileManager.default.fileExists(atPath: $0.path)
+        } ?? false
+
+        if hasLocalFile == false {
+            if let feedDuration, feedDuration > 0 {
+                duration = feedDuration
+            } else if duration == nil || duration == 0 {
+                duration = feedDuration
+            }
+        }
         self.author = episodeData["itunes:author"] as? String
         let enclosures = episodeData["enclosure"] as? [[String: Any]]
         let playableEnclosure = EpisodeMedia.playableEnclosure(from: enclosures)

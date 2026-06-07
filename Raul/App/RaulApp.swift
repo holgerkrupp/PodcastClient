@@ -82,33 +82,6 @@ struct RaulApp: App {
                         }
                     }
                 
-                
-                // FOLLOWING IS TEMPORARY FOR TESTFLIGHT MIGRATION >>>>>>
-                
-                    .onAppear {
-                        if checkIsTestFlight() && !hasSeenAlert {
-                            showMigrationAlert = true
-                        }
-                    }
-                                // 3. The modern SwiftUI Alert implementation
-                    .alert(
-                                    "Please Switch to the App Store Version",
-                                    isPresented: $showMigrationAlert
-                                ) {
-                                    
-                                    Button("Later", role: .cancel) {
-                                        // Mark as seen so it never fires again
-                                        hasSeenAlert = true
-                                    }
-                                    
-                                    Link("Go to App Store", destination: URL(string: "https://apps.apple.com/us/app/up-next-podcast-client/id6477821584")!)
-                                                    
-                                } message: {
-                                    Text("This TestFlight version will no longer be updated. Please download the official version of Up Next to keep using the app and save your data.")
-                                }
-                
-                
-                // PREVIOUS IS TEMPORARY FOR TESTFLIGHT MIGRATION <<<<<<<<
 
                     .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
                         CrashBreadcrumbs.shared.record("battery_state_changed")
@@ -184,20 +157,7 @@ struct RaulApp: App {
         }
     }
     
-    // FOLLOWING IS TEMPORARY FOR TESTFLIGHT MIGRATION >>>>>>
 
-    private func checkIsTestFlight() -> Bool {
-            #if DEBUG
-            // Prevents the alert from locking you out while coding in Xcode
-            return false
-            #else
-            // TestFlight builds always contain a "sandboxReceipt" file
-            guard let receiptURL = Bundle.main.appStoreReceiptURL else { return false }
-            return receiptURL.lastPathComponent == "sandboxReceipt"
-            #endif
-        }
-    
-    // PREVIOUS IS TEMPORARY FOR TESTFLIGHT MIGRATION <<<<<<<<
 
 
     func refreshOnActive(){

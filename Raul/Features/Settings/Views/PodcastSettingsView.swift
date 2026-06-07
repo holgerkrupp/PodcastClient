@@ -838,7 +838,7 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private func playbackEnhancementToggles(settings: PodcastSettings) -> some View {
         Toggle(
-            "Reduce silence gaps",
+            "Shorten Pauses",
             isOn: Binding(
                 get: { settings.reduceSilenceGapsEnabled },
                 set: {
@@ -869,7 +869,7 @@ struct PodcastSettingsView: View {
             }
             .pickerStyle(.segmented)
 
-            Text("Low preserves longer pauses and word boundaries. Higher levels shorten more silence.")
+            Text("Gentle preserves longer pauses and word boundaries. Stronger levels shorten more silence.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1099,8 +1099,8 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private var debugSection: some View {
+      /*
         Section("Debug") {
-            /*
             NavigationLink {
                 AppDebugMetadataView()
             } label: {
@@ -1111,7 +1111,18 @@ struct PodcastSettingsView: View {
                     systemImage: "ladybug"
                 )
             }
-*/
+
+            NavigationLink {
+                LogView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Logs",
+                    summary: "Refresh timings and runtime diagnostics",
+                    detail: "Search the persistent on-device log, including PodcastRefresh timing entries.",
+                    systemImage: "doc.text.magnifyingglass"
+                )
+            }
+
             Button {
                 let didPresent = podcastYearShareCoordinator.presentDebugSheetNow(modelContext: context)
                 if didPresent == false {
@@ -1135,7 +1146,8 @@ struct PodcastSettingsView: View {
                 }
             }
         }
-    }
+   */
+       }
 
     private func podcastYearShareGalleryStart() -> Date {
         let calendar = Calendar.autoupdatingCurrent
