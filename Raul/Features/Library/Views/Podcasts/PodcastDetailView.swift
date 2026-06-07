@@ -107,6 +107,63 @@ struct PodcastDetailView: View {
             && (podcast.episodes?.isEmpty ?? true)
     }
 
+    private var isFeedAbandoned: Bool {
+        podcast.metaData?.isFeedLikelyAbandoned == true
+    }
+
+    @ViewBuilder
+    private var abandonedFeedCard: some View {
+        if isFeedAbandoned, let metadata = podcast.metaData {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Podcast feed abandoned", systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+
+                Text("The feed has been unreachable repeatedly for more than seven days.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                LabeledContent("Last visible") {
+                    Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+                }
+
+                LabeledContent("Server response") {
+                    Text(metadata.feedFailureStatusDescription ?? "Unknown")
+                }
+
+                LabeledContent("First failed check") {
+                    Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                }
+
+                LabeledContent("Latest failed check") {
+                    Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                }
+
+                LabeledContent("Consecutive failures") {
+                    Text("\(metadata.consecutiveFeedFailureCount)")
+                        .monospacedDigit()
+                }
+
+                if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .font(.caption)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.secondary.opacity(0.12))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.3))
+            }
+            .padding(.top, 6)
+        }
+    }
+
     private var currentLiveItem: PodcastLiveItem? {
         liveItems.first { $0.status == .live }
     }
@@ -204,6 +261,8 @@ struct PodcastDetailView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+
+                        abandonedFeedCard
 
                         if isLoading {
                             refreshProgressCard

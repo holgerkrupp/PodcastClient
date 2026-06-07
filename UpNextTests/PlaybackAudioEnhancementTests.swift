@@ -6,30 +6,41 @@ final class PlaybackAudioEnhancementTests: XCTestCase {
     func testSilenceDetectorStartsAfterSustainedQuietAudio() {
         var detector = AudioSilenceGapDetector(level: .high)
 
-        XCTAssertNil(detector.observe(decibels: -50, duration: 0.2))
-        XCTAssertEqual(detector.observe(decibels: -50, duration: 0.16), true)
+        XCTAssertNil(detector.observe(decibels: -50, duration: 0.06))
+        XCTAssertEqual(detector.observe(decibels: -50, duration: 0.05), true)
     }
 
     func testSilenceDetectorStopsWhenAudioReturns() {
         var detector = AudioSilenceGapDetector(level: .high)
 
-        _ = detector.observe(decibels: -50, duration: 0.4)
+        _ = detector.observe(decibels: -50, duration: 0.1)
 
         XCTAssertEqual(detector.observe(decibels: -20, duration: 0.02), false)
         XCTAssertNil(detector.observe(decibels: -20, duration: 0.02))
     }
 
     func testSilenceReducedRateIsClamped() {
-        XCTAssertEqual(AudioSilenceGapDetector.silenceReducedRate(for: 1.0, level: .high), 1.8)
+        XCTAssertEqual(AudioSilenceGapDetector.silenceReducedRate(for: 1.0, level: .high), 3.0)
         XCTAssertEqual(AudioSilenceGapDetector.silenceReducedRate(for: 2.5, level: .high), 3.0)
     }
 
     func testLowSilenceReductionWaitsLongerAndUsesGentlerRate() {
         var detector = AudioSilenceGapDetector(level: .low)
 
-        XCTAssertNil(detector.observe(decibels: -55, duration: 0.5))
-        XCTAssertEqual(detector.observe(decibels: -55, duration: 0.16), true)
-        XCTAssertEqual(AudioSilenceGapDetector.silenceReducedRate(for: 1.0, level: .low), 1.25)
+        XCTAssertNil(detector.observe(decibels: -55, duration: 0.35))
+        XCTAssertEqual(detector.observe(decibels: -55, duration: 0.11), true)
+        XCTAssertEqual(AudioSilenceGapDetector.silenceReducedRate(for: 1.0, level: .low), 1.5)
+    }
+
+    func testSilenceReductionLevelsBecomeProgressivelyMoreSensitive() {
+        var gentle = AudioSilenceGapDetector(level: .low)
+        var strong = AudioSilenceGapDetector(level: .medium)
+        var extreme = AudioSilenceGapDetector(level: .high)
+
+        XCTAssertNil(gentle.observe(decibels: -48, duration: 0.5))
+        XCTAssertEqual(strong.observe(decibels: -48, duration: 0.25), true)
+        XCTAssertEqual(extreme.observe(decibels: -43, duration: 0.1), true)
+        XCTAssertEqual(AudioSilenceGapDetector.silenceReducedRate(for: 1.0, level: .medium), 2.0)
     }
 
     func testVoiceEnhancerGraduallyRaisesQuietSpeech() {

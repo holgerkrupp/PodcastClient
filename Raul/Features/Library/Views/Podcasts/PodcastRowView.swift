@@ -12,6 +12,10 @@ struct PodcastRowView: View {
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
 
+    private var isAbandoned: Bool {
+        podcast.metaData?.isFeedLikelyAbandoned == true
+    }
+
     var body: some View {
         ZStack {
             BlurredCoverImageView(podcast: podcast)
@@ -63,6 +67,19 @@ struct PodcastRowView: View {
             )
         }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .grayscale(isAbandoned ? 1 : 0)
+        .overlay(alignment: .topLeading) {
+            if isAbandoned {
+                Text("Abandoned")
+                    .font(.caption2.weight(.bold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.black.opacity(0.85), in: UnevenRoundedRectangle(bottomTrailingRadius: 8))
+                    .accessibilityLabel("Podcast feed abandoned")
+            }
+        }
         .overlay {
             if  let message = podcast.message {
                 ZStack {
@@ -94,6 +111,10 @@ struct PodcastRowView: View {
     let metaData: PodcastMetaData = {
         let metaData = PodcastMetaData()
         metaData.feedUpdateCheckDate = Date().addingTimeInterval(-3600) // 1 hour ago
+        metaData.consecutiveFeedFailureCount = 4
+        metaData.firstConsecutiveFeedFailureDate = Date().addingTimeInterval(-8 * 24 * 60 * 60)
+        metaData.lastFeedFailureDate = Date().addingTimeInterval(-3600)
+        metaData.lastFeedFailureStatusCode = 404
         metaData.isUpdating = false
         return metaData
     }()

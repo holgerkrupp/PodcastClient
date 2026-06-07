@@ -36,6 +36,9 @@ final class PhoneWatchSyncController: NSObject {
     private var lastPushedSnapshot: WatchSyncSnapshot?
     private var lastPushedSnapshotSignature: String?
     private var pendingRefreshTask: Task<Void, Never>?
+    private var handledCommandIDs: Set<UUID> = []
+    private var handledCommandIDOrder: [UUID] = []
+    private let maximumHandledCommandIDs = 100
 
     private override init() {
         super.init()
@@ -327,6 +330,16 @@ final class PhoneWatchSyncController: NSObject {
             try session.updateApplicationContext([
                 WatchSyncTransport.snapshotContextKey: data
             ])
+            if session.isReachable {
+                session.sendMessage(
+                    [WatchSyncTransport.snapshotContextKey: data],
+                    replyHandler: nil
+                ) { error in
+                    #if DEBUG
+                    print("Failed to immediately push watch snapshot: \(error)")
+                    #endif
+                }
+            }
             lastPushedSnapshot = snapshot
             lastPushedSnapshotSignature = signature
             #if DEBUG
@@ -627,6 +640,8 @@ final class PhoneWatchSyncController: NSObject {
     }
 
     private func handle(command: WatchCommand) async {
+        guard register(commandID: command.id) else { return }
+
         switch command.kind {
         case .requestSnapshot:
             await refreshSnapshotAndTransfers()
@@ -823,6 +838,17 @@ final class PhoneWatchSyncController: NSObject {
             }
             await refreshSnapshotAndTransfers()
         }
+    }
+
+    private func register(commandID: UUID) -> Bool {
+        guard handledCommandIDs.insert(commandID).inserted else { return false }
+
+        handledCommandIDOrder.append(commandID)
+        if handledCommandIDOrder.count > maximumHandledCommandIDs {
+            let expiredCommandID = handledCommandIDOrder.removeFirst()
+            handledCommandIDs.remove(expiredCommandID)
+        }
+        return true
     }
 
     private func setChapterShouldPlay(_ shouldPlay: Bool, chapterSyncID: String, episodeURL: URL) {

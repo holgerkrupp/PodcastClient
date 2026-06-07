@@ -49,33 +49,33 @@ struct AudioSilenceGapDetector: Sendable {
 private extension SilenceGapReductionLevel {
     var silenceThresholdDecibels: Float {
         switch self {
-        case .low: return -52
-        case .medium: return -48
-        case .high: return -45
+        case .low: return -50
+        case .medium: return -46
+        case .high: return -42
         }
     }
 
     var minimumSilenceDuration: TimeInterval {
         switch self {
-        case .low: return 0.65
-        case .medium: return 0.45
-        case .high: return 0.35
+        case .low: return 0.45
+        case .medium: return 0.25
+        case .high: return 0.1
         }
     }
 
     var rateMultiplier: Float {
         switch self {
-        case .low: return 1.25
-        case .medium: return 1.5
-        case .high: return 1.8
+        case .low: return 1.5
+        case .medium: return 2
+        case .high: return 3
         }
     }
 
     var minimumRateIncrease: Float {
         switch self {
-        case .low: return 0.15
-        case .medium: return 0.3
-        case .high: return 0.4
+        case .low: return 0.35
+        case .medium: return 0.75
+        case .high: return 1.25
         }
     }
 }

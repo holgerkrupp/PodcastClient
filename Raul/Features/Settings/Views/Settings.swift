@@ -144,7 +144,11 @@ enum SilenceGapReductionLevel: String, Codable, CaseIterable, Hashable, Sendable
     case high
 
     var settingsLabel: String {
-        rawValue.capitalized
+        switch self {
+        case .low: return "Gentle"
+        case .medium: return "Strong"
+        case .high: return "Extreme"
+        }
     }
 }
 

@@ -172,13 +172,19 @@ final class Podcast: Identifiable {
 
 
 @Model final class PodcastMetaData{
-    
+    static let abandonedFailureThreshold = 3
+    static let abandonedFailureDuration: TimeInterval = 7 * 24 * 60 * 60
 
     var lastRefresh:Date?
     
     // these properties are supposed to be used for background refresh checks
     var feedUpdated:Bool? // has the feed been updated and should refresh?
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
+    var consecutiveFeedFailureCount: Int = 0
+    var firstConsecutiveFeedFailureDate: Date?
+    var lastFeedFailureDate: Date?
+    var lastFeedFailureStatusCode: Int?
+    var lastFeedFailureMessage: String?
     var subscriptionDate: Date? = Date()
     
     
@@ -190,5 +196,36 @@ final class Podcast: Identifiable {
     
     @Relationship(inverse: \Podcast.metaData) var podcast: Podcast?
     init() {
+    }
+
+    var isFeedLikelyAbandoned: Bool {
+        guard consecutiveFeedFailureCount >= Self.abandonedFailureThreshold,
+              let firstConsecutiveFeedFailureDate,
+              Date().timeIntervalSince(firstConsecutiveFeedFailureDate) >= Self.abandonedFailureDuration,
+              let lastFeedFailureStatusCode else {
+            return false
+        }
+
+        return lastFeedFailureStatusCode == 404
+            || lastFeedFailureStatusCode == 410
+            || lastFeedFailureStatusCode == 451
+            || lastFeedFailureStatusCode >= 500
+    }
+
+    var feedFailureStatusDescription: String? {
+        guard let lastFeedFailureStatusCode else { return nil }
+
+        switch lastFeedFailureStatusCode {
+        case 404:
+            return "404 Not Found"
+        case 410:
+            return "410 Gone"
+        case 451:
+            return "451 Unavailable for Legal Reasons"
+        case 500...599:
+            return "\(lastFeedFailureStatusCode) Server Error"
+        default:
+            return "HTTP \(lastFeedFailureStatusCode)"
+        }
     }
 }

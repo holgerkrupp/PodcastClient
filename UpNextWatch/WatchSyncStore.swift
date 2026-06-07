@@ -88,7 +88,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
     }
 
     var isRemoteControlAvailable: Bool {
-        isPhoneReachable || hasRecentPhonePlaybackState
+        session?.activationState == .activated
     }
 
     var inbox: [WatchSyncEpisode] {
@@ -461,17 +461,24 @@ final class WatchSyncStore: NSObject, ObservableObject {
         if preferImmediateDelivery && session.isReachable {
             session.sendMessage(payload, replyHandler: nil) { [weak self] error in
                 Task { @MainActor in
-                    if showErrors {
-                        self?.errorMessage = error.localizedDescription
-                    }
+                    self?.enqueue(payload: payload, showErrors: showErrors, fallbackError: error)
                 }
             }
             return
         }
 
-        guard session.activationState == .activated else {
+        enqueue(payload: payload, showErrors: showErrors)
+    }
+
+    private func enqueue(
+        payload: [String: Any],
+        showErrors: Bool,
+        fallbackError: Error? = nil
+    ) {
+        guard let session, session.activationState == .activated else {
             if showErrors {
-                errorMessage = "Open the iPhone app once so the watch can finish pairing."
+                errorMessage = fallbackError?.localizedDescription
+                    ?? "Open the iPhone app once so the watch can finish pairing."
             }
             return
         }
@@ -545,6 +552,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
     }
 
     private func apply(snapshot newSnapshot: WatchSyncSnapshot) {
+        guard newSnapshot.generatedAt >= snapshot.generatedAt else { return }
+
         snapshot = newSnapshot
         isRefreshingInbox = false
         persistSnapshot()
@@ -1354,11 +1363,21 @@ extension WatchSyncStore: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String : Any]) {
-        guard let data = applicationContext[WatchSyncTransport.snapshotContextKey] as? Data,
+        receiveSnapshot(from: applicationContext)
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any]) {
+        receiveSnapshot(from: userInfo)
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
+        receiveSnapshot(from: message)
+    }
+
+    nonisolated private func receiveSnapshot(from payload: [String: Any]) {
+        guard let data = payload[WatchSyncTransport.snapshotContextKey] as? Data,
               let snapshot = WatchSyncTransport.decode(WatchSyncSnapshot.self, from: data)
-        else {
-            return
-        }
+        else { return }
 
         Task { @MainActor in
             apply(snapshot: snapshot)

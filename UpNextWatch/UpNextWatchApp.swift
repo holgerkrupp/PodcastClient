@@ -15,7 +15,9 @@ struct UpNextWatchApp: App {
                     playbackController.attach(store: store)
                 }
                 .onChange(of: scenePhase) { _, newPhase in
-                    if newPhase != .active {
+                    if newPhase == .active {
+                        store.requestSnapshot(silently: true)
+                    } else {
                         playbackController.flushProgress()
                     }
                 }
