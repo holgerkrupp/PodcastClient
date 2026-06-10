@@ -12,7 +12,7 @@ struct EpisodeProgressView: View {
     @State var episode: Episode
     var body: some View {
         VStack{
-            PlayerProgressSliderView(value: $episode.playProgress, allowTouch: false, sliderRange: 0...1)
+            PlayerProgressSliderView(value: $episode.playProgress, markers: $episode.chapters, allowTouch: false, sliderRange: 0...1)
                 .frame(height: 30)
             HStack{
                 if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {

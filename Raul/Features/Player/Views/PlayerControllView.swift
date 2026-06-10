@@ -174,7 +174,7 @@ struct PlayerControllView: View {
                 
                 
                 VStack {
-                    PlayerProgressSliderView(value: $player.progress, allowTouch: globalSettings.first?.enableInAppSlider ?? true, sliderRange: 0...1)
+                    PlayerProgressSliderView(value: $player.progress, markers: $player.chapters, allowTouch: globalSettings.first?.enableInAppSlider ?? true, sliderRange: 0...1)
                         .frame(height: 30)
                     
                     

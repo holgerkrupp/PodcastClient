@@ -9,7 +9,7 @@ import SwiftUI
 
 struct PlayerProgressSliderView: View {
     @Binding var value: Double
-    
+    @Binding var markers: [Marker]?
     @State var allowTouch: Bool = true
     
     @State var lastCoordinateValue: CGFloat = 0.0
@@ -41,13 +41,16 @@ struct PlayerProgressSliderView: View {
                 
                                .fill(.ultraThinMaterial)
                     .frame(width: gr.size.width, height: gr.size.height)
-                
-                if maxProgress > self.value {
-                    Rectangle()
-                        .fill(Color.red.opacity(0.7))
-                        .frame(width: 2, height: gr.size.height * 0.85)
-                        .position(x: maxPlayProgressVal, y: gr.size.height / 2)
+                /*
+                if player.currentEpisode.url == episode.url {
+                    if maxProgress > self.value {
+                        Rectangle()
+                            .fill(Color.red.opacity(0.7))
+                            .frame(width: 2, height: gr.size.height * 0.85)
+                            .position(x: maxPlayProgressVal, y: gr.size.height / 2)
+                    }
                 }
+                 */
             
                 HStack {
                     Rectangle()
@@ -58,18 +61,20 @@ struct PlayerProgressSliderView: View {
                     Spacer()
                 }
                 .clipShape(trackShape)
-
-                ZStack {
-                    ForEach(Array(chapterMarkerPositions.enumerated()), id: \.offset) { _, xPosition in
-                        Rectangle()
-                            .fill(Color.primary.opacity(0.25))
-                            .frame(width: 1.5, height: gr.size.height)
-                            .position(x: xPosition, y: gr.size.height / 2)
-                            .shadow(color: .black.opacity(0.25), radius: 0.5, x: 0, y: 0)
+                if markers != nil {
+                    ZStack {
+                        ForEach(Array(chapterMarkerPositions.enumerated()), id: \.offset) { _, xPosition in
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.25))
+                                .frame(width: 1.5, height: gr.size.height)
+                                .position(x: xPosition, y: gr.size.height / 2)
+                                .shadow(color: .black.opacity(0.25), radius: 0.5, x: 0, y: 0)
+                        }
                     }
+                    .frame(width: gr.size.width, height: gr.size.height)
+                    .clipShape(trackShape)
                 }
-                .frame(width: gr.size.width, height: gr.size.height)
-                .clipShape(trackShape)
+
             }
             .contentShape(Rectangle())
             .gesture(
@@ -118,18 +123,21 @@ struct PlayerProgressSliderView: View {
               duration > 0 else {
             return []
         }
-
-        let chapters = player.chapters ?? player.currentEpisode?.preferredChapters ?? []
-
-        return chapters.compactMap { chapter in
-            guard let start = chapter.start,
-                  start > 0,
-                  start < duration else {
-                return nil
+        
+        if let chapters = markers{
+            
+            return chapters.compactMap { chapter in
+                guard let start = chapter.start,
+                      start > 0,
+                      start < duration else {
+                    return nil
+                }
+                
+                let progress = min(max(start / duration, 0), 1)
+                return width * CGFloat(progress)
             }
-
-            let progress = min(max(start / duration, 0), 1)
-            return width * CGFloat(progress)
+        }else{
+            return []
         }
     }
 }
@@ -137,6 +145,7 @@ struct PlayerProgressSliderView: View {
 
 #Preview {
     @Previewable @State var progress = 0.5
-    PlayerProgressSliderView(value: $progress, sliderRange: 0...1)
+    @Previewable @State var markers: [Marker]? = []
+    PlayerProgressSliderView(value: $progress, markers: $markers, sliderRange: 0...1)
         .frame(height: 30)
 }
