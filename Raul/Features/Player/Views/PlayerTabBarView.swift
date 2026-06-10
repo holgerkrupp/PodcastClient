@@ -42,12 +42,15 @@ struct PlayerTabBarView: View {
                         Text(podcastTitle)
                             .font(.caption2)
                             .lineLimit(1)
+                            .foregroundColor(Color.secondary)
                         //    .foregroundColor(dynamicSecondaryColor)
                         Text(episode.title)
                             .font(.caption)
                             .lineLimit(1)
+                            .foregroundColor(Color.primary)
                          //   .foregroundColor(dynamicPrimaryColor)
                     }
+                   // .foregroundColor(.accent)
 
                     Spacer(minLength: 8)
 
@@ -138,7 +141,7 @@ private struct MiniPlayerProgressBackground: View {
                 }
             }
             
-    }.tabBarMinimizeBehavior(.onScrollDown)
+    }.tabBarMinimizeBehavior(.automatic)
         .tabViewBottomAccessory {
             
      

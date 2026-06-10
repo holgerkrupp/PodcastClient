@@ -99,7 +99,7 @@ struct ContentView: View {
             
         }
        
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .tabBarMinimizeBehavior(.automatic)
         
         .tabViewBottomAccessory {
             PlayerTabBarView()

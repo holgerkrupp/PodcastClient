@@ -12,6 +12,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+/*
 struct PlayerIntentsExtension: AppIntent {
     static var title: LocalizedStringResource { "PlayerIntentsExtension" }
     
@@ -19,6 +20,92 @@ struct PlayerIntentsExtension: AppIntent {
         return .result()
     }
 }
+*/
+
+struct FastExportClipIntent: AppIntent {
+    static let title: LocalizedStringResource = "Export Podcast Clip"
+    static let description = IntentDescription("Directly exports an audio clip from the currently playing episode without opening the app.")
+
+    // Run entirely in the background
+    static let openAppWhenRun: Bool = false
+
+    // Parameter 1: Configurable offset backward (Defaults to 15 seconds ago)
+    @Parameter(
+        title: "Backwards Offset",
+        description: "How many seconds prior to the current position the clip should start.",
+        default: 15.0
+    )
+    var offset: Double
+
+    // Parameter 2: Configurable total clip duration (Defaults to 30 seconds long)
+    @Parameter(
+        title: "Clip Length",
+        description: "The total duration of the generated clip in seconds.",
+        default: 30.0
+    )
+    var clipLength: Double
+
+    @MainActor
+    func perform() async throws -> some ReturnsValue<IntentFile> & ProvidesDialog {
+        // 1. Gather live playback data from your Player coordinator
+        guard let currentEpisode = Player.shared.currentEpisode,
+              let audioURL = Player.shared.currentEpisode?.localFile else {
+            throw NSError(domain: "ExportClipIntent", code: 404, userInfo: [NSLocalizedDescriptionKey: "No active episode found to clip."])
+        }
+        
+        let playPosition = Player.shared.playPosition
+        let totalDuration = Player.shared.currentEpisode?.duration ?? 0
+
+        // 2. Math Calculations for Trim Range
+        // Start time is current position minus the backward offset
+        let trimStart = max(0, playPosition - offset)
+        // End time is start time plus the requested clip length (bounded by absolute duration)
+        let trimEnd = min(totalDuration, trimStart + clipLength)
+        
+        // Ensure we have a valid slicing range
+        guard trimEnd > trimStart else {
+            throw NSError(domain: "ExportClipIntent", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid clip durations calculated."])
+        }
+
+        // 3. Background Audio Export
+        // Since we don't have a UI view, we fetch the cover image directly in the background task
+        let coverImage: UIImage
+        if let url = currentEpisode.imageURL, let loaded = await ImageLoaderAndCache.loadUIImage(from: url) {
+            coverImage = loaded
+        }  else {
+            coverImage = UIImage() // Fallback empty layout canvas
+        }
+
+        do {
+            // Trigger your asynchronous export logic immediately
+            let generatedURL = try await AudioClipExporter.exportClipAsync(
+                audioURL: audioURL,
+                title: currentEpisode.title,
+                coverImage: coverImage,
+                startTime: trimStart,
+                endTime: trimEnd,
+                fps: 30,
+                videoSize: CGSize(width: 720, height: 720)
+            ) { _ in
+                // Progress callback unneeded for instant background executions,
+                // but required by your method signature
+            }
+
+            // 4. Wrap the generated media asset into an IntentFile
+            let clipName = "\(currentEpisode.title ?? "Clip")-\(Int(trimStart))s"
+            let intentFile = IntentFile(fileURL: generatedURL, filename: "\(clipName).mp4")
+            
+            // 5. Speak back confirmation and hand the physical file directly over to Siri/Shortcuts
+            let dialog = IntentDialog("Here is your \(Int(clipLength)) second clip from '\(currentEpisode.title)'.")
+            
+            return .result(value: intentFile, dialog: dialog)
+
+        } catch {
+            throw NSError(domain: "ExportClipIntent", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed rendering clip background process: \(error.localizedDescription)"])
+        }
+    }
+}
+
 
 
 struct ResumePlaybackIntent: AppIntent {
@@ -144,6 +231,18 @@ struct RemoveCurrentFromUpNextIntent: AppIntent {
 
 struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        /*
+        AppShortcut(
+                    intent: FastExportClipIntent(),
+                    phrases: [
+                        "Export a clip from \(.applicationName)",
+                        "Grab a clip starting \(\.$offset) seconds ago on \(.applicationName)",
+                        "Make a \(\.$clipLength) second clip on \(.applicationName)"
+                    ],
+                    shortTitle: "Direct Clip Export",
+                    systemImageName: "scissors"
+                )
+        */
         AppShortcut(
             intent: BookmarkCurrentPlaybackIntent(),
             phrases: ["Bookmark this in ${applicationName}", "Save a bookmark in ${applicationName}", "Bookmark the current position in ${applicationName}"],

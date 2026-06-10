@@ -310,7 +310,14 @@
       }
     },
     "Abandoned" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlassen"
+          }
+        }
+      }
     },
     "Accessibility" : {
       "localizations" : {
@@ -885,6 +892,9 @@
         }
       }
     },
+    "Backwards Offset" : {
+
+    },
     "Balances voice levels, removes low-frequency rumble, and controls loud peaks during normal audio playback." : {
 
     },
@@ -1187,6 +1197,9 @@
           }
         }
       }
+    },
+    "Clip Length" : {
+
     },
     "Close" : {
       "localizations" : {
@@ -1501,17 +1514,6 @@
         }
       }
     },
-    "Debug" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Debug"
-          }
-        }
-      }
-    },
     "December" : {
       "localizations" : {
         "de" : {
@@ -1691,6 +1693,9 @@
           }
         }
       }
+    },
+    "Directly exports an audio clip from the currently playing episode without opening the app." : {
+
     },
     "Diwali" : {
       "localizations" : {
@@ -2011,6 +2016,9 @@
           }
         }
       }
+    },
+    "Export Podcast Clip" : {
+
     },
     "Exporting…" : {
       "localizations" : {
@@ -2397,16 +2405,6 @@
         }
       }
     },
-    "Go to App Store" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geh in den App Store"
-          }
-        }
-      }
-    },
     "Halloween" : {
       "localizations" : {
         "de" : {
@@ -2513,6 +2511,16 @@
         }
       }
     },
+    "Here is your %lld second clip from '%@'." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Here is your %1$lld second clip from '%2$@'."
+          }
+        }
+      }
+    },
     "Hide captions" : {
       "localizations" : {
         "de" : {
@@ -2592,6 +2600,9 @@
           }
         }
       }
+    },
+    "How many seconds prior to the current position the clip should start." : {
+
     },
     "Icon" : {
       "localizations" : {
@@ -2901,16 +2912,6 @@
     },
     "Last visible" : {
 
-    },
-    "Later" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Später"
-          }
-        }
-      }
     },
     "Latest failed check" : {
 
@@ -4773,16 +4774,6 @@
         }
       }
     },
-    "PlayerIntentsExtension" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PlayerIntentsExtension"
-          }
-        }
-      }
-    },
     "Playlist" : {
       "localizations" : {
         "de" : {
@@ -4829,16 +4820,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wiedergabezeit-Kreis"
-          }
-        }
-      }
-    },
-    "Please Switch to the App Store Version" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bitte zur AppStore Version wechseln"
           }
         }
       }
@@ -5216,6 +5197,9 @@
         }
       }
     },
+    "Rearrange Your Queue" : {
+
+    },
     "Rebuilding analytics…" : {
       "localizations" : {
         "de" : {
@@ -5435,17 +5419,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Download entfernen"
-          }
-        }
-      }
-    },
-    "Remove Duplicate Podcasts" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Doppelte Podcasts entfernen"
           }
         }
       }
@@ -5751,7 +5724,14 @@
       }
     },
     "Server response" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server antwort"
+          }
+        }
+      }
     },
     "Setting up the iCloud folder..." : {
       "localizations" : {
@@ -5894,7 +5874,14 @@
       }
     },
     "Shorten Pauses" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausen verkürzen"
+          }
+        }
+      }
     },
     "Shorter snippets follow playback more closely and are better for word-level highlighting, but they create more transcript rows." : {
       "localizations" : {
@@ -6632,6 +6619,9 @@
         }
       }
     },
+    "Tap and hold an episode, then drag it up or down to change the playback order." : {
+
+    },
     "The currently playing episode is kept pinned at the top while playback is active." : {
       "localizations" : {
         "de" : {
@@ -6664,6 +6654,9 @@
           }
         }
       }
+    },
+    "The total duration of the generated clip in seconds." : {
+
     },
     "These chapter rules could not be loaded." : {
       "localizations" : {
@@ -6851,16 +6844,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Geschwindigkeit wird verwendet, wenn die Wiedergabe startet. Die Geschwindigkeitssteuerung im Player speichert Änderungen ebenfalls hier."
-          }
-        }
-      }
-    },
-    "This TestFlight version will no longer be updated. Please download the official version of Up Next to keep using the app and save your data." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese TestFlight version wird nicht weiter gepflegt. Bitte auf die AppStore Version von Up Next wechseln."
           }
         }
       }
@@ -7122,7 +7105,14 @@
       }
     },
     "Try Again" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        }
+      }
     },
     "Turn off to skip this chapter" : {
       "localizations" : {
@@ -7458,7 +7448,14 @@
       }
     },
     "Voice enhancement" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmen Verbesserung"
+          }
+        }
+      }
     },
     "VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views." : {
       "localizations" : {
