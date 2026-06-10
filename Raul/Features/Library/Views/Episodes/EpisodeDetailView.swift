@@ -177,6 +177,16 @@ struct EpisodeDetailView: View {
 #if DEBUG
                     if let url = episode.url {
                         
+                        if let chapterGenerationMessage {
+                            Text(chapterGenerationMessage)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal)
+                        }else if isGeneratingTranscriptChapters{
+                            ProgressView()
+                                .controlSize(.small)
+                        }else{
+                            
                             Button {
                                 Task { await generateTranscriptChaptersOnDemand(for: url) }
                             } label: {
@@ -189,21 +199,13 @@ struct EpisodeDetailView: View {
                             .padding(.horizontal)
                             .padding(.vertical, 8)
                             .disabled(isGeneratingTranscriptChapters || canGenerateTranscriptChapters == false)
-
-                            if isGeneratingTranscriptChapters {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
+                            
+                        }
 
                             Spacer()
                         
 
-                        if let chapterGenerationMessage {
-                            Text(chapterGenerationMessage)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal)
-                        }
+
                     }
 #endif
                         }
