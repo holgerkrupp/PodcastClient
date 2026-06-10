@@ -92,7 +92,7 @@ class Marker: Identifiable, Equatable, Hashable{
   
 
     
-    var progress:Double? // 0 -1 
+    var progress:Double? = 0 // 0 -1 
     
     @Transient var remainingTime: TimeInterval? {
         guard let duration = duration, let progress = progress else { return nil }
