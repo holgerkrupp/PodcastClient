@@ -182,30 +182,7 @@ struct PlayerControllView: View {
                         Text(Duration.seconds(player.playPosition).formatted(.units(width: .narrow)))
                             .monospacedDigit()
                             .font(.caption)
-                        Spacer()
-                        if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay-5.0 > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
-                            Button(action: {
-                                Task{
-                                    await player.jumpTo(time: maxPlay)
-                                }
-                            }) {
-                                Label {
-                                    Text("max play position")
-                                        .monospaced()
-                                        .font(.caption)
-                                } icon: {
-                                    Image(systemName: "arrow.right.to.line.compact")
-                                        .resizable()
-                                        .scaledToFit()
-                                    
-                                }
-                                .labelStyle(.titleOnly)
-                                
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Jump to max play position")
-                            .accessibilityHint("Jumps to the furthest point you have listened to in this episode")
-                        }
+
                         Spacer()
                         Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
 
@@ -233,6 +210,34 @@ struct PlayerControllView: View {
                     .accessibilityHint("Opens playback speed controls")
                     .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
 
+                    Spacer()
+                    
+                    
+                    if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay-5.0 > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
+                        Button(action: {
+                            Task{
+                                await player.jumpTo(time: maxPlay)
+                            }
+                        }) {
+                            Label {
+                                Text("max play position")
+                                    .monospaced()
+                                    .font(.caption)
+                            } icon: {
+                                Image(systemName: "forward.end.alt.fill")
+                                   // .resizable()
+                                    .scaledToFit()
+                                
+                            }
+                            .labelStyle(.iconOnly)
+                            
+                        }
+                        
+                       
+                        .buttonStyle(.glass)
+                        .accessibilityLabel("Jump to max play position")
+                        .accessibilityHint("Jumps to the furthest point you have listened to in this episode")
+                    }
                     Spacer()
                     
                     Button {

@@ -3,6 +3,7 @@ import SwiftData
 import BackgroundTasks
 import DeviceInfo
 import BasicLogger
+import TipKit
 
 enum BackgroundTaskConfiguration {
     static let feedRefreshIdentifier = "checkFeedUpdates"
@@ -30,9 +31,19 @@ struct RaulApp: App {
     init() {
         CrashBreadcrumbs.shared.record("raul_app_init_start")
         CrashBreadcrumbs.shared.record("raul_app_init_completed")
+        
+        // Tips.showTipsForTesting([ReorderPlaylistTip.self]) // Uncomment to force show during dev
+                
+                try? Tips.configure([
+                    .displayFrequency(.weekly), // Controls how often tips appear app-wide
+                    .datastoreLocation(.applicationDefault)
+                ])
+        
     }
 
     var body: some Scene {
+
+        
         WindowGroup {
             if let container = modelContainerManager.preparedContainer {
                 AppLaunchContainerView{

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
 
 struct PlaylistView: View {
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
@@ -216,7 +217,7 @@ private struct ManualPlaylistPageView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query private var playlistEntries: [PlaylistEntry]
-
+    private let reorderTip = ReorderPlaylistTip()
     init(playlist: Playlist) {
         self.playlist = playlist
         let playlistID = playlist.id
@@ -237,6 +238,10 @@ private struct ManualPlaylistPageView: View {
             PlaylistEmptyView(title: playlist.displayTitle, isSmartPlaylist: false)
         } else {
             List {
+                
+                TipView(reorderTip, arrowEdge: .none)
+                                    .listRowSeparator(.hidden)
+                
                 ForEach(episodes, id: \.persistentModelID) { episode in
                     if episode.url != nil {
                         ZStack {
@@ -279,7 +284,13 @@ private struct ManualPlaylistPageView: View {
                             try? await actor.moveEntry(from: fromIndex, to: newOffset)
                         }
                     }
+                    ReorderPlaylistTip.hasUserReorderedBefore = true
+                    reorderTip.invalidate(reason: .actionPerformed)
                 }
+                .onChange(of: episodes.count) { oldCount, newCount in
+                                // 3. Keep the tip parameter synced with app state
+                                ReorderPlaylistTip.playlistItemCount = newCount
+                            }
             }
             .listStyle(.plain)
         }
