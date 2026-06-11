@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct PodcastListView: View {
     enum LibraryScope: String, CaseIterable, Identifiable {
@@ -444,97 +445,228 @@ struct SideLoadedEpisodesView: View {
 
     @Query(
         filter: #Predicate<Episode> {
-            $0.sourceRawValue == "sideLoaded" && $0.metaData?.isInbox == true
+            $0.sourceRawValue == "sideLoaded"
         },
         sort: \Episode.publishDate,
         order: .reverse
-    ) private var episodes: [Episode]
-    @State private var searchText: String = ""
+    ) private var sideLoadedEpisodes: [Episode]
+    @State private var folderFileURLs: [URL] = []
+    @State private var isImportingFile = false
     @State private var isRefreshing = false
+    @State private var importErrorMessage: String?
 
-    private var visibleEpisodes: [Episode] {
-        episodes.filter { episode in
-            guard searchText.isEmpty == false else { return true }
-
-            let searchableText = [
-                episode.title,
-                episode.subtitle,
-                episode.desc,
-                episode.author,
-                episode.displayPodcastTitle
-            ]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
-
-            return searchableText.localizedStandardContains(searchText.lowercased())
+    private var episodeByURL: [URL: Episode] {
+        sideLoadedEpisodes.reduce(into: [:]) { result, episode in
+            guard let url = episode.url?.standardizedFileURL else { return }
+            if result[url] == nil {
+                result[url] = episode
+            }
         }
     }
 
+    private var newFileURLs: [URL] {
+        folderFileURLs
+            .filter { episodeByURL[$0.standardizedFileURL] == nil }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+    }
+
+    private var importedEpisodes: [Episode] {
+        folderFileURLs
+            .compactMap { episodeByURL[$0.standardizedFileURL] }
+            .sorted { lhs, rhs in
+                switch (lhs.publishDate, rhs.publishDate) {
+                case let (lhs?, rhs?):
+                    return lhs > rhs
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+                }
+            }
+    }
+
+    private var hasAnyFiles: Bool {
+        folderFileURLs.isEmpty == false
+    }
+
     var body: some View {
-        Group{
-            if visibleEpisodes.isEmpty {
-                
-                   
-                  SideLoadedEmptyStateView(modelContainer: modelContainer)
-                    
-                
-            } else {
-                List {
-                    ForEach(visibleEpisodes) { episode in
-                        ZStack {
-                            EpisodeRowView(episode: episode)
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                EmptyView()
+        NavigationStack {
+            Group {
+                if hasAnyFiles == false {
+                    SideLoadedEmptyStateView(modelContainer: modelContainer)
+                } else {
+                    List {
+                        Section("New Files") {
+                            if newFileURLs.isEmpty {
+                                Text("No new files.")
+                                    .foregroundStyle(.secondary)
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            } else {
+                                ForEach(newFileURLs, id: \.standardizedFileURL) { fileURL in
+                                    SideLoadedFolderFileRow(fileURL: fileURL)
+                                        .listRowSeparator(.hidden)
+                                        .listRowBackground(Color.clear)
+                                        .listRowInsets(.init(top: 0,
+                                                             leading: 0,
+                                                             bottom: 0,
+                                                             trailing: 0))
+                                }
                             }
-                            .opacity(0)
                         }
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                        .listRowSeparator(.hidden)
+
+                        Section("Already Imported") {
+                            if importedEpisodes.isEmpty {
+                                Text("No imported files yet.")
+                                    .foregroundStyle(.secondary)
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                    .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            } else {
+                                ForEach(importedEpisodes) { episode in
+                                    ZStack {
+                                        EpisodeRowView(episode: episode)
+                                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                            EmptyView()
+                                        }
+                                        .opacity(0)
+                                    }
+                                    .listRowInsets(.init(top: 0,
+                                                         leading: 0,
+                                                         bottom: 0,
+                                                         trailing: 0))
+                                    .listRowSeparator(.hidden)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                    .listRowSpacing(0)
+                }
+            }
+            .navigationTitle("Sideloading")
+            .task {
+                await reloadFolderSnapshot()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .sideLoadedDidChange)) { _ in
+                Task {
+                    await reloadFolderSnapshot()
+                }
+            }
+            .refreshable {
+                await refreshSideLoadedContent()
+                await reloadFolderSnapshot()
+            }
+            .fileImporter(
+                isPresented: $isImportingFile,
+                allowedContentTypes: [.audio, .movie]
+            ) { result in
+                Task {
+                    switch result {
+                    case .success(let fileURL):
+                        await importSideLoadedFile(from: fileURL)
+                    case .failure(let error):
+                        await MainActor.run {
+                            importErrorMessage = error.localizedDescription
+                        }
                     }
                 }
-                .listStyle(.plain)
-                .listRowSpacing(0)
             }
-        }
-       
-        .navigationTitle("Sideloading")
-        .task {
-            await refreshSideLoadedContent()
-        }
-        .refreshable {
-            await refreshSideLoadedContent()
-        }
-        .overlay {
-            if isRefreshing {
-                ProgressView()
+            .overlay {
+                if isRefreshing {
+                    ProgressView()
+                }
             }
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: {
-                    Task {
-                        await refreshSideLoadedContent()
+            .alert("Import Error", isPresented: Binding(
+                get: { importErrorMessage != nil },
+                set: { if $0 == false { importErrorMessage = nil } }
+            )) {
+                Button("OK") {
+                    importErrorMessage = nil
+                }
+            } message: {
+                Text(importErrorMessage ?? "The file could not be imported.")
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    Button(action: {
+                        isImportingFile = true
+                    }) {
+                        Label("Import File", systemImage: "folder.badge.plus")
                     }
-                }) {
-                    if isRefreshing {
-                    
+                    .accessibilityLabel("Import sideloading file")
+                    .accessibilityHint("Opens a file picker and copies the selected audio file into the sideloading folder")
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button(action: {
+                        Task {
+                            await refreshSideLoadedContent()
+                            await reloadFolderSnapshot()
+                        }
+                    }) {
+                        if isRefreshing {
                             ProgressView()
-                        
-                    }else{
-                        Image(systemName: "arrow.clockwise")
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
+                    .disabled(isRefreshing)
+                    .accessibilityLabel(isRefreshing ? "Refreshing sideloading folder" : "Refresh sideloading folder")
+                    .accessibilityHint("Fetches reloads your sideloading folder")
+                    .accessibilityInputLabels([Text("Refresh sideloading"), Text("Update sideloading")])
                 }
-                .disabled(isRefreshing)
-                .accessibilityLabel(isRefreshing ? "Refreshing sideloading folder" : "Refresh sideloading folder")
-                .accessibilityHint("Fetches reloads your sideloading folder")
-                .accessibilityInputLabels([Text("Refresh sideloading"), Text("Update sideloading")])
             }
-            
-  
+        }
+    }
+
+    private func reloadFolderSnapshot() async {
+        guard let folderURL = SideloadingCoordinator.shared.folderURL else {
+            await MainActor.run {
+                folderFileURLs = []
+            }
+            return
+        }
+
+        let snapshot = await Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+            let keys: [URLResourceKey] = [
+                .isRegularFileKey,
+                .isDirectoryKey
+            ]
+            let standardizedFolderURL = folderURL.standardizedFileURL
+            let folderPath = standardizedFolderURL.path.hasSuffix("/")
+                ? standardizedFolderURL.path
+                : standardizedFolderURL.path + "/"
+
+            var fileURLs: [URL] = []
+
+            if let enumerator = fileManager.enumerator(
+                at: standardizedFolderURL,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) {
+                while let url = enumerator.nextObject() as? URL {
+                    let standardizedURL = url.standardizedFileURL
+                    guard standardizedURL.path.hasPrefix(folderPath) else { continue }
+                    guard isSupportedSideLoadedFile(standardizedURL) else { continue }
+                    guard let isRegularFile = try? standardizedURL.resourceValues(forKeys: Set(keys)).isRegularFile,
+                          isRegularFile == true else {
+                        continue
+                    }
+
+                    fileURLs.append(standardizedURL)
+                }
+            }
+
+            return Array(Set(fileURLs))
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        }.value
+
+        await MainActor.run {
+            folderFileURLs = snapshot
         }
     }
 
@@ -548,6 +680,106 @@ struct SideLoadedEpisodesView: View {
 
         await SideloadingCoordinator.shared.refreshNow()
     }
+
+    private func importSideLoadedFile(from selectedURL: URL) async {
+        guard let folderURL = SideloadingCoordinator.shared.folderURL else {
+            await MainActor.run {
+                importErrorMessage = "Enable sideloading in Settings before importing files."
+            }
+            return
+        }
+
+        let didStartAccessing = selectedURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                selectedURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let destinationURL = uniqueDestinationURL(
+            for: selectedURL,
+            in: folderURL.standardizedFileURL
+        )
+
+        do {
+            if selectedURL.standardizedFileURL != destinationURL {
+                try FileManager.default.copyItem(at: selectedURL, to: destinationURL)
+            }
+
+            await refreshSideLoadedContent()
+            await reloadFolderSnapshot()
+        } catch {
+            await MainActor.run {
+                importErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func uniqueDestinationURL(for sourceURL: URL, in folderURL: URL) -> URL {
+        let fileManager = FileManager.default
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let fileExtension = sourceURL.pathExtension
+        var attempt = 0
+
+        while true {
+            let candidateName: String
+            if attempt == 0 {
+                candidateName = sourceURL.lastPathComponent
+            } else if fileExtension.isEmpty {
+                candidateName = "\(baseName)-\(attempt)"
+            } else {
+                candidateName = "\(baseName)-\(attempt).\(fileExtension)"
+            }
+
+            let candidateURL = folderURL.appendingPathComponent(candidateName)
+            if fileManager.fileExists(atPath: candidateURL.path) == false {
+                return candidateURL
+            }
+
+            if candidateURL.standardizedFileURL == sourceURL.standardizedFileURL {
+                return candidateURL
+            }
+
+            attempt += 1
+        }
+    }
+}
+
+private struct SideLoadedFolderFileRow: View {
+    let fileURL: URL
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "doc.fill")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(fileURL.lastPathComponent)
+                    .font(.headline)
+                    .lineLimit(2)
+
+                Text("Waiting to be imported")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+}
+
+private func isSupportedSideLoadedFile(_ url: URL) -> Bool {
+    let extensionName = url.pathExtension.lowercased()
+    guard extensionName.isEmpty == false else { return false }
+
+    if SideloadingConfiguration.supportedExtensions.contains(extensionName) {
+        return true
+    }
+
+    return UTType(filenameExtension: extensionName)?.conforms(to: .audio) == true
 }
 
 private struct SideLoadedEmptyStateView: View {

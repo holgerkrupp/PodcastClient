@@ -40,9 +40,7 @@ struct InboxView: View {
                 case .inbox:
                     InboxListView()
                 case .iCloudDrive:
-                    NavigationStack {
-                        SideLoadedEpisodesView(modelContainer: ModelContainerManager.shared.container)
-                    }
+                    SideLoadedEpisodesView(modelContainer: ModelContainerManager.shared.container)
                 }
             }
         }

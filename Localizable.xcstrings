@@ -519,6 +519,9 @@
         }
       }
     },
+    "Already Imported" : {
+
+    },
     "Already in Library (%lld)" : {
       "localizations" : {
         "de" : {
@@ -2624,6 +2627,12 @@
         }
       }
     },
+    "Import Error" : {
+
+    },
+    "Import File" : {
+
+    },
     "Import from another app, review your feeds, then subscribe only to what is new." : {
       "localizations" : {
         "de" : {
@@ -2663,6 +2672,9 @@
           }
         }
       }
+    },
+    "Import sideloading file" : {
+
     },
     "In Apple Shortcuts, search for Up Next to add these actions to personal automations." : {
       "localizations" : {
@@ -3548,6 +3560,9 @@
         }
       }
     },
+    "New Files" : {
+
+    },
     "New Playlist" : {
       "localizations" : {
         "de" : {
@@ -3658,6 +3673,9 @@
         }
       }
     },
+    "No imported files yet." : {
+
+    },
     "No listening data yet." : {
       "localizations" : {
         "de" : {
@@ -3707,6 +3725,9 @@
           }
         }
       }
+    },
+    "No new files." : {
+
     },
     "No playlists yet." : {
       "localizations" : {
@@ -4257,6 +4278,9 @@
           }
         }
       }
+    },
+    "Opens a file picker and copies the selected audio file into the sideloading folder" : {
+
     },
     "Opens all settings" : {
       "localizations" : {
@@ -7466,6 +7490,9 @@
           }
         }
       }
+    },
+    "Waiting to be imported" : {
+
     },
     "Week" : {
       "localizations" : {
