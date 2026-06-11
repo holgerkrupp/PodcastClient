@@ -116,19 +116,26 @@ struct RaulApp: App {
             }
         }
         .onChange(of: phase, {
-            guard modelContainerManager.preparedContainer != nil else { return }
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
-                Player.shared.enterBackgroundPlaybackMode()
                 scheduleFeedRefresh()
                 scheduleStorageCleanup()
+                guard modelContainerManager.preparedContainer != nil else {
+                    CrashBreadcrumbs.shared.record(
+                        "background_transition_deferred",
+                        details: "reason=model_container_not_prepared"
+                    )
+                    return
+                }
+                Player.shared.enterBackgroundPlaybackMode()
                 Task {
                     await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
                 }
              
                 
             case .active:
+                guard modelContainerManager.preparedContainer != nil else { return }
                 cleanUp()
                 refreshOnActive()
                 Task {
@@ -151,16 +158,22 @@ struct RaulApp: App {
         })
 
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
+            CrashBreadcrumbs.shared.record("feed_refresh_background_task_started")
+            await scheduleFeedRefresh()
+            await modelContainerManager.prepareContainer()
+
             guard let container = await MainActor.run(body: {
                 modelContainerManager.preparedContainer
-            }) else { return }
-           //  await BasicLogger.shared.log("started checkFeedUpdates in Background")
-            await scheduleFeedRefresh()
-            CrashBreadcrumbs.shared.record("skip_storage_cleanup_in_feed_refresh_task")
-       
-            await SubscriptionManager(modelContainer: container).bgupdateFeeds()
+            }) else {
+                CrashBreadcrumbs.shared.record(
+                    "feed_refresh_background_task_aborted",
+                    details: "reason=model_container_unavailable"
+                )
+                return
+            }
 
-            
+            await SubscriptionManager(modelContainer: container).bgupdateFeeds()
+            CrashBreadcrumbs.shared.record("feed_refresh_background_task_completed")
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
             await scheduleStorageCleanup()
