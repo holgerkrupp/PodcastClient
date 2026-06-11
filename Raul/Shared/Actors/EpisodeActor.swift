@@ -886,12 +886,10 @@ actor EpisodeActor {
     func getRemoteChapters(episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
             return }
-        if let url = episode.url, let pubDate = episode.publishDate,
-               let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
-               pubDate > oneWeekAgo{
-                await extractRemoteMP3Chapters(url)
-                await applyAutoSkipWords(episodeURL: episodeURL)
-        }
+        guard let url = episode.url else { return }
+
+        await extractRemoteMP3Chapters(url)
+        await applyAutoSkipWords(episodeURL: episodeURL)
     }
     
     func createBookmark(for episodeURL: URL, at playPosition: Double) async{
@@ -934,14 +932,13 @@ actor EpisodeActor {
         }
         ensureMetadata(for: episode)
         await updateDuration(fileURL: url)
+        await createChapters(url)
 
         if episode.metaData?.isAvailableLocally == true,
            episode.metaData?.calculatedIsAvailableLocally == true {
             return
         }
         episode.metaData?.isAvailableLocally = true
-
-        await createChapters(url)
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
         let automaticOnDeviceTranscriptionsEnabled = await settingsActor
@@ -1082,38 +1079,23 @@ actor EpisodeActor {
             episode.chapters = []
         }
         let removedDuplicateChapters = removeDuplicateChapters(on: episode)
-        
-        if let chapters = episode.chapters, chapters.isEmpty {
-            if let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }) {
-                if let url = URL(string: chapterFile.url) {
-                    let isJSON = (url.pathExtension.lowercased() == "json") || (chapterFile.fileType?.lowercased().contains("json") == true)
-                    if isJSON {
-                        if let jsonString = await downloadAndParseStringFile(url: url),
-                           let jsonData = jsonString.data(using: .utf8),
-                           let chapters = await parseJSONChapters(jsonData: jsonData) {
-                            replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
-                            modelContext.saveIfNeeded()
-                        }
-                    }
-                }
-            }
-        }
-        
 
-        if let chapters = episode.chapters, !(chapters.contains(where: { $0.type == .mp3 }) || chapters.contains(where: { $0.type == .mp4 })) {
-            if let url = episode.localFile  {
-              
-            do {
-                if let formatInfo = try await MetadataLoader.getAudioFormat(from: url) {
-                    if formatInfo.formatID == kAudioFormatMPEGLayer3 {
-                        await extractMP3Chapters(episode.persistentModelID)
-                    } else if formatInfo.formatID == kAudioFormatMPEG4AAC {
-                        await extractM4AChapters(episode.persistentModelID)
-                    }
-                }
-            } catch { }
+        await refreshLocalFileChapters(for: episode)
+
+        if let chapters = episode.chapters, chapters.isEmpty,
+           let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }),
+           let url = URL(string: chapterFile.url) {
+            let isJSON = (url.pathExtension.lowercased() == "json")
+                || (chapterFile.fileType?.lowercased().contains("json") == true)
+            if isJSON,
+               let jsonString = await downloadAndParseStringFile(url: url),
+               let jsonData = jsonString.data(using: .utf8),
+               let chapters = await parseJSONChapters(jsonData: jsonData) {
+                replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
+                modelContext.saveIfNeeded()
             }
         }
+
         if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
             await extractShownotesChapters(fileURL: url)
         }
@@ -1549,116 +1531,62 @@ actor EpisodeActor {
         guard let url = episode.localFile else {
             return
         }
-        guard url.lastPathComponent.hasSuffix(".mp3") else {
+        let chapters = await ChapterExtractionHooks.loadLocalMP3Chapters(url)
+        guard chapters.isEmpty == false else { return }
+
+        replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        modelContext.saveIfNeeded()
+    }
+    
+    func extractRemoteMP3Chapters(_ fileURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+        guard let remoteURL = episode.url else { return }
+
+        let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(remoteURL)
+        guard chapters.isEmpty == false else { return }
+
+        replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        modelContext.saveIfNeeded()
+    }
+
+    private func refreshLocalFileChapters(for episode: Episode) async {
+        guard let localFile = episode.localFile else { return }
+        guard FileManager.default.fileExists(atPath: localFile.path) else { return }
+
+        let lowercasedExtension = localFile.pathExtension.lowercased()
+        if lowercasedExtension == "mp3" {
+            await extractMP3Chapters(episode.persistentModelID)
             return
         }
-        
+
+        if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
+            await extractM4AChapters(episode.persistentModelID)
+            return
+        }
+
         do {
-            let handle = try FileHandle(forReadingFrom: url)
-            defer { try? handle.close() }
-            let headerData = try handle.read(upToCount: 10) ?? Data()
-            guard headerData.count >= 3,
-                  let id3Identifier = String(data: headerData.prefix(3), encoding: .utf8),
-                  id3Identifier == "ID3" else {
-                return
-            }
-            if let mp3Reader = mp3ChapterReader(with: url){
-                let dict = mp3Reader.getID3Dict()
-                if let chapters = parse(chapters: dict){
-                    replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
-                    modelContext.saveIfNeeded()
+            if let formatInfo = try await MetadataLoader.getAudioFormat(from: localFile) {
+                if formatInfo.formatID == kAudioFormatMPEGLayer3 {
+                    await extractMP3Chapters(episode.persistentModelID)
+                } else if formatInfo.formatID == kAudioFormatMPEG4AAC {
+                    await extractM4AChapters(episode.persistentModelID)
                 }
             }
-            return
         } catch {
             return
         }
     }
     
-    func extractRemoteMP3Chapters(_ fileURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        if let remoteURL = episode.url,
-           let mp3Reader = await mp3ChapterReader.fromRemoteURL(remoteURL) {
-            let dict = mp3Reader.getID3Dict()
-            if let chapters = parse(chapters: dict) {
-                replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
-                modelContext.saveIfNeeded()
-            }
-        }
-    }
-    
     private func parse(chapters: [String: Any]) -> [Marker]? {
-        guard let chaptersDict = chapters["Chapters"] as? [String: Any] else {
-            return nil
-        }
-
-        let parsedChapters = chaptersDict.compactMap { elementID, value -> Marker? in
-            guard let chapterData = value as? [String: Any] else {
-                return nil
-            }
-
-            let chapter = Marker()
-            chapter.title = chapterTitle(from: chapterData, elementID: elementID)
-            chapter.start = chapterData["startTime"] as? Double ?? 0
-            chapter.duration = (chapterData["endTime"] as? Double ?? 0) - (chapter.start ?? 0)
-            chapter.type = .mp3
-            if let imageData = (chapterData["APIC"] as? [String: Any])?["Data"] as? Data {
-                chapter.imageData = imageData
-            }
-            return chapter
-        }
-
-        return parsedChapters.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        parseMP3Chapters(from: chapters)
     }
 
     private func chapterTitle(from chapterData: [String: Any], elementID: String) -> String {
-        let titleCandidates = [
-            chapterData["TIT2"],
-            chapterData["Title"],
-            chapterData["TIT3"],
-            chapterData["TIT1"]
-        ]
-
-        for candidate in titleCandidates {
-            if let title = firstNonEmptyString(from: candidate) {
-                return title
-            }
-        }
-
-        return elementID
+        UpNext.chapterTitle(from: chapterData, fallback: elementID)
     }
 
     private func firstNonEmptyString(from value: Any?) -> String? {
-        if let string = value as? String {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-
-        if let strings = value as? [String] {
-            return strings.lazy.compactMap { self.firstNonEmptyString(from: $0) }.first
-        }
-
-        if let values = value as? [Any] {
-            return values.lazy.compactMap { self.firstNonEmptyString(from: $0) }.first
-        }
-
-        if let dictionary = value as? [String: Any] {
-            let nestedCandidates = [
-                dictionary["Value"],
-                dictionary["Title"],
-                dictionary["Description"],
-                dictionary["Text"],
-                dictionary["rawText"]
-            ]
-
-            for candidate in nestedCandidates {
-                if let string = firstNonEmptyString(from: candidate) {
-                    return string
-                }
-            }
-        }
-
-        return nil
+        UpNext.firstNonEmptyString(in: value)
     }
     
     func parseJSONChapters(jsonData: Data) async -> [Marker]? {
@@ -1705,22 +1633,11 @@ actor EpisodeActor {
         guard let url = episode.localFile else {
             return
         }
-        
-        do {
-            let chapterData = try await MetadataLoader.loadChapters(from: url)
-            let chapters = chapterData.map { data in
-                let chapter = Marker()
-                chapter.title = data.title
-                chapter.start = data.start
-                chapter.duration = data.duration
-                chapter.type = .mp4
-                chapter.imageData = data.imageData
-                return chapter
-            }
-            replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
-            modelContext.saveIfNeeded()
-        } catch {
-        }
+        let chapters = await ChapterExtractionHooks.loadM4AChapters(url)
+        guard chapters.isEmpty == false else { return }
+
+        replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
+        modelContext.saveIfNeeded()
     }
     
     @discardableResult
@@ -2155,6 +2072,124 @@ private enum ChapterImageStorageConfiguration {
     static let minimumRestoreByteGain = 4 * 1024
     static let minimumRestorePixelGain: CGFloat = 24
     static let mpeg4Extensions: Set<String> = ["m4a", "m4b", "mp4"]
+}
+
+fileprivate func parseMP3Chapters(from chapters: [String: Any]) -> [Marker]? {
+    guard let chaptersDict = chapters["Chapters"] as? [String: Any] else {
+        return nil
+    }
+
+    let parsedChapters = chaptersDict.compactMap { elementID, value -> Marker? in
+        guard let chapterData = value as? [String: Any] else {
+            return nil
+        }
+
+        let chapter = Marker()
+        chapter.title = chapterTitle(from: chapterData, fallback: elementID)
+        chapter.start = chapterData["startTime"] as? Double ?? 0
+        chapter.duration = (chapterData["endTime"] as? Double ?? 0) - (chapter.start ?? 0)
+        chapter.type = .mp3
+        if let imageData = (chapterData["APIC"] as? [String: Any])?["Data"] as? Data {
+            chapter.imageData = imageData
+        }
+        return chapter
+    }
+
+    return parsedChapters.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+}
+
+fileprivate func chapterTitle(from chapterData: [String: Any], fallback elementID: String) -> String {
+    let titleCandidates = [
+        chapterData["TIT2"],
+        chapterData["Title"],
+        chapterData["TIT3"],
+        chapterData["TIT1"]
+    ]
+
+    for candidate in titleCandidates {
+        if let title = firstNonEmptyString(in: candidate) {
+            return title
+        }
+    }
+
+    return elementID
+}
+
+fileprivate func firstNonEmptyString(in value: Any?) -> String? {
+    if let string = value as? String {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    if let strings = value as? [String] {
+        return strings.lazy.compactMap { firstNonEmptyString(in: $0) }.first
+    }
+
+    if let values = value as? [Any] {
+        return values.lazy.compactMap { firstNonEmptyString(in: $0) }.first
+    }
+
+    if let dictionary = value as? [String: Any] {
+        let nestedCandidates = [
+            dictionary["Value"],
+            dictionary["Title"],
+            dictionary["Description"],
+            dictionary["Text"],
+            dictionary["rawText"]
+        ]
+
+        for candidate in nestedCandidates {
+            if let string = firstNonEmptyString(in: candidate) {
+                return string
+            }
+        }
+    }
+
+    return nil
+}
+
+enum ChapterExtractionHooks {
+    nonisolated(unsafe) static var loadLocalMP3Chapters: (URL) async -> [Marker] = { url in
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+
+            let headerData = try handle.read(upToCount: 10) ?? Data()
+            guard headerData.count >= 3,
+                  let id3Identifier = String(data: headerData.prefix(3), encoding: .utf8),
+                  id3Identifier == "ID3" else {
+                return []
+            }
+
+            guard let mp3Reader = mp3ChapterReader(with: url) else { return [] }
+            return parseMP3Chapters(from: mp3Reader.getID3Dict()) ?? []
+        } catch {
+            return []
+        }
+    }
+
+    nonisolated(unsafe) static var loadRemoteMP3Chapters: (URL) async -> [Marker] = { url in
+        guard let mp3Reader = await mp3ChapterReader.fromRemoteURL(url) else { return [] }
+        return parseMP3Chapters(from: mp3Reader.getID3Dict()) ?? []
+    }
+
+    nonisolated(unsafe) static var loadM4AChapters: (URL) async -> [Marker] = { url in
+        guard let chapterData = try? await MetadataLoader.loadChapters(from: url) else {
+            return []
+        }
+
+        return chapterData.map { data in
+            let chapter = Marker()
+            chapter.title = data.title
+            chapter.start = data.start
+            chapter.duration = data.duration
+            chapter.type = .mp4
+            chapter.imageData = data.imageData
+            return chapter
+        }
+    }
 }
 
 private struct MetadataLoader {

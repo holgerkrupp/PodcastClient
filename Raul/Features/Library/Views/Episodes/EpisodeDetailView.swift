@@ -115,12 +115,15 @@ struct EpisodeDetailView: View {
                     )
                     
                         HStack{
-                            NavigationLink(destination: BookmarkListView(episode: episode)) {
-                                Label("Bookmarks", systemImage: "bookmark.fill")
-                                    .labelStyle(.iconOnly)
+                            if let bookMarkCount = episode.bookmarks?.count, bookMarkCount > 0 {
+                                NavigationLink(destination: BookmarkListView(episode: episode)) {
+                                    Label("Bookmarks", systemImage: "bookmark.fill")
+                                        .labelStyle(.iconOnly)
+                                }
+                                .buttonStyle(.glass(.clear))
+                                .padding()
                             }
-                            .buttonStyle(.glass(.clear))
-                            .padding()
+
 
                             if episode.hasAlternateVideo {
                                 Button {
@@ -152,6 +155,7 @@ struct EpisodeDetailView: View {
                                         Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
                                     }
                                 }
+                                .labelStyle(.iconOnly)
                                 .buttonStyle(.glass(.clear))
                                 .padding()
                                 .disabled(isLoadingTranscript)
