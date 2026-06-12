@@ -258,7 +258,6 @@ struct PodcastBrowseView: View {
             }
         }
         .listStyle(.plain)
-        .listRowSpacing(0)
         .padding(.top, 0)
         .navigationTitle(viewModel.podcastFeed.title ?? "Browse Episodes")
         .task {
@@ -400,10 +399,16 @@ private struct PodcastBrowseHeaderView: View {
             }
 
             if let description = feed.description, description.isEmpty == false {
+#if os(iOS)
                 RichText(html: description)
                     .linkColor(light: Color.secondary, dark: Color.secondary)
                     .backgroundColor(.transparent)
                     .padding()
+#else
+                RichText(html: description)
+                    .backgroundColor(.transparent)
+                    .padding()
+#endif
             }
 
             if let link = feed.link {

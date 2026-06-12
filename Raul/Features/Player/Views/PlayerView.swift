@@ -179,10 +179,17 @@ private struct PlayerShownotesView: View {
     let html: String
 
     var body: some View {
-        RichText(html: html)
-            .linkColor(light: Color.secondary, dark: Color.secondary)
-            .backgroundColor(.transparent)
-            .id(reloadGeneration)
+        Group {
+#if os(iOS)
+            RichText(html: html)
+                .linkColor(light: Color.secondary, dark: Color.secondary)
+                .backgroundColor(.transparent)
+#else
+            RichText(html: html)
+                .backgroundColor(.transparent)
+#endif
+        }
+        .id(reloadGeneration)
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .background {
                     wasBackgrounded = true

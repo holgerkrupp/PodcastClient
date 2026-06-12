@@ -2028,10 +2028,29 @@ class Player {
     }
     
     private static func downscale(image: UIImage, to size: CGSize) -> UIImage? {
+#if canImport(UIKit)
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         image.draw(in: CGRect(origin: .zero, size: size))
         let newImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         return newImage
+#else
+        guard let source = image.cgImage,
+              let context = CGContext(
+                data: nil,
+                width: max(Int(size.width), 1),
+                height: max(Int(size.height), 1),
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else {
+            return nil
+        }
+        context.interpolationQuality = .high
+        context.draw(source, in: CGRect(origin: .zero, size: size))
+        guard let resized = context.makeImage() else { return nil }
+        return UIImage(cgImage: resized)
+#endif
     }
 }

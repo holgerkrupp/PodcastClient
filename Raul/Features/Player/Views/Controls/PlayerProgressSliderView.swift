@@ -31,8 +31,6 @@ struct PlayerProgressSliderView: View {
             let lower = sliderRange.lowerBound
             let sliderVal = abs((self.value - lower) * scaleFactor + minValue)
             
-            let maxProgress = player.maxPlayProgress ?? 0.0
-            let maxPlayProgressVal = abs((maxProgress - lower) * scaleFactor + minValue)
             let chapterMarkerPositions = chapterMarkerPositions(width: gr.size.width)
             let trackShape = RoundedRectangle(cornerRadius: radius)
             

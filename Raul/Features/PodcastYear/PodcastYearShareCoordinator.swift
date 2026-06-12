@@ -491,7 +491,7 @@ struct PodcastYearShareSheet: View {
                 .padding()
             }
             .navigationTitle("Podcast Year")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {

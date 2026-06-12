@@ -144,13 +144,12 @@ struct PodcastListView: View {
         .navigationTitle("Library")
         .animation(.easeInOut, value: podcastsInScope.map(\.persistentModelID))
         .listStyle(.plain)
-        .listRowSpacing(0)
         .task {
             _ = Playlist.ensureDefaultQueue(in: modelContext)
             ensurePlaylistPreferencesValid()
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Picker("Podcast Scope", selection: $selectedScope) {
                         ForEach(LibraryScope.allCases) { scope in
@@ -165,7 +164,7 @@ struct PodcastListView: View {
                 .accessibilityInputLabels([Text("Podcast scope"), Text("Library scope")])
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 NavigationLink(destination: LibrarySearchView()) {
                     Image(systemName: "magnifyingglass")
                 }
@@ -174,7 +173,7 @@ struct PodcastListView: View {
                 .accessibilityInputLabels([Text("Search library"), Text("Library search")])
             }
 
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await viewModel.refreshAllPodcasts() }
                 } label: {
@@ -244,7 +243,7 @@ private struct LibraryPlaylistsView: View {
         }
         .navigationTitle("Playlists")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     showCreatePlaylistSheet = true
                 } label: {
@@ -370,7 +369,7 @@ private struct LibraryNewPlaylistSheet: View {
                 }
             }
             .navigationTitle("New Playlist")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -544,7 +543,6 @@ struct SideLoadedEpisodesView: View {
                         }
                     }
                     .listStyle(.plain)
-                    .listRowSpacing(0)
                 }
             }
             .navigationTitle("Sideloading")
@@ -591,7 +589,7 @@ struct SideLoadedEpisodesView: View {
                 Text(importErrorMessage ?? "The file could not be imported.")
             }
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .navigation) {
                     Button(action: {
                         isImportingFile = true
                     }) {
@@ -600,7 +598,7 @@ struct SideLoadedEpisodesView: View {
                     .accessibilityLabel("Import sideloading file")
                     .accessibilityHint("Opens a file picker and copies the selected audio file into the sideloading folder")
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .primaryAction) {
                     Button(action: {
                         Task {
                             await refreshSideLoadedContent()

@@ -241,7 +241,7 @@ struct PodcastDetailView: View {
       
 
             
-            List{
+            AnyView(List {
                 
                 
                 
@@ -387,10 +387,16 @@ struct PodcastDetailView: View {
                         )
                             .padding()
                         if let desc = podcast.desc {
+#if os(iOS)
                             RichText(html: desc)
                                 .linkColor(light: Color.secondary, dark: Color.secondary)
                                 .backgroundColor(.transparent)
                                 .padding()
+#else
+                            RichText(html: desc)
+                                .backgroundColor(.transparent)
+                                .padding()
+#endif
                             
                             
                         }
@@ -519,7 +525,7 @@ struct PodcastDetailView: View {
                     }
                 }
                 .listRowSeparator(.hidden)
-            }
+            })
             .background{
                 if let backgroundUIImage {
                     Image(uiImage: backgroundUIImage)
@@ -538,7 +544,6 @@ struct PodcastDetailView: View {
             }
 
             .listStyle(PlainListStyle())
-            .listRowSpacing(0)
             .padding(.top, 0)
             .searchable(text: $searchText)
             .task {
@@ -590,7 +595,7 @@ struct PodcastDetailView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Picker("Sort by", selection: Binding(
                             get: { sortOptionRawValue },
@@ -611,7 +616,7 @@ struct PodcastDetailView: View {
                     .accessibilityHint("Choose episode sort order and hide played episodes")
                     .accessibilityInputLabels([Text("Sort episodes"), Text("Episode sort")])
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         showSettings.toggle()
                     }) {
@@ -622,7 +627,7 @@ struct PodcastDetailView: View {
                     .accessibilityInputLabels([Text("Podcast settings"), Text("Open settings")])
                     
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         Task {
                             await refreshEpisodes()
@@ -643,7 +648,7 @@ struct PodcastDetailView: View {
                     .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast")])
                     
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         Task {
                             try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)

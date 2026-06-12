@@ -24,7 +24,7 @@ struct PodcastSearchView: View {
     }
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 0) {
 
             if viewModel.isLoading {
                 ProgressView()
@@ -79,20 +79,14 @@ struct PodcastSearchView: View {
                     }
 
                     TextField("Username", text: $authUsername)
-                        .textContentType(.username)
-                        .autocapitalization(.none)
                         .disableAutocorrection(true)
-                        .textInputAutocapitalization(.never)
                         .focused($focusedField, equals: .username)
-                        .submitLabel(.next)
                         .onSubmit {
                             focusedField = .password
                         }
 
                     SecureField("Password", text: $authPassword)
-                        .textContentType(.password)
                         .focused($focusedField, equals: .password)
-                        .submitLabel(.go)
                         .onSubmit {
                             submitAuth()
                         }

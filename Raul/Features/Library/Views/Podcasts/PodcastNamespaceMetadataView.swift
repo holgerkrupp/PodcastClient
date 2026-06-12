@@ -362,7 +362,7 @@ private struct PodcastNamespaceMetadataDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 

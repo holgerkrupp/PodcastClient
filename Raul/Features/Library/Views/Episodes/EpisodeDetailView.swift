@@ -50,7 +50,7 @@ struct EpisodeDetailView: View {
             ZStack {
 
 
-                ScrollView {
+                AnyView(ScrollView {
                     if let podcast = episode.podcast {
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                             HStack {
@@ -264,15 +264,21 @@ struct EpisodeDetailView: View {
                     )
                         
                     
+#if os(iOS)
                     RichText(html: episode.content ?? episode.desc ?? "")
-                        .linkColor(light: Color.secondary, dark: Color.secondary)
-                        .backgroundColor(.transparent)
-                        .padding()
+                            .linkColor(light: Color.secondary, dark: Color.secondary)
+                            .backgroundColor(.transparent)
+                            .padding()
+#else
+                    RichText(html: episode.content ?? episode.desc ?? "")
+                            .backgroundColor(.transparent)
+                            .padding()
+#endif
                     
                     if episode.hasDisplayableChaptersOrSoundbites {
                         ChapterListView(episode: episode)
                     }
-                }
+                })
             }
             .background{
                 CoverImageView(episode: episode)
@@ -309,7 +315,7 @@ struct EpisodeDetailView: View {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
                         TranscriptListView(transcriptLines: transcriptLines, episode: episode)
                             .navigationTitle("Captions & Transcript")
-                            .navigationBarTitleDisplayMode(.inline)
+                            .platformInlineNavigationTitle()
                     } else {
                         ContentUnavailableView("Transcript Unavailable", systemImage: "quote.bubble")
                     }
@@ -325,7 +331,7 @@ struct EpisodeDetailView: View {
             }
         
         .navigationTitle(episode.title)
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 
     private var canGenerateTranscriptChapters: Bool {

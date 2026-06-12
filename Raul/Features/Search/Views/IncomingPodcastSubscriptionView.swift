@@ -105,7 +105,7 @@ struct IncomingPodcastSubscriptionView: View {
             }
             .navigationTitle("Subscribe")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         controller.dismiss()
                     }

@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 func topPodcastShareItems(
     from rollups: [PodcastRollup],
@@ -97,7 +99,12 @@ func renderTopPodcastShareImage(
         .frame(width: renderSize.width, height: renderSize.height)
     )
     renderer.scale = 1
+#if canImport(UIKit)
     return renderer.uiImage
+#else
+    guard let cgImage = renderer.cgImage else { return nil }
+    return UIImage(cgImage: cgImage)
+#endif
 }
 
 private struct TopPodcastShareCard: View {
@@ -2455,4 +2462,3 @@ private extension Collection {
         indices.contains(index) ? self[index] : nil
     }
 }
-

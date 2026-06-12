@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct TopPodcastShareGalleryView: View {
     let rollups: [PodcastRollup]
@@ -130,9 +132,9 @@ struct TopPodcastShareGalleryView: View {
             }
         }
         .navigationTitle("Share Top Podcasts")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     share(designs: Array(selectedDesigns))
                 } label: {
@@ -339,8 +341,6 @@ private struct TopPodcastShareCustomizeView: View {
         Form {
             Section {
                 TextField("Title", text: $title)
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.done)
 
                 Button("Reset to Default") {
                     title = "My Podcasts"
@@ -389,7 +389,7 @@ private struct TopPodcastShareCustomizeView: View {
             }
         }
         .navigationTitle("Customize")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 
@@ -492,7 +492,7 @@ private struct TopPodcastSharePreviewTile: View {
             VStack(spacing: 0) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        .fill(Color.secondary.opacity(0.12))
 
                     if let image {
                         Image(uiImage: image)
@@ -519,7 +519,7 @@ private struct TopPodcastSharePreviewTile: View {
     }
 
     private var tileBackgroundColor: Color {
-        isSelected ? Color.accentColor.opacity(0.15) : Color(uiColor: .tertiarySystemGroupedBackground)
+        isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1)
     }
 
     var body: some View {

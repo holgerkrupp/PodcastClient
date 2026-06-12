@@ -197,6 +197,7 @@ actor NotificationManager {
 
 struct NotificationSettingsView: View {
     @StateObject private var viewModel = NotificationPermissionViewModel()
+    @Environment(\.openURL) private var openURL
     
     var body: some View {
         VStack(spacing: 20) {
@@ -213,9 +214,15 @@ struct NotificationSettingsView: View {
                 }
             } else {
                 Button("Open Notification Settings") {
+#if canImport(UIKit)
                     if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+                        openURL(url)
                     }
+#else
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                        openURL(url)
+                    }
+#endif
                 }
             }
         }

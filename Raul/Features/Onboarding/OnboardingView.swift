@@ -61,10 +61,8 @@ struct OnboardingView: View {
                     OnboardingPageView(page: page)
                 }
             }
-            .tabViewStyle(.page)
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
             .navigationTitle("Getting Started")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .safeAreaInset(edge: .bottom) {
                 Button {
                     dismiss()

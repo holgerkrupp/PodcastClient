@@ -290,7 +290,7 @@ struct ImportExportView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .background(
             LinearGradient(
@@ -808,7 +808,7 @@ private struct OPMLImportPreviewView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .background(
             LinearGradient(

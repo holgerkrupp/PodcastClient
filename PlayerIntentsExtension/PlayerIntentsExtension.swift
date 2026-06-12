@@ -9,7 +9,9 @@ import AppIntents
 import Foundation
 import SwiftData
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 import UniformTypeIdentifiers
 
 /*
@@ -22,6 +24,7 @@ struct PlayerIntentsExtension: AppIntent {
 }
 */
 
+#if canImport(UIKit)
 struct FastExportClipIntent: AppIntent {
     static let title: LocalizedStringResource = "Export Podcast Clip"
     static let description = IntentDescription("Directly exports an audio clip from the currently playing episode without opening the app.")
@@ -105,6 +108,7 @@ struct FastExportClipIntent: AppIntent {
         }
     }
 }
+#endif
 
 
 

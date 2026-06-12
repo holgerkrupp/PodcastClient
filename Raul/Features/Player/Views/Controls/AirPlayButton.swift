@@ -8,6 +8,7 @@
 import SwiftUI
 import AVKit
 
+#if os(iOS)
 struct AirPlayButtonView: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let routePickerView = AVRoutePickerView()
@@ -18,3 +19,10 @@ struct AirPlayButtonView: UIViewRepresentable {
         // No update needed
     }
 }
+#else
+struct AirPlayButtonView: View {
+    var body: some View {
+        EmptyView()
+    }
+}
+#endif

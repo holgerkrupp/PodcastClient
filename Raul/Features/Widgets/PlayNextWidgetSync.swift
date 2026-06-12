@@ -19,6 +19,7 @@ struct PlayNextWidgetSnapshot: Codable {
         let coverURL: URL?
         let coverFileName: String?
         let isCurrent: Bool
+        let progress: Double?
     }
 
     let generatedAt: Date
@@ -212,7 +213,8 @@ enum PlayNextWidgetSync {
                 podcast: source.episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),
                 coverURL: coverURL,
                 coverFileName: coverFileName,
-                isCurrent: source.episode.url == currentEpisodeURL
+                isCurrent: source.episode.url == currentEpisodeURL,
+                progress: source.episode.maxPlayProgress
             ))
         }
 

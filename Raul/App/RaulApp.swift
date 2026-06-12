@@ -23,7 +23,9 @@ struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
     @Environment(\.scenePhase) private var phase
+#if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+#endif
 
     @AppStorage("hasSeenTestFlightMigrationAlert") private var hasSeenAlert = false
     @State private var showMigrationAlert = false
@@ -76,7 +78,9 @@ struct RaulApp: App {
                             let actor = EpisodeActor(modelContainer: container)
                             await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
                         }
+#if canImport(UIKit)
                         UIDevice.current.isBatteryMonitoringEnabled = true
+#endif
                         Task {
                             await runAutomaticTranscriptionSweep(reason: "launch")
                         }
@@ -94,12 +98,14 @@ struct RaulApp: App {
                     }
                 
 
+#if canImport(UIKit)
                     .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
                         CrashBreadcrumbs.shared.record("battery_state_changed")
                         Task {
                             await runAutomaticTranscriptionSweep(reason: "power state changed")
                         }
                     }
+#endif
                 }
             } else {
                 ModelContainerLaunchView(
@@ -129,9 +135,11 @@ struct RaulApp: App {
                     return
                 }
                 Player.shared.enterBackgroundPlaybackMode()
+#if canImport(UIKit)
                 Task {
                     await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
                 }
+#endif
              
                 
             case .active:
@@ -157,6 +165,7 @@ struct RaulApp: App {
             }
         })
 
+#if os(iOS)
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_started")
             await scheduleFeedRefresh()
@@ -179,6 +188,7 @@ struct RaulApp: App {
             await scheduleStorageCleanup()
             CrashBreadcrumbs.shared.record("skip_storage_cleanup_in_background_task")
         }
+#endif
     }
     
 
@@ -241,7 +251,7 @@ struct RaulApp: App {
     }
     
     func scheduleFeedRefresh() {
-        
+#if os(iOS)
         // this should replace scheduleAppRefresh
         CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
         BasicLogger.shared.log("schedule checkFeedUpdates")
@@ -257,10 +267,11 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("schedule_feed_refresh_failed", details: error.localizedDescription)
             BasicLogger.shared.log(error.localizedDescription)
         }
-       
+#endif
     }
 
     func scheduleStorageCleanup() {
+#if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_storage_cleanup_requested")
         BasicLogger.shared.log("schedule storageCleanup")
         let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.storageCleanupIdentifier)
@@ -273,6 +284,7 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("schedule_storage_cleanup_failed", details: error.localizedDescription)
             BasicLogger.shared.log(error.localizedDescription)
         }
+#endif
     }
 
     func runAutomaticTranscriptionSweep(reason: String) async {

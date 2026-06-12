@@ -98,12 +98,7 @@ struct ContentView: View {
 
             
         }
-       
-        .tabBarMinimizeBehavior(.automatic)
-        
-        .tabViewBottomAccessory {
-            PlayerTabBarView()
-        }
+        .platformPlayerAccessory()
         .sheet(isPresented: $player.isPlayerSheetPresented) {
             PlayerView(fullSize: true)
                 .presentationDragIndicator(.visible)
@@ -172,6 +167,13 @@ struct ContentView: View {
             }
 
             guard url.scheme == "upnext" else { return }
+            if let episodeURL = widgetPlaybackEpisodeURL(from: url) {
+                Task {
+                    await Player.shared.playEpisode(episodeURL, playDirectly: true)
+                }
+                return
+            }
+
             if let sharedEpisodeURL = sharedEpisodeURL(from: url) {
                 Task {
                     await importSharedEpisode(from: sharedEpisodeURL)
@@ -294,6 +296,16 @@ struct ContentView: View {
 
     private func sharedEpisodeURL(from url: URL) -> URL? {
         guard url.host() == "shareEpisode",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
+            return nil
+        }
+
+        return URL(string: rawURL)
+    }
+
+    private func widgetPlaybackEpisodeURL(from url: URL) -> URL? {
+        guard url.host() == "playEpisode",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
             return nil

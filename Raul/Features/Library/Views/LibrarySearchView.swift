@@ -151,7 +151,6 @@ struct LibrarySearchView: View {
                     }
                 }
                 .listStyle(.plain)
-                .listRowSpacing(0)
             }
         }
         .navigationTitle("Library Search")
@@ -181,7 +180,7 @@ struct LibrarySearchView: View {
             searchTask?.cancel()
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Picker("Podcast Scope", selection: $selectedScope) {
                         ForEach(LibraryScope.allCases) { scope in
@@ -194,7 +193,7 @@ struct LibrarySearchView: View {
                 .accessibilityLabel("Podcast scope")
             }
 
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Toggle("Titles", isOn: $searchInTitle)
                     Toggle("Authors", isOn: $searchInAuthor)

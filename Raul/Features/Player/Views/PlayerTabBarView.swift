@@ -7,6 +7,25 @@
 
 import SwiftUI
 
+extension View {
+    @ViewBuilder
+    func platformPlayerAccessory() -> some View {
+#if os(iOS)
+        self
+            .tabBarMinimizeBehavior(.automatic)
+            .tabViewBottomAccessory {
+                PlayerTabBarView()
+            }
+#else
+        VStack(spacing: 0) {
+            self
+            Divider()
+            PlayerTabBarView()
+        }
+#endif
+    }
+}
+
 @available(iOS 26.0, *)
 struct PlayerTabBarView: View {
 
@@ -141,13 +160,8 @@ private struct MiniPlayerProgressBackground: View {
                 }
             }
             
-    }.tabBarMinimizeBehavior(.automatic)
-        .tabViewBottomAccessory {
-            
-     
-            PlayerTabBarView()
-           
-        }
+    }
+    .platformPlayerAccessory()
        
     
 }

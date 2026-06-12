@@ -5865,6 +5865,9 @@
         }
       }
     },
+    "Share Export" : {
+
+    },
     "Share Image" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5925,6 +5928,9 @@
           }
         }
       }
+    },
+    "Sharing Unavailable" : {
+
     },
     "Shortcuts" : {
       "localizations" : {
@@ -6812,6 +6818,9 @@
           }
         }
       }
+    },
+    "This item cannot be shared on macOS yet." : {
+
     },
     "This podcast could not be loaded." : {
       "localizations" : {

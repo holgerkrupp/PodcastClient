@@ -15,7 +15,9 @@ enum PlaybackInterruptionEvent {
 
 actor PlayerEngine {
     let avPlayer = AVPlayer()
+#if os(iOS)
     private let session = AVAudioSession.sharedInstance()
+#endif
     private var interruptionHandler: (@Sendable (PlaybackInterruptionEvent) -> Void)?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
@@ -26,19 +28,23 @@ actor PlayerEngine {
 
 
      init() {
+#if os(iOS)
         do{
             try session.setCategory(.playback, mode: .spokenAudio)
            
         }catch{
             // print("Audio session setup failed:", error)
         }
+#endif
 
          avPlayer.automaticallyWaitsToMinimizeStalling = false
-        
+
+#if os(iOS)
          Task {
              await self.addInterruptionObserver()
              await self.addRouteChangeObserver()
          }
+#endif
         
       }
     func setInterruptionHandler(_ handler: @escaping @Sendable (PlaybackInterruptionEvent) -> Void) {
@@ -46,6 +52,7 @@ actor PlayerEngine {
        }
     
     private  func addInterruptionObserver() {
+#if os(iOS)
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
@@ -83,8 +90,10 @@ actor PlayerEngine {
                 break
             }
         }
+#endif
     }
     private  func addRouteChangeObserver() {
+#if os(iOS)
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
@@ -99,6 +108,7 @@ actor PlayerEngine {
                 Task { await self.sendInterrupt(type: .began) }
             }
         }
+#endif
     }
     
     func sendInterrupt(type: PlaybackInterruptionEvent){
@@ -194,19 +204,23 @@ actor PlayerEngine {
      }
     
     private func deactiveSession()  {
+#if os(iOS)
         do{
             try session.setActive(false)
         }catch{
             // print(error)
         }
+#endif
     }
     
     private func activateSession()  {
+#if os(iOS)
         do{
             try session.setActive(true)
         }catch{
             // print(error)
         }
+#endif
     }
 
     func currentTime() -> Double {

@@ -372,25 +372,11 @@ private struct PlayerMediaView: View {
     }
 }
 
-private struct NativeVideoPlayerView: UIViewControllerRepresentable {
+private struct NativeVideoPlayerView: View {
     let player: AVPlayer
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.showsPlaybackControls = true
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
-        controller.entersFullScreenWhenPlaybackBegins = false
-        controller.exitsFullScreenWhenPlaybackEnds = true
-        controller.videoGravity = .resizeAspect
-        return controller
-    }
-
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== player {
-            controller.player = player
-        }
+    var body: some View {
+        VideoPlayer(player: player)
     }
 }
 
@@ -462,7 +448,8 @@ struct PlayerPrimaryTransportControlsView: View {
 
             HStack {
 
-                Button(action: {showClipExport = true}) {
+#if os(iOS)
+                Button(action: { showClipExport = true }) {
                     Label {
                         Text("Create audio clip")
                     } icon: {
@@ -494,6 +481,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         EmptyView()
                     }
                 }
+#endif
 
                 Spacer()
 

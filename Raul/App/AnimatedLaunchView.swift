@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct ModelContainerLaunchView: View {
     let errorMessage: String?
@@ -55,6 +57,7 @@ struct AppLaunchContainerView<Content: View>: View {
     }
 }
 
+#if canImport(UIKit)
 private struct CompositorLaunchView: UIViewRepresentable {
     let reduceMotion: Bool
     let completion: () -> Void
@@ -206,6 +209,23 @@ private final class LaunchCurtainUIView: UIView, CAAnimationDelegate {
         }
     }
 }
+#else
+private struct CompositorLaunchView: View {
+    let reduceMotion: Bool
+    let completion: () -> Void
+
+    @State private var isFinishing = false
+
+    var body: some View {
+        AnimatedLaunchView(isFinishing: isFinishing)
+            .task {
+                isFinishing = true
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 160 : 1_200))
+                completion()
+            }
+    }
+}
+#endif
 
 struct AnimatedLaunchView: View {
     let isFinishing: Bool

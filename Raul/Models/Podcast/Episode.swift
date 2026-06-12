@@ -20,6 +20,7 @@ struct EpisodeSummary: Sendable, Hashable {
     let podcastCover: URL?
     let file: URL?
     let localfile: URL?
+    let maxPlayProgress: Double
 }
 
 struct ExternalFile: Codable, Hashable {
@@ -270,7 +271,8 @@ class EpisodeDownloadStatus{
             cover: imageURL,
             podcastCover: podcast?.imageURL,
             file: url,
-            localfile: localFile
+            localfile: localFile,
+            maxPlayProgress: maxPlayProgress
         )
     }
 
