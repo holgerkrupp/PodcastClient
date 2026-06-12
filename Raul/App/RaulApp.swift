@@ -132,6 +132,11 @@ struct RaulApp: App {
                 }
             }
         }
+#if os(macOS)
+        .commands {
+            PodcastSettingsCommands(settingsRequest: $settingsRequest)
+        }
+#endif
         .onChange(of: phase, {
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
@@ -202,10 +207,10 @@ struct RaulApp: App {
 #endif
 
 #if os(macOS)
-        Settings {
+        Window("Settings", id: SettingsWindowRequest.sceneID) {
             settingsSceneContent
         }
-        .defaultSize(width: 680, height: 760)
+        .defaultSize(width: 820, height: 680)
 #else
         WindowGroup(
             "Settings",
@@ -240,7 +245,12 @@ struct RaulApp: App {
     @ViewBuilder
     private var settingsSceneContent: some View {
         if let container = modelContainerManager.preparedContainer {
-            SettingsWindowContent(request: settingsRequest)
+            SettingsWindowContent(
+                request: settingsRequest,
+                onOpenAllSettings: {
+                    settingsRequest = .global
+                }
+            )
                 .modelContainer(container)
                 .environment(downloadedFilesManager)
                 .accentColor(.accent)
