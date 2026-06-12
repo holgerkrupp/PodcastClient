@@ -19,6 +19,7 @@ struct QueueSnapshot: Codable {
         let coverURL: URL?
         let coverFileName: String?
         let isCurrent: Bool
+        let progress: Double?
     }
 
     let generatedAt: Date
@@ -301,12 +302,20 @@ struct PlayNextQueueWidget: Widget {
         }
         .configurationDisplayName("Play Next Queue")
         .description("Shows episodes from a selected playlist.")
+        #if !os(iOS)
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
             .systemLarge,
             .accessoryRectangular,
         ])
+        #else
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium,
+            .systemLarge
+        ])
+        #endif
         .contentMarginsDisabled()
     }
 }
@@ -489,6 +498,19 @@ private struct QueueLine: View {
                             .lineLimit(1)
                     }
                 }
+
+                Spacer(minLength: 4)
+
+                if let playURL {
+                    Button(intent: OpenURLIntent(playURL)) {
+                        Image(systemName: style == .current ? "play.fill" : "play.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color.upNextAccent)
+                            .widgetAccentable()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Play \(item.title)")
+                }
             }
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -502,6 +524,15 @@ private struct QueueLine: View {
                 fileName: item.coverFileName
             )
         }
+        .overlay(alignment: .bottomLeading) {
+            Rectangle()
+                .fill(Color.upNextAccent)
+                .frame(maxWidth: .infinity)
+                .scaleEffect(x: progress, y: 1, anchor: .leading)
+                .frame(height: 3)
+                .widgetAccentable()
+                .accessibilityHidden(true)
+        }
     }
 
     private var supportingText: String? {
@@ -511,6 +542,21 @@ private struct QueueLine: View {
         case .upNext:
             return item.podcast ?? item.subtitle
         }
+    }
+
+    private var progress: Double {
+        min(max(item.progress ?? 0, 0), 1)
+    }
+
+    private var playURL: URL? {
+        guard var components = URLComponents(string: "upnext://playEpisode") else {
+            return nil
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "url", value: item.id)
+        ]
+        return components.url
     }
 }
 

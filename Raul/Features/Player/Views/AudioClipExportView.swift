@@ -497,38 +497,12 @@ struct AudioClipExportView: View {
     }
 }
 
-private struct VideoClipPreviewPlayerView: UIViewControllerRepresentable {
+private struct VideoClipPreviewPlayerView: View {
     let player: AVPlayer
 
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.showsPlaybackControls = false
-        controller.videoGravity = .resizeAspect
-        return controller
+    var body: some View {
+        VideoPlayer(player: player)
     }
-
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        if controller.player !== player {
-            controller.player = player
-        }
-    }
-}
-
-// Helper for clamping
-extension Comparable {
-    func clamped(to limits: ClosedRange<Self>) -> Self {
-        min(max(self, limits.lowerBound), limits.upperBound)
-    }
-}
-
-// UIKit ShareSheet wrapper
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
 
 // AVAudioPlayerDelegate wrapper to handle playback finished

@@ -54,7 +54,6 @@ struct AllEpisodesListView: View {
                 }
             }
             .listStyle(.plain)
-            .listRowSpacing(0)
             .navigationTitle(navigationTitleText)
             .searchable(text: $searchText)
             .onAppear {
@@ -67,7 +66,7 @@ struct AllEpisodesListView: View {
         }
         .toolbar {
 
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { deleteFiles() }
                 } label: {

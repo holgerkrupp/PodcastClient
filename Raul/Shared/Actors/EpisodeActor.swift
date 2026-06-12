@@ -10,7 +10,9 @@ import mp3ChapterReader
 import AVFoundation
 import BasicLogger
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 import ImageIO
 import Network
 
@@ -1008,6 +1010,7 @@ actor EpisodeActor {
     }
 
     private func isDeviceConnectedToPower() async -> Bool {
+#if canImport(UIKit)
         await MainActor.run {
             let device = UIDevice.current
             let wasBatteryMonitoringEnabled = device.isBatteryMonitoringEnabled
@@ -1031,6 +1034,9 @@ actor EpisodeActor {
 
             return isConnectedToPower
         }
+#else
+        true
+#endif
     }
 
     func isReadyForAutomaticTranscription(episodeURL: URL) async -> Bool {

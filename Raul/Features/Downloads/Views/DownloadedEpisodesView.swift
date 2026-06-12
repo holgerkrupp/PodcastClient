@@ -48,7 +48,7 @@ struct DownloadedEpisodesView: View {
         .listStyle(.plain)
         .navigationTitle("Downloads")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Picker("Sort", selection: Binding(get: { sortRaw }, set: { sortRaw = $0 })) {
                         Text("Newest First").tag(Sort.newestFirst.rawValue)

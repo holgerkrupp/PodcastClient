@@ -8,7 +8,9 @@
 
 import Foundation
 import SwiftData
+#if canImport(UIKit)
 import UIKit
+#endif
 
 private struct SummaryPeriodKey: Hashable {
     let period: PlaySessionSummaryPeriod

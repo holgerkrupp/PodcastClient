@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
+#if canImport(UIKit)
 import UIKit
+#endif
 
 enum TranscriptionStartOrigin: Sendable {
     case manual
@@ -70,7 +72,8 @@ actor TranscriptionManager {
             let startedAt = Date()
             print("episode lang: \(snapshot.language ?? "nil")")
 
-            // Background task is MainActor-only; keep its lifetime there
+#if canImport(UIKit)
+            // Background task is MainActor-only; keep its lifetime there.
             let bgTaskID: UIBackgroundTaskIdentifier = await MainActor.run { () -> UIBackgroundTaskIdentifier in
                 guard origin == .manual else { return .invalid }
                 return UIApplication.shared.beginBackgroundTask(
@@ -87,6 +90,7 @@ actor TranscriptionManager {
                     }
                 }
             }
+#endif
 
             do {
                 await MainActor.run {
@@ -298,6 +302,7 @@ actor TranscriptionManager {
     }
 
     private func isDeviceConnectedToPower() async -> Bool {
+#if canImport(UIKit)
         await MainActor.run {
             let device = UIDevice.current
             let wasBatteryMonitoringEnabled = device.isBatteryMonitoringEnabled
@@ -321,5 +326,8 @@ actor TranscriptionManager {
 
             return isConnectedToPower
         }
+#else
+        true
+#endif
     }
 }

@@ -299,7 +299,8 @@ actor PlaylistModelActor {
                 cover: episode.imageURL,
                 podcastCover: episode.podcast?.imageURL,
                 file: episode.url,
-                localfile: episode.localFile
+                localfile: episode.localFile,
+                maxPlayProgress: episode.maxPlayProgress
             )
         }
     }

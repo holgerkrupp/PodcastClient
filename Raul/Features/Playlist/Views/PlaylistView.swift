@@ -44,9 +44,9 @@ struct PlaylistView: View {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .navigation) {
                     PlaylistTitleMenu(
                         currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
                         currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
@@ -63,7 +63,7 @@ struct PlaylistView: View {
 
 
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         showSettings.toggle()
                     }) {
@@ -332,7 +332,7 @@ private struct NewPlaylistSheet: View {
                 }
             }
             .navigationTitle("New Playlist")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
 import Charts
+#if canImport(UIKit)
 import UIKit
+#endif
 
 private struct ListeningOverviewPoint: Identifiable {
     let date: Date
@@ -566,7 +568,7 @@ struct StatisticsView: View {
        
         }
         .navigationTitle("Listening History")
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .task(id: refreshSignature) {
             await refreshSnapshotWithLoading()
             presentInitialShareGalleryIfNeeded()
@@ -1320,7 +1322,7 @@ struct StatisticsView: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(Color.secondary.opacity(0.12))
         )
     }
 
@@ -1356,7 +1358,7 @@ struct StatisticsView: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(Color.secondary.opacity(0.12))
         )
     }
 
@@ -1993,9 +1995,9 @@ private struct ListeningSessionsListView: View {
                 Text(subtitle)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 

@@ -106,7 +106,12 @@ actor SharedImageRepository {
     }
 
     nonisolated private static func makeBlurredImage(from image: UIImage, radius: CGFloat) -> UIImage? {
+#if canImport(UIKit)
         guard let inputImage = CIImage(image: image) else { return nil }
+#else
+        guard let sourceImage = image.cgImage else { return nil }
+        let inputImage = CIImage(cgImage: sourceImage)
+#endif
 
         let clampedImage = inputImage.clampedToExtent()
         let blurredImage = clampedImage
@@ -246,14 +251,7 @@ struct ImageWithData: View {
     }
     
     func createImage() -> Image {
-#if canImport(UIKit)
         let cover: UIImage = uiImage()
         return Image(uiImage: cover)
-#elseif canImport(AppKit)
-        let cover: NSImage = NSImage(data: data) ?? NSImage()
-        return Image(nsImage: cover)
-#else
-        return Image(systemImage: "some_default")
-#endif
     }
 }

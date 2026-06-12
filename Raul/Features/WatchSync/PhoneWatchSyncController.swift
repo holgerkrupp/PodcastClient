@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+#if canImport(WatchConnectivity)
 import WatchConnectivity
 
 @MainActor
@@ -981,3 +982,9 @@ enum WatchSyncCoordinator {
         }
     }
 }
+#else
+enum WatchSyncCoordinator {
+    static func activate() {}
+    static func refreshSoon(force: Bool = false) {}
+}
+#endif

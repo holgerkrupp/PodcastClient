@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 import BackgroundTasks
 import BasicLogger
@@ -171,3 +172,4 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         NotificationCenter.default.post(name: .podcastYearShareNotificationTapped, object: nil)
     }
 }
+#endif

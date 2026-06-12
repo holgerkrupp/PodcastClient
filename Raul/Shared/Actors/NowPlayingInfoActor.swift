@@ -7,7 +7,9 @@
 
 import Foundation
 import MediaPlayer
+#if canImport(UIKit)
 import UIKit
+#endif
 
 
 class NowPlayingInfoActor {
@@ -29,12 +31,13 @@ class NowPlayingInfoActor {
     }
     
     func setArtwork(_ image: UIImage) {
-       
+#if canImport(UIKit)
         // print("setArtwork \(image.size.width)x\(image.size.height)")
         let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
             return image
         }
         setArtwork(artwork)
+#endif
     }
 
     func setArtwork(_ artwork: MPMediaItemArtwork?) {
@@ -70,4 +73,3 @@ class NowPlayingInfoActor {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 }
-

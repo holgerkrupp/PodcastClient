@@ -75,7 +75,7 @@ struct InboxListView: View {
                     Task { await loadEpisodes() }
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button(action: {
                             Task {
                                 await refreshEpisodes()
@@ -146,7 +146,7 @@ struct InboxListView: View {
                     await loadEpisodes()
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button(action: {
                             Task {
                                 await refreshEpisodes()
@@ -172,7 +172,7 @@ struct InboxListView: View {
                         .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
                     }
                     
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button(action: {
                             Task {
                                 await archiveAll()

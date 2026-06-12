@@ -2,7 +2,9 @@
 import Foundation
 import SwiftData
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct AppDebugMetadataView: View {
     @Environment(DownloadedFilesManager.self) private var downloadedFilesManager
@@ -28,8 +30,8 @@ struct AppDebugMetadataView: View {
                 DebugRow("Bundle ID", value: Bundle.main.bundleIdentifier)
                 DebugRow("Version", value: appVersion)
                 DebugRow("Build", value: appBuild)
-                DebugRow("Device", value: UIDevice.current.model)
-                DebugRow("System", value: "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)")
+                DebugRow("Device", value: deviceName)
+                DebugRow("System", value: systemName)
                 DebugRow("Locale", value: Locale.current.identifier)
                 DebugRow("Time Zone", value: TimeZone.current.identifier)
                 DebugRow("Now", date: Date())
@@ -136,7 +138,7 @@ struct AppDebugMetadataView: View {
             }
         }
         .navigationTitle("App Debug")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 
     private var appVersion: String? {
@@ -145,6 +147,22 @@ struct AppDebugMetadataView: View {
 
     private var appBuild: String? {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+    }
+
+    private var deviceName: String {
+#if canImport(UIKit)
+        UIDevice.current.model
+#else
+        ProcessInfo.processInfo.hostName
+#endif
+    }
+
+    private var systemName: String {
+#if canImport(UIKit)
+        "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)"
+#else
+        ProcessInfo.processInfo.operatingSystemVersionString
+#endif
     }
 
     private var subscribedPodcasts: [Podcast] {
@@ -279,7 +297,7 @@ struct EpisodeDebugMetadataView: View {
             )
         }
         .navigationTitle("Episode Debug")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 
@@ -383,7 +401,7 @@ struct PodcastDebugMetadataView: View {
             )
         }
         .navigationTitle("Podcast Debug")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 

@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
+#if canImport(UIKit)
 import UIKit
+#endif
 
 struct DownloadedFilesManagerReference: @unchecked Sendable {
     weak var manager: DownloadedFilesManager?
@@ -228,11 +230,13 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         Task { @MainActor in
+#if canImport(UIKit)
             if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
                let completionHandler = appDelegate.backgroundSessionCompletionHandler {
                 appDelegate.backgroundSessionCompletionHandler = nil
                 completionHandler()
             }
+#endif
         }
     }
 

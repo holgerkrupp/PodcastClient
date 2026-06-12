@@ -62,7 +62,7 @@ struct StorageManagementView: View {
             await reload()
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task {
                         await reload()

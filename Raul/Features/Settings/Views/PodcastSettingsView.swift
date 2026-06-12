@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
 import UIKit
+#endif
 import BasicLogger
 
 struct PodcastSettingsView: View {
@@ -8,6 +10,7 @@ struct PodcastSettingsView: View {
     static let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
 
     @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
 
     let podcastID: PersistentIdentifier?
@@ -55,6 +58,14 @@ struct PodcastSettingsView: View {
     private var podcast: Podcast? {
         guard let podcastID else { return nil }
         return context.model(for: podcastID) as? Podcast
+    }
+
+    private var supportsAlternateAppIcons: Bool {
+#if canImport(UIKit)
+        UIApplication.shared.supportsAlternateIcons
+#else
+        false
+#endif
     }
 
     private var globalSettings: PodcastSettings? {
@@ -205,9 +216,9 @@ struct PodcastSettingsView: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.inset)
             .navigationTitle(podcast == nil ? "Settings" : "Podcast Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .scrollContentBackground(.hidden)
             .background(Color.clear)
             .tint(.accent)
@@ -295,13 +306,13 @@ struct PodcastSettingsView: View {
                 SettingsNavigationRow(
                     title: "App Icon",
                     summary: AlternateAppIcon(id: selectedAppIconID)?.title ?? "Classic",
-                    detail: UIApplication.shared.supportsAlternateIcons
+                    detail: supportsAlternateAppIcons
                         ? "Choose the Home Screen icon used for Up Next on this device."
                         : "This device does not support alternate app icons.",
                     systemImage: "app"
                 )
             }
-            .disabled(isChangingAppIcon || UIApplication.shared.supportsAlternateIcons == false)
+            .disabled(isChangingAppIcon || supportsAlternateAppIcons == false)
         }
         .task {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
@@ -1002,9 +1013,15 @@ struct PodcastSettingsView: View {
     private var integrationsSection: some View {
         Section("Integrations") {
             Button {
+#if canImport(UIKit)
                 if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
+                    openURL(url)
                 }
+#else
+                if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                    openURL(url)
+                }
+#endif
             } label: {
                 SettingsNavigationRow(
                     title: "Notifications",
@@ -1289,6 +1306,7 @@ struct PodcastSettingsView: View {
 
     @MainActor // 1. Guarantees the entire function and subsequent Task run on the Main Thread
     private func changeAppIcon(to identifier: String) {
+#if canImport(UIKit)
         // 2. Protect against rapid/double taps causing concurrent SpringBoard requests
         guard !isChangingAppIcon else { return }
         guard UIApplication.shared.supportsAlternateIcons else { return }
@@ -1321,6 +1339,9 @@ struct PodcastSettingsView: View {
             // Always reset the loading flag at the very end of the cycle
             isChangingAppIcon = false
         }
+#else
+        selectedAppIconID = AlternateAppIcon.primaryID
+#endif
     }
 
     private func markAutoDownloadPolicyReconciliationPending(trigger: String) {
@@ -1409,7 +1430,11 @@ struct PodcastSettingsView: View {
 
     @MainActor
     static var currentIdentifier: String {
+#if canImport(UIKit)
         UIApplication.shared.alternateIconName ?? primaryID
+#else
+        primaryID
+#endif
     }
 
     init?(id: String) {
@@ -1456,8 +1481,8 @@ private struct AppIconSelectionView: View {
             .padding(.vertical, 18)
         }
         .navigationTitle("App Icon")
-        .navigationBarTitleDisplayMode(.inline)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .platformInlineNavigationTitle()
+        .background(Color.secondary.opacity(0.06))
         .task {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
         }
@@ -1482,7 +1507,7 @@ private struct AppIconSelectionTile: View {
                             .font(.title3)
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(.white, Color.accentColor)
-                            .background(Circle().fill(Color(uiColor: .systemBackground)))
+                            .background(Circle().fill(Color.primary.opacity(0.12)))
                             .offset(x: 5, y: -5)
                     }
 
@@ -1506,7 +1531,7 @@ private struct AppIconSelectionTile: View {
             .padding(.horizontal, 8)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .fill(Color.secondary.opacity(0.12))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -1550,6 +1575,7 @@ private struct AppIconPreview: View {
     }
 }
 
+#if canImport(UIKit)
 private extension UIApplication {
     func setAlternateIconName(_ alternateIconName: String?) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -1563,6 +1589,7 @@ private extension UIApplication {
         }
     }
 }
+#endif
 
 private enum SettingsSource {
     case global
@@ -1673,9 +1700,9 @@ struct SettingsHelpView: View {
                 Text("Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.")
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .navigationTitle("Using Up Next")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 
@@ -1732,9 +1759,9 @@ private struct SettingsShortcutsIntegrationView: View {
                 Text("To create multiple designs, add the Generate Podcast Share Image action more than once with different design values.")
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .navigationTitle("Shortcuts")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 
@@ -1871,9 +1898,9 @@ private struct ChapterRuleSettingsDetailView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.inset)
             .navigationTitle("Chapter Rules")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
         }
     }
 }
@@ -1936,9 +1963,9 @@ private struct ChapterRuleSettingsLoadedView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .navigationTitle("Chapter Rules")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 
     @ViewBuilder
@@ -2099,7 +2126,7 @@ private struct ChapterRuleEditorCard: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(Color.secondary.opacity(0.12))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -2137,7 +2164,7 @@ private struct ChapterRuleReadOnlyCard: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(Color.secondary.opacity(0.12))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -2198,9 +2225,9 @@ private struct AppControlsSettingsDetailView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .navigationTitle("App Controls")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 }
 
@@ -2266,9 +2293,9 @@ private struct PodcastOverridesManagementView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.inset)
         .navigationTitle("Podcast Overrides")
-        .navigationBarTitleDisplayMode(.inline)
+        .platformInlineNavigationTitle()
     }
 
     private func enableCustomSettingsFromList(for podcast: Podcast) {

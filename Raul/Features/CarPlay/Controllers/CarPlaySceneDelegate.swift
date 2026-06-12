@@ -1,3 +1,4 @@
+#if os(iOS)
 import CarPlay
 import SwiftData
 
@@ -46,3 +47,4 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         nowPlaying = nil
     }
 }
+#endif
