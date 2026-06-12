@@ -307,6 +307,7 @@ struct PlayNextQueueWidget: Widget {
             .systemLarge,
             .accessoryRectangular,
         ])
+        .contentMarginsDisabled()
     }
 }
 
@@ -318,15 +319,15 @@ private struct PlayNextQueueWidgetView: View {
     var body: some View {
         switch family {
         case .systemSmall:
-            smallView
+            listView(rowCount: 3)
         case .systemMedium:
-            listView(limit: 2, showsCurrent: true, spacing: 6)
+            listView(rowCount: 3)
         case .systemLarge:
-            listView(limit: 6, showsCurrent: true)
+            listView(rowCount: 8)
         case .accessoryRectangular:
             accessoryView
         default:
-            listView(limit: 3, showsCurrent: true)
+            listView(rowCount: 3)
         }
     }
 
@@ -342,45 +343,23 @@ private struct PlayNextQueueWidgetView: View {
         return components.url
     }
 
-    private var smallView: some View {
-        let primaryItem = entry.snapshot.currentItem ?? entry.snapshot.upcomingItems.first
-        let secondaryItem = entry.snapshot.currentItem != nil
-            ? entry.snapshot.upcomingItems.first
-            : entry.snapshot.upcomingItems.dropFirst().first
+    private func listView(rowCount: Int) -> some View {
+        let items = Array(
+            ([entry.snapshot.currentItem].compactMap { $0 } + entry.snapshot.upcomingItems)
+                .prefix(rowCount)
+        )
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 0) {
             widgetHeader
 
-            if let primaryItem {
-                QueueLine(
-                    item: primaryItem,
-                    style: primaryItem.isCurrent ? .current : .upNext
-                )
-            } else {
-                emptyState
-            }
-
-            if let secondaryItem {
-                Divider()
-                QueueLine(item: secondaryItem, style: .upNext)
-            }
-        }
-        .widgetURL(widgetURL)
-    }
-
-    private func listView(limit: Int, showsCurrent: Bool, spacing: CGFloat = 8) -> some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            widgetHeader
-
-            if entry.snapshot.items.isEmpty {
+            if items.isEmpty {
                 emptyState
             } else {
-                if showsCurrent, let current = entry.snapshot.currentItem {
-                    QueueLine(item: current, style: .current)
-                }
-
-                ForEach(Array(entry.snapshot.upcomingItems.prefix(limit))) { item in
-                    QueueLine(item: item, style: .upNext)
+                ForEach(items) { item in
+                    QueueLine(
+                        item: item,
+                        style: item.isCurrent ? .current : .upNext
+                    )
                 }
             }
         }
@@ -427,11 +406,13 @@ private struct PlayNextQueueWidgetView: View {
             Image(systemName: "text.line.first.and.arrowtriangle.forward")
                 .font(.caption)
                 .foregroundStyle(Color.upNextAccent)
+                .widgetAccentable()
             Text(entry.playlistTitle)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .lineLimit(1)
                 .foregroundStyle(Color.upNextAccent)
+                .widgetAccentable()
             Spacer(minLength: 0)
             if let progressText {
                 Text(progressText)
@@ -440,7 +421,8 @@ private struct PlayNextQueueWidgetView: View {
                     .lineLimit(1)
             }
         }
-        .padding(.top, 1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 
     private var progressText: String? {
@@ -480,29 +462,45 @@ private struct QueueLine: View {
     let style: Style
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            QueueCover(
-                url: item.coverURL,
-                fileName: item.coverFileName,
-                size: 26,
-                fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward",
-                fallbackColor: style == .current ? .upNextAccent : .secondary
-            )
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.subheadline)
-                    .fontWeight(style == .current ? .semibold : .regular)
-                    .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
-                    .lineLimit(1)
+            HStack(alignment: .center, spacing: 8) {
+                QueueCover(
+                    url: item.coverURL,
+                    fileName: item.coverFileName,
+                    size: 26,
+                    fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward",
+                    fallbackColor: style == .current ? .upNextAccent : .secondary
+                )
 
-                if let supportingText = supportingText, supportingText.isEmpty == false {
-                    Text(supportingText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.subheadline)
+                        .fontWeight(style == .current ? .semibold : .regular)
+                        .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
                         .lineLimit(1)
+                        .widgetAccentable(style == .current)
+
+                    if let supportingText = supportingText, supportingText.isEmpty == false {
+                        Text(supportingText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background {
+            QueueLineBackground(
+                url: item.coverURL,
+                fileName: item.coverFileName
+            )
         }
     }
 
@@ -513,6 +511,68 @@ private struct QueueLine: View {
         case .upNext:
             return item.podcast ?? item.subtitle
         }
+    }
+}
+
+private struct QueueLineBackground: View {
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    let url: URL?
+    let fileName: String?
+
+    var body: some View {
+        if renderingMode == .fullColor {
+            GeometryReader { proxy in
+                ZStack {
+                    Color.secondary.opacity(0.12)
+
+                    artwork
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .scaleEffect(1.35)
+                        .blur(radius: 18, opaque: true)
+
+                    Rectangle()
+                        .fill(.thinMaterial)
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let localImage {
+            localImage
+                .resizable()
+        } else if let url {
+            AsyncImage(url: url) { phase in
+                if case .success(let image) = phase {
+                    image
+                        .resizable()
+                } else {
+                    Color.clear
+                }
+            }
+        } else {
+            Color.clear
+        }
+    }
+
+    private var localImage: Image? {
+        #if canImport(UIKit)
+        guard let fileName,
+              let url = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID)?
+                .appendingPathComponent(fileName),
+              let image = UIImage(contentsOfFile: url.path)
+        else { return nil }
+
+        return Image(uiImage: image)
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -531,6 +591,7 @@ private struct QueueCover: View {
             if let localImage {
                 localImage
                     .resizable()
+                    .widgetAccentedRenderingMode(.desaturated)
                     .scaledToFill()
             } else if let url {
                 AsyncImage(url: url) { phase in
@@ -538,6 +599,7 @@ private struct QueueCover: View {
                     case .success(let image):
                         image
                             .resizable()
+                            .widgetAccentedRenderingMode(.desaturated)
                             .scaledToFill()
                     default:
                         fallbackIcon

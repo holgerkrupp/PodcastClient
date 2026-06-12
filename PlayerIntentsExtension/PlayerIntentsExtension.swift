@@ -194,6 +194,198 @@ struct PlayNextUpNextIntent: AppIntent {
     }
 }
 
+enum PlayPodcastEpisodeError: Error, CustomLocalizedStringResourceConvertible {
+    case libraryUnavailable
+    case podcastNotFound
+    case episodeNotFound
+    case episodeHasNoAudio
+
+    var localizedStringResource: LocalizedStringResource {
+        switch self {
+        case .libraryUnavailable:
+            "The podcast library is unavailable."
+        case .podcastNotFound:
+            "That podcast could not be found in your library."
+        case .episodeNotFound:
+            "That episode could not be found."
+        case .episodeHasNoAudio:
+            "That episode has no playable audio."
+        }
+    }
+}
+
+struct SiriEpisodeRequestEntity: AppEntity {
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Podcast Episode")
+    static let defaultQuery = SiriEpisodeRequestQuery()
+
+    let podcastTitle: String
+    let episodeNumber: Int
+
+    var id: String {
+        "\(episodeNumber)|\(podcastTitle)"
+    }
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(podcastTitle) episode \(episodeNumber)")
+    }
+
+    init(podcastTitle: String, episodeNumber: Int) {
+        self.podcastTitle = podcastTitle
+        self.episodeNumber = episodeNumber
+    }
+
+    init?(spokenRequest: String) {
+        let cleanedRequest = spokenRequest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patterns = [
+            #"(?i)^(.+?)\s+(?:episode|ep\.?|folge|#)\s*(\d+)\s*$"#,
+            #"(?i)^(?:episode|ep\.?|folge|#)\s*(\d+)\s+(?:of|from|von)\s+(.+?)\s*$"#
+        ]
+
+        for (index, pattern) in patterns.enumerated() {
+            guard let expression = try? NSRegularExpression(pattern: pattern),
+                  let match = expression.firstMatch(
+                    in: cleanedRequest,
+                    range: NSRange(cleanedRequest.startIndex..., in: cleanedRequest)
+                  ),
+                  match.numberOfRanges == 3,
+                  let firstRange = Range(match.range(at: 1), in: cleanedRequest),
+                  let secondRange = Range(match.range(at: 2), in: cleanedRequest) else {
+                continue
+            }
+
+            let firstValue = String(cleanedRequest[firstRange])
+            let secondValue = String(cleanedRequest[secondRange])
+            let podcastTitle = index == 0 ? firstValue : secondValue
+            let numberValue = index == 0 ? secondValue : firstValue
+
+            if let episodeNumber = Int(numberValue) {
+                self.init(
+                    podcastTitle: podcastTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+                    episodeNumber: episodeNumber
+                )
+                return
+            }
+        }
+
+        return nil
+    }
+}
+
+struct SiriEpisodeRequestQuery: EntityStringQuery {
+    func entities(for identifiers: [SiriEpisodeRequestEntity.ID]) async throws -> [SiriEpisodeRequestEntity] {
+        identifiers.compactMap { identifier in
+            guard let separator = identifier.firstIndex(of: "|"),
+                  let episodeNumber = Int(identifier[..<separator]) else {
+                return nil
+            }
+
+            let titleStart = identifier.index(after: separator)
+            return SiriEpisodeRequestEntity(
+                podcastTitle: String(identifier[titleStart...]),
+                episodeNumber: episodeNumber
+            )
+        }
+    }
+
+    func entities(matching string: String) async throws -> [SiriEpisodeRequestEntity] {
+        guard let request = SiriEpisodeRequestEntity(spokenRequest: string) else {
+            return []
+        }
+        return [request]
+    }
+
+    func suggestedEntities() async throws -> [SiriEpisodeRequestEntity] {
+        []
+    }
+}
+
+struct PlayPodcastEpisodeIntent: AudioPlaybackIntent {
+    static let title: LocalizedStringResource = "Play Podcast Episode"
+    static let description = IntentDescription("Play a numbered episode from a podcast in your library.")
+    static let openAppWhenRun = false
+
+    @Parameter(
+        title: "Podcast and Episode",
+        description: "For example, Bits und so episode 900, or episode 900 of Bits und so.",
+        requestValueDialog: "Which podcast and episode?"
+    )
+    var request: SiriEpisodeRequestEntity
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Play \(\.$request)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        await ModelContainerManager.shared.prepareContainer()
+        guard let container = ModelContainerManager.shared.preparedContainer else {
+            throw PlayPodcastEpisodeError.libraryUnavailable
+        }
+
+        let podcastDescriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate { $0.metaData?.isSubscribed != false }
+        )
+        let podcasts = try container.mainContext.fetch(podcastDescriptor)
+        guard let storedPodcast = bestPodcastMatch(
+            for: request.podcastTitle,
+            in: podcasts
+        ) else {
+            throw PlayPodcastEpisodeError.podcastNotFound
+        }
+
+        let requestedNumber = String(request.episodeNumber)
+        let episodes = storedPodcast.episodes ?? []
+        let matchingEpisode = episodes.first {
+            $0.number?.trimmingCharacters(in: .whitespacesAndNewlines) == requestedNumber
+        } ?? episodes.first {
+            titleContainsEpisodeNumber($0.title, episodeNumber: request.episodeNumber)
+        }
+
+        guard let matchingEpisode else {
+            throw PlayPodcastEpisodeError.episodeNotFound
+        }
+        guard let episodeURL = matchingEpisode.url else {
+            throw PlayPodcastEpisodeError.episodeHasNoAudio
+        }
+
+        await Player.shared.playEpisode(episodeURL, playDirectly: true)
+        return .result(dialog: "Playing episode \(request.episodeNumber) of \(storedPodcast.title).")
+    }
+
+    private func bestPodcastMatch(for requestedTitle: String, in podcasts: [Podcast]) -> Podcast? {
+        let normalizedRequest = normalized(requestedTitle)
+        let rankedMatches = podcasts.compactMap { podcast -> (podcast: Podcast, rank: Int)? in
+            let normalizedTitle = normalized(podcast.title)
+            if normalizedTitle == normalizedRequest {
+                return (podcast, 0)
+            }
+            if normalizedTitle.contains(normalizedRequest) || normalizedRequest.contains(normalizedTitle) {
+                return (podcast, 1)
+            }
+            return nil
+        }
+
+        return rankedMatches.min {
+            if $0.rank != $1.rank {
+                return $0.rank < $1.rank
+            }
+            return $0.podcast.title.count < $1.podcast.title.count
+        }?.podcast
+    }
+
+    private func normalized(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func titleContainsEpisodeNumber(_ title: String, episodeNumber: Int) -> Bool {
+        let escapedNumber = NSRegularExpression.escapedPattern(for: String(episodeNumber))
+        let pattern = #"(?i)(?:episode|ep\.?|folge|#)\s*"# + escapedNumber + #"(?!\d)"#
+        return title.range(of: pattern, options: .regularExpression) != nil
+    }
+}
+
 struct MoveCurrentEpisodeToEndIntent: AppIntent {
     static let title: LocalizedStringResource = "Move Current To End"
     static let description = IntentDescription("Move the current episode to the end of your Up Next queue.")
@@ -293,6 +485,16 @@ struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
         )
 
         AppShortcut(
+            intent: PlayPodcastEpisodeIntent(),
+            phrases: [
+                "Play \(\.$request) in \(.applicationName)",
+                "Play \(\.$request) with \(.applicationName)"
+            ],
+            shortTitle: "Play Podcast Episode",
+            systemImageName: "play.circle"
+        )
+
+        AppShortcut(
             intent: MoveCurrentEpisodeToEndIntent(),
             phrases: ["Move this episode to the end in ${applicationName}", "Send current episode to the end in ${applicationName}"],
             shortTitle: "Move To End",
@@ -304,13 +506,6 @@ struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
             phrases: ["Remove this from Up Next in ${applicationName}", "Remove current episode in ${applicationName}"],
             shortTitle: "Remove Current",
             systemImageName: "minus.circle"
-        )
-
-        AppShortcut(
-            intent: GeneratePodcastShareImageIntent(),
-            phrases: ["Generate podcast share image in ${applicationName}", "Create podcast stats image in ${applicationName}"],
-            shortTitle: "Share Image",
-            systemImageName: "photo.on.rectangle"
         )
 
     }

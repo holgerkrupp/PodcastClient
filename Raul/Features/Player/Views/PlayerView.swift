@@ -105,9 +105,7 @@ struct PlayerView: View {
                                                 }
                                                 .padding()
 
-                                                RichText(html: episode.content ?? episode.desc ?? "")
-                                                    .linkColor(light: Color.secondary, dark: Color.secondary)
-                                                    .backgroundColor(.transparent)
+                                                PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
                                                     .padding()
                                             } header: {
                                                 PlayerPrimaryTransportControlsView(includeBookmark: true)
@@ -170,6 +168,29 @@ struct PlayerView: View {
 
         
        
+    }
+}
+
+private struct PlayerShownotesView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var reloadGeneration = 0
+    @State private var wasBackgrounded = false
+
+    let html: String
+
+    var body: some View {
+        RichText(html: html)
+            .linkColor(light: Color.secondary, dark: Color.secondary)
+            .backgroundColor(.transparent)
+            .id(reloadGeneration)
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .background {
+                    wasBackgrounded = true
+                } else if newPhase == .active, wasBackgrounded {
+                    wasBackgrounded = false
+                    reloadGeneration &+= 1
+                }
+            }
     }
 }
 
