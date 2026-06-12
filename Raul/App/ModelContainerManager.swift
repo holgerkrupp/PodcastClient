@@ -8,6 +8,7 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var preparedContainer: ModelContainer?
     @Published private(set) var initializationError: String?
     @Published private(set) var isInitializing = false
+    @Published private(set) var requiresInitialCloudImport = false
     private var preparationTask: Task<ModelContainer, Error>?
 
     var container: ModelContainer {
@@ -37,6 +38,9 @@ class ModelContainerManager: ObservableObject {
         } else {
             isInitializing = true
             initializationError = nil
+            requiresInitialCloudImport = Self.sharedStoreURL.map {
+                !FileManager.default.fileExists(atPath: $0.path)
+            } ?? false
             CrashBreadcrumbs.shared.record("model_container_initialization_started")
 
             let newTask = Task.detached(priority: .userInitiated) {

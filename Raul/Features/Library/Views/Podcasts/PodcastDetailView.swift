@@ -52,9 +52,9 @@ struct PodcastDetailView: View {
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
+    @Environment(\.openPodcastSettings) private var openSettings
     @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
 
-    @State private var showSettings: Bool = false
     @State private var showPodroll: Bool = false
     @State private var showDebugMetadata: Bool = false
     @State private var liveNotificationMessage: String?
@@ -618,7 +618,7 @@ struct PodcastDetailView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {
-                        showSettings.toggle()
+                        openSettings(.podcast(podcast))
                     }) {
                         Image(systemName: "gear")
                     }
@@ -663,13 +663,6 @@ struct PodcastDetailView: View {
                 
                 
             }
-            .sheet(isPresented: $showSettings) {
-               
-  
-                PodcastSettingsView(podcast: podcast, modelContainer: modelContext.container, embedInNavigationStack: true)
-                        .presentationBackground(.ultraThinMaterial)
-            
-        }
         .alert("Live notification", isPresented: isLiveNotificationPresented) {
             Button("OK", role: .cancel) { }
         } message: {

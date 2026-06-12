@@ -367,13 +367,13 @@ private struct PlayNextQueueWidgetView: View {
                 ForEach(items) { item in
                     QueueLine(
                         item: item,
-                        style: item.isCurrent ? .current : .upNext
+                        style: item.isCurrent ? .current : .upNext,
+                        playlistID: entry.playlistID
                     )
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .widgetURL(widgetURL)
     }
 
     private var accessoryView: some View {
@@ -469,41 +469,26 @@ private struct QueueLine: View {
 
     let item: QueueSnapshot.Item
     let style: Style
+    let playlistID: String
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
 
             HStack(alignment: .center, spacing: 8) {
-                QueueCover(
-                    url: item.coverURL,
-                    fileName: item.coverFileName,
-                    size: 26,
-                    fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward",
-                    fallbackColor: style == .current ? .upNextAccent : .secondary
-                )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(.subheadline)
-                        .fontWeight(style == .current ? .semibold : .regular)
-                        .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
-                        .lineLimit(1)
-                        .widgetAccentable(style == .current)
-
-                    if let supportingText = supportingText, supportingText.isEmpty == false {
-                        Text(supportingText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                if let detailURL {
+                    Link(destination: detailURL) {
+                        episodeLabel
                     }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    episodeLabel
                 }
-
-                Spacer(minLength: 4)
 
                 if let playURL {
                     Button(intent: OpenURLIntent(playURL)) {
-                        Image(systemName: style == .current ? "play.fill" : "play.circle.fill")
+                        Image(systemName: "play.circle.fill")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Color.upNextAccent)
                             .widgetAccentable()
@@ -548,6 +533,36 @@ private struct QueueLine: View {
         min(max(item.progress ?? 0, 0), 1)
     }
 
+    private var episodeLabel: some View {
+        HStack(alignment: .center, spacing: 8) {
+            QueueCover(
+                url: item.coverURL,
+                fileName: item.coverFileName,
+                size: 26,
+                fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward",
+                fallbackColor: style == .current ? .upNextAccent : .secondary
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.subheadline)
+                    .fontWeight(style == .current ? .semibold : .regular)
+                    .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
+                    .lineLimit(1)
+                    .widgetAccentable(style == .current)
+
+                if let supportingText = supportingText, supportingText.isEmpty == false {
+                    Text(supportingText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
     private var playURL: URL? {
         guard var components = URLComponents(string: "upnext://playEpisode") else {
             return nil
@@ -556,6 +571,21 @@ private struct QueueLine: View {
         components.queryItems = [
             URLQueryItem(name: "url", value: item.id)
         ]
+        return components.url
+    }
+
+    private var detailURL: URL? {
+        guard var components = URLComponents(string: "upnext://episode") else {
+            return nil
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "url", value: item.id)
+        ]
+        if playlistID.isEmpty == false {
+            queryItems.append(URLQueryItem(name: "playlistID", value: playlistID))
+        }
+        components.queryItems = queryItems
         return components.url
     }
 }

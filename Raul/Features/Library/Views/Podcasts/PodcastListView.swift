@@ -782,6 +782,7 @@ private func isSupportedSideLoadedFile(_ url: URL) -> Bool {
 
 private struct SideLoadedEmptyStateView: View {
     let modelContainer: ModelContainer
+    @Environment(\.openPodcastSettings) private var openSettings
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
 
     private var instructionText: String {
@@ -807,8 +808,8 @@ private struct SideLoadedEmptyStateView: View {
                         .font(Font.caption.italic())
 */
                     if sideloadingEnabled == false {
-                        NavigationLink {
-                            PodcastSettingsView(podcast: nil, modelContainer: modelContainer, embedInNavigationStack: true)
+                        Button {
+                            openSettings()
                         } label: {
                             Label("Open Settings", systemImage: "gearshape")
                         }

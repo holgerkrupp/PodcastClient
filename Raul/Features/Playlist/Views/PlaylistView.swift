@@ -15,12 +15,15 @@ struct PlaylistView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openPodcastSettings) private var openSettings
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var storedPlaylistID: String = ""
+    @Binding var requestedEpisodeURL: URL?
 
     @State private var selectedPlaylistID: String = ""
-    @State private var showSettings: Bool = false
     @State private var showCreatePlaylistSheet: Bool = false
+    @State private var requestedEpisode: Episode?
+    @State private var showsRequestedEpisode = false
 
     private var visiblePlaylists: [Playlist] {
         Playlist.manualVisibleSorted(playlists)
@@ -65,7 +68,7 @@ struct PlaylistView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {
-                        showSettings.toggle()
+                        openSettings()
                     }) {
                         Image(systemName: "gear")
                     }
@@ -74,25 +77,30 @@ struct PlaylistView: View {
                     .accessibilityInputLabels([Text("Queue settings"), Text("Open settings")])
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                PodcastSettingsView(podcast: nil, modelContainer: modelContext.container, embedInNavigationStack: true)
-                    .presentationBackground(.ultraThinMaterial)
-            }
             .sheet(isPresented: $showCreatePlaylistSheet) {
                 NewPlaylistSheet { draft in
                     createPlaylist(from: draft)
+                }
+            }
+            .navigationDestination(isPresented: $showsRequestedEpisode) {
+                if let requestedEpisode {
+                    EpisodeDetailView(episode: requestedEpisode)
                 }
             }
         }
         .task {
             ensureDefaultPlaylist()
             syncSelectionWithStorage()
+            openRequestedEpisodeIfNeeded()
         }
         .onChange(of: visiblePlaylists.map(\.id)) { _, _ in
             ensureSelectionIsValid()
         }
         .onChange(of: selectedPlaylistID) { _, newValue in
             storedPlaylistID = newValue
+        }
+        .onChange(of: requestedEpisodeURL) { _, _ in
+            openRequestedEpisodeIfNeeded()
         }
     }
 
@@ -156,6 +164,18 @@ struct PlaylistView: View {
 
         selectedPlaylistID = playlist.id.uuidString
         storedPlaylistID = selectedPlaylistID
+    }
+
+    private func openRequestedEpisodeIfNeeded() {
+        guard let requestedEpisodeURL else { return }
+        let episodeURL = requestedEpisodeURL
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate { $0.url == episodeURL }
+        )
+
+        requestedEpisode = try? modelContext.fetch(descriptor).first
+        showsRequestedEpisode = requestedEpisode != nil
+        self.requestedEpisodeURL = nil
     }
 }
 

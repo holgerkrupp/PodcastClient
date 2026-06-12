@@ -13,6 +13,7 @@ import AVKit
 struct PlayerControllView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openPodcastSettings) private var openSettings
 
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
@@ -21,7 +22,6 @@ struct PlayerControllView: View {
     @State private var openFullTranscriptFollowingPlayback: Bool = false
     @State private var showPlaybackSpeedSettings = false
     @State private var showSleepTimerSettings = false
-    @State var showSettings: Bool = false
     @ScaledMetric(relativeTo: .body) private var mediaSectionHeight: CGFloat = 360
     @ScaledMetric(relativeTo: .body) private var transcriptCardHeight: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var mediaSectionSpacing: CGFloat = 12
@@ -44,7 +44,11 @@ struct PlayerControllView: View {
                     Spacer()
 
                     Button {
-                        showSettings = true
+                        if let podcast = player.currentEpisode?.podcast {
+                            openSettings(.podcast(podcast))
+                        } else {
+                            openSettings()
+                        }
                     } label: {
                         Label {
                             Text("Settings")
@@ -68,9 +72,6 @@ struct PlayerControllView: View {
                 }
                 .sheet(isPresented: $showSleepTimerSettings) {
                     sleepTimerSheet
-                }
-                .sheet(isPresented: $showSettings) {
-                    settingsSheet
                 }
                 
                 VStack(spacing: mediaSectionSpacing) {
@@ -339,16 +340,6 @@ struct PlayerControllView: View {
         .presentationDetents([.fraction(0.25)])
     }
 
-    @ViewBuilder
-    private var settingsSheet: some View {
-        if let podcast = player.currentEpisode?.podcast {
-            PodcastSettingsView(podcast: podcast, modelContainer: context.container, embedInNavigationStack: true)
-                .presentationBackground(.ultraThinMaterial)
-        } else {
-            PodcastSettingsView(podcast: nil, modelContainer: context.container, embedInNavigationStack: true)
-                .presentationBackground(.ultraThinMaterial)
-        }
-    }
 }
 
 private struct PlayerMediaView: View {
