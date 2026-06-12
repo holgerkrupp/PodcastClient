@@ -22,6 +22,9 @@ struct PlayerControllView: View {
     @State private var openFullTranscriptFollowingPlayback: Bool = false
     @State private var showPlaybackSpeedSettings = false
     @State private var showSleepTimerSettings = false
+#if os(iOS)
+    @State private var settingsRequest: SettingsWindowRequest?
+#endif
     @ScaledMetric(relativeTo: .body) private var mediaSectionHeight: CGFloat = 360
     @ScaledMetric(relativeTo: .body) private var transcriptCardHeight: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var mediaSectionSpacing: CGFloat = 12
@@ -44,14 +47,10 @@ struct PlayerControllView: View {
                     Spacer()
 
                     Button {
-                        if let podcast = player.currentEpisode?.podcast {
-                            openSettings(.podcast(podcast))
-                        } else {
-                            openSettings()
-                        }
+                        openPlaybackSettings()
                     } label: {
                         Label {
-                            Text("Settings")
+                            Text("Playback Settings")
                         } icon: {
                             Image(systemName: "gear")
                                 .tint(.primary)
@@ -59,9 +58,9 @@ struct PlayerControllView: View {
                         .labelStyle(.iconOnly)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Settings")
-                    .accessibilityHint("Opens all settings")
-                    .accessibilityInputLabels([Text("Settings"), Text("All settings")])
+                    .accessibilityLabel("Playback Settings")
+                    .accessibilityHint("Opens settings related to playback")
+                    .accessibilityInputLabels([Text("Playback settings"), Text("Player settings")])
                     
                     
                 }
@@ -73,6 +72,13 @@ struct PlayerControllView: View {
                 .sheet(isPresented: $showSleepTimerSettings) {
                     sleepTimerSheet
                 }
+#if os(iOS)
+                .sheet(item: $settingsRequest) { request in
+                    SettingsWindowContent(request: request)
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                }
+#endif
                 
                 VStack(spacing: mediaSectionSpacing) {
                     PlayerMediaView(
@@ -268,6 +274,15 @@ struct PlayerControllView: View {
             }
             .padding()
         }
+    }
+
+    private func openPlaybackSettings() {
+        let request = SettingsWindowRequest.playback(for: player.currentEpisode?.podcast)
+#if os(iOS)
+        settingsRequest = request
+#else
+        openSettings(request)
+#endif
     }
 
     private var playbackSpeedButtonTitle: String {
