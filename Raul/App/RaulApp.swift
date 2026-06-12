@@ -23,6 +23,7 @@ enum BackgroundTaskConfiguration {
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
+    @State private var settingsRequest = SettingsWindowRequest.global
     @Environment(\.scenePhase) private var phase
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -59,7 +60,10 @@ struct RaulApp: App {
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
-                    .hostsSettingsPresentation(modelContainer: container)
+                    .hostsSettingsPresentation(
+                        modelContainer: container,
+                        settingsRequest: $settingsRequest
+                    )
                 
                     .onAppear {
                         CrashBreadcrumbs.shared.record("root_view_on_appear")
@@ -197,6 +201,12 @@ struct RaulApp: App {
         }
 #endif
 
+#if os(macOS)
+        Settings {
+            settingsSceneContent
+        }
+        .defaultSize(width: 680, height: 760)
+#else
         WindowGroup(
             "Settings",
             id: SettingsWindowRequest.sceneID,
@@ -223,7 +233,33 @@ struct RaulApp: App {
             }
         }
         .defaultSize(width: 680, height: 760)
+#endif
     }
+
+#if os(macOS)
+    @ViewBuilder
+    private var settingsSceneContent: some View {
+        if let container = modelContainerManager.preparedContainer {
+            SettingsWindowContent(request: settingsRequest)
+                .modelContainer(container)
+                .environment(downloadedFilesManager)
+                .accentColor(.accent)
+                .withDeviceStyle()
+        } else {
+            ModelContainerLaunchView(
+                errorMessage: modelContainerManager.initializationError,
+                retry: {
+                    Task {
+                        await modelContainerManager.prepareContainer()
+                    }
+                }
+            )
+            .task {
+                await modelContainerManager.prepareContainer()
+            }
+        }
+    }
+#endif
     
 
 

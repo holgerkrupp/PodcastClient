@@ -53,24 +53,35 @@ struct SettingsWindowContent: View {
 }
 
 private struct SettingsPresentationHost: ViewModifier {
+#if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+#else
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     @State private var sheetRequest: SettingsWindowRequest?
+#endif
 
     let modelContainer: ModelContainer
+    @Binding var settingsRequest: SettingsWindowRequest
 
     func body(content: Content) -> some View {
         content
             .environment(
                 \.openPodcastSettings,
                 OpenPodcastSettingsAction { request in
+#if os(macOS)
+                    settingsRequest = request
+                    openSettings()
+#else
                     if supportsMultipleWindows {
                         openWindow(id: SettingsWindowRequest.sceneID, value: request)
                     } else {
                         sheetRequest = request
                     }
+#endif
                 }
             )
+#if !os(macOS)
             .sheet(item: $sheetRequest) { request in
                 SettingsWindowContent(request: request)
                     .modelContainer(modelContainer)
@@ -78,11 +89,20 @@ private struct SettingsPresentationHost: ViewModifier {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+#endif
     }
 }
 
 extension View {
-    func hostsSettingsPresentation(modelContainer: ModelContainer) -> some View {
-        modifier(SettingsPresentationHost(modelContainer: modelContainer))
+    func hostsSettingsPresentation(
+        modelContainer: ModelContainer,
+        settingsRequest: Binding<SettingsWindowRequest>
+    ) -> some View {
+        modifier(
+            SettingsPresentationHost(
+                modelContainer: modelContainer,
+                settingsRequest: settingsRequest
+            )
+        )
     }
 }
