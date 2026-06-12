@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var selectedTab: RootTab = .playlist
     @State private var showOnboarding: Bool = false
     @State private var didEvaluateOnboardingLaunch = false
+    @State private var requestedPlaylistEpisodeURL: URL?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
     @Bindable private var player = Player.shared
     
@@ -77,7 +78,7 @@ struct ContentView: View {
         TabView(selection: $selectedTab) {
             
             Tab(LocalizedStringKey(playlistTabTitle), systemImage: playlistTabSymbolName, value: RootTab.playlist) {
-                PlaylistView()
+                PlaylistView(requestedEpisodeURL: $requestedPlaylistEpisodeURL)
             }
           
             Tab("Inbox", systemImage: "tray.fill", value: RootTab.inbox) {
@@ -152,41 +153,49 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             CrashBreadcrumbs.shared.record("on_open_url", details: url.absoluteString)
+            if url.scheme == "upnext" {
+                if PodcastYearShareCoordinator.isPodcastYearURL(url) {
+                    selectedTab = .library
+                    Task {
+                        _ = await podcastYearShareCoordinator.handleOpenURL(url, modelContext: modelContext)
+                    }
+                    return
+                }
+
+                if let episodeURL = widgetPlaybackEpisodeURL(from: url) {
+                    Task {
+                        await Player.shared.playEpisode(episodeURL, playDirectly: true)
+                    }
+                    return
+                }
+
+                if let episodeURL = widgetDetailEpisodeURL(from: url) {
+                    if let playlistID = playlistID(from: url) {
+                        selectedPlaylistID = playlistID
+                    }
+                    selectedTab = .playlist
+                    requestedPlaylistEpisodeURL = episodeURL
+                    return
+                }
+
+                if let sharedEpisodeURL = sharedEpisodeURL(from: url) {
+                    Task {
+                        await importSharedEpisode(from: sharedEpisodeURL)
+                    }
+                    return
+                }
+
+                if let playlistID = playlistID(from: url) {
+                    selectedPlaylistID = playlistID
+                }
+                selectedTab = .playlist
+                return
+            }
+
             if IncomingPodcastSubscriptionController.canHandle(url) {
                 selectedTab = .add
                 incomingPodcastSubscription.handleIncomingURL(url)
-                return
             }
-
-            if PodcastYearShareCoordinator.isPodcastYearURL(url) {
-                selectedTab = .library
-                Task {
-                    _ = await podcastYearShareCoordinator.handleOpenURL(url, modelContext: modelContext)
-                }
-                return
-            }
-
-            guard url.scheme == "upnext" else { return }
-            if let episodeURL = widgetPlaybackEpisodeURL(from: url) {
-                Task {
-                    await Player.shared.playEpisode(episodeURL, playDirectly: true)
-                }
-                return
-            }
-
-            if let sharedEpisodeURL = sharedEpisodeURL(from: url) {
-                Task {
-                    await importSharedEpisode(from: sharedEpisodeURL)
-                }
-                return
-            }
-
-            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-               let playlistID = components.queryItems?.first(where: { $0.name == "playlistID" })?.value,
-               UUID(uuidString: playlistID) != nil {
-                selectedPlaylistID = playlistID
-            }
-            selectedTab = .playlist
         }
         .sheet(isPresented: $incomingPodcastSubscription.isPresented, onDismiss: {
             incomingPodcastSubscription.dismiss()
@@ -312,6 +321,26 @@ struct ContentView: View {
         }
 
         return URL(string: rawURL)
+    }
+
+    private func widgetDetailEpisodeURL(from url: URL) -> URL? {
+        guard url.host() == "episode",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
+            return nil
+        }
+
+        return URL(string: rawURL)
+    }
+
+    private func playlistID(from url: URL) -> String? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let playlistID = components.queryItems?.first(where: { $0.name == "playlistID" })?.value,
+              UUID(uuidString: playlistID) != nil else {
+            return nil
+        }
+
+        return playlistID
     }
         
 }

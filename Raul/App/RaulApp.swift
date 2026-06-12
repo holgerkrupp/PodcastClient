@@ -4,6 +4,7 @@ import BackgroundTasks
 import DeviceInfo
 import BasicLogger
 import TipKit
+import CloudKitSyncMonitor
 
 enum BackgroundTaskConfiguration {
     static let feedRefreshIdentifier = "checkFeedUpdates"
@@ -32,6 +33,7 @@ struct RaulApp: App {
     
     init() {
         CrashBreadcrumbs.shared.record("raul_app_init_start")
+        SyncMonitor.default.startMonitoring()
         CrashBreadcrumbs.shared.record("raul_app_init_completed")
         
         // Tips.showTipsForTesting([ReorderPlaylistTip.self]) // Uncomment to force show during dev
@@ -48,12 +50,16 @@ struct RaulApp: App {
         
         WindowGroup {
             if let container = modelContainerManager.preparedContainer {
-                AppLaunchContainerView{
+                AppLaunchContainerView(
+                    requiresInitialCloudImport: modelContainerManager.requiresInitialCloudImport,
+                    modelContainer: container
+                ) {
                     ContentView()
                     .modelContainer(container)
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
+                    .hostsSettingsPresentation(modelContainer: container)
                 
                     .onAppear {
                         CrashBreadcrumbs.shared.record("root_view_on_appear")
@@ -63,6 +69,7 @@ struct RaulApp: App {
                             await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                                 modelContainer: container
                             )
+                            await CloudSyncProgressReferenceStore.publish(modelContainer: container)
                             await PlayNextWidgetSync.refresh(using: container)
                             WatchSyncCoordinator.refreshSoon()
                         }
@@ -189,6 +196,33 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("skip_storage_cleanup_in_background_task")
         }
 #endif
+
+        WindowGroup(
+            "Settings",
+            id: SettingsWindowRequest.sceneID,
+            for: SettingsWindowRequest.self
+        ) { request in
+            if let container = modelContainerManager.preparedContainer {
+                SettingsWindowContent(request: request.wrappedValue ?? .global)
+                    .modelContainer(container)
+                    .environment(downloadedFilesManager)
+                    .accentColor(.accent)
+                    .withDeviceStyle()
+            } else {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
+                    }
+                )
+                .task {
+                    await modelContainerManager.prepareContainer()
+                }
+            }
+        }
+        .defaultSize(width: 680, height: 760)
     }
     
 
@@ -199,6 +233,7 @@ struct RaulApp: App {
         WatchSyncCoordinator.refreshSoon()
         Task {
             await PlayNextWidgetSync.refresh(using: container)
+            await CloudSyncProgressReferenceStore.publish(modelContainer: container)
         }
         if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
             Task .detached {

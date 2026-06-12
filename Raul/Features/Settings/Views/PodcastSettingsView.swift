@@ -35,6 +35,7 @@ struct PodcastSettingsView: View {
     @State private var isChangingAppIcon = false
     @State private var appIconErrorMessage: String?
     @State private var showAppIconError = false
+    @State private var preparedGlobalSettings: PodcastSettings?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
@@ -69,7 +70,7 @@ struct PodcastSettingsView: View {
     }
 
     private var globalSettings: PodcastSettings? {
-        defaultSettings.first
+        defaultSettings.first ?? preparedGlobalSettings
     }
 
     private var activeCustomSettings: PodcastSettings? {
@@ -223,7 +224,7 @@ struct PodcastSettingsView: View {
             .background(Color.clear)
             .tint(.accent)
             .task {
-                _ = ensureStandardSettings(in: context)
+                preparedGlobalSettings = ensureStandardSettings(in: context)
                 _ = Playlist.ensureDefaultQueue(in: context)
                 useCustomSettings = podcast?.settings?.isEnabled == true
             }
@@ -1047,6 +1048,17 @@ struct PodcastSettingsView: View {
 
     private var maintenanceSection: some View {
         Section("Maintenance") {
+            NavigationLink {
+                CloudSyncStatusDetailView(modelContainer: context.container)
+            } label: {
+                SettingsNavigationRow(
+                    title: "iCloud Sync",
+                    summary: "Database status and progress",
+                    detail: "Review CloudKit setup, download, upload, and approximate record progress.",
+                    systemImage: "icloud"
+                )
+            }
+
             NavigationLink {
                 StorageManagementView(modelContainer: context.container)
             } label: {

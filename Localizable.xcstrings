@@ -113,6 +113,29 @@
         }
       }
     },
+    "%@ local records" : {
+
+    },
+    "%@ local records of about %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ local records of about %2$@"
+          }
+        }
+      }
+    },
+    "%@ of about %@ records" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of about %2$@ records"
+          }
+        }
+      }
+    },
     "%@ of episode length" : {
       "localizations" : {
         "de" : {
@@ -328,6 +351,9 @@
           }
         }
       }
+    },
+    "About Sync Progress" : {
+
     },
     "Accessibility" : {
       "localizations" : {
@@ -1224,6 +1250,15 @@
         }
       }
     },
+    "CloudKit does not expose exact transfer progress, so the displayed percentage is an estimate. CloudKit's import status determines when synchronization is complete." : {
+
+    },
+    "CloudKit Events" : {
+
+    },
+    "Connect to the internet to download your podcasts and playback data." : {
+
+    },
     "Consecutive failures" : {
 
     },
@@ -1236,6 +1271,9 @@
           }
         }
       }
+    },
+    "Continue Without Waiting" : {
+
     },
     "Continues the paused download" : {
       "localizations" : {
@@ -1436,6 +1474,9 @@
           }
         }
       }
+    },
+    "Current Status" : {
+
     },
     "Custom mode creates a podcast-owned copy of queue placement, playback speed, skip controls, and chapter rules. Later global edits no longer flow into this podcast until you switch back to Global." : {
       "localizations" : {
@@ -1820,6 +1861,9 @@
         }
       }
     },
+    "Downloading podcasts, playlists, and playback data from iCloud. Large libraries may take a moment." : {
+
+    },
     "Downloads" : {
       "localizations" : {
         "de" : {
@@ -1849,6 +1893,9 @@
           }
         }
       }
+    },
+    "Duration: %@" : {
+
     },
     "e.g. ad break, intro, credits" : {
       "localizations" : {
@@ -1940,6 +1987,9 @@
         }
       }
     },
+    "Environment" : {
+
+    },
     "Episode sort" : {
       "localizations" : {
         "de" : {
@@ -2020,6 +2070,9 @@
         }
       }
     },
+    "Errors" : {
+
+    },
     "Export" : {
       "localizations" : {
         "de" : {
@@ -2072,6 +2125,9 @@
           }
         }
       }
+    },
+    "Failed" : {
+
     },
     "February" : {
       "localizations" : {
@@ -2620,6 +2676,24 @@
     "How many seconds prior to the current position the clip should start." : {
 
     },
+    "iCloud Account" : {
+
+    },
+    "iCloud Database" : {
+
+    },
+    "iCloud Is Not Available" : {
+
+    },
+    "iCloud Sync" : {
+
+    },
+    "iCloud Sync Could Not Finish" : {
+
+    },
+    "iCloud Unavailable" : {
+
+    },
     "Icon" : {
       "localizations" : {
         "de" : {
@@ -2698,6 +2772,9 @@
           }
         }
       }
+    },
+    "In Progress" : {
+
     },
     "Inbox" : {
       "localizations" : {
@@ -3370,6 +3447,9 @@
         }
       }
     },
+    "Monitor State" : {
+
+    },
     "Month" : {
       "localizations" : {
         "de" : {
@@ -3636,6 +3716,9 @@
         }
       }
     },
+    "No" : {
+
+    },
     "No Bookmarks saved for this podcast." : {
       "localizations" : {
         "de" : {
@@ -3832,6 +3915,9 @@
         }
       }
     },
+    "No record-count reference has been received from another device yet." : {
+
+    },
     "No Results" : {
       "localizations" : {
         "de" : {
@@ -3942,6 +4028,9 @@
         }
       }
     },
+    "Normal" : {
+
+    },
     "Not downloaded" : {
       "localizations" : {
         "de" : {
@@ -3952,6 +4041,9 @@
         }
       }
     },
+    "Not Started" : {
+
+    },
     "Not Subscribed" : {
       "localizations" : {
         "de" : {
@@ -3961,6 +4053,9 @@
           }
         }
       }
+    },
+    "Not Syncing" : {
+
     },
     "Notify Me: %@" : {
       "localizations" : {
@@ -4021,6 +4116,9 @@
           }
         }
       }
+    },
+    "Offline" : {
+
     },
     "OK" : {
       "localizations" : {
@@ -5335,6 +5433,12 @@
     "Reduction level" : {
 
     },
+    "Reference updated %@" : {
+
+    },
+    "Refresh iCloud sync status" : {
+
+    },
     "Refresh inbox" : {
       "localizations" : {
         "de" : {
@@ -5815,6 +5919,9 @@
         }
       }
     },
+    "Setup" : {
+
+    },
     "Share" : {
       "localizations" : {
         "de" : {
@@ -5961,6 +6068,9 @@
           }
         }
       }
+    },
+    "Should Be Syncing" : {
+
     },
     "Show All Play Sessions" : {
       "localizations" : {
@@ -6124,6 +6234,9 @@
           }
         }
       }
+    },
+    "Sign in to iCloud and enable iCloud Drive to download your existing library." : {
+
     },
     "Siri & Shortcuts Intents" : {
       "localizations" : {
@@ -6488,6 +6601,9 @@
         }
       }
     },
+    "Status Unknown" : {
+
+    },
     "Stop after this episode" : {
       "localizations" : {
         "de" : {
@@ -6587,6 +6703,9 @@
           }
         }
       }
+    },
+    "Succeeded" : {
+
     },
     "successful" : {
       "localizations" : {
@@ -6688,6 +6807,18 @@
         }
       }
     },
+    "Sync Error" : {
+
+    },
+    "Synced" : {
+
+    },
+    "Syncing" : {
+
+    },
+    "Syncing Your Library" : {
+
+    },
     "Tap and hold an episode, then drag it up or down to change the playback order." : {
 
     },
@@ -6724,6 +6855,9 @@
 
     },
     "The podcast library is unavailable." : {
+
+    },
+    "The progress bar compares this device's local SwiftData record count with a lightweight reference shared through iCloud." : {
 
     },
     "The selected ratio is applied to every share picture preview and export." : {
@@ -7278,6 +7412,9 @@
         }
       }
     },
+    "Unexpectedly idle" : {
+
+    },
     "Unsubscribe" : {
       "localizations" : {
         "de" : {
@@ -7380,6 +7517,9 @@
           }
         }
       }
+    },
+    "Upload" : {
+
     },
     "URL or Search" : {
       "localizations" : {
@@ -7551,7 +7691,13 @@
         }
       }
     },
+    "Waiting for a Network" : {
+
+    },
     "Waiting to be imported" : {
+
+    },
+    "Waiting to Sync" : {
 
     },
     "Week" : {
@@ -7757,6 +7903,9 @@
         }
       }
     },
+    "Yes" : {
+
+    },
     "You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue." : {
       "localizations" : {
         "de" : {
@@ -7806,6 +7955,9 @@
           }
         }
       }
+    },
+    "Your library can still open, but some data may not have arrived from iCloud yet." : {
+
     },
     "Your Library is empty" : {
       "localizations" : {
