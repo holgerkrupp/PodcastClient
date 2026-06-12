@@ -302,18 +302,18 @@ struct PlayNextQueueWidget: Widget {
         }
         .configurationDisplayName("Play Next Queue")
         .description("Shows episodes from a selected playlist.")
-        #if !os(iOS)
+        #if os(macOS)
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
-            .systemLarge,
-            .accessoryRectangular,
+            .systemLarge
         ])
         #else
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
-            .systemLarge
+            .systemLarge,
+            .accessoryRectangular
         ])
         #endif
         .contentMarginsDisabled()
