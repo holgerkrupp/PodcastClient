@@ -93,6 +93,16 @@
         }
       }
     },
+    "%@ episode %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ episode %2$lld"
+          }
+        }
+      }
+    },
     "%@ is shared metadata or SQLite overhead that can’t be tied to a single podcast." : {
       "localizations" : {
         "de" : {
@@ -2255,6 +2265,9 @@
           }
         }
       }
+    },
+    "For example, Bits und so episode 900, or episode 900 of Bits und so." : {
+
     },
     "For yearly images, Automatic for Period uses the New Year background. For day, week, and month images, it uses the month containing the listening history." : {
       "localizations" : {
@@ -4588,6 +4601,12 @@
         }
       }
     },
+    "Play ${request}" : {
+
+    },
+    "Play a numbered episode from a podcast in your library." : {
+
+    },
     "Play caption" : {
       "localizations" : {
         "de" : {
@@ -4677,6 +4696,9 @@
           }
         }
       }
+    },
+    "Play Podcast Episode" : {
+
     },
     "Play podcast trailer" : {
       "localizations" : {
@@ -4798,6 +4820,16 @@
         }
       }
     },
+    "Playing episode %lld of %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Playing episode %1$lld of %2$@."
+          }
+        }
+      }
+    },
     "Playlist" : {
       "localizations" : {
         "de" : {
@@ -4857,6 +4889,12 @@
           }
         }
       }
+    },
+    "Podcast and Episode" : {
+
+    },
+    "Podcast Episode" : {
+
     },
     "Podcast feed abandoned" : {
 
@@ -5828,6 +5866,7 @@
       }
     },
     "Share Image" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6646,6 +6685,15 @@
     "Tap and hold an episode, then drag it up or down to change the playback order." : {
 
     },
+    "That episode could not be found." : {
+
+    },
+    "That episode has no playable audio." : {
+
+    },
+    "That podcast could not be found in your library." : {
+
+    },
     "The currently playing episode is kept pinned at the top while playback is active." : {
       "localizations" : {
         "de" : {
@@ -6667,6 +6715,9 @@
       }
     },
     "The feed has been unreachable repeatedly for more than seven days." : {
+
+    },
+    "The podcast library is unavailable." : {
 
     },
     "The selected ratio is applied to every share picture preview and export." : {
@@ -7643,6 +7694,9 @@
           }
         }
       }
+    },
+    "Which podcast and episode?" : {
+
     },
     "White" : {
       "localizations" : {
