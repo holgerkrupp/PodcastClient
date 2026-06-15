@@ -481,11 +481,19 @@ actor PlaylistModelActor {
         WatchSyncCoordinator.refreshSoon(force: true)
     }
 
-    func remove(episodeURL: URL, triggerAutoDownload: Bool = true) throws {
+    func remove(episodeURL: URL, triggerAutoDownload: Bool = true) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
 
         let matchingEntries = existingEntries(for: episodeURL, in: playlist)
+        let removals = matchingEntries.compactMap { entry -> StoreSplitPlaylistRemoval? in
+            guard let identity = entry.episode?.stableEpisodeIdentity else { return nil }
+            return StoreSplitPlaylistRemoval(
+                playlistID: playlist.id.uuidString,
+                isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
+                identity: identity
+            )
+        }
         let affectedPodcastFeeds = Set(matchingEntries.compactMap { $0.episode?.podcast?.feed })
         logAutoDownload(
             "trigger/manual-remove playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) entries=\(matchingEntries.count) affectedFeeds=\(affectedPodcastFeeds.count)"
@@ -498,6 +506,7 @@ actor PlaylistModelActor {
             }
             normalizeOrder()
             modelContext.saveIfNeeded()
+            await tombstoneSplitStoreEntries(removals)
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
                 WatchSyncCoordinator.refreshSoon(force: true)
@@ -559,7 +568,7 @@ actor PlaylistModelActor {
         }
     }
 
-    func removeFromAllPlaylists(episodeURL: URL) throws {
+    func removeFromAllPlaylists(episodeURL: URL) async throws {
         let descriptor = FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate<PlaylistEntry> { entry in
                 entry.episode?.url == episodeURL
@@ -570,6 +579,17 @@ actor PlaylistModelActor {
         guard entries.isEmpty == false else { return }
 
         let playlists = Set(entries.compactMap { $0.playlist?.id })
+        let removals = entries.compactMap { entry -> StoreSplitPlaylistRemoval? in
+            guard let playlist = entry.playlist,
+                  let identity = entry.episode?.stableEpisodeIdentity else {
+                return nil
+            }
+            return StoreSplitPlaylistRemoval(
+                playlistID: playlist.id.uuidString,
+                isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
+                identity: identity
+            )
+        }
 
         for entry in entries {
             modelContext.delete(entry)
@@ -588,11 +608,29 @@ actor PlaylistModelActor {
         }
 
         modelContext.saveIfNeeded()
+        await tombstoneSplitStoreEntries(removals)
 
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: playlists)
             WatchSyncCoordinator.refreshSoon(force: true)
         }
+    }
+
+    private func tombstoneSplitStoreEntries(_ removals: [StoreSplitPlaylistRemoval]) async {
+        guard removals.isEmpty == false else { return }
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_playlist_tombstone_deferred",
+                details: "count=\(removals.count)"
+            )
+            return
+        }
+
+        let writer = StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
+        await writer.tombstone(removals)
     }
 
     // MARK: - Convenience helpers callable from outside

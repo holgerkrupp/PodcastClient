@@ -4,9 +4,12 @@ import SwiftData
 struct StorageManagementView: View {
     let modelContainer: ModelContainer
 
-    @Environment(DownloadedFilesManager.self) private var filesManager
+    @ObservedObject private var modelContainerManager = ModelContainerManager.shared
 
     @State private var report: StorageUsageReport?
+#if DEBUG
+    @State private var migrationStatus: StoreSplitMigrationStatus?
+#endif
     @State private var isLoading = false
     @State private var loadingProgress = 0.0
     @State private var loadingMessage = "Preparing storage scan…"
@@ -15,6 +18,10 @@ struct StorageManagementView: View {
 
     var body: some View {
         List {
+#if DEBUG
+            migrationStatusSection
+#endif
+
             if let report {
                 overviewSection(report)
 
@@ -80,8 +87,30 @@ struct StorageManagementView: View {
             }
         }
         .task {
+#if DEBUG
+            refreshMigrationStatus()
+#endif
             guard report == nil else { return }
+            guard modelContainerManager.isMigratingSplitStores == false else { return }
             await reload()
+        }
+        .task(id: modelContainerManager.isMigratingSplitStores) {
+#if DEBUG
+            refreshMigrationStatus()
+#endif
+            while modelContainerManager.isMigratingSplitStores {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard Task.isCancelled == false else { return }
+#if DEBUG
+                refreshMigrationStatus()
+#endif
+            }
+#if DEBUG
+            refreshMigrationStatus()
+#endif
+            if report == nil, modelContainerManager.isMigratingSplitStores == false {
+                await reload()
+            }
         }
         .alert(item: $presentedAlert) { alert in
             switch alert {
@@ -105,6 +134,132 @@ struct StorageManagementView: View {
             }
         }
     }
+
+#if DEBUG
+    @ViewBuilder
+    private var migrationStatusSection: some View {
+        Section {
+            if let migrationStatus {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label(
+                            migrationStatusTitle(migrationStatus),
+                            systemImage: migrationStatusSystemImage(migrationStatus)
+                        )
+                        .font(.headline)
+
+                        Spacer()
+
+                        Text(migrationStatus.fractionCompleted, format: .percent.precision(.fractionLength(0)))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ProgressView(value: migrationStatus.fractionCompleted, total: 1)
+                        .progressViewStyle(.linear)
+                }
+                .padding(.vertical, 2)
+
+                LabeledContent("Phases") {
+                    Text("\(migrationStatus.completedPhaseCount) of \(migrationStatus.totalPhaseCount)")
+                        .monospacedDigit()
+                }
+
+                LabeledContent("Items Examined") {
+                    Text("\(migrationStatus.scannedItemCount)")
+                        .monospacedDigit()
+                }
+
+                if migrationStatus.failedItemCount > 0 {
+                    LabeledContent("Failures") {
+                        Text("\(migrationStatus.failedItemCount)")
+                            .monospacedDigit()
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if let lastMigrationAt = migrationStatus.lastMigrationAt {
+                    LabeledContent("Last Run") {
+                        Text(lastMigrationAt, format: .dateTime)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
+
+                ForEach(migrationStatus.phases) { phase in
+                    HStack(spacing: 10) {
+                        Image(systemName: phase.isComplete ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(phase.isComplete ? Color.green : Color.secondary)
+
+                        Text(phase.title)
+
+                        Spacer()
+
+                        if phase.activeDestinationCount > 0 || phase.isComplete {
+                            Text("\(phase.activeDestinationCount) active")
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if phase.failedCount > 0 {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .accessibilityLabel("\(phase.failedCount) migration failures")
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Waiting for migration stores…")
+                        .foregroundStyle(.secondary)
+                }
+
+                if let error = modelContainerManager.cacheInitializationError
+                    ?? modelContainerManager.userStateInitializationError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        } header: {
+            Text("Database Migration")
+        } footer: {
+            Text("Migration is repeatable and may run again when delayed iCloud records arrive. The old database remains available during this rollout.")
+        }
+    }
+
+    private func migrationStatusTitle(_ status: StoreSplitMigrationStatus) -> String {
+        if status.isRunning {
+            if status.completedPhaseCount == status.totalPhaseCount {
+                return "Checking for New iCloud Data"
+            }
+            return "Migration in Progress"
+        }
+        if status.isComplete {
+            return "Migration Complete"
+        }
+        if status.failedItemCount > 0, status.completedPhaseCount == status.totalPhaseCount {
+            return "Migration Completed with Issues"
+        }
+        if status.completedPhaseCount > 0 {
+            return "Migration Partially Complete"
+        }
+        return "Migration Not Started"
+    }
+
+    private func migrationStatusSystemImage(_ status: StoreSplitMigrationStatus) -> String {
+        if status.isRunning {
+            return "arrow.triangle.2.circlepath"
+        }
+        if status.isComplete {
+            return "checkmark.circle.fill"
+        }
+        if status.failedItemCount > 0 {
+            return "exclamationmark.triangle.fill"
+        }
+        return "clock"
+    }
+#endif
 
     @ViewBuilder
     private func overviewSection(_ report: StorageUsageReport) -> some View {
@@ -317,6 +472,7 @@ struct StorageManagementView: View {
     }
 
     private func reload() async {
+        guard isLoading == false else { return }
         isLoading = true
         loadingProgress = 0.03
         loadingMessage = "Preparing storage scan…"
@@ -332,10 +488,19 @@ struct StorageManagementView: View {
                     loadingMessage = progress.message
                 }
             }
+#if DEBUG
+            refreshMigrationStatus()
+#endif
         } catch {
             presentedAlert = .error(error.localizedDescription)
         }
     }
+
+#if DEBUG
+    private func refreshMigrationStatus() {
+        migrationStatus = modelContainerManager.storeSplitMigrationStatus()
+    }
+#endif
 
     private func performDeletion(_ deletion: PendingDeletion) async {
         isDeleting = true
@@ -353,7 +518,6 @@ struct StorageManagementView: View {
                 await StorageManagementService(modelContainer: modelContainer).deleteAll(files: report?.files ?? [])
             }
 
-            filesManager.rescanDownloadedFiles()
             await reload()
         } catch {
             presentedAlert = .error(error.localizedDescription)
@@ -635,6 +799,5 @@ private extension Array where Element == StorageFileEntry {
 #Preview {
     NavigationStack {
         StorageManagementView(modelContainer: ModelContainerManager.shared.container)
-            .environment(DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!))
     }
 }

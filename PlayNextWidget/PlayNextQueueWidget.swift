@@ -358,22 +358,32 @@ private struct PlayNextQueueWidgetView: View {
                 .prefix(rowCount)
         )
 
-        return VStack(alignment: .leading, spacing: 0) {
-            widgetHeader
+        return GeometryReader { proxy in
+            let headerHeight: CGFloat = 32
+            let rowHeight = items.isEmpty
+                ? 0
+                : max((proxy.size.height - headerHeight) / CGFloat(items.count), 0)
 
-            if items.isEmpty {
-                emptyState
-            } else {
-                ForEach(items) { item in
-                    QueueLine(
-                        item: item,
-                        style: item.isCurrent ? .current : .upNext,
-                        playlistID: entry.playlistID
-                    )
+            VStack(alignment: .leading, spacing: 0) {
+                widgetHeader
+                    .frame(height: headerHeight)
+
+                if items.isEmpty {
+                    emptyState
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else {
+                    ForEach(items) { item in
+                        QueueLine(
+                            item: item,
+                            style: item.isCurrent ? .current : .upNext,
+                            playlistID: entry.playlistID
+                        )
+                        .frame(height: rowHeight)
+                    }
                 }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var accessoryView: some View {
@@ -431,7 +441,6 @@ private struct PlayNextQueueWidgetView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
     }
 
     private var progressText: String? {

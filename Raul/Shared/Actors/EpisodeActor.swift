@@ -1552,7 +1552,12 @@ actor EpisodeActor {
         guard chapters.isEmpty == false else { return }
 
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     private func refreshLocalFileChapters(for episode: Episode) async {
@@ -1674,6 +1679,11 @@ actor EpisodeActor {
         replaceChapters(on: episode, replacingTypes: [.extracted, .ai], with: newchapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        await writeAIChaptersToSplitStore(
+            episode: episode,
+            chapters: newchapters,
+            generatedAt: .now
+        )
         return true
         
     }
@@ -1947,6 +1957,18 @@ actor EpisodeActor {
         guard lines.isEmpty == false else { return 0 }
 
         let episodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+        let generatedEpisodeURLs = Set(
+            ((try? modelContext.fetch(FetchDescriptor<TranscriptionRecord>())) ?? [])
+                .compactMap(\.episodeURL)
+        )
+        let generatedIdentities = episodes.compactMap { episode -> EpisodeStableIdentity? in
+            guard let episodeURL = episode.url,
+                  generatedEpisodeURLs.contains(episodeURL),
+                  episode.transcriptLines?.isEmpty == false else {
+                return nil
+            }
+            return episode.stableEpisodeIdentity
+        }
         for episode in episodes where episode.transcriptLines?.isEmpty == false {
             episode.transcriptLines = nil
             episode.refresh.toggle()
@@ -1957,6 +1979,13 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
+        if generatedIdentities.isEmpty == false,
+           let userStateContainer = await preparedUserStateContainer() {
+            let writer = StoreSplitAIContentSyncWriter(
+                modelContainer: userStateContainer
+            )
+            await writer.tombstoneTranscripts(identities: generatedIdentities)
+        }
         WatchSyncCoordinator.refreshSoon()
         return lines.count
     }
@@ -1978,6 +2007,72 @@ actor EpisodeActor {
         )
         modelContext.insert(record)
         modelContext.saveIfNeeded()
+        guard let episode = await fetchEpisode(byURL: snapshot.episodeURL),
+              let transcriptLines = episode.transcriptLines else {
+            return
+        }
+        await writeAITranscriptToSplitStore(
+            episode: episode,
+            lines: transcriptLines,
+            localeIdentifier: localeIdentifier,
+            generatedAt: finishedAt
+        )
+    }
+
+    private func writeAITranscriptToSplitStore(
+        episode: Episode,
+        lines: [TranscriptLineAndTime],
+        localeIdentifier: String?,
+        generatedAt: Date
+    ) async {
+        let identity = episode.stableEpisodeIdentity
+        let values = lines.map {
+            AITranscriptLineValue(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+        guard values.isEmpty == false else { return }
+        guard let userStateContainer = await preparedUserStateContainer() else { return }
+        let writer = StoreSplitAIContentSyncWriter(modelContainer: userStateContainer)
+        await writer.writeTranscript(
+            identity: identity,
+            lines: values,
+            localeIdentifier: localeIdentifier,
+            generatedAt: generatedAt
+        )
+    }
+
+    private func writeAIChaptersToSplitStore(
+        episode: Episode,
+        chapters: [Marker],
+        generatedAt: Date
+    ) async {
+        let values = chapters.compactMap { chapter -> AIChapterValue? in
+            guard chapter.type == .ai, let start = chapter.start else { return nil }
+            return AIChapterValue(
+                title: chapter.title,
+                startTime: start,
+                duration: chapter.duration
+            )
+        }
+        guard values.isEmpty == false else { return }
+        guard let userStateContainer = await preparedUserStateContainer() else { return }
+        let writer = StoreSplitAIContentSyncWriter(modelContainer: userStateContainer)
+        await writer.writeChapters(
+            identity: episode.stableEpisodeIdentity,
+            chapters: values,
+            generatedAt: generatedAt
+        )
+    }
+
+    private func preparedUserStateContainer() async -> ModelContainer? {
+        await ModelContainerManager.shared.prepareSplitStores()
+        return await MainActor.run {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }
     }
 
     

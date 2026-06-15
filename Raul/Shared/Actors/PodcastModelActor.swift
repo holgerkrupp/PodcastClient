@@ -931,12 +931,6 @@ actor PodcastModelActor {
                         print("episode is old")
                         suppressFromInbox(episode, reason: .backCatalogImport)
                         modelContext.saveIfNeeded()
-                        if let episodeURL = episode.url {
-                            EpisodeActor.scheduleRemoteChapterFetch(
-                                episodeURL: episodeURL,
-                                modelContainer: modelContainer
-                            )
-                        }
                     } else {
                         print("episode is new")
                         if let episodeURL = episode.url {
@@ -948,12 +942,6 @@ actor PodcastModelActor {
                     print("SILENT")
                     suppressFromInbox(episode, reason: .backCatalogImport)
                     unsavedSilentEpisodeChanges += 1
-                    if let episodeURL = episode.url {
-                        EpisodeActor.scheduleRemoteChapterFetch(
-                            episodeURL: episodeURL,
-                            modelContainer: modelContainer
-                        )
-                    }
 
                     if unsavedSilentEpisodeChanges >= 25 {
                         modelContext.saveIfNeeded()
@@ -1016,6 +1004,7 @@ actor PodcastModelActor {
             metaData.isSubscribed = true
             metaData.subscriptionDate = Date()
             modelContext.saveIfNeeded()
+            await updateSplitSubscription(feedURL: feed, isSubscribed: true)
             await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
 
             await reportProgress(SubscriptionProgressUpdate(0.18, "Refreshing existing podcast"), using: progress)
@@ -1031,6 +1020,7 @@ actor PodcastModelActor {
         let podcast = Podcast(feed: feedURL)
         modelContext.insert(podcast)
         modelContext.saveIfNeeded()
+        await updateSplitSubscription(feedURL: feedURL, isSubscribed: true)
         await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         await reportProgress(SubscriptionProgressUpdate(0.16, "Creating podcast record"), using: progress)
         if let feed = podcast.feed {
@@ -1106,14 +1096,45 @@ actor PodcastModelActor {
     
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        let feedURL = podcast.feed
         if let episodeFolder = podcast.directoryURL {
             try? FileManager.default.removeItem(at: episodeFolder)
         }
         modelContext.delete(podcast)
         modelContext.saveIfNeeded()
+        if let feedURL {
+            await updateSplitSubscription(
+                feedURL: feedURL,
+                isSubscribed: false
+            )
+        }
         await SubscriptionManifestSync.publishCurrentSubscriptions(
             modelContainer: modelContainer,
             allowEmpty: true
+        )
+    }
+
+    private func updateSplitSubscription(
+        feedURL: URL,
+        isSubscribed: Bool
+    ) async {
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_subscription_write_deferred",
+                details: PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+            )
+            return
+        }
+
+        let writer = StoreSplitSubscriptionSyncWriter(
+            modelContainer: userStateContainer
+        )
+        await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: isSubscribed
         )
     }
     

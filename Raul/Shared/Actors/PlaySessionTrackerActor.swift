@@ -135,6 +135,8 @@ final class PlaySession: Identifiable {
     // Explicit inverse relationship is required for proper syncing.
     @Relationship(inverse: \Episode.playSessions) var episode: Episode?
     var podcastName: String?
+    var sourceDeviceID: String?
+    var sourceDeviceName: String?
     var deviceModel: String?
     var osVersion: String?
     var appVersion: String?
@@ -152,6 +154,8 @@ final class PlaySession: Identifiable {
     init(
         id: UUID? = nil,
         episode: Episode? = nil,
+        sourceDeviceID: String? = nil,
+        sourceDeviceName: String? = nil,
         deviceModel: String? = nil,
         osVersion: String? = nil,
         appVersion: String? = nil,
@@ -165,6 +169,8 @@ final class PlaySession: Identifiable {
     ) {
         self.id = id
         self.episode = episode
+        self.sourceDeviceID = sourceDeviceID
+        self.sourceDeviceName = sourceDeviceName
         self.deviceModel = deviceModel
         self.osVersion = osVersion
         self.appVersion = appVersion
@@ -209,6 +215,7 @@ actor PlaySessionTrackerActor {
         let now = Date()
         let deviceModel = await getDeviceModel()
         let osVersion = await getOSVersion()
+        let deviceIdentity = ListeningDeviceIdentity.current()
 
         if let session = currentSession, session.episode?.url == episodeURL {
             // Continue existing session; maybe add new rate segment if rate changed
@@ -229,6 +236,8 @@ actor PlaySessionTrackerActor {
         currentSession = PlaySession(
             id: id,
             episode: episode,
+            sourceDeviceID: deviceIdentity.id,
+            sourceDeviceName: deviceIdentity.displayName,
             deviceModel: deviceModel,
             osVersion: osVersion,
             appVersion: appVersion,

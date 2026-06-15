@@ -84,6 +84,46 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertTrue(chapters.contains { $0.type == .mp3 && $0.title == "Remote Chapter" })
     }
 
+    func testRemoteMP3ChaptersPreserveFeedChaptersAndExistingChapterState() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/episode.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+
+        let feedChapter = Marker(start: 0, title: "Feed Intro", type: .podlove, duration: 30)
+        feedChapter.episode = episode
+        let existingMP3Chapter = Marker(start: 45, title: "Remote Chapter", type: .mp3, duration: 90)
+        existingMP3Chapter.shouldPlay = false
+        existingMP3Chapter.progress = 0.35
+        existingMP3Chapter.episode = episode
+        episode.chapters = [feedChapter, existingMP3Chapter]
+        try fixture.context.save()
+
+        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
+        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in
+            [Marker(start: 45, title: "Remote Chapter", type: .mp3, duration: 120)]
+        }
+
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        await actor.getRemoteChapters(episodeURL: episodeURL)
+        await actor.getRemoteChapters(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = try XCTUnwrap(reloaded.chapters)
+        XCTAssertEqual(chapters.count, 2)
+        XCTAssertTrue(chapters.contains { $0.type == .podlove && $0.title == "Feed Intro" })
+
+        let remoteChapter = try XCTUnwrap(chapters.first { $0.type == .mp3 })
+        XCTAssertEqual(remoteChapter.title, "Remote Chapter")
+        XCTAssertEqual(remoteChapter.shouldPlay, false)
+        XCTAssertEqual(remoteChapter.progress ?? -1, 0.35, accuracy: 0.0001)
+    }
+
     func testRefreshingLocalMP3ChaptersPreservesExistingStateAndDoesNotDuplicateMarkers() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "mp3")

@@ -710,7 +710,6 @@ class Player {
         let chapterStart = currentChapter.start ?? 0
         let duration = max(chapterEnd - chapterStart, .leastNonzeroMagnitude)
         chapterProgress = (playPosition - chapterStart) / duration
-        currentChapter.progress = chapterProgress
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
@@ -790,9 +789,6 @@ class Player {
         )
         let resolvedChapterID = chapterID ?? currentChapter?.uuid
         let resolvedChapterProgress = explicitChapterProgress ?? chapterProgress
-
-        currentEpisode?.metaData?.playPosition = currentPlayPosition
-        currentEpisode?.metaData?.maxPlayposition = currentMaxPosition
 
         PlaybackProgressDefaultsStore.update(
             episodeURL: currentEpisodeURL,

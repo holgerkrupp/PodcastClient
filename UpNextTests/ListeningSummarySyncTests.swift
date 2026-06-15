@@ -40,4 +40,126 @@ final class ListeningSummarySyncTests: XCTestCase {
 
         XCTAssertEqual(first.id, duplicate.id)
     }
+
+    func testGlobalSummaryAggregationAddsDifferentDevices() {
+        let baseDate = Date(timeIntervalSince1970: 1_000)
+        let records = [
+            ListeningSummarySync(
+                feedURL: "feed-a",
+                periodKind: PlaySessionSummaryPeriod.week.rawValue,
+                periodStart: baseDate,
+                sourceDeviceID: "device-a",
+                totalSeconds: 120
+            ),
+            ListeningSummarySync(
+                feedURL: "feed-a",
+                periodKind: PlaySessionSummaryPeriod.week.rawValue,
+                periodStart: baseDate,
+                sourceDeviceID: "device-b",
+                totalSeconds: 180
+            )
+        ]
+
+        XCTAssertEqual(
+            ListeningSummaryAggregation.globalStatistics(from: records).totalSeconds,
+            300
+        )
+        XCTAssertEqual(
+            ListeningSummaryAggregation.globalStatistics(
+                from: records,
+                sourceDeviceID: "device-a"
+            ).totalSeconds,
+            120
+        )
+    }
+
+    func testGlobalSummaryAggregationDoesNotAddDuplicateLogicalRecords() {
+        let periodStart = Date(timeIntervalSince1970: 1_000)
+        let first = ListeningSummarySync(
+            feedURL: "feed-a",
+            periodKind: PlaySessionSummaryPeriod.week.rawValue,
+            periodStart: periodStart,
+            sourceDeviceID: "device-a",
+            totalSeconds: 120,
+            silenceGapTimeSavedSeconds: 5
+        )
+        let duplicate = ListeningSummarySync(
+            feedURL: "feed-a",
+            periodKind: PlaySessionSummaryPeriod.week.rawValue,
+            periodStart: periodStart,
+            sourceDeviceID: "device-a",
+            totalSeconds: 180,
+            silenceGapTimeSavedSeconds: 3
+        )
+
+        let statistics = ListeningSummaryAggregation.globalStatistics(
+            from: [first, duplicate]
+        )
+
+        XCTAssertEqual(statistics.totalSeconds, 180)
+        XCTAssertEqual(statistics.silenceGapTimeSavedSeconds, 5)
+    }
+
+    func testListeningHistoryDeduplicatesSessionIDAcrossDevices() {
+        let first = ListeningHistorySync(
+            id: "shared-session",
+            feedURL: "feed-a",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-a",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            listenedSeconds: 120,
+            updatedAt: Date(timeIntervalSince1970: 1_120)
+        )
+        let duplicate = ListeningHistorySync(
+            id: "shared-session",
+            feedURL: "feed-a",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-b",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            listenedSeconds: 120,
+            updatedAt: Date(timeIntervalSince1970: 1_120)
+        )
+
+        let statistics = ListeningHistoryAggregation.globalStatistics(
+            from: [first, duplicate]
+        )
+
+        XCTAssertEqual(statistics.sessionCount, 1)
+        XCTAssertEqual(statistics.totalSeconds, 120)
+    }
+
+    func testListeningHistoryCanFilterByDevice() {
+        let records = [
+            ListeningHistorySync(
+                id: "session-a",
+                feedURL: "feed-a",
+                episodeID: "episode-a",
+                sourceDeviceID: "device-a",
+                sourceDeviceName: "iPhone",
+                startedAt: Date(timeIntervalSince1970: 1_000),
+                endedAt: Date(timeIntervalSince1970: 1_060),
+                listenedSeconds: 60
+            ),
+            ListeningHistorySync(
+                id: "session-b",
+                feedURL: "feed-a",
+                episodeID: "episode-a",
+                sourceDeviceID: "device-b",
+                sourceDeviceName: "Mac",
+                startedAt: Date(timeIntervalSince1970: 2_000),
+                endedAt: Date(timeIntervalSince1970: 2_120),
+                listenedSeconds: 120
+            )
+        ]
+
+        let macHistory = ListeningHistoryAggregation.deduplicated(
+            records,
+            sourceDeviceID: "device-b"
+        )
+
+        XCTAssertEqual(macHistory.map(\.id), ["session-b"])
+        XCTAssertEqual(macHistory.first?.sourceDeviceName, "Mac")
+    }
 }

@@ -24,14 +24,12 @@ struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
     @State private var settingsRequest = SettingsWindowRequest.global
+    @State private var deferredStoreSplitTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 #endif
 
-    @AppStorage("hasSeenTestFlightMigrationAlert") private var hasSeenAlert = false
-    @State private var showMigrationAlert = false
-    
     init() {
         CrashBreadcrumbs.shared.record("raul_app_init_start")
         SyncMonitor.default.startMonitoring()
@@ -141,6 +139,8 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
+                deferredStoreSplitTask?.cancel()
+                deferredStoreSplitTask = nil
                 scheduleFeedRefresh()
                 scheduleStorageCleanup()
                 guard modelContainerManager.preparedContainer != nil else {
@@ -162,6 +162,7 @@ struct RaulApp: App {
                 guard modelContainerManager.preparedContainer != nil else { return }
                 cleanUp()
                 refreshOnActive()
+                scheduleStoreSplitMigration()
                 Task {
                     await Player.shared.enterForegroundPlaybackMode()
                     await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
@@ -284,6 +285,22 @@ struct RaulApp: App {
         if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
             Task .detached {
                 await SubscriptionManager(modelContainer: container).bgupdateFeeds()
+            }
+        }
+    }
+
+    func scheduleStoreSplitMigration() {
+        deferredStoreSplitTask?.cancel()
+        deferredStoreSplitTask = Task {
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                return
+            }
+            guard Task.isCancelled == false else { return }
+            await modelContainerManager.runStoreSplitMigration()
+            await MainActor.run {
+                deferredStoreSplitTask = nil
             }
         }
     }
