@@ -322,7 +322,9 @@ struct PodcastSettingsView: View {
         globalSettings: PodcastSettings
     ) -> some View {
         Form {
-            if podcast != nil {
+            if let podcast, isPodcastCustomSettingsActive {
+                podcastSpecificSettingsShortcutSection(podcast: podcast)
+            } else if podcast != nil {
                 contextSection
             }
 
@@ -348,6 +350,21 @@ struct PodcastSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle("Playback Settings")
         .platformInlineNavigationTitle()
+    }
+
+    @ViewBuilder
+    private func podcastSpecificSettingsShortcutSection(podcast: Podcast) -> some View {
+        Section {
+            NavigationLink {
+                PodcastSpecificSettingsScreen(podcastID: podcast.persistentModelID)
+            } label: {
+                PodcastSettingsNavigationRow(podcast: podcast)
+            }
+        } header: {
+            Text("Podcast Settings")
+        } footer: {
+            Text("This show uses podcast-specific settings. Open them to review the full set of overrides.")
+        }
     }
 
     @ViewBuilder
@@ -1969,6 +1986,38 @@ private struct SettingsNavigationRow: View {
                     .multilineTextAlignment(.leading)
 
                 Text(LocalizedStringKey(detail))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct PodcastSettingsNavigationRow: View {
+    let podcast: Podcast
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            CoverImageView(podcast: podcast)
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("Podcast-Specific Settings")
+                        .foregroundStyle(.primary)
+
+                    SettingsSourceBadge(source: .podcast)
+                }
+
+                Text(podcast.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+
+                Text("Open this podcast's full settings for queue, downloads, episode handling, and chapter rules.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)

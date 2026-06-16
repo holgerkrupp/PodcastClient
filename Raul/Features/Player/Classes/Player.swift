@@ -164,6 +164,7 @@ class Player {
     private var hasStartedRecovery = false
     private var finishingEpisodeURL: URL?
     private var isSkippingChapters = false
+    private let chapterBoundaryTolerance: TimeInterval = 0.35
     private var playbackPowerMode: PlaybackPowerMode = .foreground
     private var reduceSilenceGapsEnabled = false
     private var silenceGapReductionLevel: SilenceGapReductionLevel = .low
@@ -665,7 +666,7 @@ class Player {
         guard currentPlaybackSource != .liveRemote else { return }
 
         let currentTime = sanitizedPosition(await engine.currentTime())
-        playPosition = currentTime
+        playPosition = chapterEvaluationPosition(for: currentTime, snappingToUpcomingBoundary: true)
 
         guard chapters?.isEmpty == false else { return }
         _ = updateCurrentChapter()
@@ -702,6 +703,22 @@ class Player {
             await updateNowPlayingCover()
         }
         return true
+    }
+
+    private func chapterEvaluationPosition(
+        for position: Double,
+        snappingToUpcomingBoundary: Bool
+    ) -> Double {
+        guard snappingToUpcomingBoundary,
+              let chapters,
+              let upcomingStart = chapters
+                .compactMap(\.start)
+                .filter({ $0 > position && $0 - position <= chapterBoundaryTolerance })
+                .min() else {
+            return position
+        }
+
+        return upcomingStart
     }
     
     private func updateChapterProgress(){
@@ -1569,6 +1586,7 @@ class Player {
         _ = updateCurrentChapter()
         updateChapterProgress()
         cacheCurrentPlaybackState()
+        await skipOverChapters()
     }
     
     func setRate(_ rate: Float){
@@ -1670,9 +1688,12 @@ class Player {
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
         
-        if playbackPowerMode.keepsContinuousUIProgress, let chapters, chapters.isEmpty == false {
+        if let chapters, chapters.isEmpty == false {
+            playPosition = chapterEvaluationPosition(for: time, snappingToUpcomingBoundary: true)
             let chapterChange = updateCurrentChapter()
-            updateChapterProgress()
+            if playbackPowerMode.keepsContinuousUIProgress {
+                updateChapterProgress()
+            }
             if chapterChange {
                 Task {
                     await skipIfNeeded(chapterChange: chapterChange)
@@ -1697,7 +1718,7 @@ class Player {
         guard isSkippingChapters == false else { return }
         guard let currentChapter else { return }
 
-        if currentChapter.shouldPlay { return }
+        guard await shouldSkip(chapter: currentChapter) else { return }
 
         isSkippingChapters = true
         defer { isSkippingChapters = false }
@@ -1708,7 +1729,7 @@ class Player {
     private func skipOverChaptersContinuing() async {
         guard let currentChapter else { return }
 
-        if currentChapter.shouldPlay { return }
+        guard await shouldSkip(chapter: currentChapter) else { return }
 
         if let id = currentChapter.uuid {
             let chapterActor = self.chapterActor
@@ -1716,7 +1737,8 @@ class Player {
                 await chapterActor?.markChapterAsSkipped(id)
             }
         }
-        guard let nextChapter = chapters?.first(where: { ($0.start ?? 0) > playPosition })
+        let currentChapterStart = currentChapter.start ?? playPosition
+        guard let nextChapter = chapters?.first(where: { ($0.start ?? 0) > currentChapterStart + .ulpOfOne })
         else {
             handlePlaybackFinished()
             return
@@ -1733,6 +1755,19 @@ class Player {
 
         // After the seek, update and re-check
         await skipOverChaptersContinuing()
+    }
+
+    private func shouldSkip(chapter: Marker) async -> Bool {
+        if chapter.shouldPlay == false {
+            return true
+        }
+
+        if let id = chapter.uuid,
+           let persistedShouldPlay = await chapterActor?.shouldPlayChapter(id) {
+            chapter.shouldPlay = persistedShouldPlay
+        }
+
+        return chapter.shouldPlay == false
     }
 
     func chapterPlaybackPreferenceChanged(_ chapter: Marker, shouldPlay: Bool) {

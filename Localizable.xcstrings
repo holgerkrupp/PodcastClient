@@ -4423,6 +4423,9 @@
         }
       }
     },
+    "Open this podcast's full settings for queue, downloads, episode handling, and chapter rules." : {
+
+    },
     "Open transcript" : {
       "localizations" : {
         "de" : {
@@ -5216,6 +5219,9 @@
       }
     },
     "Podcast-specific choices can be managed from Podcasts." : {
+
+    },
+    "Podcast-Specific Settings" : {
 
     },
     "Podcasts" : {
@@ -7128,6 +7134,9 @@
           }
         }
       }
+    },
+    "This show uses podcast-specific settings. Open them to review the full set of overrides." : {
+
     },
     "This speed is used when playback starts. The player speed control also writes back here." : {
       "extractionState" : "stale",

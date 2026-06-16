@@ -334,12 +334,9 @@ final class PhoneWatchSyncController: NSObject {
             if session.isReachable {
                 session.sendMessage(
                     [WatchSyncTransport.snapshotContextKey: data],
-                    replyHandler: nil
-                ) { error in
-                    #if DEBUG
-                    print("Failed to immediately push watch snapshot: \(error)")
-                    #endif
-                }
+                    replyHandler: nil,
+                    errorHandler: nil
+                )
             }
             lastPushedSnapshot = snapshot
             lastPushedSnapshotSignature = signature

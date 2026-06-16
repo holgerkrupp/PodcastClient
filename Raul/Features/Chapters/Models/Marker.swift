@@ -68,7 +68,7 @@ class Bookmark: Marker {
         if let duration{
             self.endTime = start + duration
         }
-        
+        progress = 0
         // print("init Marker \(title)")
     }
     
