@@ -85,6 +85,7 @@ struct PodcastSettingsView: View {
     let destination: SettingsDestination
     let onOpenAllSettings: (() -> Void)?
 
+    @Bindable private var player = Player.shared
     @State private var useCustomSettings: Bool
     @State private var isApplyingSideloadingChange = false
     @State private var sideloadingAlertMessage: String?
@@ -201,6 +202,16 @@ struct PodcastSettingsView: View {
 #else
         GlobalSettingsCategory.allCases
 #endif
+    }
+
+    private var currentPlaybackPodcastWithCustomSettings: Podcast? {
+        guard podcast == nil,
+              destination == .main,
+              let currentPodcast = player.currentEpisode?.podcast,
+              currentPodcast.settings?.isEnabled == true else {
+            return nil
+        }
+        return currentPodcast
     }
 
     private var viewIdentity: String {
@@ -322,9 +333,7 @@ struct PodcastSettingsView: View {
         globalSettings: PodcastSettings
     ) -> some View {
         Form {
-            if let podcast, isPodcastCustomSettingsActive {
-                podcastSpecificSettingsShortcutSection(podcast: podcast)
-            } else if podcast != nil {
+            if podcast != nil {
                 contextSection
             }
 
@@ -429,6 +438,10 @@ struct PodcastSettingsView: View {
         }
 #else
         List {
+            if let currentPlaybackPodcastWithCustomSettings {
+                podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
+            }
+
             Section {
                 ForEach(globalSettingsCategories) { category in
                     NavigationLink(value: category) {
@@ -473,6 +486,12 @@ struct PodcastSettingsView: View {
         globalSettings: PodcastSettings
     ) -> some View {
         Form {
+#if os(macOS)
+            if let currentPlaybackPodcastWithCustomSettings {
+                podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
+            }
+#endif
+
             globalCategorySections(
                 category,
                 effectiveSettings: effectiveSettings,
