@@ -520,7 +520,8 @@ struct ImportExportView: View {
                 Text(importProgress?.message ?? "Preparing subscription")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("\(Int(progress * 100))%")
+                Text(progress, format: .percent.precision(.fractionLength(0)))
+
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -862,7 +863,7 @@ private struct OPMLImportPreviewView: View {
                 Text(importProgress?.message ?? "Subscribing")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("\(Int(progress * 100))%")
+                Text(progress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -896,7 +897,7 @@ private struct OPMLImportPreviewView: View {
                 Text(importProgress?.message ?? "Checking feed availability")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("\(Int(progress * 100))%")
+                Text(progress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
             }

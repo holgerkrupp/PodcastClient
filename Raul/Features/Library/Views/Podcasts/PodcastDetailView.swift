@@ -210,7 +210,7 @@ struct PodcastDetailView: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(2)
                 Spacer()
-                Text("\(Int(refreshProgress * 100))%")
+                Text(refreshProgress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
             }

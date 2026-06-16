@@ -21,5 +21,5 @@ Key principles of the project:
 - [ ] macOS App
 - [ ] ipad App
 - [ ] Align Player Settings with Global settings (design)
-- [ ]
+- [ ] Update translations
 
