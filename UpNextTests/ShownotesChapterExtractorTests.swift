@@ -52,11 +52,59 @@ final class ShownotesChapterExtractorTests: XCTestCase {
                     ("00:03:32", "Lockere A-B Fragen"),
                     ("00:21:24", "Christians sportlicher Hintergrund")
                 ]
+            ),
+            ChapterExtractionCase(
+                name: "WordPress CDATA paragraph with br separated Inhalt",
+                shownotes: """
+                <![CDATA[...direkt vom Venedig der Wissenschaft.
+                <!-- wp:paragraph -->
+                <p><strong>Alle Werbepartner </strong>findet ihr <a href="https://linktr.ee/methodischinkorrekt" target="_blank" rel="noreferrer noopener">in diesem Linktree</a>!</p>
+                <!-- /wp:paragraph -->
+                <!-- wp:paragraph -->
+                <p><strong>Inhalt</strong><br>
+                00:00:00 Intro<br>
+                00:01:08 Venedig<br>
+                00:25:08 Essen<br>
+                00:30:58 Baf\u{00F6}g<br>
+                00:42:29 side stage tickets<br>
+                00:50:39 Digitaler Minimalismus<br>
+                00:59:53 Thema 1: \u{201C}Gute Einwanderer, schlechte Einwanderer\u{201D}<br>
+                01:19:27 Science Snack<br>
+                01:24:39 Thema 2: \u{201C}Diagnostisch inkorrekt!\u{201D}<br>
+                01:55:47 Schwurbel der Woche<br>
+                02:05:47 Outro<br>
+                02:07:25 Audiokommentar Porenr\u{00E4}ume<br>
+                02:11:22 Audiokommentar Wahrheit</p>
+                <!-- /wp:paragraph -->
+                <!-- wp:paragraph -->
+                <p>Methodisch inkorrekt Folge 396 vom 09.06.2026 direkt vom Venedig der Wissenschaft.</p>
+                <!-- /wp:paragraph -->
+                <!-- wp:heading -->
+                <h2 class="wp-block-heading">Einleitung &amp; Begr\u{00FC}\u{00DF}ung</h2>
+                <!-- /wp:heading -->
+                <ul>
+                """,
+                expected: [
+                    ("00:00:00", "Intro"),
+                    ("00:01:08", "Venedig"),
+                    ("00:25:08", "Essen"),
+                    ("00:30:58", "Baf\u{00F6}g"),
+                    ("00:42:29", "side stage tickets"),
+                    ("00:50:39", "Digitaler Minimalismus"),
+                    ("00:59:53", "Thema 1: \u{201C}Gute Einwanderer, schlechte Einwanderer\u{201D}"),
+                    ("01:19:27", "Science Snack"),
+                    ("01:24:39", "Thema 2: \u{201C}Diagnostisch inkorrekt!\u{201D}"),
+                    ("01:55:47", "Schwurbel der Woche"),
+                    ("02:05:47", "Outro"),
+                    ("02:07:25", "Audiokommentar Porenr\u{00E4}ume"),
+                    ("02:11:22", "Audiokommentar Wahrheit")
+                ]
             )
         ]
 
         for testCase in cases {
             let extracted = ShownotesChapterExtractor.extractTimeCodesAndTitles(from: testCase.shownotes)
+            XCTAssertEqual(extracted?.count, testCase.expected.count, "\(testCase.name) chapter count")
             XCTAssertEqual(extracted, testCase.expectedDictionary, testCase.name)
         }
     }

@@ -170,14 +170,15 @@ actor EpisodeActor {
     }
 
     
-    func updateDuration(fileURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+    @discardableResult
+    func updateDuration(fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
         print("updateDuration of \(episode.title)")
 
         guard let localFile = episode.localFile,
               FileManager.default.fileExists(atPath: localFile.path) else {
             print("no local file")
-            return
+            return false
         }
 
         do {
@@ -186,38 +187,49 @@ actor EpisodeActor {
 
             guard seconds.isFinite, seconds > 0 else {
                 print("invalid local duration: \(seconds)")
-                return
+                return false
             }
 
             if let existingDuration = episode.duration,
                abs(existingDuration - seconds) < 0.5 {
-                return
+                return false
             }
 
             episode.duration = seconds
+            episode.refresh.toggle()
             print("new duration: \(seconds)")
             modelContext.saveIfNeeded()
+            return true
         } catch {
             print(error)
+            return false
         }
     }
     
-    func updateChapterDurations(fileURL: URL) async{
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        guard !(episode.chapters?.isEmpty ?? true) else { return }
-        guard let totalDuration = episode.duration else { return }
+    @discardableResult
+    func updateChapterDurations(fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        guard !(episode.chapters?.isEmpty ?? true) else { return false }
+        guard let totalDuration = episode.duration else { return false }
         
         // print("updateChapterDurations")
         
+        var didChange = false
         if let  chapters = episode.chapters{
             var lastEnd = totalDuration
             for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
                 if chapter.duration == nil{
                     chapter.duration = lastEnd - (chapter.start ?? 0.0)
                     lastEnd = chapter.start ?? 0.0
+                    didChange = true
                 }
             }
         }
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
     }
     
     //MARK: Meta Data for Statistics
@@ -1078,15 +1090,19 @@ actor EpisodeActor {
         modelContext.saveIfNeeded()
     }
 
-    func createChapters(_ fileURL: URL) async  {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+    @discardableResult
+    func createChapters(_ fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        var didChange = false
         
         if episode.chapters == nil {
             episode.chapters = []
         }
         let removedDuplicateChapters = removeDuplicateChapters(on: episode)
+        didChange = didChange || removedDuplicateChapters
 
-        await refreshLocalFileChapters(for: episode)
+        let refreshedLocalChapters = await refreshLocalFileChapters(for: episode)
+        didChange = didChange || refreshedLocalChapters
 
         if let chapters = episode.chapters, chapters.isEmpty,
            let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }),
@@ -1099,18 +1115,22 @@ actor EpisodeActor {
                let chapters = await parseJSONChapters(jsonData: jsonData) {
                 replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
                 modelContext.saveIfNeeded()
+                didChange = true
             }
         }
 
         if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
-            await extractShownotesChapters(fileURL: url)
+            let extractedShownotesChapters = await extractShownotesChapters(fileURL: url)
+            didChange = didChange || extractedShownotesChapters
         }
         if let url = episode.url {
-            await finalizeTranscriptChapters(for: url)
+            let finalizedTranscriptChapters = await finalizeTranscriptChapters(for: url)
+            didChange = didChange || finalizedTranscriptChapters
         }
         if removedDuplicateChapters {
             modelContext.saveIfNeeded()
         }
+        return didChange
     }
 
     func maintainChapterImageStorage() async -> ChapterImageMaintenanceResult {
@@ -1175,12 +1195,19 @@ actor EpisodeActor {
         return restoredImageCount
     }
     
-    private func applyAutoSkipWords(episodeURL: URL) async{
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+    @discardableResult
+    func rerunChapterSkipRules(for episodeURL: URL) async -> Bool {
+        return await applyAutoSkipWords(episodeURL: episodeURL)
+    }
+
+    @discardableResult
+    private func applyAutoSkipWords(episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.feed) else {
-            return
+            return false
         }
+        var didChange = false
         for skipWord in skipWord {
             guard let keyword = skipWord.keyWord?.lowercased(), !keyword.isEmpty else { continue }
             let matches: (String) -> Bool
@@ -1197,12 +1224,17 @@ actor EpisodeActor {
             if let chapters = episode.chapters{
                 for chapter in chapters {
                     if matches(chapter.title.lowercased()) {
+                        didChange = didChange || chapter.shouldPlay
                         chapter.shouldPlay = false
                     }
                 }
             }
         }
-        modelContext.saveIfNeeded()
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
     }
 
     private func currentUpNextEpisodeURLs() async -> Set<URL> {
@@ -1532,24 +1564,28 @@ actor EpisodeActor {
         await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil)
     }
     
-    private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
+    @discardableResult
+    private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async -> Bool {
+        guard let episode = modelContext.model(for: episodeID) as? Episode else { return false }
         guard let url = episode.localFile else {
-            return
+            return false
         }
         let chapters = await ChapterExtractionHooks.loadLocalMP3Chapters(url)
-        guard chapters.isEmpty == false else { return }
+        guard chapters.isEmpty == false else { return false }
 
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        return true
     }
     
-    func extractRemoteMP3Chapters(_ fileURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        guard let remoteURL = episode.url else { return }
+    @discardableResult
+    func extractRemoteMP3Chapters(_ fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        guard let remoteURL = episode.url else { return false }
 
         let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(remoteURL)
-        guard chapters.isEmpty == false else { return }
+        guard chapters.isEmpty == false else { return false }
 
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
         episode.refresh.toggle()
@@ -1558,34 +1594,41 @@ actor EpisodeActor {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
         WatchSyncCoordinator.refreshSoon(force: true)
+        return true
     }
 
-    private func refreshLocalFileChapters(for episode: Episode) async {
-        guard let localFile = episode.localFile else { return }
-        guard FileManager.default.fileExists(atPath: localFile.path) else { return }
+    @discardableResult
+    func rerunLocalAudioChapters(for episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        return await refreshLocalFileChapters(for: episode)
+    }
+
+    @discardableResult
+    private func refreshLocalFileChapters(for episode: Episode) async -> Bool {
+        guard let localFile = episode.localFile else { return false }
+        guard FileManager.default.fileExists(atPath: localFile.path) else { return false }
 
         let lowercasedExtension = localFile.pathExtension.lowercased()
         if lowercasedExtension == "mp3" {
-            await extractMP3Chapters(episode.persistentModelID)
-            return
+            return await extractMP3Chapters(episode.persistentModelID)
         }
 
         if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
-            await extractM4AChapters(episode.persistentModelID)
-            return
+            return await extractM4AChapters(episode.persistentModelID)
         }
 
         do {
             if let formatInfo = try await MetadataLoader.getAudioFormat(from: localFile) {
                 if formatInfo.formatID == kAudioFormatMPEGLayer3 {
-                    await extractMP3Chapters(episode.persistentModelID)
+                    return await extractMP3Chapters(episode.persistentModelID)
                 } else if formatInfo.formatID == kAudioFormatMPEG4AAC {
-                    await extractM4AChapters(episode.persistentModelID)
+                    return await extractM4AChapters(episode.persistentModelID)
                 }
             }
         } catch {
-            return
+            return false
         }
+        return false
     }
     
     private func parse(chapters: [String: Any]) -> [Marker]? {
@@ -1639,16 +1682,19 @@ actor EpisodeActor {
         return episode.title
     }
     
-    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+    @discardableResult
+    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async -> Bool {
+        guard let episode = modelContext.model(for: episodeID) as? Episode else { return false }
         guard let url = episode.localFile else {
-            return
+            return false
         }
         let chapters = await ChapterExtractionHooks.loadM4AChapters(url)
-        guard chapters.isEmpty == false else { return }
+        guard chapters.isEmpty == false else { return false }
 
         replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
+        episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        return true
     }
     
     @discardableResult
@@ -1688,9 +1734,38 @@ actor EpisodeActor {
         
     }
     
-    func extractShownotesChapters(fileURL: URL) async  {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        guard let text = episode.desc else { return  }
+    @discardableResult
+    func rerunExternalJSONChapters(for episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        var didChange = false
+
+        for chapterFile in episode.externalFiles where chapterFile.category == .chapter {
+            guard let url = URL(string: chapterFile.url) else { continue }
+            let isJSON = (url.pathExtension.lowercased() == "json")
+                || (chapterFile.fileType?.lowercased().contains("json") == true)
+            guard isJSON,
+                  let jsonString = await downloadAndParseStringFile(url: url),
+                  let jsonData = jsonString.data(using: .utf8),
+                  let chapters = await parseJSONChapters(jsonData: jsonData),
+                  chapters.isEmpty == false else {
+                continue
+            }
+
+            replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
+            didChange = true
+        }
+
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
+    }
+
+    @discardableResult
+    func extractShownotesChapters(fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        guard let text = episode.desc else { return false }
         var extractedData = extractTimeCodesAndTitles(from: text)
         
         if  extractedData == nil || extractedData?.count == 0{
@@ -1705,9 +1780,13 @@ actor EpisodeActor {
                     newchapters.append(newChapter)
                 }
             }
+            guard newchapters.isEmpty == false else { return false }
             replaceChapters(on: episode, replacingTypes: [.extracted], with: newchapters)
+            episode.refresh.toggle()
             modelContext.saveIfNeeded()
+            return true
         }
+        return false
     }
     
     func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
@@ -1762,11 +1841,14 @@ actor EpisodeActor {
         return await finalizeTranscriptChapters(for: episodeURL, force: true)
     }
     
-    func updateChapterDurations(episodeURL: URL) async {
+    @discardableResult
+    func updateChapterDurations(episodeURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
-            return }
+            return false
+        }
         var chapters = episode.preferredChapters
         chapters.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
+        var didChange = false
         for i in 0..<chapters.count {
             guard let start = chapters[i].start else { continue }
             let end: Double
@@ -1775,9 +1857,17 @@ actor EpisodeActor {
             } else {
                 end = episode.duration ?? start
             }
-            chapters[i].duration = end - start
+            let duration = end - start
+            if chapters[i].duration != duration {
+                chapters[i].duration = duration
+                didChange = true
+            }
         }
-        modelContext.saveIfNeeded()
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
     }
     
     

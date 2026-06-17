@@ -206,8 +206,111 @@ struct AppDebugMetadataView: View {
     }
 }
 
+private enum EpisodeDebugEnrichmentAction: String, CaseIterable, Identifiable {
+    case fullChapterPipeline
+    case shownotesChapters
+    case localAudioChapters
+    case remoteMP3Chapters
+    case externalJSONChapters
+    case transcriptChapters
+    case chapterDurations
+    case audioDuration
+    case chapterImages
+    case chapterSkipRules
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fullChapterPipeline:
+            return "Run Full Chapter Pipeline"
+        case .shownotesChapters:
+            return "Extract Chapters from Shownotes"
+        case .localAudioChapters:
+            return "Read Local MP3/M4A Chapters"
+        case .remoteMP3Chapters:
+            return "Read Remote MP3 Chapters"
+        case .externalJSONChapters:
+            return "Read External JSON Chapters"
+        case .transcriptChapters:
+            return "Generate Transcript Chapters"
+        case .chapterDurations:
+            return "Recalculate Chapter Durations"
+        case .audioDuration:
+            return "Read Local Audio Duration"
+        case .chapterImages:
+            return "Restore Chapter Images"
+        case .chapterSkipRules:
+            return "Apply Chapter Skip Rules"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .fullChapterPipeline:
+            return "arrow.triangle.2.circlepath"
+        case .shownotesChapters:
+            return "text.quote"
+        case .localAudioChapters:
+            return "waveform"
+        case .remoteMP3Chapters:
+            return "cloud"
+        case .externalJSONChapters:
+            return "curlybraces"
+        case .transcriptChapters:
+            return "text.bubble"
+        case .chapterDurations:
+            return "timer"
+        case .audioDuration:
+            return "clock"
+        case .chapterImages:
+            return "photo"
+        case .chapterSkipRules:
+            return "forward.end"
+        }
+    }
+
+    func run(episodeURL: URL, actor: EpisodeActor) async -> String {
+        switch self {
+        case .fullChapterPipeline:
+            return await actor.createChapters(episodeURL).statusMessage(for: title)
+        case .shownotesChapters:
+            return await actor.extractShownotesChapters(fileURL: episodeURL).statusMessage(for: title)
+        case .localAudioChapters:
+            return await actor.rerunLocalAudioChapters(for: episodeURL).statusMessage(for: title)
+        case .remoteMP3Chapters:
+            return await actor.extractRemoteMP3Chapters(episodeURL).statusMessage(for: title)
+        case .externalJSONChapters:
+            return await actor.rerunExternalJSONChapters(for: episodeURL).statusMessage(for: title)
+        case .transcriptChapters:
+            return await actor.regenerateTranscriptChapters(for: episodeURL).statusMessage(for: title)
+        case .chapterDurations:
+            return await actor.updateChapterDurations(episodeURL: episodeURL).statusMessage(for: title)
+        case .audioDuration:
+            return await actor.updateDuration(fileURL: episodeURL).statusMessage(for: title)
+        case .chapterImages:
+            let restoredCount = await actor.restoreFullSizeChapterImages(for: episodeURL)
+            return "\(title) finished. Restored \(restoredCount) image\(restoredCount == 1 ? "" : "s")."
+        case .chapterSkipRules:
+            return await actor.rerunChapterSkipRules(for: episodeURL).statusMessage(for: title)
+        }
+    }
+}
+
+private extension Bool {
+    func statusMessage(for actionTitle: String) -> String {
+        if self {
+            return "\(actionTitle) finished and updated the episode."
+        }
+        return "\(actionTitle) finished with no changes."
+    }
+}
+
 struct EpisodeDebugMetadataView: View {
+    @Environment(\.modelContext) private var modelContext
     let episode: Episode
+    @State private var runningEnrichmentAction: EpisodeDebugEnrichmentAction?
+    @State private var enrichmentStatus: String?
 
     var body: some View {
         List {
@@ -280,6 +383,29 @@ struct EpisodeDebugMetadataView: View {
                 DebugRow("Playlist Entries", value: "\(episode.playlist?.count ?? 0)")
             }
 
+            Section("Rerun Enrichment") {
+                ForEach(EpisodeDebugEnrichmentAction.allCases) { action in
+                    Button {
+                        runEnrichment(action)
+                    } label: {
+                        HStack {
+                            Label(action.title, systemImage: action.systemImage)
+                            Spacer()
+                            if runningEnrichmentAction == action {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(runningEnrichmentAction != nil || episode.url == nil)
+                }
+
+                if let enrichmentStatus {
+                    Text(enrichmentStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             DebugCollectionSection(title: "External Files", items: episode.externalFiles) { file in
                 [
                     ("URL", file.url),
@@ -298,6 +424,27 @@ struct EpisodeDebugMetadataView: View {
         }
         .navigationTitle("Episode Debug")
         .platformInlineNavigationTitle()
+    }
+
+    private func runEnrichment(_ action: EpisodeDebugEnrichmentAction) {
+        guard runningEnrichmentAction == nil else { return }
+        guard let episodeURL = episode.url else {
+            enrichmentStatus = "Episode has no audio URL."
+            return
+        }
+
+        runningEnrichmentAction = action
+        enrichmentStatus = "Running \(action.title)..."
+
+        Task {
+            let actor = EpisodeActor(modelContainer: modelContext.container)
+            let result = await action.run(episodeURL: episodeURL, actor: actor)
+
+            await MainActor.run {
+                enrichmentStatus = result
+                runningEnrichmentAction = nil
+            }
+        }
     }
 }
 

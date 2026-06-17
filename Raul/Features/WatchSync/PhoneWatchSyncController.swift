@@ -26,6 +26,8 @@ final class PhoneWatchSyncController: NSObject {
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
     private let defaults = UserDefaults.standard
     private let maximumOutstandingFileTransfers = 2
+    private let maximumInboxSnapshotEpisodes = 25
+    private let maximumSnapshotChaptersPerEpisode = 100
     private let staleFileTransferTimeout: TimeInterval = 120
     private let refreshDebounceNanoseconds: UInt64 = 750_000_000
 
@@ -103,7 +105,8 @@ final class PhoneWatchSyncController: NSObject {
             guard let syncEpisode = makeSyncEpisode(
                 from: episode,
                 globalSettings: settings,
-                enabledSettingsByFeed: enabledSettingsByFeed
+                enabledSettingsByFeed: enabledSettingsByFeed,
+                includeChapters: true
             ) else { return nil }
             if let candidate = makeTransferCandidate(from: episode) {
                 transferCandidates[syncEpisode.id] = candidate
@@ -115,7 +118,8 @@ final class PhoneWatchSyncController: NSObject {
             makeSyncEpisode(
                 from: episode,
                 globalSettings: settings,
-                enabledSettingsByFeed: enabledSettingsByFeed
+                enabledSettingsByFeed: enabledSettingsByFeed,
+                includeChapters: false
             )
         }
 
@@ -190,12 +194,13 @@ final class PhoneWatchSyncController: NSObject {
     }
 
     private func fetchInboxEpisodes(with context: ModelContext) -> [Episode] {
-        let descriptor = FetchDescriptor<Episode>(
+        var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { episode in
                 episode.metaData?.isInbox == true
             },
             sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
         )
+        descriptor.fetchLimit = maximumInboxSnapshotEpisodes
 
         return (try? context.fetch(descriptor)) ?? []
     }
@@ -243,7 +248,8 @@ final class PhoneWatchSyncController: NSObject {
     private func makeSyncEpisode(
         from episode: Episode,
         globalSettings: PodcastSettings,
-        enabledSettingsByFeed: [URL: PodcastSettings]
+        enabledSettingsByFeed: [URL: PodcastSettings],
+        includeChapters: Bool
     ) -> WatchSyncEpisode? {
         guard let episodeURL = episode.url?.absoluteString else { return nil }
         let podcastFeed = episode.podcast?.feed
@@ -268,22 +274,27 @@ final class PhoneWatchSyncController: NSObject {
             phoneHasLocalFile: episode.metaData?.calculatedIsAvailableLocally ?? false,
             fileSize: resolvedFileSize(for: episode),
             playPosition: episode.metaData?.playPosition,
-            chapters: makeSyncChapters(from: episode),
+            chapters: includeChapters ? makeSyncChapters(from: episode) : [],
             playbackSettings: playbackSettings
         )
     }
 
     private func makeSyncChapters(from episode: Episode) -> [WatchSyncChapter] {
-        episode.preferredChapters.map { chapter in
+        episode.preferredChapters.prefix(maximumSnapshotChaptersPerEpisode).map { chapter in
             WatchSyncChapter(
                 id: chapterSyncID(for: chapter),
-                title: chapter.displayTitle,
+                title: watchChapterTitle(for: chapter),
                 start: chapter.start ?? 0,
                 duration: chapter.duration,
                 imageURL: chapter.image?.absoluteString,
                 shouldPlay: chapter.shouldPlay
             )
         }
+    }
+
+    private func watchChapterTitle(for chapter: Marker) -> String {
+        let title = chapter.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Untitled chapter" : title
     }
 
     private func chapterSyncID(for chapter: Marker) -> String {
