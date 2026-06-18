@@ -113,6 +113,42 @@ final class ShownotesChapterExtractorTests: XCTestCase {
         let extracted = ShownotesChapterExtractor.extractTimeCodesAndTitles(from: "Shownotes with one 00:00:00 timestamp only")
         XCTAssertNil(extracted)
     }
+
+    func testPrefersContentEncodedShownotesOverShortEpisodeDescription() {
+        let description = """
+        Du möchtest mehr über unsere Werbepartner erfahren? Hier findest du alle Infos & Rabatte: https://linktr.ee/methodischinkorrekt
+
+        Diesmal mit dem Pilzpaten, metalem Stress im Homeoffice und ganz viel Infraschall.
+        """
+        let contentEncoded = """
+        <![CDATA[...direkt vom Brettspiel der Wissenschaft.
+        <!-- wp:paragraph -->
+        <p><strong>Inhalt</strong><br>
+        00:00:00 Intro<br>
+        00:05:19 Lab Rampage Brettspiel<br>
+        00:13:11 Radentscheid Essen<br>
+        00:14:56 Xteink X4<br>
+        00:24:44 FreeTube<br>
+        00:28:43 Community Fotokalender<br>
+        00:32:23 Thema 1: “Weltweiter Pilzpate”<br>
+        00:52:18 Science Snack<br>
+        01:11:43 Thema 2: “Stabiles Büro”<br>
+        01:42:26 Schwurbel der Woche<br>
+        02:05:33 Outro</p>
+        <!-- /wp:paragraph -->]]>
+        """
+
+        let extracted = ShownotesChapterExtractor.extractTimeCodesAndTitles(
+            fromShownotesCandidates: [contentEncoded, description]
+        )
+
+        XCTAssertEqual(extracted?.count, 11)
+        XCTAssertEqual(extracted?["00:00:00"], "Intro")
+        XCTAssertEqual(extracted?["00:32:23"], "Thema 1: “Weltweiter Pilzpate”")
+        XCTAssertEqual(extracted?["02:05:33"], "Outro")
+        XCTAssertFalse(extracted?.values.contains(where: { $0.contains("Werbepartner") }) ?? true)
+        XCTAssertFalse(extracted?.values.contains(where: { $0.contains("Pilzpaten, metalem Stress") }) ?? true)
+    }
 }
 
 private struct ChapterExtractionCase {

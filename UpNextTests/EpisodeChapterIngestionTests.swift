@@ -161,6 +161,60 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertEqual(chapters.first?.progress ?? -1, 0.42, accuracy: 0.0001)
         XCTAssertEqual(chapters.first?.imageData ?? Data(), Data([0x01, 0x02, 0x03]))
     }
+
+    func testInvalidExtractedChaptersAreReplacedFromContentEncodedShownotes() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/methodisch-inkorrekt.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.desc = """
+        Du möchtest mehr über unsere Werbepartner erfahren?
+        Diesmal mit dem Pilzpaten, metalem Stress im Homeoffice und ganz viel Infraschall.
+        """
+        episode.content = """
+        <p><strong>Inhalt</strong><br>
+        00:00:00 Intro<br>
+        00:05:19 Lab Rampage Brettspiel<br>
+        00:13:11 Radentscheid Essen<br>
+        00:14:56 Xteink X4<br>
+        00:24:44 FreeTube<br>
+        00:28:43 Community Fotokalender<br>
+        00:32:23 Thema 1: “Weltweiter Pilzpate”<br>
+        00:52:18 Science Snack<br>
+        01:11:43 Thema 2: “Stabiles Büro”<br>
+        01:42:26 Schwurbel der Woche<br>
+        02:05:33 Outro</p>
+        """
+
+        let badAdvertisementChapter = Marker(
+            start: 0,
+            title: "Du möchtest mehr über unsere Werbepartner erfahren?",
+            type: .extracted
+        )
+        badAdvertisementChapter.episode = episode
+        let badSummaryChapter = Marker(
+            start: 0,
+            title: "Diesmal mit dem Pilzpaten, metalem Stress im Homeoffice und ganz viel Infraschall.",
+            type: .extracted
+        )
+        badSummaryChapter.episode = episode
+        episode.chapters = [badAdvertisementChapter, badSummaryChapter]
+        try fixture.context.save()
+
+        await EpisodeActor(modelContainer: fixture.container).createChapters(episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = try XCTUnwrap(reloaded.chapters)
+        XCTAssertEqual(chapters.count, 11)
+        XCTAssertTrue(chapters.contains { $0.start == 0 && $0.title == "Intro" })
+        XCTAssertTrue(chapters.contains { $0.start == 7_533 && $0.title == "Outro" })
+        XCTAssertFalse(chapters.contains { $0.title.contains("Werbepartner") })
+        XCTAssertFalse(chapters.contains { $0.title.contains("Pilzpaten, metalem Stress") })
+    }
 }
 
 private extension EpisodeChapterIngestionTests {

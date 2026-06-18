@@ -8,6 +8,16 @@
 import Foundation
 
 struct ShownotesChapterExtractor {
+    static func extractTimeCodesAndTitles(fromShownotesCandidates candidates: [String?]) -> [String: String]? {
+        for candidate in candidates {
+            guard let candidate, candidate.isEmpty == false else { continue }
+            if let chapters = extractTimeCodesAndTitles(from: candidate) {
+                return chapters
+            }
+        }
+        return nil
+    }
+
     static func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
         let normalizedText = normalizedShownotesTextForChapterParsing(from: htmlEncodedText)
         let nsText = normalizedText as NSString

@@ -115,6 +115,14 @@ actor EpisodeActor {
         return false
     }
 
+    private func shouldExtractShownotesChapters(for episode: Episode) -> Bool {
+        guard let chapters = episode.chapters, chapters.isEmpty == false else { return true }
+        guard chapters.allSatisfy({ $0.type == .extracted }) else { return false }
+
+        let uniqueStartTimes = Set(chapters.compactMap(\.start))
+        return uniqueStartTimes.count < 2
+    }
+
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
         let predicate = #Predicate<Bookmark> { marker in
             marker.uuid == markerID
@@ -1119,7 +1127,7 @@ actor EpisodeActor {
             }
         }
 
-        if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
+        if shouldExtractShownotesChapters(for: episode), let url = episode.url {
             let extractedShownotesChapters = await extractShownotesChapters(fileURL: url)
             didChange = didChange || extractedShownotesChapters
         }
@@ -1765,8 +1773,13 @@ actor EpisodeActor {
     @discardableResult
     func extractShownotesChapters(fileURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
-        guard let text = episode.desc else { return false }
-        var extractedData = extractTimeCodesAndTitles(from: text)
+        let shownotesCandidates = [episode.content, episode.desc]
+        guard let text = shownotesCandidates.compactMap({ $0 }).first(where: { $0.isEmpty == false }) else {
+            return false
+        }
+        var extractedData = ShownotesChapterExtractor.extractTimeCodesAndTitles(
+            fromShownotesCandidates: shownotesCandidates
+        )
         
         if  extractedData == nil || extractedData?.count == 0{
             extractedData = await generateAIChapters(from: text)
@@ -1780,7 +1793,7 @@ actor EpisodeActor {
                     newchapters.append(newChapter)
                 }
             }
-            guard newchapters.isEmpty == false else { return false }
+            guard Set(newchapters.compactMap(\.start)).count >= 2 else { return false }
             replaceChapters(on: episode, replacingTypes: [.extracted], with: newchapters)
             episode.refresh.toggle()
             modelContext.saveIfNeeded()
