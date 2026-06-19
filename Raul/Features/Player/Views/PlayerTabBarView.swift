@@ -30,6 +30,7 @@ extension View {
 struct PlayerTabBarView: View {
 
     @Bindable private var player = Player.shared
+    @Environment(\.openPlayer) private var openPlayer
     
     
     
@@ -100,10 +101,10 @@ struct PlayerTabBarView: View {
             .accessibilityHint("Double tap anywhere on the mini player to open full player controls")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: Text("Open full player")) {
-                player.isPlayerSheetPresented = true
+                openPlayer()
             }
             .onTapGesture {
-                player.isPlayerSheetPresented = true
+                openPlayer()
             }
         }
     }

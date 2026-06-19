@@ -21,6 +21,9 @@
         }
       }
     },
+    "-%@" : {
+
+    },
     "#%lld" : {
       "localizations" : {
         "de" : {
@@ -311,6 +314,9 @@
         }
       }
     },
+    "%lld next" : {
+
+    },
     "%lld. %@: %@" : {
       "localizations" : {
         "de" : {
@@ -437,6 +443,9 @@
           }
         }
       }
+    },
+    "Add Podcast" : {
+
     },
     "Add Rule" : {
       "localizations" : {
@@ -1328,6 +1337,9 @@
         }
       }
     },
+    "Choose an episode from the playlist below." : {
+
+    },
     "Choose episode sort order and hide played episodes" : {
       "localizations" : {
         "de" : {
@@ -2207,6 +2219,9 @@
           }
         }
       }
+    },
+    "Episode Not Found" : {
+
     },
     "Episode sort" : {
       "localizations" : {
@@ -3792,6 +3807,9 @@
         }
       }
     },
+    "Menu Bar Player" : {
+
+    },
     "Metadata Details" : {
       "localizations" : {
         "de" : {
@@ -4002,6 +4020,9 @@
         }
       }
     },
+    "Navigate" : {
+
+    },
     "Needs keyword" : {
       "localizations" : {
         "de" : {
@@ -4111,6 +4132,9 @@
           }
         }
       }
+    },
+    "Next Chapter" : {
+
     },
     "Next week" : {
       "localizations" : {
@@ -4512,6 +4536,12 @@
         }
       }
     },
+    "Nothing Playing" : {
+
+    },
+    "Nothing Up Next" : {
+
+    },
     "Notify Me: %@" : {
       "localizations" : {
         "de" : {
@@ -4762,6 +4792,9 @@
         }
       }
     },
+    "Open Player" : {
+
+    },
     "Open podcast %@" : {
       "localizations" : {
         "de" : {
@@ -4871,6 +4904,9 @@
           }
         }
       }
+    },
+    "Open Up Next" : {
+
     },
     "Opens a file picker and copies the selected audio file into the sideloading folder" : {
       "localizations" : {
@@ -5337,6 +5373,9 @@
           }
         }
       }
+    },
+    "Play/Pause" : {
+
     },
     "Playback" : {
       "localizations" : {
@@ -5833,6 +5872,9 @@
           }
         }
       }
+    },
+    "Previous Chapter" : {
+
     },
     "Previous Period" : {
       "localizations" : {
@@ -7574,6 +7616,9 @@
         }
       }
     },
+    "The menu bar shows the current episode cover and playback state. Click it to open compact playback controls and the selected playlist." : {
+
+    },
     "The podcast library is unavailable." : {
       "localizations" : {
         "de" : {
@@ -7693,6 +7738,9 @@
           }
         }
       }
+    },
+    "This playlist has no later episodes." : {
+
     },
     "This podcast could not be loaded." : {
       "localizations" : {
@@ -8209,6 +8257,9 @@
           }
         }
       }
+    },
+    "Up Next is starting" : {
+
     },
     "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"" : {
       "localizations" : {

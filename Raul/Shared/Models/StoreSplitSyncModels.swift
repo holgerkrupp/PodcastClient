@@ -292,7 +292,7 @@ final class ListeningSummarySync: Identifiable {
     }
 
     var aggregationKey: String {
-        StableIdentityKey.make(
+        return StableIdentityKey.make(
             feedURL,
             periodKind,
             String(Int(periodStart.timeIntervalSince1970))
@@ -595,25 +595,61 @@ struct GlobalListeningStatistics: Equatable, Sendable {
     var sessionCount: Int
 }
 
+enum ListeningHistoryIdentity {
+    static func make(
+        feedURL: String,
+        episodeID: String,
+        startedAt: Date,
+        endedAt: Date,
+        startPosition: Double,
+        endPosition: Double
+    ) -> String {
+        let normalizedFeedURL = URL(string: feedURL).map {
+            $0.podcastFeedComparisonKeys.sorted().first
+                ?? PodcastFeedIdentity.normalizedFeedURLString($0)
+        } ?? feedURL
+        return StableIdentityKey.make(
+            normalizedFeedURL,
+            episodeID,
+            String(Int(startedAt.timeIntervalSince1970.rounded())),
+            String(Int(endedAt.timeIntervalSince1970.rounded())),
+            String(Int((startPosition * 10).rounded())),
+            String(Int((endPosition * 10).rounded()))
+        )
+    }
+
+    static func make(for record: ListeningHistorySync) -> String {
+        make(
+            feedURL: record.feedURL,
+            episodeID: record.episodeID,
+            startedAt: record.startedAt,
+            endedAt: record.endedAt,
+            startPosition: record.startPosition,
+            endPosition: record.endPosition
+        )
+    }
+}
+
 enum ListeningHistoryAggregation {
     static func deduplicated(
         _ records: [ListeningHistorySync],
         sourceDeviceID: String? = nil
     ) -> [ListeningHistorySync] {
-        var newestByID: [String: ListeningHistorySync] = [:]
+        var newestByIdentity: [String: ListeningHistorySync] = [:]
 
         for record in records {
             guard sourceDeviceID == nil || record.sourceDeviceID == sourceDeviceID else {
                 continue
             }
-            if let existing = newestByID[record.id],
+            let identity = ListeningHistoryIdentity.make(for: record)
+            if let existing = newestByIdentity[identity],
                !prefers(record, over: existing) {
                 continue
             }
-            newestByID[record.id] = record
+            newestByIdentity[identity] = record
         }
 
-        return newestByID.values.sorted {
+        return newestByIdentity.values.sorted {
             if $0.startedAt != $1.startedAt {
                 return $0.startedAt > $1.startedAt
             }

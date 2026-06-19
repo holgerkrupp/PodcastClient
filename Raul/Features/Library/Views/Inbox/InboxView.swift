@@ -65,8 +65,7 @@ struct InboxListView: View {
 
     var body: some View {
         if episodes.isEmpty{
-            NavigationStack{
-                InboxEmptyView()
+            InboxEmptyView()
                 .navigationTitle("Inbox")
                 .task {
                     await loadEpisodes()
@@ -100,96 +99,93 @@ struct InboxListView: View {
                         .accessibilityHint("Fetches new episodes and reloads your inbox")
                         .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
                     }
+                }
+        }else{
+            List {
+                ForEach(episodes) { episode in
+                    ZStack{
+                        EpisodeRowView(episode: episode)
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                            EmptyView()
+                        }.opacity(0)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open episode \(episode.title)")
+                    .accessibilityHint("Opens this episode details screen")
+                    .swipeActions(edge: .trailing){
+                        Button(role: .none) {
+                            Task { @MainActor in
+                                await archiveEpisode(episode)
+                                await loadEpisodes()
+                            }
+                        } label: {
+                            Label("Archive Episode", systemImage: "archivebox.fill")
+                        }
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0,
+                                         leading: 0,
+                                         bottom: 0,
+                                         trailing: 0))
                 }
             }
-        }else{
-            NavigationStack{
-                List {
-                    ForEach(episodes) { episode in
-                        ZStack{
-                            EpisodeRowView(episode: episode)
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                EmptyView()
-                            }.opacity(0)
+            .listStyle(.plain)
+            .navigationTitle("Inbox")
+            .task {
+                await loadEpisodes()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
+                Task { await loadEpisodes() }
+            }
+            .refreshable {
+                await refreshEpisodes()
+                await loadEpisodes()
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: {
+                        Task {
+                            await refreshEpisodes()
+                            await loadEpisodes()
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open episode \(episode.title)")
-                        .accessibilityHint("Opens this episode details screen")
-                        .swipeActions(edge: .trailing){
-                            Button(role: .none) {
-                                Task { @MainActor in
-                                    await archiveEpisode(episode)
-                                    await loadEpisodes()
-                                }
-                            } label: {
-                                Label("Archive Episode", systemImage: "archivebox.fill")
-                            }
-                        }
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
-                    }
-                }
-                .listStyle(.plain)
-                .navigationTitle("Inbox")
-                .task {
-                    await loadEpisodes()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
-                    Task { await loadEpisodes() }
-                }
-                .refreshable {
-                    await refreshEpisodes()
-                    await loadEpisodes()
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: {
-                            Task {
-                                await refreshEpisodes()
-                                await loadEpisodes()
-                            }
-                        }) {
-                            if refreshViewModel.isLoading {
-                                if refreshViewModel.total != 0 {
-                                    CircularProgressView(
-                                        value: Double(refreshViewModel.completed),
-                                        total: Double(refreshViewModel.total)
-                                    )
-                                } else {
-                                    ProgressView()
-                                }
-                            }else{
-                                Image(systemName: "arrow.clockwise")
-                            }
-                        }
-                        .disabled(refreshViewModel.isLoading)
-                        .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
-                        .accessibilityHint("Fetches new episodes and reloads your inbox")
-                        .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
-                    }
-                    
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: {
-                            Task {
-                                await archiveAll()
-                                await loadEpisodes()
-                            }
-                        }) {
-                            if isArchiving {
+                    }) {
+                        if refreshViewModel.isLoading {
+                            if refreshViewModel.total != 0 {
+                                CircularProgressView(
+                                    value: Double(refreshViewModel.completed),
+                                    total: Double(refreshViewModel.total)
+                                )
+                            } else {
                                 ProgressView()
-                            }else{
-                                Image(systemName: "archivebox")
                             }
+                        }else{
+                            Image(systemName: "arrow.clockwise")
                         }
-                        .disabled(isArchiving)
-                        .accessibilityLabel(isArchiving ? "Archiving inbox episodes" : "Archive all inbox episodes")
-                        .accessibilityHint("Moves every inbox episode to archive")
-                        .accessibilityInputLabels([Text("Archive inbox"), Text("Archive all inbox episodes")])
                     }
+                    .disabled(refreshViewModel.isLoading)
+                    .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
+                    .accessibilityHint("Fetches new episodes and reloads your inbox")
+                    .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: {
+                        Task {
+                            await archiveAll()
+                            await loadEpisodes()
+                        }
+                    }) {
+                        if isArchiving {
+                            ProgressView()
+                        }else{
+                            Image(systemName: "archivebox")
+                        }
+                    }
+                    .disabled(isArchiving)
+                    .accessibilityLabel(isArchiving ? "Archiving inbox episodes" : "Archive all inbox episodes")
+                    .accessibilityHint("Moves every inbox episode to archive")
+                    .accessibilityInputLabels([Text("Archive inbox"), Text("Archive all inbox episodes")])
                 }
             }
             .overlay {

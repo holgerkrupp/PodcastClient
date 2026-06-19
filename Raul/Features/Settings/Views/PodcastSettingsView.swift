@@ -197,11 +197,7 @@ struct PodcastSettingsView: View {
     }
 
     private var globalSettingsCategories: [GlobalSettingsCategory] {
-#if os(macOS)
-        GlobalSettingsCategory.allCases.filter { $0 != .appearance }
-#else
         GlobalSettingsCategory.allCases
-#endif
     }
 
     private var currentPlaybackPodcastWithCustomSettings: Podcast? {
@@ -526,6 +522,9 @@ struct PodcastSettingsView: View {
         case .dataAndStorage:
             sideloadingSection
             maintenanceSection
+#if DEBUG
+            developmentSection
+#endif
         case .helpAndAbout:
             helpSection
 #if DEBUG
@@ -619,6 +618,12 @@ struct PodcastSettingsView: View {
         }
         .task {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
+        }
+#elseif os(macOS)
+        Section("Menu Bar Player") {
+            Text("The menu bar shows the current episode cover and playback state. Click it to open compact playback controls and the selected playlist.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
 #else
         EmptyView()
@@ -1408,6 +1413,23 @@ struct PodcastSettingsView: View {
             }
         }
     }
+
+#if DEBUG
+    private var developmentSection: some View {
+        Section("Development") {
+            NavigationLink {
+                DevelopmentSettingsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Database Development",
+                    summary: "Store selection and CloudKit routing",
+                    detail: "Choose legacy-only or split-store development and configure CloudKit independently for each synchronized store.",
+                    systemImage: "wrench.and.screwdriver"
+                )
+            }
+        }
+    }
+#endif
 
     private var helpSection: some View {
         Section("Help") {

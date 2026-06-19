@@ -307,6 +307,7 @@ actor EpisodeActor {
         ensureMetadata(for: episode)
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
+        await publishSplitEpisodeState(episode)
     }
     
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
@@ -319,6 +320,7 @@ actor EpisodeActor {
             }
             episode.metaData?.playPosition = position
             modelContext.saveIfNeeded()
+            await publishSplitEpisodeState(episode)
         }
 
     }
@@ -350,6 +352,7 @@ actor EpisodeActor {
         guard modelContext.hasChanges else { return true }
         do {
             try modelContext.save()
+            await publishSplitEpisodeState(episode)
             return true
         } catch {
             return false
@@ -366,12 +369,14 @@ actor EpisodeActor {
     
     func markasPlayed(_ episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
         episode.metaData?.isInbox = false
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
+        await publishSplitEpisodeState(episode)
 
         if let podcastFeed = episode.podcast?.feed {
             await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
@@ -417,6 +422,9 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
+        for episode in episodes {
+            await publishSplitEpisodeState(episode)
+        }
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
@@ -443,6 +451,9 @@ actor EpisodeActor {
             episode.metaData?.systemSuppressionReason = nil
         }
         modelContext.saveIfNeeded()
+        for episode in episodes {
+            await publishSplitEpisodeState(episode)
+        }
         WatchSyncCoordinator.refreshSoon(force: true)
     }
 
@@ -467,6 +478,30 @@ actor EpisodeActor {
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
+    }
+
+    private func publishSplitEpisodeState(_ episode: Episode) async {
+        guard let metadata = episode.metaData else { return }
+        let snapshot = StoreSplitEpisodeStateSnapshot(
+            identity: episode.stableEpisodeIdentity,
+            playPosition: max(0, metadata.playPosition ?? 0),
+            maxPlayPosition: max(
+                0,
+                metadata.maxPlayposition ?? 0,
+                metadata.playPosition ?? 0
+            ),
+            duration: episode.duration,
+            isPlayed: metadata.completionDate != nil || metadata.isHistory == true,
+            isArchived: metadata.isArchived == true || metadata.status == .archived,
+            wasSkipped: metadata.wasSkipped,
+            completedAt: metadata.completionDate,
+            archivedAt: metadata.archivedAt,
+            firstPlayedAt: metadata.firstListenDate,
+            lastPlayedAt: metadata.lastPlayed
+        )
+        guard let userStateContainer = await preparedUserStateContainer() else { return }
+        await StoreSplitEpisodeStateSyncWriter(modelContainer: userStateContainer)
+            .upsert(snapshot)
     }
 
     func clearSystemSuppression(_ episodeURL: URL?) async {
@@ -503,6 +538,9 @@ actor EpisodeActor {
         }
         
         modelContext.saveIfNeeded()
+        for episode in episodes {
+            await publishSplitEpisodeState(episode)
+        }
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
             WatchSyncCoordinator.refreshSoon(force: true)
@@ -921,6 +959,18 @@ actor EpisodeActor {
         let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
+        guard let bookmarkID = bookmark.uuid?.uuidString else { return }
+        let snapshot = StoreSplitBookmarkSnapshot(
+            id: bookmarkID,
+            identity: episode.stableEpisodeIdentity,
+            time: playPosition,
+            title: bookmarkTitle,
+            createdAt: bookmark.creationtime ?? .now
+        )
+        if let userStateContainer = await preparedUserStateContainer() {
+            await StoreSplitBookmarkSyncWriter(modelContainer: userStateContainer)
+                .upsert(snapshot)
+        }
     }
     
     func deleteFile(episodeURL: URL?) async{

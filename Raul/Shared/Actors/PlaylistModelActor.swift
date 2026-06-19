@@ -354,6 +354,7 @@ actor PlaylistModelActor {
         
         updateQueuedEpisodeMetadata(matchingEpisodes)
         modelContext.saveIfNeeded()
+        await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
         if startDownload {
             await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
@@ -412,6 +413,7 @@ actor PlaylistModelActor {
         updateQueuedEpisodeMetadata(matchingEpisodes)
 
         modelContext.saveIfNeeded()
+        await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
 
         if startDownload {
@@ -470,6 +472,7 @@ actor PlaylistModelActor {
         updateQueuedEpisodeMetadata(matchingEpisodes)
 
         modelContext.saveIfNeeded()
+        await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
 
         if startDownload {
@@ -544,7 +547,7 @@ actor PlaylistModelActor {
     }
 
     /// Move an entry by source/destination indices as seen in sorted order.
-    func moveEntry(from sourceIndex: Int, to destinationIndex: Int) throws {
+    func moveEntry(from sourceIndex: Int, to destinationIndex: Int) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         print("move from \(sourceIndex) to \(destinationIndex)")
@@ -561,6 +564,7 @@ actor PlaylistModelActor {
                 entry.order = i
             }
             normalizeOrder()
+            await publishSplitStorePlaylist(playlist)
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
                 WatchSyncCoordinator.refreshSoon(force: true)
@@ -631,6 +635,18 @@ actor PlaylistModelActor {
 
         let writer = StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
         await writer.tombstone(removals)
+    }
+
+    private func publishSplitStorePlaylist(_ playlist: Playlist) async {
+        guard playlist.isSmartPlaylist == false else { return }
+        let snapshot = playlist.storeSplitSnapshot
+
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else { return }
+        await StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
+            .upsert(snapshot)
     }
 
     // MARK: - Convenience helpers callable from outside

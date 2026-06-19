@@ -22,7 +22,7 @@
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
 		48F5872D2FBA3D940027EE58 /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48F5872C2FBA3D940027EE58 /* DeviceInfo */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; };
+		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; platformFilter = ios; };
 		D4C001002FB9000100000001 /* UpNextWatchComplications.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D4C004002FB9000100000001 /* UpNextWatchComplications.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E1A000012FC0000100000001 /* PodcastShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1A000022FC0000100000001 /* PodcastShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -712,6 +712,7 @@
 		};
 		B1C2D3072F10000100000001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = B1C2D3062F10000100000001 /* UpNextWatch */;
 			targetProxy = B1C2D3012F10000100000001 /* PBXContainerItemProxy */;
 		};
@@ -901,11 +902,13 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "To save exported clips to the library";
 				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -964,11 +967,13 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "To save exported clips to the library";
 				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (

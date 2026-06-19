@@ -12,15 +12,9 @@ import BasicLogger
 
 
 struct ContentView: View {
-    private enum RootTab: Hashable {
-        case playlist
-        case inbox
-        case library
-        case add
-    }
-
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
     @Query private var podcasts: [Podcast]
@@ -28,13 +22,13 @@ struct ContentView: View {
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
+    @SceneStorage("mainWindow.selectedSection") private var restoredSelection = AppSection.queue.rawValue
     @State private var inboxCount: Int = 0
-    @State private var selectedTab: RootTab = .playlist
+    @State private var navigation = AppNavigationModel()
+    @State private var didRestoreSelection = false
     @State private var showOnboarding: Bool = false
     @State private var didEvaluateOnboardingLaunch = false
-    @State private var requestedPlaylistEpisodeURL: URL?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
-    @Bindable private var player = Player.shared
     
     @State private var search:String = ""
     @StateObject private var incomingPodcastSubscription = IncomingPodcastSubscriptionController()
@@ -74,39 +68,27 @@ struct ContentView: View {
     }
     
     var body: some View {
-        
-        TabView(selection: $selectedTab) {
-            
-            Tab(LocalizedStringKey(playlistTabTitle), systemImage: playlistTabSymbolName, value: RootTab.playlist) {
-                PlaylistView(requestedEpisodeURL: $requestedPlaylistEpisodeURL)
+        Group {
+            if usesSidebarLayout {
+                SidebarAppShell(
+                    navigation: navigation,
+                    inboxCount: inboxCount,
+                    search: $search
+                )
+            } else {
+                CompactAppShell(
+                    navigation: navigation,
+                    inboxCount: inboxCount,
+                    playlistTitle: playlistTabTitle,
+                    playlistSymbolName: playlistTabSymbolName,
+                    search: $search
+                )
             }
-          
-            Tab("Inbox", systemImage: "tray.fill", value: RootTab.inbox) {
-                InboxView()
-            }
-            .badge(inboxCount)
-
-            Tab("Library", systemImage: "books.vertical", value: RootTab.library) {
-                LibraryView()
-            }
-
-            
-            Tab("Add", systemImage: "plus", value: RootTab.add, role: .search) {
-                AddPodcastView(search: $search)
-                    .searchable(text: $search, prompt: "URL or Search")
-            }
-            
-
-            
         }
-        .platformPlayerAccessory()
-        .sheet(isPresented: $player.isPlayerSheetPresented) {
-            PlayerView(fullSize: true)
-                .presentationDragIndicator(.visible)
-                .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-        }
-
-        
+        .hostsPlayerPresentation(navigation: navigation)
+#if os(macOS)
+        .focusedSceneValue(\.appNavigationModel, navigation)
+#endif
         .task {
             CrashBreadcrumbs.shared.record("content_view_task_started")
             await loadInboxCount()
@@ -151,49 +133,39 @@ struct ContentView: View {
         .onChange(of: selectedPlaylistID) { _, newValue in
             refreshWidgetForSelectedPlaylist(newValue)
         }
+        .onChange(of: navigation.selectedSection) { _, newValue in
+            restoredSelection = newValue.rawValue
+        }
         .onOpenURL { url in
             CrashBreadcrumbs.shared.record("on_open_url", details: url.absoluteString)
-            if url.scheme == "upnext" {
-                if PodcastYearShareCoordinator.isPodcastYearURL(url) {
-                    selectedTab = .library
-                    Task {
-                        _ = await podcastYearShareCoordinator.handleOpenURL(url, modelContext: modelContext)
-                    }
-                    return
-                }
+            guard let appLink = AppLink.parse(url) else { return }
 
-                if let episodeURL = widgetPlaybackEpisodeURL(from: url) {
-                    Task {
-                        await Player.shared.playEpisode(episodeURL, playDirectly: true)
-                    }
-                    return
+            switch appLink {
+            case .podcastYear(let url):
+                navigation.select(.library)
+                Task {
+                    _ = await podcastYearShareCoordinator.handleOpenURL(url, modelContext: modelContext)
                 }
-
-                if let episodeURL = widgetDetailEpisodeURL(from: url) {
-                    if let playlistID = playlistID(from: url) {
-                        selectedPlaylistID = playlistID
-                    }
-                    selectedTab = .playlist
-                    requestedPlaylistEpisodeURL = episodeURL
-                    return
+            case .playEpisode(let episodeURL):
+                Task {
+                    await Player.shared.playEpisode(episodeURL, playDirectly: true)
                 }
-
-                if let sharedEpisodeURL = sharedEpisodeURL(from: url) {
-                    Task {
-                        await importSharedEpisode(from: sharedEpisodeURL)
-                    }
-                    return
-                }
-
-                if let playlistID = playlistID(from: url) {
+            case .showEpisode(let episodeURL, let playlistID):
+                if let playlistID {
                     selectedPlaylistID = playlistID
                 }
-                selectedTab = .playlist
-                return
-            }
-
-            if IncomingPodcastSubscriptionController.canHandle(url) {
-                selectedTab = .add
+                navigation.openPlaylistEpisode(episodeURL)
+            case .importSharedEpisode(let sharedEpisodeURL):
+                Task {
+                    await importSharedEpisode(from: sharedEpisodeURL)
+                }
+            case .selectQueue(let playlistID):
+                if let playlistID {
+                    selectedPlaylistID = playlistID
+                }
+                navigation.select(.queue)
+            case .incomingSubscription(let url):
+                navigation.select(.search)
                 incomingPodcastSubscription.handleIncomingURL(url)
             }
         }
@@ -216,6 +188,10 @@ struct ContentView: View {
             evaluateOnboardingLaunchIfNeeded()
         }
         .onAppear {
+            if didRestoreSelection == false {
+                navigation.selectedSection = AppNavigationModel.restoredSection(from: restoredSelection)
+                didRestoreSelection = true
+            }
             evaluateOnboardingLaunchIfNeeded()
         }
         
@@ -224,6 +200,14 @@ struct ContentView: View {
 
     private var subscribedPodcastCount: Int {
         podcasts.filter(\.isSubscribed).count
+    }
+
+    private var usesSidebarLayout: Bool {
+#if os(macOS)
+        true
+#else
+        horizontalSizeClass == .regular
+#endif
     }
     
     func setGoingToBackgroundDate() {
@@ -257,7 +241,7 @@ struct ContentView: View {
 
     @MainActor
     private func importSharedEpisode(from sharedEpisodeURL: URL) async {
-        selectedTab = .inbox
+        navigation.select(.inbox)
         do {
             let importedURL = try await PodcastEpisodeShareImporter().importEpisode(
                 from: sharedEpisodeURL,
@@ -303,46 +287,6 @@ struct ContentView: View {
         }
     }
 
-    private func sharedEpisodeURL(from url: URL) -> URL? {
-        guard url.host() == "shareEpisode",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
-        }
-
-        return URL(string: rawURL)
-    }
-
-    private func widgetPlaybackEpisodeURL(from url: URL) -> URL? {
-        guard url.host() == "playEpisode",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
-        }
-
-        return URL(string: rawURL)
-    }
-
-    private func widgetDetailEpisodeURL(from url: URL) -> URL? {
-        guard url.host() == "episode",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
-        }
-
-        return URL(string: rawURL)
-    }
-
-    private func playlistID(from url: URL) -> String? {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let playlistID = components.queryItems?.first(where: { $0.name == "playlistID" })?.value,
-              UUID(uuidString: playlistID) != nil else {
-            return nil
-        }
-
-        return playlistID
-    }
-        
 }
 
 private actor InboxCountLoader {

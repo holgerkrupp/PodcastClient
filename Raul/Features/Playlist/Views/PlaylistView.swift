@@ -37,55 +37,53 @@ struct PlaylistView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let selectedPlaylist {
-                    ManualPlaylistPageView(playlist: selectedPlaylist)
-                        .id(selectedPlaylist.id)
-                } else {
-                    PlaylistEmptyView(title: Playlist.defaultQueueDisplayName, isSmartPlaylist: false)
-                }
+        Group {
+            if let selectedPlaylist {
+                ManualPlaylistPageView(playlist: selectedPlaylist)
+                    .id(selectedPlaylist.id)
+            } else {
+                PlaylistEmptyView(title: Playlist.defaultQueueDisplayName, isSmartPlaylist: false)
             }
-            .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
-            .platformInlineNavigationTitle()
-            .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    PlaylistTitleMenu(
-                        currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
-                        currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
-                        playlists: visiblePlaylists,
-                        selectedPlaylistID: selectedPlaylist?.id,
-                        onSelect: { playlist in
-                            selectPlaylist(playlist)
-                        },
-                        onCreate: {
-                            showCreatePlaylistSheet = true
-                        }
-                    )
-                }
-
-
-
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: {
-                        openSettings()
-                    }) {
-                        Image(systemName: "gear")
+        }
+        .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
+        .platformInlineNavigationTitle()
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                PlaylistTitleMenu(
+                    currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
+                    currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
+                    playlists: visiblePlaylists,
+                    selectedPlaylistID: selectedPlaylist?.id,
+                    onSelect: { playlist in
+                        selectPlaylist(playlist)
+                    },
+                    onCreate: {
+                        showCreatePlaylistSheet = true
                     }
-                    .accessibilityLabel("Queue settings")
-                    .accessibilityHint("Open playback and queue settings")
-                    .accessibilityInputLabels([Text("Queue settings"), Text("Open settings")])
-                }
+                )
             }
-            .sheet(isPresented: $showCreatePlaylistSheet) {
-                NewPlaylistSheet { draft in
-                    createPlaylist(from: draft)
+
+
+
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: {
+                    openSettings()
+                }) {
+                    Image(systemName: "gear")
                 }
+                .accessibilityLabel("Queue settings")
+                .accessibilityHint("Open playback and queue settings")
+                .accessibilityInputLabels([Text("Queue settings"), Text("Open settings")])
             }
-            .navigationDestination(isPresented: $showsRequestedEpisode) {
-                if let requestedEpisode {
-                    EpisodeDetailView(episode: requestedEpisode)
-                }
+        }
+        .sheet(isPresented: $showCreatePlaylistSheet) {
+            NewPlaylistSheet { draft in
+                createPlaylist(from: draft)
+            }
+        }
+        .navigationDestination(isPresented: $showsRequestedEpisode) {
+            if let requestedEpisode {
+                EpisodeDetailView(episode: requestedEpisode)
             }
         }
         .task {
@@ -161,6 +159,7 @@ struct PlaylistView: View {
 
         modelContext.insert(playlist)
         modelContext.saveIfNeeded()
+        StoreSplitPlaylistSyncCoordinator.publish(playlist)
 
         selectedPlaylistID = playlist.id.uuidString
         storedPlaylistID = selectedPlaylistID

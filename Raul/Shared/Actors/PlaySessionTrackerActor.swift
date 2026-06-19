@@ -228,7 +228,7 @@ actor PlaySessionTrackerActor {
 
         // End previous session if different episode
         if (currentSession != nil) {
-            endSession(at: position, appTerminated: false)
+            await endSession(at: position, appTerminated: false)
         }
 
         // Start new session
@@ -252,7 +252,7 @@ actor PlaySessionTrackerActor {
     }
 
     func pauseSession(at position: Double) async {
-        endSession(at: position, appTerminated: false)
+        await endSession(at: position, appTerminated: false)
     }
 
     func handlePlaybackRateChange(to rate: Float, at position: Double) async {
@@ -277,7 +277,7 @@ actor PlaySessionTrackerActor {
         modelContext.saveIfNeeded()
     }
 
-    private func endSession(at position: Double, appTerminated: Bool) {
+    private func endSession(at position: Double, appTerminated: Bool) async {
         guard let session = currentSession else { return }
         let now = Date()
         session.endTime = now
@@ -291,6 +291,49 @@ actor PlaySessionTrackerActor {
         rebuildSummaries(forHourStarts: touchedHours, podcastFeed: session.episode?.podcast?.feed, podcastName: session.podcastName)
         pruneOldSessionsIfNeeded()
         saveSession()
+        await publishListeningHistory(session)
+    }
+
+    private func publishListeningHistory(_ session: PlaySession) async {
+        guard let episode = session.episode,
+              let startedAt = session.startTime,
+              let endedAt = session.endTime,
+              endedAt > startedAt else {
+            return
+        }
+        let id = ListeningHistoryIdentity.make(
+            feedURL: episode.stableEpisodeIdentity.feedURL,
+            episodeID: episode.stableEpisodeIdentity.episodeID,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            startPosition: session.startPosition ?? 0,
+            endPosition: session.endPosition ?? 0
+        )
+        let deviceIdentity = ListeningDeviceIdentity.current()
+        let snapshot = StoreSplitListeningHistorySnapshot(
+            id: id,
+            identity: episode.stableEpisodeIdentity,
+            podcastName: session.podcastName ?? episode.displayPodcastTitle ?? "Unknown Podcast",
+            episodeTitle: episode.title,
+            sourceDeviceID: session.sourceDeviceID ?? deviceIdentity.id,
+            sourceDeviceName: session.sourceDeviceName ?? deviceIdentity.displayName,
+            deviceModel: session.deviceModel,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            startPosition: session.startPosition ?? 0,
+            endPosition: session.endPosition ?? 0,
+            listenedSeconds: endedAt.timeIntervalSince(startedAt),
+            silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+            playbackRateTimeSavedSeconds: playbackRateTimeSaved(for: session),
+            endedCleanly: session.endedCleanly == true
+        )
+
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else { return }
+        await StoreSplitListeningHistorySyncWriter(modelContainer: userStateContainer)
+            .upsert(snapshot)
     }
 
     private func recordSilenceGapTimeSavedForEpisode(_ session: PlaySession) {

@@ -281,6 +281,7 @@ private struct LibraryPlaylistsView: View {
             for entry in playlist.items ?? [] {
                 modelContext.delete(entry)
             }
+            StoreSplitPlaylistSyncCoordinator.tombstone(playlistID: playlist.id)
             modelContext.delete(playlist)
         }
 
@@ -325,6 +326,7 @@ private struct LibraryPlaylistsView: View {
 
         modelContext.insert(playlist)
         modelContext.saveIfNeeded()
+        StoreSplitPlaylistSyncCoordinator.publish(playlist)
     }
 
     private func playlistRowContent(for playlist: Playlist) -> some View {

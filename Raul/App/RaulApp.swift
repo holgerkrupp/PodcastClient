@@ -47,7 +47,7 @@ struct RaulApp: App {
     var body: some Scene {
 
         
-        WindowGroup {
+        WindowGroup("Up Next", id: AppWindowID.main) {
             if let container = modelContainerManager.preparedContainer {
                 AppLaunchContainerView(
                     requiresInitialCloudImport: modelContainerManager.requiresInitialCloudImport,
@@ -132,7 +132,10 @@ struct RaulApp: App {
         }
 #if os(macOS)
         .commands {
-            PodcastSettingsCommands(settingsRequest: $settingsRequest)
+            AppCommands(
+                settingsRequest: $settingsRequest,
+                isPlayerReady: modelContainerManager.preparedContainer != nil
+            )
         }
 #endif
         .onChange(of: phase, {
@@ -208,6 +211,56 @@ struct RaulApp: App {
 #endif
 
 #if os(macOS)
+        Window("Now Playing", id: AppWindowID.player) {
+            if let container = modelContainerManager.preparedContainer {
+                MacPlayerWindowContent()
+                    .modelContainer(container)
+                    .environment(downloadedFilesManager)
+                    .accentColor(.accent)
+                    .withDeviceStyle()
+            } else {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
+                    }
+                )
+                .task {
+                    await modelContainerManager.prepareContainer()
+                }
+            }
+        }
+        .defaultSize(width: 760, height: 820)
+
+        MenuBarExtra {
+            if let container = modelContainerManager.preparedContainer {
+                MacMenuBarPlayerView()
+                    .modelContainer(container)
+                    .environment(downloadedFilesManager)
+                    .accentColor(.accent)
+            } else {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
+                    }
+                )
+                .frame(width: 320, height: 240)
+                .task {
+                    await modelContainerManager.prepareContainer()
+                }
+            }
+        } label: {
+            MacMenuBarLabel(
+                isPlayerReady: modelContainerManager.preparedContainer != nil
+            )
+        }
+        .menuBarExtraStyle(.window)
+
         Window("Settings", id: SettingsWindowRequest.sceneID) {
             settingsSceneContent
         }
@@ -291,6 +344,10 @@ struct RaulApp: App {
 
     func scheduleStoreSplitMigration() {
         deferredStoreSplitTask?.cancel()
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else {
+            deferredStoreSplitTask = nil
+            return
+        }
         deferredStoreSplitTask = Task {
             do {
                 try await Task.sleep(for: .seconds(30))

@@ -13,13 +13,8 @@ struct LibraryView: View {
 
     
     var body: some View {
-        NavigationStack {
-    
-                    PodcastListView(modelContainer: context.container)
-                
-                }
-            
-        }
+        PodcastListView(modelContainer: context.container)
+    }
     
 }
 

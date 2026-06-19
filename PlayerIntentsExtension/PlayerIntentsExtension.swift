@@ -78,7 +78,6 @@ struct FastExportClipIntent: AppIntent {
         }  else {
             coverImage = UIImage() // Fallback empty layout canvas
         }
-
         do {
             // Trigger your asynchronous export logic immediately
             let generatedURL = try await AudioClipExporter.exportClipAsync(
@@ -104,6 +103,7 @@ struct FastExportClipIntent: AppIntent {
             return .result(value: intentFile, dialog: dialog)
 
         } catch {
+         
             throw NSError(domain: "ExportClipIntent", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed rendering clip background process: \(error.localizedDescription)"])
         }
     }

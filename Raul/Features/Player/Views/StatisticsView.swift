@@ -1709,6 +1709,12 @@ struct StatisticsView: View {
         selectedPodcastFeedString: String?,
         selectedPodcastURL: URL?
     ) -> Double {
+        if StoreDevelopmentConfiguration.newStoreReadsEnabled,
+           let syncedTotal = syncedLifetimeListeningSeconds(
+               selectedPodcastFeedString: selectedPodcastFeedString
+           ) {
+            return syncedTotal
+        }
         let endOfToday = Calendar.current.date(
             byAdding: .day,
             value: 1,
@@ -1731,6 +1737,30 @@ struct StatisticsView: View {
             selectedPeriodEnd: endOfToday,
             selectedPodcastFeedString: selectedPodcastFeedString
         ).reduce(0) { $0 + listenedSeconds(for: $1) }
+    }
+
+    private func syncedLifetimeListeningSeconds(
+        selectedPodcastFeedString: String?
+    ) -> Double? {
+        guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
+            return nil
+        }
+        let records = (try? ModelContext(container).fetch(
+            FetchDescriptor<ListeningHistorySync>()
+        )) ?? []
+        let filtered: [ListeningHistorySync]
+        if let selectedPodcastFeedString,
+           let selectedURL = URL(string: selectedPodcastFeedString) {
+            let selectedKeys = selectedURL.podcastFeedComparisonKeys
+            filtered = records.filter { record in
+                guard let feed = URL(string: record.feedURL) else { return false }
+                return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
+            }
+        } else {
+            filtered = records
+        }
+        guard filtered.isEmpty == false else { return nil }
+        return ListeningHistoryAggregation.globalStatistics(from: filtered).totalSeconds
     }
 
     private func hasAnySummary() -> Bool {

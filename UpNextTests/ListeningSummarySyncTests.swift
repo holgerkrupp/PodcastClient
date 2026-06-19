@@ -130,6 +130,72 @@ final class ListeningSummarySyncTests: XCTestCase {
         XCTAssertEqual(statistics.totalSeconds, 120)
     }
 
+    func testListeningHistoryDeduplicatesLegacyClonesWithDifferentIDs() {
+        let first = ListeningHistorySync(
+            id: "phone-copy",
+            feedURL: "feed-a",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-a",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            startPosition: 10,
+            endPosition: 130,
+            listenedSeconds: 120,
+            updatedAt: Date(timeIntervalSince1970: 1_120)
+        )
+        let clonedLegacyRecord = ListeningHistorySync(
+            id: "mac-copy",
+            feedURL: "feed-a",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-b",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            startPosition: 10,
+            endPosition: 130,
+            listenedSeconds: 120,
+            updatedAt: Date(timeIntervalSince1970: 1_120)
+        )
+
+        let statistics = ListeningHistoryAggregation.globalStatistics(
+            from: [first, clonedLegacyRecord]
+        )
+
+        XCTAssertEqual(statistics.sessionCount, 1)
+        XCTAssertEqual(statistics.totalSeconds, 120)
+    }
+
+    func testListeningHistoryDeduplicatesEquivalentFeedURLs() {
+        let first = ListeningHistorySync(
+            id: "secure-feed",
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-a",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            startPosition: 10,
+            endPosition: 130,
+            listenedSeconds: 120
+        )
+        let legacyClone = ListeningHistorySync(
+            id: "legacy-feed",
+            feedURL: "http://www.example.com/feed.xml/",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-b",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            startPosition: 10,
+            endPosition: 130,
+            listenedSeconds: 120
+        )
+
+        let statistics = ListeningHistoryAggregation.globalStatistics(
+            from: [first, legacyClone]
+        )
+
+        XCTAssertEqual(statistics.sessionCount, 1)
+        XCTAssertEqual(statistics.totalSeconds, 120)
+    }
+
     func testListeningHistoryCanFilterByDevice() {
         let records = [
             ListeningHistorySync(

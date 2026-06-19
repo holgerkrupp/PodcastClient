@@ -850,14 +850,13 @@ actor StoreSplitMigrationService {
             let sourceDeviceName = session.sourceDeviceName
                 ?? session.deviceModel
                 ?? "Legacy device"
-            let recordID = session.id?.uuidString ?? StableIdentityKey.make(
-                "legacy-session",
-                identity.key,
-                String(startedAt.timeIntervalSince1970),
-                String(endedAt.timeIntervalSince1970),
-                String(session.startPosition ?? 0),
-                String(session.endPosition ?? 0),
-                sourceDeviceID
+            let recordID = ListeningHistoryIdentity.make(
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                startPosition: session.startPosition ?? 0,
+                endPosition: session.endPosition ?? 0
             )
             let listenedSeconds = endedAt.timeIntervalSince(startedAt)
             let updatedAt = endedAt

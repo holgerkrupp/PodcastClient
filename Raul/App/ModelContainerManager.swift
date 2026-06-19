@@ -16,17 +16,23 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var isPreparingSplitStores = false
     @Published private(set) var isMigratingSplitStores = false
     @Published private(set) var requiresInitialCloudImport = false
+#if DEBUG
+    @Published private(set) var developmentResetRequiresRelaunch = false
+#endif
     private var preparationTask: Task<ModelContainer, Error>?
     private var splitStorePreparationTask: Task<SplitStoreContainers, Never>?
     private var migrationTask: Task<Void, Never>?
     private var aiContentImportTask: Task<Void, Never>?
+    private var userStateImportTask: Task<Void, Never>?
     private var lastMigrationCompletedAt: Date?
     private var lastAIContentImportAt: Date?
     private let successfulMigrationRerunInterval: TimeInterval = 60 * 60 * 24
     private let failedMigrationRerunInterval: TimeInterval = 60 * 60
     private let minimumAIContentImportInterval: TimeInterval = 60 * 15
-    private static let lastMigrationCompletedAtKey = "storeSplitMigration.lastCompletedAt.v3"
-    private static let lastMigrationHadFailuresKey = "storeSplitMigration.lastRunHadFailures.v3"
+    nonisolated private static let lastMigrationCompletedAtKey =
+        "storeSplitMigration.lastCompletedAt.v3"
+    nonisolated private static let lastMigrationHadFailuresKey =
+        "storeSplitMigration.lastRunHadFailures.v3"
 
     var container: ModelContainer {
         guard let preparedContainer else {
@@ -36,6 +42,12 @@ class ModelContainerManager: ObservableObject {
     }
     
     static let shared = ModelContainerManager()
+
+    init() {
+#if DEBUG
+        Self.resetLocalStoreFilesIfRequested()
+#endif
+    }
 
     nonisolated static var sharedContainerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
@@ -52,6 +64,102 @@ class ModelContainerManager: ObservableObject {
     nonisolated static var cacheStoreURL: URL? {
         sharedContainerURL?.appendingPathComponent("PodcastCache.sqlite")
     }
+
+#if DEBUG
+    func scheduleLocalSplitStoreReset() {
+        UserDefaults.standard.set(
+            true,
+            forKey: StoreDevelopmentConfiguration.resetLocalSplitStoresOnNextLaunchKey
+        )
+        developmentResetRequiresRelaunch = true
+        CrashBreadcrumbs.shared.record("store_split_local_reset_scheduled")
+    }
+
+    #if os(macOS)
+    func scheduleAllLocalStoreReset() {
+        let defaults = UserDefaults.standard
+        defaults.set(
+            true,
+            forKey: StoreDevelopmentConfiguration.resetAllLocalStoresOnNextLaunchKey
+        )
+        defaults.removeObject(
+            forKey: StoreDevelopmentConfiguration.resetLocalSplitStoresOnNextLaunchKey
+        )
+        developmentResetRequiresRelaunch = true
+        CrashBreadcrumbs.shared.record("all_local_stores_reset_scheduled")
+    }
+    #endif
+
+    nonisolated private static func resetLocalStoreFilesIfRequested() {
+        let defaults = UserDefaults.standard
+        let resetAllStores = defaults.bool(
+            forKey: StoreDevelopmentConfiguration.resetAllLocalStoresOnNextLaunchKey
+        )
+        let resetSplitStores = defaults.bool(
+            forKey: StoreDevelopmentConfiguration.resetLocalSplitStoresOnNextLaunchKey
+        )
+        guard resetAllStores || resetSplitStores else {
+            return
+        }
+
+        let storeURLs = resetAllStores
+            ? [sharedStoreURL, userStateStoreURL, cacheStoreURL]
+            : [userStateStoreURL, cacheStoreURL]
+        var failedPaths: [String] = []
+        for storeURL in storeURLs.compactMap({ $0 }) {
+            do {
+                try removeSQLiteArtifacts(for: storeURL)
+            } catch {
+                failedPaths.append(storeURL.lastPathComponent)
+            }
+        }
+
+        if failedPaths.isEmpty {
+            defaults.removeObject(
+                forKey: StoreDevelopmentConfiguration.resetLocalSplitStoresOnNextLaunchKey
+            )
+            defaults.removeObject(
+                forKey: StoreDevelopmentConfiguration.resetAllLocalStoresOnNextLaunchKey
+            )
+            if resetAllStores {
+                clearMigrationRunState()
+            }
+            CrashBreadcrumbs.shared.record(
+                resetAllStores
+                    ? "all_local_stores_reset_completed"
+                    : "store_split_local_reset_completed"
+            )
+        } else {
+            CrashBreadcrumbs.shared.record(
+                resetAllStores
+                    ? "all_local_stores_reset_failed"
+                    : "store_split_local_reset_failed",
+                details: failedPaths.joined(separator: ",")
+            )
+        }
+    }
+
+    nonisolated private static func clearMigrationRunState() {
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        defaults.removeObject(forKey: lastMigrationCompletedAtKey)
+        defaults.removeObject(forKey: lastMigrationHadFailuresKey)
+    }
+
+    nonisolated private static func sqliteArtifactURLs(for storeURL: URL) -> [URL] {
+        [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal"),
+            URL(fileURLWithPath: storeURL.path + "-shm")
+        ]
+    }
+
+    nonisolated static func removeSQLiteArtifacts(for storeURL: URL) throws {
+        for url in sqliteArtifactURLs(for: storeURL) {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+#endif
 
     
     func prepareContainer() async {
@@ -97,6 +205,16 @@ class ModelContainerManager: ObservableObject {
 
     func prepareSplitStores() async {
         guard preparedContainer != nil else { return }
+#if DEBUG
+        guard developmentResetRequiresRelaunch == false else { return }
+#endif
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_container_initialization_skipped",
+                details: "development_mode=legacy_only"
+            )
+            return
+        }
         guard preparedUserStateContainer == nil || preparedCacheContainer == nil else {
             return
         }
@@ -153,11 +271,20 @@ class ModelContainerManager: ObservableObject {
     }
 
     func runStoreSplitMigration() async {
+#if DEBUG
+        guard developmentResetRequiresRelaunch == false else { return }
+#endif
         await prepareSplitStores()
+        if StoreDevelopmentConfiguration.newStoreReadsEnabled {
+            await applySyncedUserStateIfPossible()
+            await applySyncedAIContentIfPossible()
+            return
+        }
         startMigrationIfPossible()
         if let migrationTask {
             await migrationTask.value
         }
+        await applySyncedUserStateIfPossible()
         await applySyncedAIContentIfPossible()
     }
 
@@ -172,6 +299,92 @@ class ModelContainerManager: ObservableObject {
             isRunning: isMigratingSplitStores
         )
     }
+
+#if DEBUG
+    func importAvailableSplitStoreStateNow() async throws {
+        await prepareSplitStores()
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer,
+              let cacheContainer = preparedCacheContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        let result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            authoritativePlaylists: true
+        )
+        for feed in result.feedsToBootstrap {
+            _ = try? await PodcastModelActor(modelContainer: legacyContainer)
+                .updatePodcast(feed, force: true, silent: true)
+        }
+        if result.feedsToBootstrap.isEmpty == false {
+            _ = await StoreSplitUserStateImporter.apply(
+                legacyContainer: legacyContainer,
+                userStateContainer: userStateContainer,
+                authoritativePlaylists: true
+            )
+        }
+        _ = await StoreSplitAIContentImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer
+        )
+    }
+
+    func republishLegacyStateToCloudKit() async throws
+        -> StoreSplitDevelopmentRepublishResult {
+        await prepareSplitStores()
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        return await StoreSplitDevelopmentRepublishService.republish(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+    }
+
+    func resetSplitStoreDevelopmentData() async throws -> StoreSplitDevelopmentResetResult {
+        guard isMigratingSplitStores == false,
+              migrationTask == nil,
+              aiContentImportTask == nil,
+              userStateImportTask == nil else {
+            throw StoreSplitDevelopmentResetError.workInProgress
+        }
+
+        await prepareSplitStores()
+        guard let userStateContainer = preparedUserStateContainer,
+              let cacheContainer = preparedCacheContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+
+        developmentResetRequiresRelaunch = true
+        do {
+            let result = try await StoreSplitDevelopmentResetService.reset(
+                userStateContainer: userStateContainer,
+                cacheContainer: cacheContainer
+            )
+            let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+            defaults.removeObject(forKey: Self.lastMigrationCompletedAtKey)
+            defaults.removeObject(forKey: Self.lastMigrationHadFailuresKey)
+            lastMigrationCompletedAt = nil
+            lastAIContentImportAt = nil
+            migrationError = nil
+            CrashBreadcrumbs.shared.record(
+                "store_split_development_reset_completed",
+                details: "user_state=\(result.userStateRecordsDeleted),cache=\(result.cacheRecordsDeleted)"
+            )
+            return result
+        } catch {
+            developmentResetRequiresRelaunch = false
+            CrashBreadcrumbs.shared.record(
+                "store_split_development_reset_failed",
+                details: error.localizedDescription
+            )
+            throw error
+        }
+    }
+#endif
 
     private func startMigrationIfPossible() {
         guard migrationTask == nil,
@@ -215,8 +428,33 @@ class ModelContainerManager: ObservableObject {
             )
             isMigratingSplitStores = false
             migrationTask = nil
-            await applySyncedAIContentIfPossible()
         }
+    }
+
+    private func applySyncedUserStateIfPossible() async {
+        guard StoreDevelopmentConfiguration.newStoreReadsEnabled else { return }
+        if let userStateImportTask {
+            await userStateImportTask.value
+            return
+        }
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer else {
+            return
+        }
+
+        let task = Task {
+            let result = await StoreSplitUserStateImporter.apply(
+                legacyContainer: legacyContainer,
+                userStateContainer: userStateContainer
+            )
+            for feed in result.feedsToBootstrap {
+                _ = try? await PodcastModelActor(modelContainer: legacyContainer)
+                    .bootstrapPodcast(feed, maximumEpisodes: 25)
+            }
+        }
+        userStateImportTask = task
+        await task.value
+        userStateImportTask = nil
     }
 
     private func applySyncedAIContentIfPossible() async {
@@ -280,7 +518,9 @@ class ModelContainerManager: ObservableObject {
             configuration = ModelConfiguration(
                 "Legacy",
                 url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
-                cloudKitDatabase: .automatic
+                cloudKitDatabase: StoreDevelopmentConfiguration.launch.legacyCloudSyncEnabled
+                    ? .automatic
+                    : .none
             )
         } else {
             configuration = ModelConfiguration(isStoredInMemoryOnly: true)
@@ -334,7 +574,9 @@ class ModelContainerManager: ObservableObject {
                 "UserState",
                 schema: schema,
                 url: userStateStoreURL,
-                cloudKitDatabase: .automatic
+                cloudKitDatabase: StoreDevelopmentConfiguration.launch.userStateCloudSyncEnabled
+                    ? .automatic
+                    : .none
             )
         } else {
             configuration = ModelConfiguration(
@@ -384,6 +626,22 @@ class ModelContainerManager: ObservableObject {
         return try ModelContainer(for: schema, configurations: configuration)
     }
 }
+
+#if DEBUG
+enum StoreSplitDevelopmentResetError: LocalizedError {
+    case workInProgress
+    case storesUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .workInProgress:
+            "Migration or synchronization work is still running. Try again in a moment."
+        case .storesUnavailable:
+            "The split stores could not be opened."
+        }
+    }
+}
+#endif
 
 private struct SplitStoreContainers: @unchecked Sendable {
     let userState: Result<ModelContainer, Error>?
