@@ -500,6 +500,7 @@ actor PodcastModelActor {
         force: Bool? = false,
         silent: Bool? = false,
         resolveExistingMissingDurations: Bool = true,
+        processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
@@ -642,6 +643,7 @@ actor PodcastModelActor {
                 fullPodcast: fullPodcast,
                 silent: silent,
                 resolveExistingMissingDurations: resolveExistingMissingDurations,
+                processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
                 deadline: deadline,
                 progress: progress
             )
@@ -706,6 +708,7 @@ actor PodcastModelActor {
         fullPodcast: [String : Any],
         silent: Bool? = false,
         resolveExistingMissingDurations: Bool = true,
+        processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws {
@@ -806,7 +809,7 @@ actor PodcastModelActor {
             let podcastTitle = podcast.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let progressPodcastTitle = podcastTitle.isEmpty ? "podcast" : podcastTitle
             var unsavedSilentEpisodeChanges = 0
-            let shouldProcessNewEpisodes = silent != true
+            let shouldProcessNewEpisodes = (silent != true || processNewEpisodesDuringSilentRefresh)
                 && podcast.metaData?.lastRefresh != nil
                 && (podcast.episodes?.isEmpty == false)
             let existingEpisodes = podcast.episodes ?? []

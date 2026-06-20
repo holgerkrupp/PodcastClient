@@ -505,12 +505,51 @@ actor SubscriptionManager:NSObject{
         case timedOut
     }
 
-    private enum BackgroundFeedRefreshPolicy {
-        static let maxPodcastsPerRun = 12
-        static let maxConcurrentPodcastUpdates = 1
-        static let maxRuntime: TimeInterval = 28
-        static let perPodcastRuntimeLimit: TimeInterval = 5
-        static let minimumRuntimeRemainingBeforeStartingFeed: TimeInterval = 2
+    enum FeedRefreshReason {
+        case foregroundQuiet
+        case appRefresh
+        case processing
+    }
+
+    private struct BackgroundFeedRefreshPolicy: Sendable {
+        let maxPodcastsPerRun: Int
+        let maxConcurrentPodcastUpdates: Int
+        let maxRuntime: TimeInterval
+        let perPodcastRuntimeLimit: TimeInterval
+        let minimumRuntimeRemainingBeforeStartingFeed: TimeInterval
+        let notifyNewEpisodes: Bool
+
+        static func forReason(_ reason: FeedRefreshReason) -> BackgroundFeedRefreshPolicy {
+            switch reason {
+            case .foregroundQuiet:
+                return .init(
+                    maxPodcastsPerRun: 3,
+                    maxConcurrentPodcastUpdates: 1,
+                    maxRuntime: 24,
+                    perPodcastRuntimeLimit: 7,
+                    minimumRuntimeRemainingBeforeStartingFeed: 2,
+                    notifyNewEpisodes: true
+                )
+            case .appRefresh:
+                return .init(
+                    maxPodcastsPerRun: 4,
+                    maxConcurrentPodcastUpdates: 1,
+                    maxRuntime: 25,
+                    perPodcastRuntimeLimit: 7,
+                    minimumRuntimeRemainingBeforeStartingFeed: 2,
+                    notifyNewEpisodes: true
+                )
+            case .processing:
+                return .init(
+                    maxPodcastsPerRun: 12,
+                    maxConcurrentPodcastUpdates: 1,
+                    maxRuntime: 120,
+                    perPodcastRuntimeLimit: 12,
+                    minimumRuntimeRemainingBeforeStartingFeed: 4,
+                    notifyNewEpisodes: true
+                )
+            }
+        }
     }
 
     private struct BackgroundFeedRefreshCandidate: Sendable {
@@ -525,15 +564,17 @@ actor SubscriptionManager:NSObject{
     }
 
     private func backgroundRefreshCandidates() -> [Podcast] {
-        podcasts.sorted { lhs, rhs in
-            let lhsCheckDate = lhs.metaData?.feedUpdateCheckDate ?? .distantPast
-            let rhsCheckDate = rhs.metaData?.feedUpdateCheckDate ?? .distantPast
-            if lhsCheckDate != rhsCheckDate {
-                return lhsCheckDate < rhsCheckDate
-            }
+        podcasts
+            .filter { $0.metaData?.isSubscribed != false }
+            .sorted { lhs, rhs in
+                let lhsCheckDate = lhs.metaData?.feedUpdateCheckDate ?? .distantPast
+                let rhsCheckDate = rhs.metaData?.feedUpdateCheckDate ?? .distantPast
+                if lhsCheckDate != rhsCheckDate {
+                    return lhsCheckDate < rhsCheckDate
+                }
 
-            return (lhs.metaData?.lastRefresh ?? .distantPast) < (rhs.metaData?.lastRefresh ?? .distantPast)
-        }
+                return (lhs.metaData?.lastRefresh ?? .distantPast) < (rhs.metaData?.lastRefresh ?? .distantPast)
+            }
     }
 
     private func markBackgroundFeedCheckAttempt(for podcast: Podcast) {
@@ -542,21 +583,24 @@ actor SubscriptionManager:NSObject{
         modelContext.saveIfNeeded()
     }
 
-    private func makeBackgroundFeedRefreshCandidates(startedAt: Date) -> [BackgroundFeedRefreshCandidate] {
+    private func makeBackgroundFeedRefreshCandidates(
+        startedAt: Date,
+        policy: BackgroundFeedRefreshPolicy
+    ) -> [BackgroundFeedRefreshCandidate] {
         var candidates: [BackgroundFeedRefreshCandidate] = []
 
         for podcast in backgroundRefreshCandidates() {
-            if candidates.count >= BackgroundFeedRefreshPolicy.maxPodcastsPerRun {
+            if candidates.count >= policy.maxPodcastsPerRun {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
                 break
             }
 
             let elapsed = Date().timeIntervalSince(startedAt)
-            if elapsed >= BackgroundFeedRefreshPolicy.maxRuntime {
+            if elapsed >= policy.maxRuntime {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_runtime")
                 break
             }
-            if BackgroundFeedRefreshPolicy.maxRuntime - elapsed < BackgroundFeedRefreshPolicy.minimumRuntimeRemainingBeforeStartingFeed {
+            if policy.maxRuntime - elapsed < policy.minimumRuntimeRemainingBeforeStartingFeed {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=runtime_remaining")
                 break
             }
@@ -573,13 +617,19 @@ actor SubscriptionManager:NSObject{
 
     private func updatePodcastWithTimeBudget(
         _ feed: URL,
-        timeBudget: TimeInterval
+        timeBudget: TimeInterval,
+        notifyNewEpisodes: Bool
     ) async -> TimedPodcastUpdateResult {
         let worker = PodcastModelActor(modelContainer: modelContainer)
         let deadline = Date().addingTimeInterval(timeBudget)
 
         do {
-            let updated = try await worker.updatePodcast(feed, silent: true, deadline: deadline)
+            let updated = try await worker.updatePodcast(
+                feed,
+                silent: true,
+                processNewEpisodesDuringSilentRefresh: notifyNewEpisodes,
+                deadline: deadline
+            )
             return Date() >= deadline ? .timedOut : .completed(updated)
         } catch is CancellationError {
             return .timedOut
@@ -589,7 +639,7 @@ actor SubscriptionManager:NSObject{
     }
 
     
-    func bgupdateFeeds() async{
+    func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
             return
@@ -597,22 +647,26 @@ actor SubscriptionManager:NSObject{
 
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
-      
+
        //  await BasicLogger.shared.log("bgupdateFeeds")
         
         let startedAt = Date()
+        let policy = BackgroundFeedRefreshPolicy.forReason(reason)
         setLastRefreshDate()
         fetchData()
         var updated = 0
         var processed = 0
         var timedOut = 0
 
-        CrashBreadcrumbs.shared.record("bgupdate_feeds_started", details: "podcasts=\(podcasts.count)")
+        CrashBreadcrumbs.shared.record(
+            "bgupdate_feeds_started",
+            details: "reason=\(reason),podcasts=\(podcasts.count),limit=\(policy.maxPodcastsPerRun)"
+        )
 
-        let candidates = makeBackgroundFeedRefreshCandidates(startedAt: startedAt)
+        let candidates = makeBackgroundFeedRefreshCandidates(startedAt: startedAt, policy: policy)
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_candidates_prepared",
-            details: "candidates=\(candidates.count),concurrency=\(BackgroundFeedRefreshPolicy.maxConcurrentPodcastUpdates)"
+            details: "candidates=\(candidates.count),concurrency=\(policy.maxConcurrentPodcastUpdates)"
         )
 
         var candidateIndex = 0
@@ -623,17 +677,17 @@ actor SubscriptionManager:NSObject{
             }
 
             let elapsed = Date().timeIntervalSince(startedAt)
-            if elapsed >= BackgroundFeedRefreshPolicy.maxRuntime {
+            if elapsed >= policy.maxRuntime {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_runtime")
                 break
             }
-            if BackgroundFeedRefreshPolicy.maxRuntime - elapsed < BackgroundFeedRefreshPolicy.minimumRuntimeRemainingBeforeStartingFeed {
+            if policy.maxRuntime - elapsed < policy.minimumRuntimeRemainingBeforeStartingFeed {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=runtime_remaining")
                 break
             }
 
             let batchEndIndex = min(
-                candidateIndex + BackgroundFeedRefreshPolicy.maxConcurrentPodcastUpdates,
+                candidateIndex + policy.maxConcurrentPodcastUpdates,
                 candidates.count
             )
             let batch = candidates[candidateIndex..<batchEndIndex]
@@ -644,7 +698,8 @@ actor SubscriptionManager:NSObject{
                     group.addTask {
                         let result = await self.updatePodcastWithTimeBudget(
                             candidate.feed,
-                            timeBudget: BackgroundFeedRefreshPolicy.perPodcastRuntimeLimit
+                            timeBudget: policy.perPodcastRuntimeLimit,
+                            notifyNewEpisodes: policy.notifyNewEpisodes
                         )
                         return BackgroundFeedRefreshResult(
                             feed: candidate.feed,

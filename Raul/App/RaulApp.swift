@@ -8,9 +8,11 @@ import CloudKitSyncMonitor
 
 enum BackgroundTaskConfiguration {
     static let feedRefreshIdentifier = "checkFeedUpdates"
+    static let feedProcessingIdentifier = "processFeedUpdates"
     static let storageCleanupIdentifier = "storageCleanup"
     static let automaticTranscriptionIdentifier = "automaticTranscriptionProcessing"
-    static let feedRefreshInterval: TimeInterval = 60 * 30
+    static let feedRefreshInterval: TimeInterval = 60 * 60
+    static let feedProcessingInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
     static let automaticTranscriptionInterval: TimeInterval = 60 * 15
@@ -153,6 +155,7 @@ struct RaulApp: App {
                 deferredForegroundFeedRefreshTask?.cancel()
                 deferredForegroundFeedRefreshTask = nil
                 scheduleFeedRefresh()
+                scheduleFeedProcessing()
                 scheduleStorageCleanup()
                 guard modelContainerManager.preparedContainer != nil else {
                     CrashBreadcrumbs.shared.record(
@@ -213,7 +216,7 @@ struct RaulApp: App {
                 return
             }
 
-            await SubscriptionManager(modelContainer: container).bgupdateFeeds()
+            await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .appRefresh)
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_completed")
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
@@ -377,10 +380,22 @@ struct RaulApp: App {
         }
         deferredForegroundFeedRefreshTask?.cancel()
         deferredForegroundFeedRefreshTask = nil
-        CrashBreadcrumbs.shared.record(
-            "foreground_feed_refresh_skipped",
-            details: "reason=stability_rollout"
-        )
+        if let lastRefresh = getLastRefreshDate(),
+           lastRefresh >= Date().addingTimeInterval(-BackgroundTaskConfiguration.feedRefreshInterval) {
+            CrashBreadcrumbs.shared.record(
+                "foreground_feed_refresh_skipped",
+                details: "reason=recent_refresh"
+            )
+            return
+        }
+
+        CrashBreadcrumbs.shared.record("foreground_feed_refresh_scheduled")
+        deferredForegroundFeedRefreshTask = Task(priority: .utility) {
+            await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .foregroundQuiet)
+            await MainActor.run {
+                deferredForegroundFeedRefreshTask = nil
+            }
+        }
     }
 
     func scheduleStoreSplitMigration() {
@@ -484,6 +499,25 @@ struct RaulApp: App {
         }catch{
             // print(error)
             CrashBreadcrumbs.shared.record("schedule_feed_refresh_failed", details: error.localizedDescription)
+            BasicLogger.shared.log(error.localizedDescription)
+        }
+#endif
+    }
+
+    func scheduleFeedProcessing() {
+#if os(iOS)
+        CrashBreadcrumbs.shared.record("schedule_feed_processing_requested")
+        BasicLogger.shared.log("schedule processFeedUpdates")
+        let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
+        request.requiresNetworkConnectivity = true
+        request.requiresExternalPower = false
+        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedProcessingInterval)
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("schedule_feed_processing_submitted")
+        } catch {
+            CrashBreadcrumbs.shared.record("schedule_feed_processing_failed", details: error.localizedDescription)
             BasicLogger.shared.log(error.localizedDescription)
         }
 #endif
