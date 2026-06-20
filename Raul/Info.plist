@@ -6,6 +6,7 @@
 	<array>
 		<string>feedRefresh</string>
 		<string>checkFeedUpdates</string>
+		<string>processFeedUpdates</string>
 		<string>storageCleanup</string>
 		<string>automaticTranscriptionProcessing</string>
 	</array>

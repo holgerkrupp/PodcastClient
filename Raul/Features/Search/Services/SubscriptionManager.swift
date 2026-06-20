@@ -505,15 +505,27 @@ actor SubscriptionManager:NSObject{
         case timedOut
     }
 
+    enum FeedRefreshReason {
+        case foregroundQuiet
+        case appRefresh
+        case processing
+    }
+
     private func updatePodcastWithTimeBudget(
         _ feed: URL,
-        timeBudget: TimeInterval
+        timeBudget: TimeInterval,
+        notifyNewEpisodes: Bool
     ) async -> TimedPodcastUpdateResult {
         let worker = PodcastModelActor(modelContainer: modelContainer)
         let deadline = Date().addingTimeInterval(timeBudget)
 
         do {
-            let updated = try await worker.updatePodcast(feed, silent: true, deadline: deadline)
+            let updated = try await worker.updatePodcast(
+                feed,
+                silent: true,
+                processNewEpisodesDuringSilentRefresh: notifyNewEpisodes,
+                deadline: deadline
+            )
             return Date() >= deadline ? .timedOut : .completed(updated)
         } catch is CancellationError {
             return .timedOut
@@ -523,7 +535,7 @@ actor SubscriptionManager:NSObject{
     }
 
     
-    func bgupdateFeeds() async{
+    func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
             return
@@ -535,9 +547,25 @@ actor SubscriptionManager:NSObject{
        //  await BasicLogger.shared.log("bgupdateFeeds")
         
         let startedAt = Date()
-        let maxPodcastsPerRun = 2
-        let maxRuntime: TimeInterval = 18
-        let perPodcastRuntimeLimit: TimeInterval = 6
+        let maxPodcastsPerRun: Int
+        let maxRuntime: TimeInterval
+        let perPodcastRuntimeLimit: TimeInterval
+        let notifyNewEpisodes = true
+
+        switch reason {
+        case .foregroundQuiet:
+            maxPodcastsPerRun = 3
+            maxRuntime = 24
+            perPodcastRuntimeLimit = 7
+        case .appRefresh:
+            maxPodcastsPerRun = 4
+            maxRuntime = 25
+            perPodcastRuntimeLimit = 7
+        case .processing:
+            maxPodcastsPerRun = 12
+            maxRuntime = 120
+            perPodcastRuntimeLimit = 12
+        }
 
         setLastRefreshDate()
         fetchData()
@@ -545,11 +573,21 @@ actor SubscriptionManager:NSObject{
         var processed = 0
         var reachedPerPodcastTimeout = false
 
-        CrashBreadcrumbs.shared.record("bgupdate_feeds_started", details: "podcasts=\(podcasts.count)")
+        CrashBreadcrumbs.shared.record(
+            "bgupdate_feeds_started",
+            details: "reason=\(reason),podcasts=\(podcasts.count),limit=\(maxPodcastsPerRun)"
+        )
 
-        for podcast in podcasts.sorted(by: { lhs, rhs in
-            lhs.metaData?.feedUpdateCheckDate ?? Date() < rhs.metaData?.feedUpdateCheckDate ?? Date()
-        }) {
+        let sortedPodcasts = podcasts
+            .filter { $0.metaData?.isSubscribed != false }
+            .sorted { lhs, rhs in
+                let lhsCheck = lhs.metaData?.feedUpdateCheckDate ?? .distantPast
+                let rhsCheck = rhs.metaData?.feedUpdateCheckDate ?? .distantPast
+                if lhsCheck != rhsCheck { return lhsCheck < rhsCheck }
+                return (lhs.metaData?.lastRefresh ?? .distantPast) < (rhs.metaData?.lastRefresh ?? .distantPast)
+            }
+
+        for podcast in sortedPodcasts {
             if processed >= maxPodcastsPerRun {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
                 break
@@ -561,7 +599,11 @@ actor SubscriptionManager:NSObject{
             guard let feed = podcast.feed else { continue }
 
             processed += 1
-            let result = await updatePodcastWithTimeBudget(feed, timeBudget: perPodcastRuntimeLimit)
+            let result = await updatePodcastWithTimeBudget(
+                feed,
+                timeBudget: perPodcastRuntimeLimit,
+                notifyNewEpisodes: notifyNewEpisodes
+            )
             podcast.message = nil
 
             switch result {
