@@ -40,6 +40,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier,
+            using: DispatchQueue.main
+        ) { task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handleFeedProcessing(task: processingTask)
+        }
+
+        BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier,
             using: DispatchQueue.main
         ) { task in
@@ -110,6 +121,46 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 details: error.localizedDescription
             )
             BasicLogger.shared.log(error.localizedDescription)
+        }
+    }
+
+    private static func scheduleFeedProcessing() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
+        let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
+        request.requiresNetworkConnectivity = true
+        request.requiresExternalPower = false
+        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedProcessingInterval)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_scheduled")
+        } catch {
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_schedule_failed", details: error.localizedDescription)
+            BasicLogger.shared.log(error.localizedDescription)
+        }
+    }
+
+    private func handleFeedProcessing(task: BGProcessingTask) {
+        CrashBreadcrumbs.shared.record("feed_processing_background_task_started")
+        let processingTask = Task(priority: .utility) {
+            await ModelContainerManager.shared.prepareContainer()
+            guard let container = ModelContainerManager.shared.preparedContainer else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            Self.scheduleFeedProcessing()
+            await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .processing)
+            guard Task.isCancelled == false else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_completed")
+            task.setTaskCompleted(success: true)
+        }
+
+        task.expirationHandler = {
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_expired")
+            processingTask.cancel()
         }
     }
 
