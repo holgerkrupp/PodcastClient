@@ -2333,6 +2333,9 @@
         }
       }
     },
+    "Export speed" : {
+
+    },
     "Exporting…" : {
       "localizations" : {
         "de" : {
@@ -5406,6 +5409,9 @@
           }
         }
       }
+    },
+    "Playback Rate" : {
+
     },
     "Playback scrubbing is disabled" : {
       "localizations" : {

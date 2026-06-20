@@ -86,6 +86,7 @@ struct FastExportClipIntent: AppIntent {
                 coverImage: coverImage,
                 startTime: trimStart,
                 endTime: trimEnd,
+                playbackRate: Player.shared.playbackRate,
                 fps: 30,
                 videoSize: CGSize(width: 720, height: 720)
             ) { _ in

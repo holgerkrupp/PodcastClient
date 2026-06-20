@@ -42,6 +42,7 @@ struct AppLaunchContainerView<Content: View>: View {
 
     @State private var isLaunchVisible = true
     @State private var didContinueWithoutSync = false
+    @State private var didCompleteInitialCloudImport = false
 
     init(
         requiresInitialCloudImport: Bool,
@@ -56,6 +57,7 @@ struct AppLaunchContainerView<Content: View>: View {
     private var isWaitingForInitialCloudImport: Bool {
         requiresInitialCloudImport
             && !didContinueWithoutSync
+            && !didCompleteInitialCloudImport
             && !syncMonitor.importState.didSucceed
     }
 
@@ -83,6 +85,16 @@ struct AppLaunchContainerView<Content: View>: View {
                     .transition(.opacity)
                     .zIndex(1)
                     .allowsHitTesting(false)
+            }
+        }
+        .onAppear {
+            if syncMonitor.importState.didSucceed {
+                didCompleteInitialCloudImport = true
+            }
+        }
+        .onChange(of: syncMonitor.importState) { _, state in
+            if state.didSucceed {
+                didCompleteInitialCloudImport = true
             }
         }
     }
