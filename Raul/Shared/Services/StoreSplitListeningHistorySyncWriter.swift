@@ -22,12 +22,26 @@ struct StoreSplitListeningHistorySnapshot: Sendable {
 @ModelActor
 actor StoreSplitListeningHistorySyncWriter {
     func upsert(_ snapshot: StoreSplitListeningHistorySnapshot) {
+        upsertWithoutSaving(snapshot)
+        modelContext.saveIfNeeded()
+    }
+
+    func upsert(_ snapshots: [StoreSplitListeningHistorySnapshot]) {
+        for snapshot in snapshots {
+            upsertWithoutSaving(snapshot)
+        }
+        modelContext.saveIfNeeded()
+    }
+
+    private func upsertWithoutSaving(
+        _ snapshot: StoreSplitListeningHistorySnapshot
+    ) {
         let historyID = snapshot.id
         let descriptor = FetchDescriptor<ListeningHistorySync>(
             predicate: #Predicate<ListeningHistorySync> { $0.id == historyID }
         )
         if let record = try? modelContext.fetch(descriptor).first {
-            guard snapshot.endedAt >= record.updatedAt else { return }
+            guard snapshot.endedAt > record.updatedAt else { return }
             apply(snapshot, to: record)
         } else {
             modelContext.insert(
@@ -52,7 +66,6 @@ actor StoreSplitListeningHistorySyncWriter {
                 )
             )
         }
-        modelContext.saveIfNeeded()
     }
 
     private func apply(

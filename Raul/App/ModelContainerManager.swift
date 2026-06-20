@@ -16,6 +16,10 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var isPreparingSplitStores = false
     @Published private(set) var isMigratingSplitStores = false
     @Published private(set) var requiresInitialCloudImport = false
+    @Published private(set) var currentSplitStoreJobDescription: String?
+    @Published private(set) var pendingSplitStoreWorkReason: String?
+    @Published private(set) var lastSplitStoreReconcileSummary: String?
+    @Published private(set) var lastSplitStoreReconcileAt: Date?
 #if DEBUG
     @Published private(set) var developmentResetRequiresRelaunch = false
 #endif
@@ -23,12 +27,16 @@ class ModelContainerManager: ObservableObject {
     private var splitStorePreparationTask: Task<SplitStoreContainers, Never>?
     private var migrationTask: Task<Void, Never>?
     private var aiContentImportTask: Task<Void, Never>?
-    private var userStateImportTask: Task<Void, Never>?
+    private var userStateImportTask: Task<StoreSplitUserStateImportResult, Never>?
+    private var missingFeedRefreshAttempts: [String: Date] = [:]
     private var lastMigrationCompletedAt: Date?
     private var lastAIContentImportAt: Date?
+    private var lastUserStateImportAt: Date?
     private let successfulMigrationRerunInterval: TimeInterval = 60 * 60 * 24
     private let failedMigrationRerunInterval: TimeInterval = 60 * 60
     private let minimumAIContentImportInterval: TimeInterval = 60 * 15
+    private let minimumForegroundUserStateImportInterval: TimeInterval = 60 * 10
+    private let splitStoreCoordinator = StoreSplitWorkCoordinator.shared
     nonisolated private static let lastMigrationCompletedAtKey =
         "storeSplitMigration.lastCompletedAt.v3"
     nonisolated private static let lastMigrationHadFailuresKey =
@@ -75,7 +83,7 @@ class ModelContainerManager: ObservableObject {
         CrashBreadcrumbs.shared.record("store_split_local_reset_scheduled")
     }
 
-    #if os(macOS)
+    #if os(macOS) || targetEnvironment(macCatalyst)
     func scheduleAllLocalStoreReset() {
         let defaults = UserDefaults.standard
         defaults.set(
@@ -171,9 +179,11 @@ class ModelContainerManager: ObservableObject {
         } else {
             isInitializing = true
             initializationError = nil
-            requiresInitialCloudImport = Self.sharedStoreURL.map {
-                !FileManager.default.fileExists(atPath: $0.path)
-            } ?? false
+            requiresInitialCloudImport =
+                StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                && (Self.sharedStoreURL.map {
+                    !FileManager.default.fileExists(atPath: $0.path)
+                } ?? false)
             CrashBreadcrumbs.shared.record("model_container_initialization_started")
 
             let newTask = Task.detached(priority: .userInitiated) {
@@ -274,18 +284,28 @@ class ModelContainerManager: ObservableObject {
 #if DEBUG
         guard developmentResetRequiresRelaunch == false else { return }
 #endif
-        await prepareSplitStores()
-        if StoreDevelopmentConfiguration.newStoreReadsEnabled {
-            await applySyncedUserStateIfPossible()
-            await applySyncedAIContentIfPossible()
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            migrationError = nil
+            currentSplitStoreJobDescription = nil
+            pendingSplitStoreWorkReason = "paused for stability"
             return
         }
-        startMigrationIfPossible()
-        if let migrationTask {
-            await migrationTask.value
+        await splitStoreCoordinator.scheduleForegroundMigration()
+    }
+
+    func runLaunchStoreMaintenance() async {
+#if DEBUG
+        guard developmentResetRequiresRelaunch == false else { return }
+#endif
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            lastSplitStoreReconcileSummary = "Paused for stability"
+            pendingSplitStoreWorkReason = "paused for stability"
+            currentSplitStoreJobDescription = nil
+            return
         }
-        await applySyncedUserStateIfPossible()
-        await applySyncedAIContentIfPossible()
+        await prepareSplitStores()
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
+        await splitStoreCoordinator.scheduleLaunchWork()
     }
 
     func storeSplitMigrationStatus() -> StoreSplitMigrationStatus? {
@@ -302,36 +322,75 @@ class ModelContainerManager: ObservableObject {
 
 #if DEBUG
     func importAvailableSplitStoreStateNow() async throws {
+        await splitStoreCoordinator.runManualReconcile(authoritativePlaylists: true)
+    }
+#endif
+
+    func reconcileAvailableSplitStoreState(
+        authoritativePlaylists: Bool = false,
+        force: Bool = false,
+        reason: String = "manual"
+    ) async {
+        _ = await performSplitStoreReconcile(
+            authoritativePlaylists: authoritativePlaylists,
+            force: force,
+            refreshMissingFeeds: true,
+            reason: reason
+        )
+    }
+
+    enum SplitStoreReconcileOutcome: Equatable {
+        case completed
+        case deferredForPlayback
+        case skipped
+    }
+
+    func performSplitStoreReconcile(
+        authoritativePlaylists: Bool = false,
+        force: Bool = false,
+        refreshMissingFeeds: Bool = false,
+        reason: String = "manual"
+    ) async -> SplitStoreReconcileOutcome {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            lastSplitStoreReconcileSummary = "Paused for stability"
+            pendingSplitStoreWorkReason = "paused for stability"
+            currentSplitStoreJobDescription = nil
+            return .skipped
+        }
         await prepareSplitStores()
         guard let legacyContainer = preparedContainer,
               let userStateContainer = preparedUserStateContainer,
               let cacheContainer = preparedCacheContainer else {
-            throw StoreSplitDevelopmentResetError.storesUnavailable
+            return .skipped
         }
-        let result = await StoreSplitUserStateImporter.apply(
-            legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
-            authoritativePlaylists: true
+        guard shouldRunUserStateImport(
+            force: force || authoritativePlaylists,
+            reason: reason
+        ) else {
+            if Player.shared.isPlaying {
+                lastSplitStoreReconcileSummary = "Deferred while playback was active"
+                return .deferredForPlayback
+            }
+            lastSplitStoreReconcileSummary = "Skipped reconcile: \(reason)"
+            return .skipped
+        }
+        let result = await applySyncedUserStateIfPossible(
+            authoritativePlaylists: authoritativePlaylists,
+            refreshMissingFeeds: refreshMissingFeeds
         )
-        for feed in result.feedsToBootstrap {
-            _ = try? await PodcastModelActor(modelContainer: legacyContainer)
-                .updatePodcast(feed, force: true, silent: true)
-        }
-        if result.feedsToBootstrap.isEmpty == false {
-            _ = await StoreSplitUserStateImporter.apply(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
-                authoritativePlaylists: true
-            )
-        }
-        _ = await StoreSplitAIContentImporter.apply(
-            legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
-            cacheContainer: cacheContainer
-        )
+        lastSplitStoreReconcileAt = .now
+        lastSplitStoreReconcileSummary =
+            "Reconciled subscriptions \(result.subscriptionsApplied), states \(result.episodeStatesApplied), playlists \(result.playlistsApplied), bookmarks \(result.bookmarksApplied), history \(result.listeningHistoryApplied)"
+        _ = legacyContainer
+        _ = userStateContainer
+        _ = cacheContainer
+        return result.interruptedByPlayback ? .deferredForPlayback : .completed
     }
 
-    func republishLegacyStateToCloudKit() async throws
+#if DEBUG
+    func republishLegacyStateToCloudKit(
+        scope: StoreSplitDevelopmentRepublishScope
+    ) async throws
         -> StoreSplitDevelopmentRepublishResult {
         await prepareSplitStores()
         guard let legacyContainer = preparedContainer,
@@ -340,8 +399,20 @@ class ModelContainerManager: ObservableObject {
         }
         return await StoreSplitDevelopmentRepublishService.republish(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
+            userStateContainer: userStateContainer,
+            scope: scope
         )
+    }
+
+    func splitStoreDevelopmentCounts() async throws
+        -> StoreSplitDevelopmentStoreCounts {
+        await prepareSplitStores()
+        guard let userStateContainer = preparedUserStateContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        return await Task.detached(priority: .utility) {
+            StoreSplitDevelopmentStoreCounts.read(from: userStateContainer)
+        }.value
     }
 
     func resetSplitStoreDevelopmentData() async throws -> StoreSplitDevelopmentResetResult {
@@ -431,33 +502,146 @@ class ModelContainerManager: ObservableObject {
         }
     }
 
-    private func applySyncedUserStateIfPossible() async {
-        guard StoreDevelopmentConfiguration.newStoreReadsEnabled else { return }
-        if let userStateImportTask {
-            await userStateImportTask.value
+    func performSplitStoreMigrationIfNeeded() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            pendingSplitStoreWorkReason = "paused for stability"
+            currentSplitStoreJobDescription = nil
             return
+        }
+        await prepareSplitStores()
+        guard StoreDevelopmentConfiguration.legacyMigrationEnabled else {
+            return
+        }
+        startMigrationIfPossible()
+        if let migrationTask {
+            await migrationTask.value
+        }
+    }
+
+    private func applySyncedUserStateIfPossible(
+        authoritativePlaylists: Bool = false,
+        refreshMissingFeeds: Bool = false
+    ) async -> StoreSplitUserStateImportResult {
+        let emptyResult = StoreSplitUserStateImportResult()
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            return emptyResult
+        }
+        guard StoreDevelopmentConfiguration.newStoreReadsEnabled else { return emptyResult }
+        if let userStateImportTask {
+            _ = await userStateImportTask.value
         }
         guard let legacyContainer = preparedContainer,
               let userStateContainer = preparedUserStateContainer else {
-            return
+            return emptyResult
         }
 
+        lastUserStateImportAt = .now
+        CrashBreadcrumbs.shared.record(
+            "store_split_user_state_import_started",
+            details: "authoritative_playlists=\(authoritativePlaylists),refresh_missing_feeds=\(refreshMissingFeeds)"
+        )
         let task = Task {
             let result = await StoreSplitUserStateImporter.apply(
                 legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer
+                userStateContainer: userStateContainer,
+                authoritativePlaylists: authoritativePlaylists,
+                projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
+                    .projectsListeningHistoryToLegacy,
+                episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
+                    .episodeStateProjectionRecencyCutoff
             )
-            for feed in result.feedsToBootstrap {
-                _ = try? await PodcastModelActor(modelContainer: legacyContainer)
-                    .bootstrapPodcast(feed, maximumEpisodes: 25)
+            guard refreshMissingFeeds, result.feedsToBootstrap.isEmpty == false else {
+                return result
             }
+
+            let retryInterval: TimeInterval = 60 * 15
+            let now = Date()
+            let feedsToRefresh = result.feedsToBootstrap.filter { feed in
+                let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
+                guard let lastAttempt = self.missingFeedRefreshAttempts[key] else {
+                    self.missingFeedRefreshAttempts[key] = now
+                    return true
+                }
+                guard now.timeIntervalSince(lastAttempt) >= retryInterval else {
+                    return false
+                }
+                self.missingFeedRefreshAttempts[key] = now
+                return true
+            }
+            for feed in feedsToRefresh {
+                let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
+                do {
+                    let refreshed = try await PodcastModelActor(
+                        modelContainer: legacyContainer
+                    ).updatePodcast(feed, force: true, silent: true)
+                    if refreshed == false {
+                        self.missingFeedRefreshAttempts.removeValue(forKey: key)
+                    }
+                } catch {
+                    self.missingFeedRefreshAttempts.removeValue(forKey: key)
+                }
+            }
+            if feedsToRefresh.isEmpty == false {
+                return await StoreSplitUserStateImporter.apply(
+                    legacyContainer: legacyContainer,
+                    userStateContainer: userStateContainer,
+                    authoritativePlaylists: authoritativePlaylists,
+                    projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
+                        .projectsListeningHistoryToLegacy,
+                    episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
+                        .episodeStateProjectionRecencyCutoff
+                )
+            }
+            return result
         }
         userStateImportTask = task
-        await task.value
+        let result = await task.value
         userStateImportTask = nil
+        return result
+    }
+
+    private func shouldRunUserStateImport(
+        force: Bool,
+        reason: String
+    ) -> Bool {
+        if force {
+            return true
+        }
+
+        if Player.shared.isPlaying {
+            CrashBreadcrumbs.shared.record(
+                "store_split_user_state_import_skipped",
+                details: "\(reason):player_session_active"
+            )
+            return false
+        }
+
+        if let lastUserStateImportAt,
+           Date().timeIntervalSince(lastUserStateImportAt)
+            < minimumForegroundUserStateImportInterval {
+            CrashBreadcrumbs.shared.record(
+                "store_split_user_state_import_skipped",
+                details: "\(reason):recently_ran"
+            )
+            return false
+        }
+
+        return true
+    }
+
+    func performSplitStoreAIImportIfPossible() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            pendingSplitStoreWorkReason = "paused for stability"
+            currentSplitStoreJobDescription = nil
+            return
+        }
+        await applySyncedAIContentIfPossible()
     }
 
     private func applySyncedAIContentIfPossible() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            return
+        }
         if let aiContentImportTask {
             await aiContentImportTask.value
             return
@@ -483,6 +667,14 @@ class ModelContainerManager: ObservableObject {
         await task.value
         lastAIContentImportAt = .now
         aiContentImportTask = nil
+    }
+
+    func updateSplitStoreCoordinatorState(
+        currentJob: String?,
+        pendingReason: String?
+    ) {
+        currentSplitStoreJobDescription = currentJob
+        pendingSplitStoreWorkReason = pendingReason
     }
 
     private func apply(
@@ -518,7 +710,7 @@ class ModelContainerManager: ObservableObject {
             configuration = ModelConfiguration(
                 "Legacy",
                 url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
-                cloudKitDatabase: StoreDevelopmentConfiguration.launch.legacyCloudSyncEnabled
+                cloudKitDatabase: StoreDevelopmentConfiguration.legacyCloudSyncEnabled
                     ? .automatic
                     : .none
             )
@@ -574,7 +766,7 @@ class ModelContainerManager: ObservableObject {
                 "UserState",
                 schema: schema,
                 url: userStateStoreURL,
-                cloudKitDatabase: StoreDevelopmentConfiguration.launch.userStateCloudSyncEnabled
+                cloudKitDatabase: StoreDevelopmentConfiguration.userStateCloudSyncEnabled
                     ? .automatic
                     : .none
             )

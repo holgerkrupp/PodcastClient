@@ -94,7 +94,7 @@ struct SettingsWindowContent: View {
     }
 }
 
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
 struct PodcastSettingsCommands: Commands {
     @Environment(\.openWindow) private var openWindow
     @Binding var settingsRequest: SettingsWindowRequest
@@ -112,7 +112,7 @@ struct PodcastSettingsCommands: Commands {
 #endif
 
 private struct SettingsPresentationHost: ViewModifier {
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
     @Environment(\.openWindow) private var openWindow
 #else
     @Environment(\.openWindow) private var openWindow
@@ -128,7 +128,7 @@ private struct SettingsPresentationHost: ViewModifier {
             .environment(
                 \.openPodcastSettings,
                 OpenPodcastSettingsAction { request in
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
                     settingsRequest = request
                     openWindow(id: SettingsWindowRequest.sceneID)
 #else
@@ -140,7 +140,7 @@ private struct SettingsPresentationHost: ViewModifier {
 #endif
                 }
             )
-#if !os(macOS)
+#if !(os(macOS) || targetEnvironment(macCatalyst))
             .sheet(item: $sheetRequest) { request in
                 SettingsWindowContent(request: request)
                     .modelContainer(modelContainer)

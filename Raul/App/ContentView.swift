@@ -86,7 +86,7 @@ struct ContentView: View {
             }
         }
         .hostsPlayerPresentation(navigation: navigation)
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
         .focusedSceneValue(\.appNavigationModel, navigation)
 #endif
         .task {
@@ -203,11 +203,7 @@ struct ContentView: View {
     }
 
     private var usesSidebarLayout: Bool {
-#if os(macOS)
-        true
-#else
-        horizontalSizeClass == .regular
-#endif
+        PlatformSupport.usesDesktopLayout || horizontalSizeClass == .regular
     }
     
     func setGoingToBackgroundDate() {

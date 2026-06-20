@@ -192,6 +192,8 @@ actor PlaySessionTrackerActor {
     private let playbackRateSavingsRepairKey = "playbackRateSavingsRepairVersion"
     private let playbackRateSavingsRepairVersion = 2
     private var currentSession: PlaySession?
+    private var cachedListeningHistoryWriter: StoreSplitListeningHistorySyncWriter?
+    private var cachedListeningHistoryWriterStoreID: ObjectIdentifier?
 
     private func fetchEpisode(url episodeURL: URL) -> Episode? {
         let descriptor = FetchDescriptor<Episode>(
@@ -328,12 +330,30 @@ actor PlaySessionTrackerActor {
             endedCleanly: session.endedCleanly == true
         )
 
+        guard let writer = await listeningHistoryWriter() else { return }
+        await writer.upsert(snapshot)
+    }
+
+    private func listeningHistoryWriter() async -> StoreSplitListeningHistorySyncWriter? {
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedUserStateContainer
-        }) else { return }
-        await StoreSplitListeningHistorySyncWriter(modelContainer: userStateContainer)
-            .upsert(snapshot)
+        }) else {
+            return nil
+        }
+
+        let storeID = ObjectIdentifier(userStateContainer)
+        if let cachedListeningHistoryWriter,
+           cachedListeningHistoryWriterStoreID == storeID {
+            return cachedListeningHistoryWriter
+        }
+
+        let writer = StoreSplitListeningHistorySyncWriter(
+            modelContainer: userStateContainer
+        )
+        cachedListeningHistoryWriter = writer
+        cachedListeningHistoryWriterStoreID = storeID
+        return writer
     }
 
     private func recordSilenceGapTimeSavedForEpisode(_ session: PlaySession) {
@@ -560,11 +580,25 @@ actor PlaySessionTrackerActor {
         let existing = (try? modelContext.fetch(FetchDescriptor<ListeningStat>())) ?? []
         if !existing.isEmpty { return }
 
-        let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
-        for session in allSessions {
-            recordListeningStats(for: session)
+        var offset = 0
+        while true {
+            var descriptor = FetchDescriptor<PlaySession>(
+                sortBy: [SortDescriptor(\.startTime, order: .forward)]
+            )
+            descriptor.fetchLimit = analyticsBatchSize
+            descriptor.fetchOffset = offset
+
+            let sessions = (try? modelContext.fetch(descriptor)) ?? []
+            guard sessions.isEmpty == false else { break }
+
+            for session in sessions {
+                recordListeningStats(for: session)
+            }
+            modelContext.saveIfNeeded()
+
+            if sessions.count < analyticsBatchSize { break }
+            offset += sessions.count
         }
-        modelContext.saveIfNeeded()
     }
 
     private func backfillSummariesIfNeeded() {
@@ -1165,7 +1199,7 @@ actor PlaySessionTrackerActor {
     private func getDeviceModel() async -> String {
 #if os(iOS)
         return await MainActor.run { UIDevice.current.model }
-#elseif os(macOS)
+#elseif os(macOS) || targetEnvironment(macCatalyst)
         return "Mac"
 #else
         return "Unknown"
@@ -1175,7 +1209,7 @@ actor PlaySessionTrackerActor {
     private func getOSVersion() async -> String {
 #if os(iOS)
         return await MainActor.run { UIDevice.current.systemVersion }
-#elseif os(macOS)
+#elseif os(macOS) || targetEnvironment(macCatalyst)
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
 #else

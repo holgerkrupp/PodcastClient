@@ -3,6 +3,8 @@ import AVFoundation
 import AVKit
 
 struct AudioClipExportView: View {
+    private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var trimStart: Double = 0
@@ -20,6 +22,7 @@ struct AudioClipExportView: View {
     @State private var exportProgress: Double = 0.0
     @State private var videoSize = CGSize(width: 720, height: 720)
     @State private var previewImage: UIImage?
+    @State private var exportPlaybackRate = Player.shared.playbackRate
     var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
@@ -91,6 +94,8 @@ struct AudioClipExportView: View {
                         Text("Select the segment to share")
                             .font(.headline)
                             .padding(.horizontal)
+
+                        playbackRateControl
                         
                         if waveformSamples.isEmpty {
                             ZStack {
@@ -304,7 +309,15 @@ struct AudioClipExportView: View {
             previewImage = nil
             return
         }
-        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: playbackProgress / (trimEnd - trimStart), startTime: trimStart, endTime: trimEnd, title: title) {
+        if let buffer = AudioClipExporter.createPixelBuffer(
+            from: coverImage,
+            size: videoSize,
+            progress: playbackProgress / (trimEnd - trimStart),
+            startTime: trimStart,
+            endTime: trimEnd,
+            playbackRate: exportPlaybackRate,
+            title: title
+        ) {
             previewImage = pixelBufferToUIImage(buffer)
         } else {
             previewImage = nil
@@ -322,7 +335,8 @@ struct AudioClipExportView: View {
                     url = try await AudioClipExporter.exportVideoClipAsync(
                         videoURL: audioURL,
                         startTime: trimStart,
-                        endTime: trimEnd
+                        endTime: trimEnd,
+                        playbackRate: exportPlaybackRate
                     ) { progress in
                         Task {
                             await MainActor.run {
@@ -337,6 +351,7 @@ struct AudioClipExportView: View {
                         coverImage: coverImage ?? UIImage(),
                         startTime: trimStart,
                         endTime: trimEnd,
+                        playbackRate: exportPlaybackRate,
                         fps: 30,
                         videoSize: videoSize
                     ) { progress in
@@ -397,7 +412,7 @@ struct AudioClipExportView: View {
     private func toggleVideoPreview() {
         guard let player = videoPlayer else {
             setupVideoPreviewPlayer()
-            videoPlayer?.play()
+            videoPlayer?.playImmediately(atRate: exportPlaybackRate)
             startProgressTimer()
             return
         }
@@ -406,7 +421,7 @@ struct AudioClipExportView: View {
             stopVideoPreview()
         } else {
             seekVideoPreview(to: trimStart + playbackProgress)
-            player.play()
+            player.playImmediately(atRate: exportPlaybackRate)
             startProgressTimer()
         }
     }
@@ -429,6 +444,8 @@ struct AudioClipExportView: View {
         stopAudioPlayer()
         do {
             let player = try AVAudioPlayer(contentsOf: audioURL)
+            player.enableRate = true
+            player.rate = exportPlaybackRate
             player.currentTime = trimStart
             player.numberOfLoops = 0
             let delegate = AudioPlayerDelegateWrapper(onFinish: stopAudioPlayer)
@@ -495,6 +512,37 @@ struct AudioClipExportView: View {
         progressTimer?.invalidate()
         progressTimer = nil
     }
+
+    private var playbackRateControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Playback Rate", systemImage: "gauge.with.dots.needle.50percent")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(exportPlaybackRate.formattedPlaybackSpeed)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            Stepper(
+                value: $exportPlaybackRate,
+                in: Self.clipPlaybackRateRange,
+                step: 0.1
+            ) {
+                Text("Export speed")
+            }
+            .onChange(of: exportPlaybackRate) { _, _ in
+                if let player = audioPlayer {
+                    player.rate = exportPlaybackRate
+                }
+                if videoPlayer?.rate ?? 0 > 0 {
+                    videoPlayer?.rate = exportPlaybackRate
+                }
+                updatePreviewImage()
+            }
+        }
+        .padding(.horizontal)
+    }
 }
 
 private struct VideoClipPreviewPlayerView: View {
@@ -502,6 +550,12 @@ private struct VideoClipPreviewPlayerView: View {
 
     var body: some View {
         VideoPlayer(player: player)
+    }
+}
+
+private extension Float {
+    var formattedPlaybackSpeed: String {
+        String(format: "%.1fx", self)
     }
 }
 

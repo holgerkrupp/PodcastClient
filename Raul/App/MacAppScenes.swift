@@ -6,7 +6,7 @@ enum AppWindowID {
     static let player = "player"
 }
 
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
 struct MacPlayerWindowContent: View {
     var body: some View {
         NavigationStack {

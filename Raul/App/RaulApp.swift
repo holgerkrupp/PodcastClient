@@ -22,9 +22,12 @@ enum BackgroundTaskConfiguration {
 @main
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
+    @StateObject private var syncMonitor = SyncMonitor.default
     @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
     @State private var settingsRequest = SettingsWindowRequest.global
     @State private var deferredStoreSplitTask: Task<Void, Never>?
+    @State private var deferredForegroundFeedRefreshTask: Task<Void, Never>?
+    @State private var cloudImportReconciliationTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -105,6 +108,9 @@ struct RaulApp: App {
                             }
                         }
                     }
+                    .task {
+                        await modelContainerManager.runLaunchStoreMaintenance()
+                    }
                 
 
 #if canImport(UIKit)
@@ -130,7 +136,7 @@ struct RaulApp: App {
                 }
             }
         }
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
         .commands {
             AppCommands(
                 settingsRequest: $settingsRequest,
@@ -144,6 +150,8 @@ struct RaulApp: App {
             case .background:
                 deferredStoreSplitTask?.cancel()
                 deferredStoreSplitTask = nil
+                deferredForegroundFeedRefreshTask?.cancel()
+                deferredForegroundFeedRefreshTask = nil
                 scheduleFeedRefresh()
                 scheduleStorageCleanup()
                 guard modelContainerManager.preparedContainer != nil else {
@@ -184,6 +192,10 @@ struct RaulApp: App {
             default: break
             }
         })
+        .onChange(of: syncMonitor.importState) { _, state in
+            guard case .succeeded = state else { return }
+            scheduleCloudImportReconciliation()
+        }
 
 #if os(iOS)
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
@@ -265,6 +277,34 @@ struct RaulApp: App {
             settingsSceneContent
         }
         .defaultSize(width: 820, height: 680)
+#elseif targetEnvironment(macCatalyst)
+        WindowGroup("Now Playing", id: AppWindowID.player) {
+            if let container = modelContainerManager.preparedContainer {
+                MacPlayerWindowContent()
+                    .modelContainer(container)
+                    .environment(downloadedFilesManager)
+                    .accentColor(.accent)
+                    .withDeviceStyle()
+            } else {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
+                    }
+                )
+                .task {
+                    await modelContainerManager.prepareContainer()
+                }
+            }
+        }
+        .defaultSize(width: 760, height: 820)
+
+        WindowGroup("Settings", id: SettingsWindowRequest.sceneID) {
+            settingsSceneContent
+        }
+        .defaultSize(width: 820, height: 680)
 #else
         WindowGroup(
             "Settings",
@@ -295,7 +335,7 @@ struct RaulApp: App {
 #endif
     }
 
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
     @ViewBuilder
     private var settingsSceneContent: some View {
         if let container = modelContainerManager.preparedContainer {
@@ -335,16 +375,18 @@ struct RaulApp: App {
             await PlayNextWidgetSync.refresh(using: container)
             await CloudSyncProgressReferenceStore.publish(modelContainer: container)
         }
-        if let lastRefresh = getLastRefreshDate(), lastRefresh < Date().addingTimeInterval(-60*60) {
-            Task .detached {
-                await SubscriptionManager(modelContainer: container).bgupdateFeeds()
-            }
-        }
+        deferredForegroundFeedRefreshTask?.cancel()
+        deferredForegroundFeedRefreshTask = nil
+        CrashBreadcrumbs.shared.record(
+            "foreground_feed_refresh_skipped",
+            details: "reason=stability_rollout"
+        )
     }
 
     func scheduleStoreSplitMigration() {
         deferredStoreSplitTask?.cancel()
-        guard StoreDevelopmentConfiguration.splitStoresEnabled else {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              StoreDevelopmentConfiguration.splitStoresEnabled else {
             deferredStoreSplitTask = nil
             return
         }
@@ -355,9 +397,31 @@ struct RaulApp: App {
                 return
             }
             guard Task.isCancelled == false else { return }
-            await modelContainerManager.runStoreSplitMigration()
+            if StoreDevelopmentConfiguration.newStoreReadsEnabled {
+                await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
+            } else {
+                await modelContainerManager.runStoreSplitMigration()
+            }
             await MainActor.run {
                 deferredStoreSplitTask = nil
+            }
+        }
+    }
+
+    func scheduleCloudImportReconciliation() {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              StoreDevelopmentConfiguration.newStoreReadsEnabled else { return }
+        cloudImportReconciliationTask?.cancel()
+        cloudImportReconciliationTask = Task {
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                return
+            }
+            guard Task.isCancelled == false else { return }
+            await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
+            await MainActor.run {
+                cloudImportReconciliationTask = nil
             }
         }
     }
@@ -443,6 +507,16 @@ struct RaulApp: App {
     }
 
     func runAutomaticTranscriptionSweep(reason: String) async {
+        let isPlaying = await MainActor.run {
+            Player.shared.isPlaying || Player.shared.currentEpisode != nil
+        }
+        guard isPlaying == false else {
+            CrashBreadcrumbs.shared.record(
+                "automatic_transcription_sweep_skipped",
+                details: "\(reason):player_active"
+            )
+            return
+        }
         CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started", details: reason)
         let startedEpisodeURL = await TranscriptionManager.shared.processNextAutomaticTranscriptionFromUpNext()
         if let startedEpisodeURL {

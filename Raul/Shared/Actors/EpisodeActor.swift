@@ -27,6 +27,8 @@ struct EpisodePlaybackStateSnapshot: Sendable {
 actor EpisodeActor {
     private static let legacyBackCatalogSuppressionMigrationKey = "EpisodeMetaData.backCatalogSuppressionMigration.v1"
     private static let legacyBackCatalogSuppressionArchiveWindow: TimeInterval = 24 * 60 * 60
+    private var cachedEpisodeStateWriter: StoreSplitEpisodeStateSyncWriter?
+    private var cachedEpisodeStateWriterStoreID: ObjectIdentifier?
 
     static func scheduleRemoteChapterFetch(episodeURL: URL, modelContainer: ModelContainer) {
         Task.detached(priority: .utility) {
@@ -499,9 +501,27 @@ actor EpisodeActor {
             firstPlayedAt: metadata.firstListenDate,
             lastPlayedAt: metadata.lastPlayed
         )
-        guard let userStateContainer = await preparedUserStateContainer() else { return }
-        await StoreSplitEpisodeStateSyncWriter(modelContainer: userStateContainer)
-            .upsert(snapshot)
+        guard let writer = await episodeStateWriter() else { return }
+        await writer.upsert(snapshot)
+    }
+
+    private func episodeStateWriter() async -> StoreSplitEpisodeStateSyncWriter? {
+        guard let userStateContainer = await preparedUserStateContainer() else {
+            return nil
+        }
+
+        let storeID = ObjectIdentifier(userStateContainer)
+        if let cachedEpisodeStateWriter,
+           cachedEpisodeStateWriterStoreID == storeID {
+            return cachedEpisodeStateWriter
+        }
+
+        let writer = StoreSplitEpisodeStateSyncWriter(
+            modelContainer: userStateContainer
+        )
+        cachedEpisodeStateWriter = writer
+        cachedEpisodeStateWriterStoreID = storeID
+        return writer
     }
 
     func clearSystemSuppression(_ episodeURL: URL?) async {

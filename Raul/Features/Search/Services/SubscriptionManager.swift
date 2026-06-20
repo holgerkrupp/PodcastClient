@@ -507,9 +507,9 @@ actor SubscriptionManager:NSObject{
 
     private enum BackgroundFeedRefreshPolicy {
         static let maxPodcastsPerRun = 12
-        static let maxConcurrentPodcastUpdates = 3
+        static let maxConcurrentPodcastUpdates = 1
         static let maxRuntime: TimeInterval = 28
-        static let perPodcastRuntimeLimit: TimeInterval = 7
+        static let perPodcastRuntimeLimit: TimeInterval = 5
         static let minimumRuntimeRemainingBeforeStartingFeed: TimeInterval = 2
     }
 

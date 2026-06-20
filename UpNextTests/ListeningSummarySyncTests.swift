@@ -196,6 +196,38 @@ final class ListeningSummarySyncTests: XCTestCase {
         XCTAssertEqual(statistics.totalSeconds, 120)
     }
 
+    func testListeningHistoryDeduplicatesEquivalentSessionsWithPositionDrift() {
+        let first = ListeningHistorySync(
+            id: "phone-copy",
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-a",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            startPosition: 10,
+            endPosition: 130,
+            listenedSeconds: 120
+        )
+        let slightlyShifted = ListeningHistorySync(
+            id: "mac-copy",
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "episode-a",
+            sourceDeviceID: "device-b",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            endedAt: Date(timeIntervalSince1970: 1_120),
+            startPosition: 11.2,
+            endPosition: 131.8,
+            listenedSeconds: 120
+        )
+
+        let statistics = ListeningHistoryAggregation.globalStatistics(
+            from: [first, slightlyShifted]
+        )
+
+        XCTAssertEqual(statistics.sessionCount, 1)
+        XCTAssertEqual(statistics.totalSeconds, 120)
+    }
+
     func testListeningHistoryCanFilterByDevice() {
         let records = [
             ListeningHistorySync(

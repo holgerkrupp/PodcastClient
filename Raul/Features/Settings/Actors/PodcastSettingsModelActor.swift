@@ -486,13 +486,15 @@ actor PodcastSettingsModelActor {
             return []
         }
 
+        let globalSettings = await standardSettings()
         var feeds = Set<URL>()
 
         for podcast in podcasts {
-            guard podcast.isSubscribed,
-                  let feed = podcast.feed,
-                  let policy = await autoDownloadPolicy(for: feed),
-                  policy.networkMode == .wifiOnly else {
+            guard let feed = autoDownloadCandidateFeed(
+                for: podcast,
+                globalSettings: globalSettings,
+                requireWiFiOnly: true
+            ) else {
                 continue
             }
             feeds.insert(feed)
@@ -508,18 +510,51 @@ actor PodcastSettingsModelActor {
             return []
         }
 
+        let globalSettings = await standardSettings()
         var feeds = Set<URL>()
 
         for podcast in podcasts {
-            guard podcast.isSubscribed,
-                  let feed = podcast.feed,
-                  await autoDownloadPolicy(for: feed) != nil else {
+            guard let feed = autoDownloadCandidateFeed(
+                for: podcast,
+                globalSettings: globalSettings,
+                requireWiFiOnly: false
+            ) else {
                 continue
             }
             feeds.insert(feed)
         }
 
         return Array(feeds)
+    }
+
+    private func autoDownloadCandidateFeed(
+        for podcast: Podcast,
+        globalSettings: PodcastSettings,
+        requireWiFiOnly: Bool
+    ) -> URL? {
+        guard podcast.isSubscribed,
+              let feed = podcast.feed else {
+            return nil
+        }
+
+        let resolvedSettings: PodcastSettings
+        if let customSettings = podcast.settings,
+           customSettings.isEnabled {
+            resolvedSettings = customSettings
+        } else {
+            resolvedSettings = globalSettings
+        }
+
+        guard resolvedSettings.autoDownload else {
+            return nil
+        }
+
+        if requireWiFiOnly,
+           resolvedSettings.autoDownloadNetworkMode != .wifiOnly {
+            return nil
+        }
+
+        return feed
     }
 
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {

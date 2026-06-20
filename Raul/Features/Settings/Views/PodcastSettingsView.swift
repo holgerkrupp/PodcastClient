@@ -221,8 +221,7 @@ struct PodcastSettingsView: View {
     var body: some View {
         Group {
             if embedInNavigationStack {
-#if os(macOS)
-                if podcast == nil && destination == .main {
+                if PlatformSupport.usesDesktopLayout && podcast == nil && destination == .main {
                     settingsContent
                         .id(viewIdentity)
                 } else {
@@ -231,12 +230,6 @@ struct PodcastSettingsView: View {
                             .id(viewIdentity)
                     }
                 }
-#else
-                NavigationStack {
-                    settingsContent
-                        .id(viewIdentity)
-                }
-#endif
             } else {
                 settingsContent
                     .id(viewIdentity)
@@ -414,50 +407,52 @@ struct PodcastSettingsView: View {
         effectiveSettings: PodcastSettings,
         globalSettings: PodcastSettings
     ) -> some View {
-#if os(macOS)
-        NavigationSplitView {
-            List(globalSettingsCategories, selection: $selectedGlobalCategory) { category in
-                Label(category.title, systemImage: category.systemImage)
-                    .tag(category)
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Settings")
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
-        } detail: {
-            NavigationStack {
-                globalCategoryList(
-                    selectedGlobalCategory ?? .playback,
-                    effectiveSettings: effectiveSettings,
-                    globalSettings: globalSettings
-                )
-            }
-        }
-#else
-        List {
-            if let currentPlaybackPodcastWithCustomSettings {
-                podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
-            }
-
-            Section {
-                ForEach(globalSettingsCategories) { category in
-                    NavigationLink(value: category) {
-                        GlobalSettingsCategoryRow(category: category)
+        Group {
+            if PlatformSupport.usesDesktopLayout {
+                NavigationSplitView {
+                    List(globalSettingsCategories, selection: $selectedGlobalCategory) { category in
+                        Label(category.title, systemImage: category.systemImage)
+                            .tag(category)
+                    }
+                    .listStyle(.sidebar)
+                    .navigationTitle("Settings")
+                    .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
+                } detail: {
+                    NavigationStack {
+                        globalCategoryList(
+                            selectedGlobalCategory ?? .playback,
+                            effectiveSettings: effectiveSettings,
+                            globalSettings: globalSettings
+                        )
                     }
                 }
-            } footer: {
-                Text("Podcast-specific choices can be managed from Podcasts.")
+            } else {
+                List {
+                    if let currentPlaybackPodcastWithCustomSettings {
+                        podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
+                    }
+
+                    Section {
+                        ForEach(globalSettingsCategories) { category in
+                            NavigationLink(value: category) {
+                                GlobalSettingsCategoryRow(category: category)
+                            }
+                        }
+                    } footer: {
+                        Text("Podcast-specific choices can be managed from Podcasts.")
+                    }
+                }
+                .navigationTitle("Settings")
+                .platformInlineNavigationTitle()
+                .navigationDestination(for: GlobalSettingsCategory.self) { category in
+                    globalCategoryList(
+                        category,
+                        effectiveSettings: effectiveSettings,
+                        globalSettings: globalSettings
+                    )
+                }
             }
         }
-        .navigationTitle("Settings")
-        .platformInlineNavigationTitle()
-        .navigationDestination(for: GlobalSettingsCategory.self) { category in
-            globalCategoryList(
-                category,
-                effectiveSettings: effectiveSettings,
-                globalSettings: globalSettings
-            )
-        }
-#endif
     }
 
     private func podcastSettingsList(settings: PodcastSettings) -> some View {
@@ -482,11 +477,10 @@ struct PodcastSettingsView: View {
         globalSettings: PodcastSettings
     ) -> some View {
         Form {
-#if os(macOS)
-            if let currentPlaybackPodcastWithCustomSettings {
+            if PlatformSupport.usesDesktopLayout,
+               let currentPlaybackPodcastWithCustomSettings {
                 podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
             }
-#endif
 
             globalCategorySections(
                 category,
@@ -622,6 +616,12 @@ struct PodcastSettingsView: View {
 #elseif os(macOS)
         Section("Menu Bar Player") {
             Text("The menu bar shows the current episode cover and playback state. Click it to open compact playback controls and the selected playlist.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+#elseif targetEnvironment(macCatalyst)
+        Section("Desktop Controls") {
+            Text("On Mac Catalyst, Up Next exposes the desktop command menus and separate player/settings windows, but Apple doesn’t provide the macOS-only menu bar extra scene API here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

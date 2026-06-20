@@ -534,7 +534,8 @@ final class StableIdentityTests: XCTestCase {
 
         let result = await StoreSplitDevelopmentRepublishService.republish(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
+            userStateContainer: userStateContainer,
+            scope: .playlists
         )
 
         XCTAssertEqual(result.playlists, 1)
@@ -547,6 +548,112 @@ final class StableIdentityTests: XCTestCase {
             try context.fetchCount(FetchDescriptor<PlaylistEntrySync>()),
             1
         )
+    }
+
+    @MainActor
+    func testDevelopmentRepublishDeduplicatesPlaylistEntries() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let episode = Episode(
+            guid: "duplicate",
+            title: "Duplicate",
+            url: URL(string: "https://example.com/duplicate.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        let playlist = Playlist()
+        let first = PlaylistEntry(episode: episode, order: 0)
+        let duplicate = PlaylistEntry(episode: episode, order: 1)
+        first.playlist = playlist
+        duplicate.playlist = playlist
+        playlist.items = [first, duplicate]
+        legacyContainer.mainContext.insert(podcast)
+        legacyContainer.mainContext.insert(playlist)
+        try legacyContainer.mainContext.save()
+
+        for _ in 0..<2 {
+            _ = await StoreSplitDevelopmentRepublishService.republish(
+                legacyContainer: legacyContainer,
+                userStateContainer: userStateContainer,
+                scope: .playlists
+            )
+        }
+
+        let context = ModelContext(userStateContainer)
+        XCTAssertEqual(
+            try context.fetchCount(FetchDescriptor<PlaylistEntrySync>()),
+            1
+        )
+        XCTAssertEqual(
+            try context.fetchCount(FetchDescriptor<QueueEntrySync>()),
+            1
+        )
+        let legacyContext = ModelContext(legacyContainer)
+        let repairedPlaylist = try XCTUnwrap(
+            try legacyContext.fetch(FetchDescriptor<Playlist>()).first
+        )
+        XCTAssertEqual(repairedPlaylist.ordered.count, 1)
+        XCTAssertEqual(repairedPlaylist.ordered.first?.order, 0)
+    }
+
+    @MainActor
+    func testDevelopmentRepublishPagesLargeEpisodeAndHistorySets() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        legacyContainer.mainContext.insert(podcast)
+
+        for index in 0..<205 {
+            let episode = Episode(
+                guid: "episode-\(index)",
+                title: "Episode \(index)",
+                url: URL(string: "https://example.com/\(index).mp3")!,
+                podcast: podcast
+            )
+            let metadata = EpisodeMetaData()
+            metadata.episode = episode
+            metadata.playPosition = Double(index + 1)
+            episode.metaData = metadata
+            let start = Date(timeIntervalSince1970: Double(index * 300))
+            let session = PlaySession(
+                id: UUID(),
+                episode: episode,
+                startTime: start,
+                endTime: start.addingTimeInterval(120),
+                startPosition: 0,
+                endPosition: 120,
+                endedCleanly: true
+            )
+            legacyContainer.mainContext.insert(episode)
+            legacyContainer.mainContext.insert(metadata)
+            legacyContainer.mainContext.insert(session)
+        }
+        try legacyContainer.mainContext.save()
+
+        let stateResult = await StoreSplitDevelopmentRepublishService.republish(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            scope: .episodeStates
+        )
+        let historyResult = await StoreSplitDevelopmentRepublishService.republish(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            scope: .listeningHistory
+        )
+
+        XCTAssertEqual(stateResult.episodeStates, 205)
+        XCTAssertEqual(historyResult.listeningSessions, 205)
+        XCTAssertEqual(historyResult.storedCounts.episodeStates, 205)
+        XCTAssertEqual(historyResult.storedCounts.listeningSessions, 205)
     }
 #endif
 
@@ -1457,6 +1564,283 @@ final class StableIdentityTests: XCTestCase {
         )
         XCTAssertEqual(queue.id, macPlaylist.id)
         XCTAssertEqual(queue.ordered.map { $0.episode?.guid }, ["phone"])
+    }
+
+    @MainActor
+    func testNewStoreReadImporterProjectsDeduplicatedListeningHistory() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let episode = Episode(
+            guid: "history",
+            title: "History",
+            url: URL(string: "https://example.com/history.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        legacyContainer.mainContext.insert(podcast)
+
+        let identity = episode.stableEpisodeIdentity
+        for (id, device, updatedAt) in [
+            ("phone-copy", "phone", Date(timeIntervalSince1970: 1_120)),
+            ("mac-copy", "mac", Date(timeIntervalSince1970: 1_121))
+        ] {
+            userStateContainer.mainContext.insert(
+                ListeningHistorySync(
+                    id: id,
+                    feedURL: identity.feedURL,
+                    episodeID: identity.episodeID,
+                    podcastName: "Example",
+                    episodeTitle: episode.title,
+                    sourceDeviceID: device,
+                    startedAt: Date(timeIntervalSince1970: 1_000),
+                    endedAt: Date(timeIntervalSince1970: 1_120),
+                    startPosition: 10,
+                    endPosition: 130,
+                    listenedSeconds: 120,
+                    endedCleanly: true,
+                    updatedAt: updatedAt
+                )
+            )
+        }
+        try legacyContainer.mainContext.save()
+        try userStateContainer.mainContext.save()
+
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+
+        let context = ModelContext(legacyContainer)
+        let sessions = try context.fetch(FetchDescriptor<PlaySession>())
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.episode?.guid, "history")
+        XCTAssertEqual(sessions.first?.sourceDeviceID, "mac")
+        XCTAssertEqual(sessions.first?.startTime, Date(timeIntervalSince1970: 1_000))
+        XCTAssertEqual(sessions.first?.endTime, Date(timeIntervalSince1970: 1_120))
+    }
+
+    @MainActor
+    func testNewStoreReadImporterCanSkipLegacyListeningHistoryProjection() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let episode = Episode(
+            guid: "history-skip",
+            title: "History Skip",
+            url: URL(string: "https://example.com/history-skip.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        legacyContainer.mainContext.insert(podcast)
+        legacyContainer.mainContext.insert(
+            PlaySession(
+                id: UUID(),
+                episode: episode,
+                sourceDeviceID: "old-device",
+                sourceDeviceName: "Old Device",
+                appVersion: ListeningDeviceIdentity.splitStoreProjectionAppVersion,
+                startTime: Date(timeIntervalSince1970: 900),
+                endTime: Date(timeIntervalSince1970: 960),
+                startPosition: 0,
+                endPosition: 60,
+                endedCleanly: true
+            )
+        )
+
+        let identity = episode.stableEpisodeIdentity
+        userStateContainer.mainContext.insert(
+            ListeningHistorySync(
+                id: "fresh-copy",
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                podcastName: "Example",
+                episodeTitle: episode.title,
+                sourceDeviceID: "phone",
+                startedAt: Date(timeIntervalSince1970: 1_000),
+                endedAt: Date(timeIntervalSince1970: 1_120),
+                startPosition: 10,
+                endPosition: 130,
+                listenedSeconds: 120,
+                endedCleanly: true,
+                updatedAt: Date(timeIntervalSince1970: 1_120)
+            )
+        )
+        try legacyContainer.mainContext.save()
+        try userStateContainer.mainContext.save()
+
+        let result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            projectListeningHistoryToLegacy: false
+        )
+
+        XCTAssertEqual(result.listeningHistoryApplied, 0)
+
+        let context = ModelContext(legacyContainer)
+        let sessions = try context.fetch(FetchDescriptor<PlaySession>())
+        XCTAssertTrue(sessions.isEmpty)
+    }
+
+    @MainActor
+    func testNewStoreReadImporterSkipsStaleEpisodeStatesWhenRecencyCutoffIsSet() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let staleEpisode = Episode(
+            guid: "stale-state",
+            title: "Stale State",
+            url: URL(string: "https://example.com/stale-state.mp3")!,
+            podcast: podcast
+        )
+        let recentEpisode = Episode(
+            guid: "recent-state",
+            title: "Recent State",
+            url: URL(string: "https://example.com/recent-state.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [staleEpisode, recentEpisode]
+        staleEpisode.metaData = EpisodeMetaData()
+        recentEpisode.metaData = EpisodeMetaData()
+        legacyContainer.mainContext.insert(podcast)
+
+        let staleIdentity = staleEpisode.stableEpisodeIdentity
+        let recentIdentity = recentEpisode.stableEpisodeIdentity
+        userStateContainer.mainContext.insert(
+            EpisodeStateSync(
+                feedURL: staleIdentity.feedURL,
+                episodeID: staleIdentity.episodeID,
+                playPosition: 0,
+                maxPlayPosition: 0,
+                isPlayed: true,
+                completedAt: Date(timeIntervalSince1970: 100),
+                lastPlayedAt: Date(timeIntervalSince1970: 100),
+                updatedAt: Date(timeIntervalSince1970: 100)
+            )
+        )
+        userStateContainer.mainContext.insert(
+            EpisodeStateSync(
+                feedURL: recentIdentity.feedURL,
+                episodeID: recentIdentity.episodeID,
+                playPosition: 25,
+                maxPlayPosition: 50,
+                lastPlayedAt: Date(timeIntervalSince1970: 10_000),
+                updatedAt: Date(timeIntervalSince1970: 10_000)
+            )
+        )
+        try legacyContainer.mainContext.save()
+        try userStateContainer.mainContext.save()
+
+        let cutoff = Date(timeIntervalSince1970: 5_000)
+        let result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            episodeStateProjectionRecencyCutoff: cutoff
+        )
+
+        XCTAssertEqual(result.episodeStatesApplied, 1)
+
+        let context = ModelContext(legacyContainer)
+        let stale = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<Episode>())
+                .first { $0.guid == "stale-state" }
+        )
+        let recent = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<Episode>())
+                .first { $0.guid == "recent-state" }
+        )
+        XCTAssertNil(stale.metaData?.lastPlayed)
+        XCTAssertEqual(recent.metaData?.playPosition, 25)
+    }
+
+    @MainActor
+    func testNewStoreReadImporterRemovesStaleProjectedListeningHistory() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let staleEpisode = Episode(
+            guid: "stale-history",
+            title: "Stale History",
+            url: URL(string: "https://example.com/stale-history.mp3")!,
+            podcast: podcast
+        )
+        let currentEpisode = Episode(
+            guid: "current-history",
+            title: "Current History",
+            url: URL(string: "https://example.com/current-history.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [staleEpisode, currentEpisode]
+        legacyContainer.mainContext.insert(podcast)
+
+        let staleSession = PlaySession(
+            id: UUID(),
+            episode: staleEpisode,
+            sourceDeviceID: "old-device",
+            sourceDeviceName: "Old Device",
+            appVersion: ListeningDeviceIdentity.splitStoreProjectionAppVersion,
+            startTime: Date(timeIntervalSince1970: 900),
+            endTime: Date(timeIntervalSince1970: 960),
+            startPosition: 0,
+            endPosition: 60,
+            endedCleanly: true
+        )
+        legacyContainer.mainContext.insert(staleSession)
+
+        let identity = currentEpisode.stableEpisodeIdentity
+        userStateContainer.mainContext.insert(
+            ListeningHistorySync(
+                id: "fresh-copy",
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                podcastName: "Example",
+                episodeTitle: currentEpisode.title,
+                sourceDeviceID: "phone",
+                startedAt: Date(timeIntervalSince1970: 1_000),
+                endedAt: Date(timeIntervalSince1970: 1_120),
+                startPosition: 10,
+                endPosition: 130,
+                listenedSeconds: 120,
+                endedCleanly: true,
+                updatedAt: Date(timeIntervalSince1970: 1_120)
+            )
+        )
+        try legacyContainer.mainContext.save()
+        try userStateContainer.mainContext.save()
+
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+
+        let context = ModelContext(legacyContainer)
+        let sessions = try context.fetch(FetchDescriptor<PlaySession>())
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.episode?.guid, "current-history")
+        XCTAssertEqual(
+            sessions.first?.appVersion,
+            ListeningDeviceIdentity.splitStoreProjectionAppVersion
+        )
     }
 
     @MainActor

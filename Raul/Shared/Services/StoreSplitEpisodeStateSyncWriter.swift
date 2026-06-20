@@ -18,6 +18,24 @@ struct StoreSplitEpisodeStateSnapshot: Sendable {
 @ModelActor
 actor StoreSplitEpisodeStateSyncWriter {
     func upsert(_ snapshot: StoreSplitEpisodeStateSnapshot, at date: Date = .now) {
+        upsertWithoutSaving(snapshot, at: date)
+        modelContext.saveIfNeeded()
+    }
+
+    func upsert(
+        _ snapshots: [StoreSplitEpisodeStateSnapshot],
+        at date: Date = .now
+    ) {
+        for snapshot in snapshots {
+            upsertWithoutSaving(snapshot, at: date)
+        }
+        modelContext.saveIfNeeded()
+    }
+
+    private func upsertWithoutSaving(
+        _ snapshot: StoreSplitEpisodeStateSnapshot,
+        at date: Date
+    ) {
         let stateID = snapshot.identity.key
         let descriptor = FetchDescriptor<EpisodeStateSync>(
             predicate: #Predicate<EpisodeStateSync> { $0.id == stateID }
@@ -46,7 +64,6 @@ actor StoreSplitEpisodeStateSyncWriter {
                 )
             )
         }
-        modelContext.saveIfNeeded()
     }
 
     private func apply(

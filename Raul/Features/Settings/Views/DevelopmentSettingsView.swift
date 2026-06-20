@@ -46,23 +46,51 @@ struct DevelopmentSettingsView: View {
 
             Section {
                 Toggle("CloudKit for legacy store", isOn: $legacyCloudSyncEnabled)
+                    .disabled(storeMode != .splitStores)
                 Toggle("CloudKit for user-state store", isOn: $userStateCloudSyncEnabled)
+                    .disabled(storeMode != .splitStores)
             } header: {
                 Text("Cloud Synchronization")
             } footer: {
-                Text("The podcast cache store is always local-only. CloudKit choices are applied when their ModelContainers are created at launch.")
+                Text("The podcast cache store is always local-only. CloudKit for both legacy and user-state stores is only active in Split Stores mode. Split-read modes now force both stores local-only to keep test builds from being killed by background CloudKit import/export work.")
             }
 
             Section("Active Since Launch") {
                 LabeledContent("Data architecture", value: launchConfiguration.mode.title)
                 LabeledContent(
                     "Legacy CloudKit",
-                    value: launchConfiguration.legacyCloudSyncEnabled ? "Enabled" : "Disabled"
+                    value: StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                        ? "Enabled"
+                        : "Disabled"
                 )
                 LabeledContent(
                     "User-state CloudKit",
-                    value: launchConfiguration.userStateCloudSyncEnabled ? "Enabled" : "Disabled"
+                    value: StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+                        ? "Enabled"
+                        : "Disabled"
                 )
+            }
+
+            if StoreDevelopmentConfiguration.splitStoresEnabled {
+                Section("Split-Store Work") {
+                    LabeledContent(
+                        "Current job",
+                        value: modelContainerManager.currentSplitStoreJobDescription ?? "Idle"
+                    )
+                    LabeledContent(
+                        "Pending work",
+                        value: modelContainerManager.pendingSplitStoreWorkReason ?? "None"
+                    )
+                    LabeledContent(
+                        "Last reconcile",
+                        value: modelContainerManager.lastSplitStoreReconcileSummary ?? "None"
+                    )
+                    LabeledContent(
+                        "Reconciled at",
+                        value: modelContainerManager.lastSplitStoreReconcileAt?
+                            .formatted(date: .abbreviated, time: .shortened) ?? "Never"
+                    )
+                }
             }
 
             if requiresRelaunch {
@@ -81,8 +109,33 @@ struct DevelopmentSettingsView: View {
                 }
                 .disabled(isRunningSyncAction || isResetting)
 
-                Button("Republish Legacy State to CloudKit") {
-                    republishLegacyState()
+                Button("Republish Playlists") {
+                    republishLegacyState(.playlists)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Republish Bookmarks") {
+                    republishLegacyState(.bookmarks)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Republish Playback State") {
+                    republishLegacyState(.episodeStates)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Republish Subscriptions") {
+                    republishLegacyState(.subscriptions)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Republish Listening History (Heavy)") {
+                    republishLegacyState(.listeningHistory)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Show Local User-State Counts") {
+                    loadSplitStoreCounts()
                 }
                 .disabled(isRunningSyncAction || isResetting)
 
@@ -91,7 +144,7 @@ struct DevelopmentSettingsView: View {
                 }
                 .disabled(isResetting || modelContainerManager.developmentResetRequiresRelaunch)
 
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
                 Button("Reset All Local Stores on Next Launch", role: .destructive) {
                     showAllLocalStoresResetConfirmation = true
                 }
@@ -131,6 +184,12 @@ struct DevelopmentSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle("Development")
         .platformInlineNavigationTitle()
+        .onChange(of: storeMode) { _, mode in
+            if mode != .splitStores {
+                legacyCloudSyncEnabled = false
+                userStateCloudSyncEnabled = false
+            }
+        }
         .confirmationDialog(
             "Reset only this device's split stores?",
             isPresented: $showLocalResetConfirmation,
@@ -144,7 +203,7 @@ struct DevelopmentSettingsView: View {
         } message: {
             Text("SharedDatabase.sqlite and CloudKit records are preserved. UserState.sqlite and PodcastCache.sqlite will be removed locally before SwiftData opens them on the next launch.")
         }
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
         .confirmationDialog(
             "Reset every local database on this Mac?",
             isPresented: $showAllLocalStoresResetConfirmation,
@@ -180,7 +239,9 @@ struct DevelopmentSettingsView: View {
         case .splitStores:
             "The app continues reading its podcast graph from the legacy store while preparing, migrating, and dual-writing the new user-state and cache stores."
         case .splitStoreReads:
-            "Synced subscriptions, episode state, playlists, queue entries, bookmarks, and AI content are projected onto the local podcast cache. Feed data still uses the normal local parser."
+            "Reads from the split stores and projects user state onto the local legacy UI store, but keeps CloudKit disabled so self-test builds stay local and memory-safe."
+        case .newStoresOnly:
+            "The new user-state store is authoritative for local testing, but CloudKit stays disabled. Legacy CloudKit and legacy-to-new migration are disabled. SharedDatabase.sqlite remains local-only as the temporary feed and UI projection until Podcast and Episode cache models move into PodcastCache.sqlite."
         }
     }
 
@@ -213,19 +274,59 @@ struct DevelopmentSettingsView: View {
         }
     }
 
-    private func republishLegacyState() {
+    private func republishLegacyState(
+        _ scope: StoreSplitDevelopmentRepublishScope
+    ) {
         isRunningSyncAction = true
         resetMessage = nil
         Task {
             do {
                 let result = try await modelContainerManager
-                    .republishLegacyStateToCloudKit()
-                resetMessage = "Republished \(result.subscriptions) subscriptions, \(result.episodeStates) episode states, \(result.playlists) playlists, \(result.bookmarks) bookmarks, and \(result.listeningSessions) listening sessions."
+                    .republishLegacyStateToCloudKit(scope: scope)
+                resetMessage = "\(scope.title) complete. Source: \(result.sourceSummary). New store: \(result.storedCounts.summary)."
             } catch {
                 resetMessage = error.localizedDescription
             }
             isRunningSyncAction = false
         }
+    }
+
+    private func loadSplitStoreCounts() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            do {
+                let counts = try await modelContainerManager
+                    .splitStoreDevelopmentCounts()
+                resetMessage = "Local user-state store: \(counts.summary)."
+            } catch {
+                resetMessage = error.localizedDescription
+            }
+            isRunningSyncAction = false
+        }
+    }
+}
+
+private extension StoreSplitDevelopmentRepublishScope {
+    var title: String {
+        switch self {
+        case .subscriptions:
+            "Subscriptions"
+        case .episodeStates:
+            "Playback state"
+        case .playlists:
+            "Playlists"
+        case .bookmarks:
+            "Bookmarks"
+        case .listeningHistory:
+            "Listening history"
+        }
+    }
+}
+
+private extension StoreSplitDevelopmentRepublishResult {
+    var sourceSummary: String {
+        "subscriptions \(subscriptions), states \(episodeStates), playlists \(playlists), bookmarks \(bookmarks), history \(listeningSessions)"
     }
 }
 #endif

@@ -4,6 +4,7 @@ enum DevelopmentStoreMode: String, CaseIterable, Identifiable {
     case legacyOnly
     case splitStores
     case splitStoreReads
+    case newStoresOnly
 
     var id: Self { self }
 
@@ -15,6 +16,8 @@ enum DevelopmentStoreMode: String, CaseIterable, Identifiable {
             "Split stores (dual-write)"
         case .splitStoreReads:
             "New-store reads (dual-write)"
+        case .newStoresOnly:
+            "New stores only (local projection)"
         }
     }
 }
@@ -39,11 +42,63 @@ struct StoreDevelopmentConfiguration: Equatable {
     }
 
     static var splitStoresEnabled: Bool {
-        launch.mode != .legacyOnly
+        splitStoreHeavyWorkPaused == false && launch.mode != .legacyOnly
     }
 
     static var newStoreReadsEnabled: Bool {
-        launch.mode == .splitStoreReads
+        splitStoreHeavyWorkPaused == false
+            && (launch.mode == .splitStoreReads || launch.mode == .newStoresOnly)
+    }
+
+    static var legacyMigrationEnabled: Bool {
+        splitStoreHeavyWorkPaused == false && launch.mode == .splitStores
+    }
+
+    static var legacyCloudSyncEnabled: Bool {
+        launch.mode == .splitStores && launch.legacyCloudSyncEnabled
+    }
+
+    static var userStateCloudSyncEnabled: Bool {
+        launch.mode == .splitStores && launch.userStateCloudSyncEnabled
+    }
+
+    static var usesLegacyLocalProjection: Bool {
+        launch.mode != .legacyOnly
+    }
+
+    static var projectsListeningHistoryToLegacy: Bool {
+        switch launch.mode {
+        case .legacyOnly, .splitStores:
+            true
+        case .splitStoreReads, .newStoresOnly:
+            false
+        }
+    }
+
+    static var episodeStateProjectionRecencyCutoff: Date? {
+        switch launch.mode {
+        case .legacyOnly, .splitStores:
+            nil
+        case .splitStoreReads, .newStoresOnly:
+            Calendar.current.date(byAdding: .day, value: -180, to: .now)
+        }
+    }
+
+    static var modeAllowsDuplicateCleanupDuringProjection: Bool {
+        switch launch.mode {
+        case .legacyOnly, .splitStores:
+            true
+        case .splitStoreReads, .newStoresOnly:
+            false
+        }
+    }
+
+    static var splitStoreHeavyWorkPaused: Bool {
+#if DEBUG
+        true
+#else
+        false
+#endif
     }
 
     private static func loadCurrent() -> StoreDevelopmentConfiguration {

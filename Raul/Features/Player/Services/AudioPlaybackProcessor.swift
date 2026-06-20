@@ -1,4 +1,6 @@
 import AVFoundation
+import AVFAudio
+import CoreAudio
 import Foundation
 import MediaToolbox
 
@@ -109,26 +111,26 @@ final class AudioPlaybackProcessor: @unchecked Sendable {
 
             if isFloat, format.mBitsPerChannel == 32 {
                 let samples = data.bindMemory(to: Float.self, capacity: byteCount / MemoryLayout<Float>.size)
-                let count = byteCount / MemoryLayout<Float>.size
+                let count: Int = byteCount / MemoryLayout<Float>.size
                 for index in 0..<count {
-                    var sample = samples[index]
+                    var sample: Float = samples[index]
                     rmsAccumulator += sample * sample
                     rmsSampleCount += 1
                     if let enhancer {
-                        let channel = channelOffset + (index % channelsInBuffer)
+                        let channel = channelOffset + Int(index % channelsInBuffer)
                         sample = enhancer.process(sample: sample, channel: channel)
                         samples[index] = sample
                     }
                 }
             } else if isSignedInteger, format.mBitsPerChannel == 16 {
                 let samples = data.bindMemory(to: Int16.self, capacity: byteCount / MemoryLayout<Int16>.size)
-                let count = byteCount / MemoryLayout<Int16>.size
+                let count: Int = byteCount / MemoryLayout<Int16>.size
                 for index in 0..<count {
-                    let normalized = Float(samples[index]) / Float(Int16.max)
+                    let normalized: Float = Float(samples[index]) / Float(Int16.max)
                     rmsAccumulator += normalized * normalized
                     rmsSampleCount += 1
                     if let enhancer {
-                        let channel = channelOffset + (index % channelsInBuffer)
+                        let channel = channelOffset + Int(index % channelsInBuffer)
                         let enhanced = enhancer.process(sample: normalized, channel: channel)
                         samples[index] = Int16(max(Float(Int16.min), min(Float(Int16.max), enhanced * Float(Int16.max))))
                     }

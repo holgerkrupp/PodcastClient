@@ -596,6 +596,13 @@ struct GlobalListeningStatistics: Equatable, Sendable {
 }
 
 enum ListeningHistoryIdentity {
+    private static func normalizedFeedURL(_ feedURL: String) -> String {
+        URL(string: feedURL).map {
+            $0.podcastFeedComparisonKeys.sorted().first
+                ?? PodcastFeedIdentity.normalizedFeedURLString($0)
+        } ?? feedURL
+    }
+
     static func make(
         feedURL: String,
         episodeID: String,
@@ -604,10 +611,7 @@ enum ListeningHistoryIdentity {
         startPosition: Double,
         endPosition: Double
     ) -> String {
-        let normalizedFeedURL = URL(string: feedURL).map {
-            $0.podcastFeedComparisonKeys.sorted().first
-                ?? PodcastFeedIdentity.normalizedFeedURLString($0)
-        } ?? feedURL
+        let normalizedFeedURL = normalizedFeedURL(feedURL)
         return StableIdentityKey.make(
             normalizedFeedURL,
             episodeID,
@@ -628,6 +632,32 @@ enum ListeningHistoryIdentity {
             endPosition: record.endPosition
         )
     }
+
+    static func canonicalAggregationKey(
+        feedURL: String,
+        episodeID: String,
+        startedAt: Date,
+        endedAt: Date,
+        listenedSeconds: Double
+    ) -> String {
+        StableIdentityKey.make(
+            normalizedFeedURL(feedURL),
+            episodeID,
+            String(Int(startedAt.timeIntervalSince1970.rounded())),
+            String(Int(endedAt.timeIntervalSince1970.rounded())),
+            String(Int(listenedSeconds.rounded()))
+        )
+    }
+
+    static func canonicalAggregationKey(for record: ListeningHistorySync) -> String {
+        canonicalAggregationKey(
+            feedURL: record.feedURL,
+            episodeID: record.episodeID,
+            startedAt: record.startedAt,
+            endedAt: record.endedAt,
+            listenedSeconds: record.listenedSeconds
+        )
+    }
 }
 
 enum ListeningHistoryAggregation {
@@ -641,7 +671,7 @@ enum ListeningHistoryAggregation {
             guard sourceDeviceID == nil || record.sourceDeviceID == sourceDeviceID else {
                 continue
             }
-            let identity = ListeningHistoryIdentity.make(for: record)
+            let identity = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
             if let existing = newestByIdentity[identity],
                !prefers(record, over: existing) {
                 continue

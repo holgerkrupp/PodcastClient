@@ -29,6 +29,19 @@ extension Playlist {
         let smartFilterRawValue = smartFilter
             .flatMap { try? JSONEncoder().encode($0) }
             .flatMap { String(data: $0, encoding: .utf8) }
+        var seenEpisodeIdentities = Set<String>()
+        let entries = ordered.compactMap { entry -> StoreSplitPlaylistEntrySnapshot? in
+            guard let episode = entry.episode else { return nil }
+            let identity = episode.stableEpisodeIdentity
+            guard seenEpisodeIdentities.insert(identity.key).inserted else {
+                return nil
+            }
+            return StoreSplitPlaylistEntrySnapshot(
+                identity: identity,
+                sortIndex: seenEpisodeIdentities.count - 1,
+                addedAt: entry.dateAdded ?? .now
+            )
+        }
         return StoreSplitPlaylistSnapshot(
             id: id.uuidString,
             title: title,
@@ -37,14 +50,7 @@ extension Playlist {
             kindRawValue: kindRawValue,
             smartFilterRawValue: smartFilterRawValue,
             isHidden: hidden,
-            entries: ordered.compactMap { entry in
-                guard let episode = entry.episode else { return nil }
-                return StoreSplitPlaylistEntrySnapshot(
-                    identity: episode.stableEpisodeIdentity,
-                    sortIndex: entry.order,
-                    addedAt: entry.dateAdded ?? .now
-                )
-            }
+            entries: entries
         )
     }
 }
@@ -76,7 +82,11 @@ enum StoreSplitPlaylistSyncCoordinator {
 
 @ModelActor
 actor StoreSplitPlaylistSyncWriter {
-    func upsert(_ snapshot: StoreSplitPlaylistSnapshot, at date: Date = .now) {
+    func upsert(
+        _ snapshot: StoreSplitPlaylistSnapshot,
+        at date: Date = .now,
+        authoritative: Bool = false
+    ) {
         let deviceID = ListeningDeviceIdentity.current().id
         let playlistID = snapshot.id
         let playlistDescriptor = FetchDescriptor<PlaylistSync>(
@@ -109,19 +119,34 @@ actor StoreSplitPlaylistSyncWriter {
             )
         }
 
-        let existingEntries = ((try? modelContext.fetch(
-            FetchDescriptor<PlaylistEntrySync>()
-        )) ?? []).filter { $0.playlistID == snapshot.id }
-        let existingQueueEntries = snapshot.title == Playlist.defaultQueueTitle
+        let fetchedEntries = (try? modelContext.fetch(
+            FetchDescriptor<PlaylistEntrySync>(
+                predicate: #Predicate<PlaylistEntrySync> {
+                    $0.playlistID == playlistID
+                }
+            )
+        )) ?? []
+        var existingEntries = consolidateEntries(
+            fetchedEntries,
+            id: \.id
+        )
+        let fetchedQueueEntries = snapshot.title == Playlist.defaultQueueTitle
             ? ((try? modelContext.fetch(FetchDescriptor<QueueEntrySync>())) ?? [])
             : []
+        var existingQueueEntries = consolidateEntries(
+            fetchedQueueEntries,
+            id: \.id
+        )
+        var activeEntryIDs = Set<String>()
+        var activeQueueIDs = Set<String>()
         for entrySnapshot in snapshot.entries {
             let entryID = StableIdentityKey.make(
                 snapshot.id,
                 entrySnapshot.identity.feedURL,
                 entrySnapshot.identity.episodeID
             )
-            if let entry = existingEntries.first(where: { $0.id == entryID }) {
+            activeEntryIDs.insert(entryID)
+            if let entry = existingEntries[entryID] {
                 entry.sortIndex = entrySnapshot.sortIndex
                 entry.addedAt = entrySnapshot.addedAt
                 entry.isDeleted = false
@@ -129,8 +154,7 @@ actor StoreSplitPlaylistSyncWriter {
                 entry.updatedAt = date
                 entry.sourceDeviceID = deviceID
             } else {
-                modelContext.insert(
-                    PlaylistEntrySync(
+                let entry = PlaylistEntrySync(
                         playlistID: snapshot.id,
                         feedURL: entrySnapshot.identity.feedURL,
                         episodeID: entrySnapshot.identity.episodeID,
@@ -139,12 +163,14 @@ actor StoreSplitPlaylistSyncWriter {
                         updatedAt: date,
                         sourceDeviceID: deviceID
                     )
-                )
+                modelContext.insert(entry)
+                existingEntries[entryID] = entry
             }
 
             if snapshot.title == Playlist.defaultQueueTitle {
                 let queueID = entrySnapshot.identity.key
-                if let queueEntry = existingQueueEntries.first(where: { $0.id == queueID }) {
+                activeQueueIDs.insert(queueID)
+                if let queueEntry = existingQueueEntries[queueID] {
                     queueEntry.sortIndex = entrySnapshot.sortIndex
                     queueEntry.addedAt = entrySnapshot.addedAt
                     queueEntry.isDeleted = false
@@ -152,8 +178,7 @@ actor StoreSplitPlaylistSyncWriter {
                     queueEntry.updatedAt = date
                     queueEntry.sourceDeviceID = deviceID
                 } else {
-                    modelContext.insert(
-                        QueueEntrySync(
+                    let queueEntry = QueueEntrySync(
                             feedURL: entrySnapshot.identity.feedURL,
                             episodeID: entrySnapshot.identity.episodeID,
                             sortIndex: entrySnapshot.sortIndex,
@@ -161,12 +186,44 @@ actor StoreSplitPlaylistSyncWriter {
                             updatedAt: date,
                             sourceDeviceID: deviceID
                         )
-                    )
+                    modelContext.insert(queueEntry)
+                    existingQueueEntries[queueID] = queueEntry
                 }
             }
         }
 
+        if authoritative {
+            for (id, entry) in existingEntries where activeEntryIDs.contains(id) == false {
+                entry.isDeleted = true
+                entry.deletedAt = date
+                entry.updatedAt = date
+                entry.sourceDeviceID = deviceID
+            }
+            for (id, entry) in existingQueueEntries where activeQueueIDs.contains(id) == false {
+                entry.isDeleted = true
+                entry.deletedAt = date
+                entry.updatedAt = date
+                entry.sourceDeviceID = deviceID
+            }
+        }
+
         modelContext.saveIfNeeded()
+    }
+
+    private func consolidateEntries<Model: PersistentModel>(
+        _ records: [Model],
+        id: KeyPath<Model, String>
+    ) -> [String: Model] {
+        var result: [String: Model] = [:]
+        for record in records {
+            let recordID = record[keyPath: id]
+            if result[recordID] == nil {
+                result[recordID] = record
+            } else {
+                modelContext.delete(record)
+            }
+        }
+        return result
     }
 
     func tombstonePlaylist(id: String, at date: Date = .now) {

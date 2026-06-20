@@ -2,6 +2,7 @@ import Foundation
 
 struct ListeningDeviceIdentity: Sendable, Equatable {
     static let legacySharedID = "__legacy_shared__"
+    static let splitStoreProjectionAppVersion = "__split_store_projection__"
 
     let id: String
     let displayName: String

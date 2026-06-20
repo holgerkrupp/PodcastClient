@@ -181,7 +181,7 @@ extension EnvironmentValues {
 extension View {
     @ViewBuilder
     func hostsPlayerPresentation(navigation: AppNavigationModel) -> some View {
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
         modifier(MacPlayerPresentationHost(navigation: navigation))
 #else
         modifier(IOSPlayerPresentationHost(navigation: navigation))
@@ -189,7 +189,7 @@ extension View {
     }
 }
 
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
 private struct MacPlayerPresentationHost: ViewModifier {
     @Environment(\.openWindow) private var openWindow
     @Bindable var navigation: AppNavigationModel
@@ -234,7 +234,7 @@ private struct IOSPlayerPresentationHost: ViewModifier {
 }
 #endif
 
-#if os(macOS)
+#if os(macOS) || targetEnvironment(macCatalyst)
 struct AppNavigationFocusedValueKey: FocusedValueKey {
     typealias Value = AppNavigationModel
 }

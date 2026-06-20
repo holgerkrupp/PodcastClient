@@ -97,7 +97,7 @@ class Player {
 
         var progressSaveInterval: TimeInterval {
             switch self {
-            case .foreground: return 10
+            case .foreground: return 20
             case .background: return 45
             }
         }
@@ -247,7 +247,16 @@ class Player {
     }
     
     
-    var isPlaying: Bool = false
+    var isPlaying: Bool = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            Task {
+                await StoreSplitWorkCoordinator.shared.notePlaybackActivityChanged(
+                    isPlaying: isPlaying
+                )
+            }
+        }
+    }
     var isPlayerSheetPresented: Bool = false
     
     var chapterProgress: Double?
@@ -288,6 +297,7 @@ class Player {
         guard !hasStartedRecovery else { return }
         hasStartedRecovery = true
 
+        guard StoreDevelopmentConfiguration.newStoreReadsEnabled == false else { return }
         guard shouldRunPlaySessionRecoveryNow() else { return }
 
         Task.detached(priority: .background) { [playSessionTracker] in

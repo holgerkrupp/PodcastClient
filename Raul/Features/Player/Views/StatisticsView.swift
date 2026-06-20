@@ -1745,22 +1745,82 @@ struct StatisticsView: View {
         guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
             return nil
         }
-        let records = (try? ModelContext(container).fetch(
-            FetchDescriptor<ListeningHistorySync>()
+        let context = ModelContext(container)
+        let summaries = (try? context.fetch(
+            FetchDescriptor<ListeningSummarySync>()
         )) ?? []
-        let filtered: [ListeningHistorySync]
+        let foreverSummaries = summaries.filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
+        let filteredSummaries: [ListeningSummarySync]
         if let selectedPodcastFeedString,
            let selectedURL = URL(string: selectedPodcastFeedString) {
             let selectedKeys = selectedURL.podcastFeedComparisonKeys
-            filtered = records.filter { record in
+            filteredSummaries = foreverSummaries.filter { record in
                 guard let feed = URL(string: record.feedURL) else { return false }
                 return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
             }
         } else {
-            filtered = records
+            filteredSummaries = foreverSummaries
         }
-        guard filtered.isEmpty == false else { return nil }
-        return ListeningHistoryAggregation.globalStatistics(from: filtered).totalSeconds
+        if filteredSummaries.isEmpty == false {
+            return ListeningSummaryAggregation.globalStatistics(
+                from: filteredSummaries
+            ).totalSeconds
+        }
+
+        let selectedKeys = selectedPodcastFeedString
+            .flatMap(URL.init(string:))
+            .map(\.podcastFeedComparisonKeys)
+        let pageSize = 250
+        var offset = 0
+        var newestByIdentity: [String: ListeningHistorySync] = [:]
+
+        while true {
+            var descriptor = FetchDescriptor<ListeningHistorySync>()
+            descriptor.fetchOffset = offset
+            descriptor.fetchLimit = pageSize
+            let page = (try? context.fetch(descriptor)) ?? []
+            guard page.isEmpty == false else { break }
+
+            let filteredPage: [ListeningHistorySync]
+            if let selectedKeys {
+                filteredPage = page.filter { record in
+                    guard let feed = URL(string: record.feedURL) else { return false }
+                    return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
+                }
+            } else {
+                filteredPage = page
+            }
+
+            for record in filteredPage {
+                let key = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
+                if let existing = newestByIdentity[key] {
+                    let shouldReplace: Bool
+                    if record.updatedAt != existing.updatedAt {
+                        shouldReplace = record.updatedAt > existing.updatedAt
+                    } else if record.endedAt != existing.endedAt {
+                        shouldReplace = record.endedAt > existing.endedAt
+                    } else if record.listenedSeconds != existing.listenedSeconds {
+                        shouldReplace = record.listenedSeconds > existing.listenedSeconds
+                    } else {
+                        shouldReplace = record.sourceDeviceID < existing.sourceDeviceID
+                    }
+                    if shouldReplace {
+                        newestByIdentity[key] = record
+                    }
+                } else {
+                    newestByIdentity[key] = record
+                }
+            }
+
+            offset += page.count
+            if page.count < pageSize {
+                break
+            }
+        }
+        guard newestByIdentity.isEmpty == false else { return nil }
+        return newestByIdentity.values.reduce(0) { partial, record in
+            partial + max(0, record.listenedSeconds)
+        }
     }
 
     private func hasAnySummary() -> Bool {
