@@ -593,7 +593,7 @@ actor SubscriptionManager:NSObject{
     ) -> [BackgroundFeedRefreshCandidate] {
         var candidates: [BackgroundFeedRefreshCandidate] = []
 
-        for podcast in backgroundRefreshCandidates() {
+        for podcast in podcastsPrioritizedForBackgroundRefresh(now: startedAt) {
             if candidates.count >= policy.maxPodcastsPerRun {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
                 break
@@ -652,6 +652,54 @@ actor SubscriptionManager:NSObject{
     }
 
     
+
+    func nextPredictedFeedRefreshDate(after now: Date = Date()) async -> Date? {
+        fetchData()
+        return podcasts
+            .filter { $0.metaData?.isSubscribed != false }
+            .compactMap { PodcastReleasePredictor.prediction(for: $0, after: now)?.refreshStart }
+            .min()
+    }
+
+    private func podcastsPrioritizedForBackgroundRefresh(now: Date) -> [Podcast] {
+        podcasts
+            .filter { $0.metaData?.isSubscribed != false }
+            .sorted { lhs, rhs in
+                let lhsPrediction = PodcastReleasePredictor.prediction(for: lhs, after: now)
+                let rhsPrediction = PodcastReleasePredictor.prediction(for: rhs, after: now)
+                let lhsScore = backgroundRefreshScore(for: lhs, prediction: lhsPrediction, now: now)
+                let rhsScore = backgroundRefreshScore(for: rhs, prediction: rhsPrediction, now: now)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+
+                let lhsCheck = lhs.metaData?.feedUpdateCheckDate ?? .distantPast
+                let rhsCheck = rhs.metaData?.feedUpdateCheckDate ?? .distantPast
+                if lhsCheck != rhsCheck { return lhsCheck < rhsCheck }
+                return (lhs.metaData?.lastRefresh ?? .distantPast) < (rhs.metaData?.lastRefresh ?? .distantPast)
+            }
+    }
+
+    private func backgroundRefreshScore(
+        for podcast: Podcast,
+        prediction: PodcastReleasePredictor.Prediction?,
+        now: Date
+    ) -> Int {
+        guard let prediction else { return 0 }
+        let lastCheck = podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+        if lastCheck >= prediction.refreshStart, lastCheck <= prediction.refreshEnd {
+            return 25
+        }
+        if now >= prediction.refreshStart, now <= prediction.refreshEnd {
+            return 100
+        }
+        if now > prediction.refreshEnd {
+            return 75
+        }
+        let secondsUntilWindow = prediction.refreshStart.timeIntervalSince(now)
+        if secondsUntilWindow <= 60 * 60 { return 60 }
+        if secondsUntilWindow <= 3 * 60 * 60 { return 40 }
+        return 10
+    }
+
     func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
@@ -882,5 +930,89 @@ extension String {
         escaped = escaped.replacingOccurrences(of: "\"", with: "&quot;")
         escaped = escaped.replacingOccurrences(of: "'", with: "&apos;")
         return escaped
+    }
+}
+
+struct PodcastReleasePredictor {
+    struct Prediction {
+        let releaseDate: Date
+        let refreshStart: Date
+        let refreshEnd: Date
+    }
+
+    private static let calendar = Calendar.autoupdatingCurrent
+    private static let maximumEpisodes = 12
+    private static let minimumEpisodes = 3
+    private static let refreshLeadTime: TimeInterval = 30 * 60
+    private static let refreshFollowUpTime: TimeInterval = 3 * 60 * 60
+    private static let minimumInterval: TimeInterval = 6 * 60 * 60
+    private static let maximumInterval: TimeInterval = 14 * 24 * 60 * 60
+
+    static func prediction(for podcast: Podcast, after now: Date) -> Prediction? {
+        let dates = (podcast.episodes ?? [])
+            .compactMap(\.publishDate)
+            .filter { $0 < now.addingTimeInterval(24 * 60 * 60) }
+            .sorted(by: >)
+            .prefix(maximumEpisodes)
+
+        guard dates.count >= minimumEpisodes else { return nil }
+
+        let sortedAscending = dates.sorted()
+        let intervals = zip(sortedAscending.dropFirst(), sortedAscending)
+            .map { newer, older in newer.timeIntervalSince(older) }
+            .filter { $0 >= minimumInterval && $0 <= maximumInterval }
+
+        guard intervals.count >= minimumEpisodes - 1 else { return nil }
+
+        let interval = median(intervals)
+        var nextRelease = sortedAscending.last!.addingTimeInterval(interval)
+        while nextRelease <= now.addingTimeInterval(-refreshFollowUpTime) {
+            nextRelease = nextRelease.addingTimeInterval(interval)
+        }
+
+        if let anchored = weekdayAndTimeAnchoredDate(from: Array(sortedAscending), near: nextRelease, after: now) {
+            nextRelease = anchored
+        }
+
+        return Prediction(
+            releaseDate: nextRelease,
+            refreshStart: nextRelease.addingTimeInterval(-refreshLeadTime),
+            refreshEnd: nextRelease.addingTimeInterval(refreshFollowUpTime)
+        )
+    }
+
+    private static func median(_ values: [TimeInterval]) -> TimeInterval {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[middle - 1] + sorted[middle]) / 2
+        }
+        return sorted[middle]
+    }
+
+    private static func weekdayAndTimeAnchoredDate(from dates: [Date], near estimate: Date, after now: Date) -> Date? {
+        let grouped = Dictionary(grouping: dates) { calendar.component(.weekday, from: $0) }
+        guard let (weekday, weekdayDates) = grouped.max(by: { $0.value.count < $1.value.count }), weekdayDates.count >= 2 else {
+            return nil
+        }
+
+        let minuteOfDayValues = weekdayDates.map {
+            let components = calendar.dateComponents([.hour, .minute], from: $0)
+            return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+        }
+        let minuteOfDay = Int(median(minuteOfDayValues.map(TimeInterval.init)))
+
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: estimate)
+        components.weekday = weekday
+        components.hour = minuteOfDay / 60
+        components.minute = minuteOfDay % 60
+        components.second = 0
+
+        guard var anchored = calendar.date(from: components) else { return nil }
+        let interval = max(median(zip(dates.dropFirst(), dates).map { $0.timeIntervalSince($1) }), 24 * 60 * 60)
+        while anchored <= now.addingTimeInterval(-refreshFollowUpTime) {
+            anchored = anchored.addingTimeInterval(interval)
+        }
+        return anchored
     }
 }

@@ -154,7 +154,7 @@ struct RaulApp: App {
                 deferredStoreSplitTask = nil
                 deferredForegroundFeedRefreshTask?.cancel()
                 deferredForegroundFeedRefreshTask = nil
-                scheduleFeedRefresh()
+                Task { await scheduleFeedRefresh() }
                 scheduleFeedProcessing()
                 scheduleStorageCleanup()
                 guard modelContainerManager.preparedContainer != nil else {
@@ -484,20 +484,38 @@ struct RaulApp: App {
         UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundProcess")
     }
     
-    func scheduleFeedRefresh() {
+
+    private func predictedFeedRefreshBeginDate() async -> Date? {
+        let fallback = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
+        guard let container = await MainActor.run(body: { modelContainerManager.preparedContainer }) else {
+            return fallback
+        }
+
+        guard let predicted = await SubscriptionManager(modelContainer: container).nextPredictedFeedRefreshDate() else {
+            return fallback
+        }
+
+        let minimumDelay = Date(timeIntervalSinceNow: 15 * 60)
+        let maximumDelay = fallback
+        return min(max(predicted, minimumDelay), maximumDelay)
+    }
+
+    func scheduleFeedRefresh() async {
 #if os(iOS)
         // this should replace scheduleAppRefresh
         CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
         BasicLogger.shared.log("schedule checkFeedUpdates")
+        let earliestBeginDate = await predictedFeedRefreshBeginDate()
         let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.feedRefreshIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
-        
-        do{
-            try BGTaskScheduler.shared.submit(request)
-            CrashBreadcrumbs.shared.record("schedule_feed_refresh_submitted")
+        request.earliestBeginDate = earliestBeginDate
 
-        }catch{
-            // print(error)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record(
+                "schedule_feed_refresh_submitted",
+                details: earliestBeginDate.map { "earliest=\($0)" }
+            )
+        } catch {
             CrashBreadcrumbs.shared.record("schedule_feed_refresh_failed", details: error.localizedDescription)
             BasicLogger.shared.log(error.localizedDescription)
         }
