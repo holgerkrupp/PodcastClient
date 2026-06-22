@@ -37,19 +37,29 @@ struct StoreSplitMigrationPhaseResult: Sendable {
 
 actor StoreSplitMigrationService {
     nonisolated static let migrationVersion = 3
-    private static let episodePageSize = 250
-    private static let aiContentPageSize = 50
+    private static let episodePageSize = 50
+    private static let listeningHistoryPageSize = 10
+    private static let aiContentPageSize = 10
     private static let maximumFailedItemKeys = 100
 
-    private let legacyContext: ModelContext
-    private let userStateContext: ModelContext
-    private let cacheContext: ModelContext
+    private let legacyContainer: ModelContainer
+    private let userStateContainer: ModelContainer
+    private let cacheContainer: ModelContainer
+    private var legacyContext: ModelContext
+    private var userStateContext: ModelContext
+    private var cacheContext: ModelContext
+    private let includeAIContent: Bool
 
     private init(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
-        cacheContainer: ModelContainer
+        cacheContainer: ModelContainer,
+        includeAIContent: Bool
     ) {
+        self.legacyContainer = legacyContainer
+        self.userStateContainer = userStateContainer
+        self.cacheContainer = cacheContainer
+        self.includeAIContent = includeAIContent
         legacyContext = ModelContext(legacyContainer)
         userStateContext = ModelContext(userStateContainer)
         cacheContext = ModelContext(cacheContainer)
@@ -61,16 +71,16 @@ actor StoreSplitMigrationService {
     nonisolated static func migrate(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
-        cacheContainer: ModelContainer
+        cacheContainer: ModelContainer,
+        includeAIContent: Bool = true
     ) async -> StoreSplitMigrationResult {
-        await Task.detached(priority: .utility) {
-            let worker = StoreSplitMigrationService(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
-                cacheContainer: cacheContainer
-            )
-            return await worker.run()
-        }.value
+        let worker = StoreSplitMigrationService(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer,
+            includeAIContent: includeAIContent
+        )
+        return await worker.run()
     }
 
     private func run() async -> StoreSplitMigrationResult {
@@ -85,74 +95,92 @@ actor StoreSplitMigrationService {
             legacyContext: legacyContext,
             destinationContext: userStateContext
         )
+        guard Task.isCancelled == false else { return result }
         Self.recordCheckpoint(
             phase: "subscriptions",
             result: result.subscriptions,
             context: cacheContext
         )
+        resetWorkingContexts()
         await Task.yield()
 
         result.episodeStates = await migrateEpisodeStates()
+        guard Task.isCancelled == false else { return result }
+        resetWorkingContexts()
 
         let playlistResults = Self.migratePlaylists(
             legacyContext: legacyContext,
             destinationContext: userStateContext
         )
+        guard Task.isCancelled == false else { return result }
         result.playlists = playlistResults.playlists
         result.playlistEntries = playlistResults.entries
         result.queueEntries = playlistResults.queueEntries
         Self.recordCheckpoint(phase: "playlists", result: result.playlists, context: cacheContext)
         Self.recordCheckpoint(phase: "playlist_entries", result: result.playlistEntries, context: cacheContext)
         Self.recordCheckpoint(phase: "queue_entries", result: result.queueEntries, context: cacheContext)
+        resetWorkingContexts()
         await Task.yield()
 
         result.bookmarks = Self.migrateBookmarks(
             legacyContext: legacyContext,
             destinationContext: userStateContext
         )
+        guard Task.isCancelled == false else { return result }
         Self.recordCheckpoint(
             phase: "bookmarks",
             result: result.bookmarks,
             context: cacheContext
         )
+        resetWorkingContexts()
         await Task.yield()
 
-        result.listeningHistory = Self.migrateListeningHistory(
-            legacyContext: legacyContext,
-            destinationContext: userStateContext
-        )
+        result.listeningHistory = await migrateListeningHistory()
+        guard Task.isCancelled == false else { return result }
         Self.recordCheckpoint(
             phase: "listening_history",
             result: result.listeningHistory,
             context: cacheContext
         )
+        resetWorkingContexts()
 
         result.listeningSummaries = Self.migrateListeningSummaries(
             legacyContext: legacyContext,
             destinationContext: userStateContext
         )
+        guard Task.isCancelled == false else { return result }
         Self.recordCheckpoint(
             phase: "listening_summaries",
             result: result.listeningSummaries,
             context: cacheContext
         )
+        resetWorkingContexts()
 
-        let aiContentResults = Self.migrateAIContent(
-            legacyContext: legacyContext,
-            destinationContext: userStateContext
-        )
-        result.aiTranscripts = aiContentResults.transcripts
-        result.aiChapters = aiContentResults.chapters
-        Self.recordCheckpoint(
-            phase: "ai_transcripts",
-            result: result.aiTranscripts,
-            context: cacheContext
-        )
-        Self.recordCheckpoint(
-            phase: "ai_chapters",
-            result: result.aiChapters,
-            context: cacheContext
-        )
+        if includeAIContent {
+            let aiContentResults = Self.migrateAIContent(
+                legacyContext: legacyContext,
+                destinationContext: userStateContext
+            )
+            guard Task.isCancelled == false else { return result }
+            result.aiTranscripts = aiContentResults.transcripts
+            result.aiChapters = aiContentResults.chapters
+            Self.recordCheckpoint(
+                phase: "ai_transcripts",
+                result: result.aiTranscripts,
+                context: cacheContext
+            )
+            Self.recordCheckpoint(
+                phase: "ai_chapters",
+                result: result.aiChapters,
+                context: cacheContext
+            )
+            resetWorkingContexts()
+        } else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_ai_migration_deferred",
+                details: "reason=automatic_memory_safety"
+            )
+        }
 
         try? legacyContext.save()
         try? userStateContext.save()
@@ -165,6 +193,18 @@ actor StoreSplitMigrationService {
             details: "failed=\(result.failedCount),subscriptions=\(result.subscriptions.scanned),episodes=\(result.episodeStates.scanned),playlists=\(result.playlists.scanned),bookmarks=\(result.bookmarks.scanned),history=\(result.listeningHistory.scanned),summaries=\(result.listeningSummaries.scanned),ai_transcripts=\(result.aiTranscripts.scanned),ai_chapters=\(result.aiChapters.scanned)"
         )
         return result
+    }
+
+    private func resetWorkingContexts() {
+        legacyContext = Self.makeContext(for: legacyContainer)
+        userStateContext = Self.makeContext(for: userStateContainer)
+        cacheContext = Self.makeContext(for: cacheContainer)
+    }
+
+    private static func makeContext(for container: ModelContainer) -> ModelContext {
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        return context
     }
 
     private static func migrateAIContent(
@@ -279,6 +319,7 @@ actor StoreSplitMigrationService {
 
         var episodeOffset = 0
         while true {
+            guard Task.isCancelled == false else { break }
             var descriptor = FetchDescriptor<Episode>(
                 sortBy: [SortDescriptor(\Episode.publishDate)]
             )
@@ -414,13 +455,19 @@ actor StoreSplitMigrationService {
     }
 
     private func migrateEpisodeStates() async -> StoreSplitMigrationPhaseResult {
-        var result = StoreSplitMigrationPhaseResult()
-        var recordsByID = ((try? userStateContext.fetch(FetchDescriptor<EpisodeStateSync>())) ?? [])
-            .reduce(into: [String: EpisodeStateSync]()) { $0[$1.id] = $1 }
-        var offset = 0
+        let resume = Self.resumeProgress(
+            phase: "episode_states",
+            context: cacheContext
+        )
+        var result = resume.result
+        var offset = resume.offset
         var completed = true
 
         while true {
+            guard Task.isCancelled == false else {
+                completed = false
+                break
+            }
             var descriptor = FetchDescriptor<Episode>(
                 sortBy: [SortDescriptor(\Episode.publishDate)]
             )
@@ -479,7 +526,13 @@ actor StoreSplitMigrationService {
                     metadata.firstListenDate
                 ) ?? .distantPast
 
-                if let destination = recordsByID[identity.key] {
+                let stateID = identity.key
+                let destinationDescriptor = FetchDescriptor<EpisodeStateSync>(
+                    predicate: #Predicate<EpisodeStateSync> { $0.id == stateID }
+                )
+                if let destination = try? userStateContext.fetch(
+                    destinationDescriptor
+                ).first {
                     guard StoreSplitMergePolicy.prefersIncoming(
                         existingUpdatedAt: destination.updatedAt,
                         incomingUpdatedAt: updatedAt
@@ -515,7 +568,6 @@ actor StoreSplitMigrationService {
                         updatedAt: updatedAt
                     )
                     userStateContext.insert(destination)
-                    recordsByID[identity.key] = destination
                     result.inserted += 1
                 }
             }
@@ -529,7 +581,9 @@ actor StoreSplitMigrationService {
                 completed: false,
                 context: cacheContext
             )
+            resetWorkingContexts()
             await Task.yield()
+            try? await Task.sleep(for: .milliseconds(25))
 
             if episodes.count < Self.episodePageSize {
                 break
@@ -822,93 +876,122 @@ actor StoreSplitMigrationService {
         return result
     }
 
-    private static func migrateListeningHistory(
-        legacyContext: ModelContext,
-        destinationContext: ModelContext
-    ) -> StoreSplitMigrationPhaseResult {
-        var result = StoreSplitMigrationPhaseResult()
-        var recordsByID = ((try? destinationContext.fetch(FetchDescriptor<ListeningHistorySync>())) ?? [])
-            .reduce(into: [String: ListeningHistorySync]()) { $0[$1.id] = $1 }
-        let sessions = (try? legacyContext.fetch(FetchDescriptor<PlaySession>())) ?? []
+    private func migrateListeningHistory() async -> StoreSplitMigrationPhaseResult {
+        let resume = Self.resumeProgress(
+            phase: "listening_history",
+            context: cacheContext
+        )
+        var result = resume.result
+        var offset = resume.offset
 
-        for session in sessions {
-            result.scanned += 1
-            guard let episode = session.episode,
-                  episode.podcast?.feed != nil,
-                  let startedAt = session.startTime,
-                  let endedAt = session.endTime,
-                  endedAt > startedAt else {
-                result.skipped += 1
-                continue
-            }
-
-            let identity = episode.stableEpisodeIdentity
-            let sourceDeviceID = session.sourceDeviceID ?? legacyDeviceID(
-                deviceModel: session.deviceModel,
-                osVersion: session.osVersion
+        while true {
+            guard Task.isCancelled == false else { break }
+            var descriptor = FetchDescriptor<PlaySession>(
+                sortBy: [SortDescriptor(\PlaySession.startTime)]
             )
-            let sourceDeviceName = session.sourceDeviceName
-                ?? session.deviceModel
-                ?? "Legacy device"
-            let recordID = ListeningHistoryIdentity.make(
-                feedURL: identity.feedURL,
-                episodeID: identity.episodeID,
-                startedAt: startedAt,
-                endedAt: endedAt,
-                startPosition: session.startPosition ?? 0,
-                endPosition: session.endPosition ?? 0
-            )
-            let listenedSeconds = endedAt.timeIntervalSince(startedAt)
-            let updatedAt = endedAt
+            descriptor.fetchLimit = Self.listeningHistoryPageSize
+            descriptor.fetchOffset = offset
+            let sessions = (try? legacyContext.fetch(descriptor)) ?? []
+            guard sessions.isEmpty == false else { break }
 
-            if let destination = recordsByID[recordID] {
-                guard StoreSplitMergePolicy.prefersIncoming(
-                    existingUpdatedAt: destination.updatedAt,
-                    incomingUpdatedAt: updatedAt
-                ) else {
+            for session in sessions {
+                result.scanned += 1
+                guard let episode = session.episode,
+                      episode.podcast?.feed != nil,
+                      let startedAt = session.startTime,
+                      let endedAt = session.endTime,
+                      endedAt > startedAt else {
                     result.skipped += 1
                     continue
                 }
-                applyListeningHistory(
-                    session: session,
-                    episode: episode,
-                    identity: identity,
-                    sourceDeviceID: sourceDeviceID,
-                    sourceDeviceName: sourceDeviceName,
-                    startedAt: startedAt,
-                    endedAt: endedAt,
-                    listenedSeconds: listenedSeconds,
-                    updatedAt: updatedAt,
-                    to: destination
+
+                let identity = episode.stableEpisodeIdentity
+                let sourceDeviceID = session.sourceDeviceID ?? Self.legacyDeviceID(
+                    deviceModel: session.deviceModel,
+                    osVersion: session.osVersion
                 )
-                result.updated += 1
-            } else {
-                let destination = ListeningHistorySync(
-                    id: recordID,
+                let sourceDeviceName = session.sourceDeviceName
+                    ?? session.deviceModel
+                    ?? "Legacy device"
+                let recordID = ListeningHistoryIdentity.make(
                     feedURL: identity.feedURL,
                     episodeID: identity.episodeID,
-                    podcastName: session.podcastName ?? episode.displayPodcastTitle,
-                    episodeTitle: episode.title,
-                    sourceDeviceID: sourceDeviceID,
-                    sourceDeviceName: sourceDeviceName,
-                    deviceModel: session.deviceModel,
                     startedAt: startedAt,
                     endedAt: endedAt,
                     startPosition: session.startPosition ?? 0,
                     endPosition: session.endPosition ?? 0,
-                    listenedSeconds: listenedSeconds,
-                    silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
-                    playbackRateTimeSavedSeconds: PlaybackRateSavingsCalculator.secondsSaved(in: session),
-                    endedCleanly: session.endedCleanly == true,
-                    updatedAt: updatedAt
                 )
-                destinationContext.insert(destination)
-                recordsByID[recordID] = destination
-                result.inserted += 1
+                let listenedSeconds = endedAt.timeIntervalSince(startedAt)
+                let updatedAt = endedAt
+                let destinationDescriptor = FetchDescriptor<ListeningHistorySync>(
+                    predicate: #Predicate<ListeningHistorySync> { $0.id == recordID }
+                )
+
+                if let destination = try? userStateContext.fetch(
+                    destinationDescriptor
+                ).first {
+                    guard StoreSplitMergePolicy.prefersIncoming(
+                        existingUpdatedAt: destination.updatedAt,
+                        incomingUpdatedAt: updatedAt
+                    ) else {
+                        result.skipped += 1
+                        continue
+                    }
+                    Self.applyListeningHistory(
+                        session: session,
+                        episode: episode,
+                        identity: identity,
+                        sourceDeviceID: sourceDeviceID,
+                        sourceDeviceName: sourceDeviceName,
+                        startedAt: startedAt,
+                        endedAt: endedAt,
+                        listenedSeconds: listenedSeconds,
+                        updatedAt: updatedAt,
+                        to: destination
+                    )
+                    result.updated += 1
+                } else {
+                    userStateContext.insert(
+                        ListeningHistorySync(
+                            id: recordID,
+                            feedURL: identity.feedURL,
+                            episodeID: identity.episodeID,
+                            podcastName: session.podcastName ?? episode.displayPodcastTitle,
+                            episodeTitle: episode.title,
+                            sourceDeviceID: sourceDeviceID,
+                            sourceDeviceName: sourceDeviceName,
+                            deviceModel: session.deviceModel,
+                            startedAt: startedAt,
+                            endedAt: endedAt,
+                            startPosition: session.startPosition ?? 0,
+                            endPosition: session.endPosition ?? 0,
+                            listenedSeconds: listenedSeconds,
+                            silenceGapTimeSavedSeconds:
+                                session.silenceGapTimeSavedSeconds ?? 0,
+                            playbackRateTimeSavedSeconds:
+                                PlaybackRateSavingsCalculator.secondsSaved(in: session),
+                            endedCleanly: session.endedCleanly == true,
+                            updatedAt: updatedAt
+                        )
+                    )
+                    result.inserted += 1
+                }
             }
+
+            Self.save(userStateContext, result: &result)
+            offset += sessions.count
+            Self.recordCheckpoint(
+                phase: "listening_history",
+                result: result,
+                cursor: String(offset),
+                completed: false,
+                context: cacheContext
+            )
+            resetWorkingContexts()
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(100))
         }
 
-        save(destinationContext, result: &result)
         return result
     }
 
@@ -1108,6 +1191,32 @@ actor StoreSplitMigrationService {
         checkpoint.lastError = error
         checkpoint.updatedAt = .now
         try? context.save()
+    }
+
+    private static func resumeProgress(
+        phase: String,
+        context: ModelContext
+    ) -> (offset: Int, result: StoreSplitMigrationPhaseResult) {
+        let checkpointID = "v\(migrationVersion).\(phase)"
+        let descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
+            predicate: #Predicate { $0.id == checkpointID }
+        )
+        guard let checkpoint = try? context.fetch(descriptor).first,
+              checkpoint.completedAt == nil,
+              let cursor = checkpoint.cursor,
+              let offset = Int(cursor) else {
+            return (0, StoreSplitMigrationPhaseResult())
+        }
+        return (
+            max(0, offset),
+            StoreSplitMigrationPhaseResult(
+                scanned: checkpoint.scannedCount,
+                inserted: checkpoint.insertedCount,
+                updated: checkpoint.updatedCount,
+                skipped: checkpoint.skippedCount,
+                failed: checkpoint.failedCount
+            )
+        )
     }
 
     private static func failedItemKeys(from context: ModelContext) -> [String] {

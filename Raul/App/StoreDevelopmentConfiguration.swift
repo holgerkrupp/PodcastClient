@@ -26,6 +26,7 @@ struct StoreDevelopmentConfiguration: Equatable {
     static let modeKey = "development.database.storeMode"
     static let legacyCloudSyncEnabledKey = "development.database.legacyCloudSyncEnabled"
     static let userStateCloudSyncEnabledKey = "development.database.userStateCloudSyncEnabled"
+    static let splitStoreWorkEnabledKey = "development.database.splitStoreWorkEnabled"
     static let resetLocalSplitStoresOnNextLaunchKey =
         "development.database.resetLocalSplitStoresOnNextLaunch"
     static let resetAllLocalStoresOnNextLaunchKey =
@@ -34,6 +35,7 @@ struct StoreDevelopmentConfiguration: Equatable {
     let mode: DevelopmentStoreMode
     let legacyCloudSyncEnabled: Bool
     let userStateCloudSyncEnabled: Bool
+    let splitStoreWorkEnabled: Bool
 
     static let launch = loadCurrent()
 
@@ -42,24 +44,27 @@ struct StoreDevelopmentConfiguration: Equatable {
     }
 
     static var splitStoresEnabled: Bool {
-        splitStoreHeavyWorkPaused == false && launch.mode != .legacyOnly
+        launch.splitStoresEnabled
     }
 
     static var newStoreReadsEnabled: Bool {
-        splitStoreHeavyWorkPaused == false
-            && (launch.mode == .splitStoreReads || launch.mode == .newStoresOnly)
+        launch.newStoreReadsEnabled
     }
 
     static var legacyMigrationEnabled: Bool {
-        splitStoreHeavyWorkPaused == false && launch.mode == .splitStores
+        launch.legacyMigrationEnabled
     }
 
     static var legacyCloudSyncEnabled: Bool {
-        launch.mode == .splitStores && launch.legacyCloudSyncEnabled
+        launch.effectiveLegacyCloudSyncEnabled
     }
 
     static var userStateCloudSyncEnabled: Bool {
-        launch.mode == .splitStores && launch.userStateCloudSyncEnabled
+        launch.effectiveUserStateCloudSyncEnabled
+    }
+
+    static var cloudSyncSettingsAvailable: Bool {
+        launch.cloudSyncSettingsAvailable
     }
 
     static var usesLegacyLocalProjection: Bool {
@@ -95,7 +100,7 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     static var splitStoreHeavyWorkPaused: Bool {
 #if DEBUG
-        true
+        launch.splitStoreHeavyWorkPaused
 #else
         false
 #endif
@@ -112,18 +117,55 @@ struct StoreDevelopmentConfiguration: Equatable {
         ) as? Bool ?? true
         let userStateCloudSyncEnabled = defaults.object(
             forKey: userStateCloudSyncEnabledKey
+        ) as? Bool ?? false
+        let splitStoreWorkEnabled = defaults.object(
+            forKey: splitStoreWorkEnabledKey
         ) as? Bool ?? true
         return StoreDevelopmentConfiguration(
             mode: mode,
             legacyCloudSyncEnabled: legacyCloudSyncEnabled,
-            userStateCloudSyncEnabled: userStateCloudSyncEnabled
+            userStateCloudSyncEnabled: userStateCloudSyncEnabled,
+            splitStoreWorkEnabled: splitStoreWorkEnabled
         )
 #else
         return StoreDevelopmentConfiguration(
             mode: .splitStores,
             legacyCloudSyncEnabled: true,
-            userStateCloudSyncEnabled: true
+            userStateCloudSyncEnabled: true,
+            splitStoreWorkEnabled: true
         )
 #endif
+    }
+}
+
+extension StoreDevelopmentConfiguration {
+    var splitStoreHeavyWorkPaused: Bool {
+        splitStoreWorkEnabled == false
+    }
+
+    var splitStoresEnabled: Bool {
+        splitStoreHeavyWorkPaused == false && mode != .legacyOnly
+    }
+
+    var newStoreReadsEnabled: Bool {
+        splitStoreHeavyWorkPaused == false
+            && (mode == .splitStoreReads || mode == .newStoresOnly)
+    }
+
+    var legacyMigrationEnabled: Bool {
+        splitStoreHeavyWorkPaused == false
+            && (mode == .splitStores || mode == .splitStoreReads)
+    }
+
+    var cloudSyncSettingsAvailable: Bool {
+        mode == .splitStores || mode == .splitStoreReads
+    }
+
+    var effectiveLegacyCloudSyncEnabled: Bool {
+        cloudSyncSettingsAvailable && legacyCloudSyncEnabled
+    }
+
+    var effectiveUserStateCloudSyncEnabled: Bool {
+        cloudSyncSettingsAvailable && userStateCloudSyncEnabled
     }
 }

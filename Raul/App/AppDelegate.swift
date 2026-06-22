@@ -12,10 +12,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private var playbackStateBackgroundTaskID = UIBackgroundTaskIdentifier.invalid
 
     func applicationWillResignActive(_ application: UIApplication) {
+        ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
         flushPlaybackState(reason: "will_resign_active")
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
+        ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
         flushPlaybackState(reason: "did_enter_background")
     }
 

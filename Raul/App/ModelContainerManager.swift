@@ -129,9 +129,7 @@ class ModelContainerManager: ObservableObject {
             defaults.removeObject(
                 forKey: StoreDevelopmentConfiguration.resetAllLocalStoresOnNextLaunchKey
             )
-            if resetAllStores {
-                clearMigrationRunState()
-            }
+            clearMigrationRunState()
             CrashBreadcrumbs.shared.record(
                 resetAllStores
                     ? "all_local_stores_reset_completed"
@@ -308,6 +306,17 @@ class ModelContainerManager: ObservableObject {
         await splitStoreCoordinator.scheduleLaunchWork()
     }
 
+    func pauseSplitStoreWorkForBackground() {
+        migrationTask?.cancel()
+        userStateImportTask?.cancel()
+        aiContentImportTask?.cancel()
+        Task {
+            await splitStoreCoordinator.pauseForBackground()
+        }
+        pendingSplitStoreWorkReason = "paused while app is in background"
+        CrashBreadcrumbs.shared.record("store_split_work_background_cancel_requested")
+    }
+
     func storeSplitMigrationStatus() -> StoreSplitMigrationStatus? {
         guard let cacheContainer = preparedCacheContainer,
               let userStateContainer = preparedUserStateContainer else {
@@ -323,6 +332,14 @@ class ModelContainerManager: ObservableObject {
 #if DEBUG
     func importAvailableSplitStoreStateNow() async throws {
         await splitStoreCoordinator.runManualReconcile(authoritativePlaylists: true)
+    }
+
+    func runStoreSplitMigrationNowForDevelopment() async {
+        let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        defaults.removeObject(forKey: Self.lastMigrationCompletedAtKey)
+        defaults.removeObject(forKey: Self.lastMigrationHadFailuresKey)
+        lastMigrationCompletedAt = nil
+        await splitStoreCoordinator.runManualMigration()
     }
 #endif
 
@@ -485,8 +502,15 @@ class ModelContainerManager: ObservableObject {
             let result = await StoreSplitMigrationService.migrate(
                 legacyContainer: legacyContainer,
                 userStateContainer: userStateContainer,
-                cacheContainer: cacheContainer
+                cacheContainer: cacheContainer,
+                includeAIContent: false
             )
+            guard Task.isCancelled == false else {
+                isMigratingSplitStores = false
+                migrationTask = nil
+                CrashBreadcrumbs.shared.record("store_split_migration_cancelled")
+                return
+            }
             if result.failedCount > 0 {
                 migrationError = "\(result.failedCount) migration item(s) failed"
             }

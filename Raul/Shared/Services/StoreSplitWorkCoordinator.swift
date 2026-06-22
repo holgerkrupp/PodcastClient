@@ -51,11 +51,20 @@ actor StoreSplitWorkCoordinator {
                 refreshMissingFeeds: true,
                 reason: "launch"
             )
-        } else if StoreDevelopmentConfiguration.legacyMigrationEnabled {
-            pendingMigration = true
         }
         await publishPendingState()
         startRunnerIfNeeded()
+    }
+
+    func pauseForBackground() async {
+        runnerTask?.cancel()
+        runnerTask = nil
+        pendingReconcile = nil
+        pendingAIImport = false
+        pendingMigration = false
+        pendingPlaybackIdleReconcile = false
+        currentJob = nil
+        await publishPendingState()
     }
 
     func scheduleCloudImportReconcile() async {
@@ -102,6 +111,20 @@ actor StoreSplitWorkCoordinator {
             refreshMissingFeeds: true,
             reason: "manual"
         )
+        await publishPendingState()
+        startRunnerIfNeeded()
+        if await MainActor.run(body: { Player.shared.isPlaying }) {
+            return
+        }
+        await waitForIdle()
+    }
+
+    func runManualMigration() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            return
+        }
+        guard StoreDevelopmentConfiguration.legacyMigrationEnabled else { return }
+        pendingMigration = true
         await publishPendingState()
         startRunnerIfNeeded()
         if await MainActor.run(body: { Player.shared.isPlaying }) {

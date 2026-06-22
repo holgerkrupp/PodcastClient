@@ -3,6 +3,36 @@ import XCTest
 @testable import UpNext
 
 final class StableIdentityTests: XCTestCase {
+    func testSplitStoreReadModeSupportsCloudBackedDualWriteMigration() {
+        let configuration = StoreDevelopmentConfiguration(
+            mode: .splitStoreReads,
+            legacyCloudSyncEnabled: true,
+            userStateCloudSyncEnabled: true,
+            splitStoreWorkEnabled: true
+        )
+
+        XCTAssertTrue(configuration.splitStoresEnabled)
+        XCTAssertTrue(configuration.newStoreReadsEnabled)
+        XCTAssertTrue(configuration.legacyMigrationEnabled)
+        XCTAssertTrue(configuration.effectiveLegacyCloudSyncEnabled)
+        XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
+    }
+
+    func testSplitStoreWorkSwitchPausesMigrationAndProjection() {
+        let configuration = StoreDevelopmentConfiguration(
+            mode: .splitStoreReads,
+            legacyCloudSyncEnabled: true,
+            userStateCloudSyncEnabled: true,
+            splitStoreWorkEnabled: false
+        )
+
+        XCTAssertFalse(configuration.splitStoresEnabled)
+        XCTAssertFalse(configuration.newStoreReadsEnabled)
+        XCTAssertFalse(configuration.legacyMigrationEnabled)
+        XCTAssertTrue(configuration.effectiveLegacyCloudSyncEnabled)
+        XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
+    }
+
     func testEpisodeIdentityPrefersGUIDWithinFeed() {
         let feedURL = URL(string: "https://example.com/podcast.xml")!
         let identity = EpisodeStableIdentity.make(

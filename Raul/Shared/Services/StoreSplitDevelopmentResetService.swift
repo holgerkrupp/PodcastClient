@@ -109,11 +109,9 @@ actor StoreSplitDevelopmentResetService {
         _ model: Model.Type,
         from context: ModelContext
     ) throws -> Int {
-        let records = try context.fetch(FetchDescriptor<Model>())
-        for record in records {
-            context.delete(record)
-        }
-        return records.count
+        let count = try context.fetchCount(FetchDescriptor<Model>())
+        try context.delete(model: model)
+        return count
     }
 }
 #endif

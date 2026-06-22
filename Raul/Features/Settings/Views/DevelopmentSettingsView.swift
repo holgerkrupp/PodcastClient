@@ -8,7 +8,9 @@ struct DevelopmentSettingsView: View {
     @AppStorage(StoreDevelopmentConfiguration.legacyCloudSyncEnabledKey)
     private var legacyCloudSyncEnabled = true
     @AppStorage(StoreDevelopmentConfiguration.userStateCloudSyncEnabledKey)
-    private var userStateCloudSyncEnabled = true
+    private var userStateCloudSyncEnabled = false
+    @AppStorage(StoreDevelopmentConfiguration.splitStoreWorkEnabledKey)
+    private var splitStoreWorkEnabled = true
 
     @State private var launchConfiguration = StoreDevelopmentConfiguration.launch
     @State private var showLocalResetConfirmation = false
@@ -23,7 +25,8 @@ struct DevelopmentSettingsView: View {
         StoreDevelopmentConfiguration(
             mode: storeMode,
             legacyCloudSyncEnabled: legacyCloudSyncEnabled,
-            userStateCloudSyncEnabled: userStateCloudSyncEnabled
+            userStateCloudSyncEnabled: userStateCloudSyncEnabled,
+            splitStoreWorkEnabled: splitStoreWorkEnabled
         )
     }
 
@@ -46,14 +49,20 @@ struct DevelopmentSettingsView: View {
             }
 
             Section {
+                Toggle("Enable migration and reconciliation", isOn: $splitStoreWorkEnabled)
+                    .disabled(storeMode == .legacyOnly)
                 Toggle("CloudKit for legacy store", isOn: $legacyCloudSyncEnabled)
-                    .disabled(storeMode != .splitStores)
+                    .disabled(
+                        storeMode != .splitStores && storeMode != .splitStoreReads
+                    )
                 Toggle("CloudKit for user-state store", isOn: $userStateCloudSyncEnabled)
-                    .disabled(storeMode != .splitStores)
+                    .disabled(
+                        storeMode != .splitStores && storeMode != .splitStoreReads
+                    )
             } header: {
                 Text("Cloud Synchronization")
             } footer: {
-                Text("The podcast cache store is always local-only. CloudKit for both legacy and user-state stores is only active in Split Stores mode. Split-read modes now force both stores local-only to keep test builds from being killed by background CloudKit import/export work.")
+                Text("The podcast cache store is always local-only. Use New-store reads with both CloudKit toggles enabled to test iPhone–Mac synchronization while continuing to dual-write the legacy and user-state stores. Disable migration and reconciliation if you need to inspect the stores without background projection work.")
             }
 
             Section("Active Since Launch") {
@@ -70,9 +79,15 @@ struct DevelopmentSettingsView: View {
                         ? "Enabled"
                         : "Disabled"
                 )
+                LabeledContent(
+                    "Migration and reconciliation",
+                    value: StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused
+                        ? "Paused"
+                        : "Enabled"
+                )
             }
 
-            if StoreDevelopmentConfiguration.splitStoresEnabled {
+            if launchConfiguration.mode != .legacyOnly {
                 Section("Split-Store Work") {
                     LabeledContent(
                         "Current job",
@@ -184,40 +199,55 @@ struct DevelopmentSettingsView: View {
             }
 
             Section {
+                Button("Run Legacy Migration Now") {
+                    runMigrationNow()
+                }
+                .disabled(
+                    isRunningSyncAction
+                        || isResetting
+                        || splitStoreWorkEnabled == false
+                        || (storeMode != .splitStores && storeMode != .splitStoreReads)
+                )
+
                 Button("Import Available Cloud State Now") {
                     importAvailableCloudState()
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(
+                    isRunningSyncAction
+                        || isResetting
+                        || splitStoreWorkEnabled == false
+                        || storeMode != .splitStoreReads
+                )
 
                 Button("Republish Playlists") {
                     republishLegacyState(.playlists)
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(splitStoreActionDisabled)
 
                 Button("Republish Bookmarks") {
                     republishLegacyState(.bookmarks)
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(splitStoreActionDisabled)
 
                 Button("Republish Playback State") {
                     republishLegacyState(.episodeStates)
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(splitStoreActionDisabled)
 
                 Button("Republish Subscriptions") {
                     republishLegacyState(.subscriptions)
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(splitStoreActionDisabled)
 
                 Button("Republish Listening History (Heavy)") {
                     republishLegacyState(.listeningHistory)
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(splitStoreActionDisabled)
 
                 Button("Show Local User-State Counts") {
                     loadSplitStoreCounts()
                 }
-                .disabled(isRunningSyncAction || isResetting)
+                .disabled(splitStoreActionDisabled)
 
                 Button("Reset Local Split Stores on Next Launch") {
                     showLocalResetConfirmation = true
@@ -234,7 +264,10 @@ struct DevelopmentSettingsView: View {
                 Button("Delete Split-Store Data from CloudKit", role: .destructive) {
                     showResetConfirmation = true
                 }
-                .disabled(isResetting || modelContainerManager.developmentResetRequiresRelaunch)
+                .disabled(
+                    splitStoreActionDisabled
+                        || modelContainerManager.developmentResetRequiresRelaunch
+                )
 
                 if isResetting {
                     HStack(spacing: 10) {
@@ -258,16 +291,19 @@ struct DevelopmentSettingsView: View {
             } header: {
                 Text("Migration Testing")
             } footer: {
-                Text("Use the local reset to simulate a fresh device: the SQLite files are removed before SwiftData opens them, so CloudKit can download the records again without receiving deletions. The CloudKit delete action is global and should only be used when you intend to erase migrated records on every device.")
+                Text("Automatic legacy migration is disabled for memory safety. Run it only when explicitly testing migration. Use the local reset to simulate a fresh device: the SQLite files are removed before SwiftData opens them, so CloudKit can download records again without receiving deletions. The CloudKit delete action is global and erases migrated records on every device.")
             }
         }
         .formStyle(.grouped)
         .navigationTitle("Development")
         .platformInlineNavigationTitle()
         .onChange(of: storeMode) { _, mode in
-            if mode != .splitStores {
+            if mode == .legacyOnly || mode == .newStoresOnly {
                 legacyCloudSyncEnabled = false
                 userStateCloudSyncEnabled = false
+            }
+            if mode == .legacyOnly {
+                splitStoreWorkEnabled = false
             }
         }
         .task {
@@ -327,10 +363,17 @@ struct DevelopmentSettingsView: View {
         case .splitStores:
             "The app continues reading its podcast graph from the legacy store while preparing, migrating, and dual-writing the new user-state and cache stores."
         case .splitStoreReads:
-            "Reads from the split stores and projects user state onto the local legacy UI store, but keeps CloudKit disabled so self-test builds stay local and memory-safe."
+            "Recommended cross-device test mode. The app dual-writes both stores, reads synchronized user state from UserState.sqlite, and projects it onto the legacy UI graph. CloudKit follows the two toggles above."
         case .newStoresOnly:
             "The new user-state store is authoritative for local testing, but CloudKit stays disabled. Legacy CloudKit and legacy-to-new migration are disabled. SharedDatabase.sqlite remains local-only as the temporary feed and UI projection until Podcast and Episode cache models move into PodcastCache.sqlite."
         }
+    }
+
+    private var splitStoreActionDisabled: Bool {
+        isRunningSyncAction
+            || isResetting
+            || splitStoreWorkEnabled == false
+            || storeMode == .legacyOnly
     }
 
     private func resetMigratedData() {
@@ -357,6 +400,23 @@ struct DevelopmentSettingsView: View {
                 resetMessage = "Imported the user-state records currently available on this device."
             } catch {
                 resetMessage = error.localizedDescription
+            }
+            isRunningSyncAction = false
+        }
+    }
+
+    private func runMigrationNow() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            await modelContainerManager.runStoreSplitMigrationNowForDevelopment()
+            if let error = modelContainerManager.migrationError {
+                resetMessage = error
+            } else {
+                resetMessage = modelContainerManager.isMigratingSplitStores
+                    || modelContainerManager.pendingSplitStoreWorkReason == "migration"
+                    ? "Legacy migration is queued and will run when playback is idle."
+                    : "Legacy migration completed."
             }
             isRunningSyncAction = false
         }

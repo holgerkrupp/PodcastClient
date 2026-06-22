@@ -111,6 +111,8 @@ struct RaulApp: App {
                         }
                     }
                     .task {
+                        try? await Task.sleep(for: .seconds(15))
+                        guard Task.isCancelled == false else { return }
                         await modelContainerManager.runLaunchStoreMaintenance()
                     }
                 
@@ -150,6 +152,7 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
+                modelContainerManager.pauseSplitStoreWorkForBackground()
                 deferredStoreSplitTask?.cancel()
                 deferredStoreSplitTask = nil
                 deferredForegroundFeedRefreshTask?.cancel()
@@ -414,8 +417,6 @@ struct RaulApp: App {
             guard Task.isCancelled == false else { return }
             if StoreDevelopmentConfiguration.newStoreReadsEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
-            } else {
-                await modelContainerManager.runStoreSplitMigration()
             }
             await MainActor.run {
                 deferredStoreSplitTask = nil
