@@ -31,6 +31,11 @@ struct PodcastBulkRefreshError: LocalizedError {
     }
 }
 
+struct PodcastUpdateSummary: Sendable {
+    let didUpdateFeed: Bool
+    let newEpisodeCount: Int
+}
+
 @ModelActor
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
@@ -177,6 +182,10 @@ actor PodcastModelActor {
             print("❌ Error fetching episode for podcast Feed: \(podcastFeed), Error: \(error)")
             return nil
         }
+    }
+
+    func fetchPodcastTitle(byFeed podcastFeed: URL) async -> String? {
+        await fetchPodcast(byFeed: podcastFeed)?.title
     }
     
     func setFeedUpdated(_ metaDataID: PersistentIdentifier, to updated: Bool? = nil) async {
@@ -467,7 +476,7 @@ actor PodcastModelActor {
             var partialPodcast = page.parsedFeed
             partialPodcast["episodes"] = page.episodes.map(\.rawEpisodeData)
 
-            try await updateDetails(
+            _ = try await updateDetails(
                 finalPodcast,
                 fullPodcast: partialPodcast,
                 silent: true
@@ -504,6 +513,27 @@ actor PodcastModelActor {
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
+        let summary = try await updatePodcastWithSummary(
+            podcastFeed,
+            force: force,
+            silent: silent,
+            resolveExistingMissingDurations: resolveExistingMissingDurations,
+            processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
+            deadline: deadline,
+            progress: progress
+        )
+        return summary.didUpdateFeed
+    }
+
+    func updatePodcastWithSummary(
+        _ podcastFeed: URL,
+        force: Bool? = false,
+        silent: Bool? = false,
+        resolveExistingMissingDurations: Bool = true,
+        processNewEpisodesDuringSilentRefresh: Bool = false,
+        deadline: Date? = nil,
+        progress: SubscriptionProgressHandler? = nil
+    ) async throws -> PodcastUpdateSummary {
         let refreshStartedAt = ContinuousClock.now
         var statusDuration: Duration = .zero
         var downloadAndParseDuration: Duration = .zero
@@ -523,8 +553,12 @@ actor PodcastModelActor {
 
         try checkRefreshDeadline(deadline)
         // Fetch podcast just long enough to snapshot IDs & primitives
-        guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
-        guard let feedURL = podcast.feed else { return false }
+        guard let podcast = await fetchPodcast(byFeed: podcastFeed) else {
+            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+        }
+        guard let feedURL = podcast.feed else {
+            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+        }
 
 
         
@@ -590,7 +624,7 @@ actor PodcastModelActor {
                 }
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
                 logRefreshResult("not-modified")
-                return false
+                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
         }
         try checkRefreshDeadline(deadline)
@@ -600,7 +634,7 @@ actor PodcastModelActor {
               let metaIDRef,
               let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
               let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast else {
-            return false
+            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
         }
          
         // Safe updates again
@@ -626,7 +660,7 @@ actor PodcastModelActor {
                 let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
                 let finalPodcast = modelContext.model(for: podcastIDRef) as? Podcast
             else {
-                return false
+                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
 
             // Update podcast details safely
@@ -638,7 +672,7 @@ actor PodcastModelActor {
             await reportProgress(SubscriptionProgressUpdate(0.56, "Updating podcast details"), using: progress)
 
             let databaseStartedAt = ContinuousClock.now
-            try await updateDetails(
+            let newEpisodeCount = try await updateDetails(
                 finalPodcast,
                 fullPodcast: fullPodcast,
                 silent: silent,
@@ -661,7 +695,10 @@ actor PodcastModelActor {
             await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription complete"), using: progress)
             logRefreshResult("updated")
 
-            return true
+            return PodcastUpdateSummary(
+                didUpdateFeed: true,
+                newEpisodeCount: newEpisodeCount
+            )
         } catch is CancellationError {
             if silent != true {
                 if let cancelledMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
@@ -675,7 +712,7 @@ actor PodcastModelActor {
             }
             await reportProgress(SubscriptionProgressUpdate(1.0, "Refresh paused"), using: progress)
             logRefreshResult("cancelled")
-            return false
+            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
         } catch {
             let nsError = error as NSError
             print(
@@ -711,8 +748,9 @@ actor PodcastModelActor {
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil
-    ) async throws {
+    ) async throws -> Int {
         print("updateDetails for \(podcast.title)")
+        var newEpisodeCount = 0
 
         podcast.title = fullPodcast["title"] as? String ?? ""
         podcast.author = fullPodcast["itunes:author"] as? String
@@ -913,6 +951,7 @@ actor PodcastModelActor {
 
                 print("newly created")
                 modelContext.insert(episode)
+                newEpisodeCount += 1
                 if let guid = episode.guid, guid.isEmpty == false {
                     existingEpisodesByGUID[guid] = episode
                 }
@@ -964,6 +1003,8 @@ actor PodcastModelActor {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: podcastFeed)
             }
         }
+
+        return newEpisodeCount
     }
     
     func createPodcast(
@@ -1154,10 +1195,18 @@ actor PodcastModelActor {
         let feeds = podcasts.compactMap(\.feed)
         let maxConcurrent = 6
         let refreshStartedAt = ContinuousClock.now
+        let runStartedAt = Date()
         await progress?(0, feeds.count)
         guard feeds.isEmpty == false else { return }
 
-        let failed = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+#if DEBUG
+        var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
+#endif
+
+        let failed = await withTaskGroup(
+            of: (success: Bool, didUpdate: Bool, title: String, feed: URL, newEpisodeCount: Int, errorMessage: String?).self,
+            returning: Int.self
+        ) { group in
             var nextIndex = 0
             var completed = 0
             var failed = 0
@@ -1169,13 +1218,29 @@ actor PodcastModelActor {
                 group.addTask {
                     let worker = PodcastModelActor(modelContainer: self.modelContainer)
                     do {
-                        _ = try await worker.updatePodcast(
+                        let summary = try await worker.updatePodcastWithSummary(
                             feed,
                             resolveExistingMissingDurations: false
                         )
-                        return true
+                        let title = await worker.fetchPodcastTitle(byFeed: feed)
+                        return (
+                            true,
+                            summary.didUpdateFeed,
+                            title ?? feed.absoluteString,
+                            feed,
+                            summary.newEpisodeCount,
+                            nil
+                        )
                     } catch {
-                        return false
+                        let title = await worker.fetchPodcastTitle(byFeed: feed)
+                        return (
+                            false,
+                            false,
+                            title ?? feed.absoluteString,
+                            feed,
+                            0,
+                            error.localizedDescription
+                        )
                     }
                 }
             }
@@ -1184,9 +1249,26 @@ actor PodcastModelActor {
                 enqueueNext()
             }
 
-            while let succeeded = await group.next() {
+            while let result = await group.next() {
                 completed += 1
-                if succeeded == false {
+#if DEBUG
+                let podcastResult: RefreshHistoryPodcastResult
+                if let errorMessage = result.errorMessage {
+                    podcastResult = .failed(errorMessage)
+                } else if result.didUpdate {
+                    podcastResult = .refreshed(newEpisodeCount: result.newEpisodeCount)
+                } else {
+                    podcastResult = .feedNotUpdated
+                }
+                checkedPodcasts.append(
+                    RefreshHistoryPodcastCheck(
+                        title: result.title,
+                        feedURL: result.feed,
+                        result: podcastResult
+                    )
+                )
+#endif
+                if result.success == false {
                     failed += 1
                 }
                 await progress?(completed, feeds.count)
@@ -1202,6 +1284,17 @@ actor PodcastModelActor {
             )
             return failed
         }
+
+#if DEBUG
+        await RefreshHistoryStore.shared.record(
+            RefreshHistoryEntry(
+                startedAt: runStartedAt,
+                finishedAt: Date(),
+                trigger: .userInitiatedBulk,
+                checkedPodcasts: checkedPodcasts
+            )
+        )
+#endif
 
         if failed > 0 {
             throw PodcastBulkRefreshError(failedCount: failed, totalCount: feeds.count)

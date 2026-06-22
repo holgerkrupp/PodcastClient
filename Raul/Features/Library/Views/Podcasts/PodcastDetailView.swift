@@ -759,15 +759,50 @@ struct PodcastDetailView: View {
             do {
                 let actor = PodcastModelActor(modelContainer: modelContext.container)
                 
-                _ =  try await actor.updatePodcast(feed, force: true) { update in
+                let startedAt = Date()
+                let summary = try await actor.updatePodcastWithSummary(feed, force: true) { update in
                     await MainActor.run {
                         refreshProgress = update.fractionCompleted
                         refreshProgressMessage = update.message
                     }
                 }
+#if DEBUG
+                await RefreshHistoryStore.shared.record(
+                    RefreshHistoryEntry(
+                        startedAt: startedAt,
+                        finishedAt: Date(),
+                        trigger: .userInitiatedSingle,
+                        checkedPodcasts: [
+                            RefreshHistoryPodcastCheck(
+                                title: podcast.title,
+                                feedURL: feed,
+                                result: summary.didUpdateFeed
+                                    ? .refreshed(newEpisodeCount: summary.newEpisodeCount)
+                                    : .feedNotUpdated
+                            )
+                        ]
+                    )
+                )
+#endif
                 podcast.message = nil
                 
             } catch {
+#if DEBUG
+                await RefreshHistoryStore.shared.record(
+                    RefreshHistoryEntry(
+                        startedAt: Date(),
+                        finishedAt: Date(),
+                        trigger: .userInitiatedSingle,
+                        checkedPodcasts: [
+                            RefreshHistoryPodcastCheck(
+                                title: podcast.title,
+                                feedURL: feed,
+                                result: .failed(error.localizedDescription)
+                            )
+                        ]
+                    )
+                )
+#endif
                 await MainActor.run {
                     let nsError = error as NSError
                     errorMessage = "Failed to refresh episodes: \(error.localizedDescription) (\(nsError.domain) \(nsError.code))"

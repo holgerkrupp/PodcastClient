@@ -9,6 +9,7 @@ struct StorageManagementView: View {
     @State private var report: StorageUsageReport?
 #if DEBUG
     @State private var migrationStatus: StoreSplitMigrationStatus?
+    @State private var refreshHistory: [RefreshHistoryEntry] = []
 #endif
     @State private var isLoading = false
     @State private var loadingProgress = 0.0
@@ -20,6 +21,7 @@ struct StorageManagementView: View {
         List {
 #if DEBUG
             migrationStatusSection
+            refreshHistorySection
 #endif
 
             if let report {
@@ -89,6 +91,7 @@ struct StorageManagementView: View {
         .task {
 #if DEBUG
             refreshMigrationStatus()
+            await loadRefreshHistory()
 #endif
             guard report == nil else { return }
             guard modelContainerManager.isMigratingSplitStores == false else { return }
@@ -97,6 +100,7 @@ struct StorageManagementView: View {
         .task(id: modelContainerManager.isMigratingSplitStores) {
 #if DEBUG
             refreshMigrationStatus()
+            await loadRefreshHistory()
 #endif
             while modelContainerManager.isMigratingSplitStores {
                 try? await Task.sleep(nanoseconds: 500_000_000)
@@ -112,6 +116,13 @@ struct StorageManagementView: View {
                 await reload()
             }
         }
+#if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: .refreshHistoryDidChange)) { _ in
+            Task {
+                await loadRefreshHistory()
+            }
+        }
+#endif
         .alert(item: $presentedAlert) { alert in
             switch alert {
             case .deletion(let deletion):
@@ -258,6 +269,112 @@ struct StorageManagementView: View {
             return "exclamationmark.triangle.fill"
         }
         return "clock"
+    }
+
+    @ViewBuilder
+    private var refreshHistorySection: some View {
+        Section {
+            if refreshHistory.isEmpty {
+                Text("No refresh history recorded yet.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(refreshHistory) { entry in
+                    DisclosureGroup {
+                        ForEach(entry.checkedPodcasts) { check in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(check.title)
+                                        .font(.subheadline.weight(.medium))
+                                        .lineLimit(1)
+
+                                    Spacer()
+
+                                    Text(check.result.title)
+                                        .font(.caption)
+                                        .foregroundStyle(resultColor(check.result))
+                                }
+
+                                Text(check.feedURL)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+
+                                if let message = check.result.message, message.isEmpty == false {
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(entry.trigger.title)
+                                    .font(.headline)
+
+                                Spacer()
+
+                                Text(entry.finishedAt, format: .dateTime.hour().minute().second())
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Text(entry.trigger.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text(entry.summary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text("Duration \(entry.duration.formatted(.number.precision(.fractionLength(1))))s")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+        } header: {
+            HStack {
+                Text("Refresh History")
+                Spacer()
+                if refreshHistory.isEmpty == false {
+                    Button("Clear") {
+                        clearRefreshHistory()
+                    }
+                    .font(.caption)
+                }
+            }
+        } footer: {
+            Text("Recent development refresh runs stored locally on this device.")
+        }
+    }
+
+    private func loadRefreshHistory() async {
+        refreshHistory = await RefreshHistoryStore.shared.entries()
+    }
+
+    private func clearRefreshHistory() {
+        Task {
+            await RefreshHistoryStore.shared.clear()
+            await loadRefreshHistory()
+        }
+    }
+
+    private func resultColor(_ result: RefreshHistoryPodcastResult) -> Color {
+        switch result.kind {
+        case .feedNotUpdated:
+            .secondary
+        case .refreshed:
+            .green
+        case .refreshFailed, .timedOut:
+            .red
+        case .cancelled:
+            .orange
+        }
     }
 #endif
 

@@ -553,14 +553,18 @@ actor SubscriptionManager:NSObject{
     }
 
     private struct BackgroundFeedRefreshCandidate: Sendable {
+        let title: String
         let feed: URL
         let lastCheckAge: Int
     }
 
     private struct BackgroundFeedRefreshResult: Sendable {
+        let title: String
         let feed: URL
         let lastCheckAge: Int
         let result: TimedPodcastUpdateResult
+        let newEpisodeCount: Int
+        let errorMessage: String?
     }
 
     private func backgroundRefreshCandidates() -> [Podcast] {
@@ -609,7 +613,13 @@ actor SubscriptionManager:NSObject{
 
             let lastCheckAge = podcast.metaData?.feedUpdateCheckDate.map { Int(Date().timeIntervalSince($0)) } ?? -1
             markBackgroundFeedCheckAttempt(for: podcast)
-            candidates.append(BackgroundFeedRefreshCandidate(feed: feed, lastCheckAge: lastCheckAge))
+            candidates.append(
+                BackgroundFeedRefreshCandidate(
+                    title: podcast.title,
+                    feed: feed,
+                    lastCheckAge: lastCheckAge
+                )
+            )
         }
 
         return candidates
@@ -619,22 +629,25 @@ actor SubscriptionManager:NSObject{
         _ feed: URL,
         timeBudget: TimeInterval,
         notifyNewEpisodes: Bool
-    ) async -> TimedPodcastUpdateResult {
+    ) async -> (TimedPodcastUpdateResult, Int, String?) {
         let worker = PodcastModelActor(modelContainer: modelContainer)
         let deadline = Date().addingTimeInterval(timeBudget)
 
         do {
-            let updated = try await worker.updatePodcast(
+            let summary = try await worker.updatePodcastWithSummary(
                 feed,
                 silent: true,
                 processNewEpisodesDuringSilentRefresh: notifyNewEpisodes,
                 deadline: deadline
             )
-            return Date() >= deadline ? .timedOut : .completed(updated)
+            let result: TimedPodcastUpdateResult = Date() >= deadline
+                ? .timedOut
+                : .completed(summary.didUpdateFeed)
+            return (result, summary.newEpisodeCount, nil)
         } catch is CancellationError {
-            return .timedOut
+            return (.timedOut, 0, nil)
         } catch {
-            return .completed(false)
+            return (.completed(false), 0, error.localizedDescription)
         }
     }
 
@@ -657,6 +670,9 @@ actor SubscriptionManager:NSObject{
         var updated = 0
         var processed = 0
         var timedOut = 0
+#if DEBUG
+        var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
+#endif
 
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_started",
@@ -696,15 +712,18 @@ actor SubscriptionManager:NSObject{
             await withTaskGroup(of: BackgroundFeedRefreshResult.self) { group in
                 for candidate in batch {
                     group.addTask {
-                        let result = await self.updatePodcastWithTimeBudget(
+                        let (result, newEpisodeCount, errorMessage) = await self.updatePodcastWithTimeBudget(
                             candidate.feed,
                             timeBudget: policy.perPodcastRuntimeLimit,
                             notifyNewEpisodes: policy.notifyNewEpisodes
                         )
                         return BackgroundFeedRefreshResult(
+                            title: candidate.title,
                             feed: candidate.feed,
                             lastCheckAge: candidate.lastCheckAge,
-                            result: result
+                            result: result,
+                            newEpisodeCount: newEpisodeCount,
+                            errorMessage: errorMessage
                         )
                     }
                 }
@@ -714,12 +733,38 @@ actor SubscriptionManager:NSObject{
                     switch refreshResult.result {
                     case .completed(let new):
                         if new == true { updated += 1 }
+#if DEBUG
+                        let podcastResult: RefreshHistoryPodcastResult
+                        if let errorMessage = refreshResult.errorMessage {
+                            podcastResult = .failed(errorMessage)
+                        } else if new == true {
+                            podcastResult = .refreshed(newEpisodeCount: refreshResult.newEpisodeCount)
+                        } else {
+                            podcastResult = .feedNotUpdated
+                        }
+                        checkedPodcasts.append(
+                            RefreshHistoryPodcastCheck(
+                                title: refreshResult.title,
+                                feedURL: refreshResult.feed,
+                                result: podcastResult
+                            )
+                        )
+#endif
                     case .timedOut:
                         timedOut += 1
                         CrashBreadcrumbs.shared.record(
                             "bgupdate_feed_timed_out",
                             details: "feed=\(refreshResult.feed.absoluteString),last_check_age=\(refreshResult.lastCheckAge)s"
                         )
+#if DEBUG
+                        checkedPodcasts.append(
+                            RefreshHistoryPodcastCheck(
+                                title: refreshResult.title,
+                                feedURL: refreshResult.feed,
+                                result: .timedOut
+                            )
+                        )
+#endif
                     }
                 }
             }
@@ -729,9 +774,32 @@ actor SubscriptionManager:NSObject{
             "bgupdate_feeds_completed",
             details: "processed=\(processed),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
         )
+#if DEBUG
+        await RefreshHistoryStore.shared.record(
+            RefreshHistoryEntry(
+                startedAt: startedAt,
+                finishedAt: Date(),
+                trigger: refreshHistoryTrigger(for: reason),
+                checkedPodcasts: checkedPodcasts
+            )
+        )
+#endif
         WatchSyncCoordinator.refreshSoon()
         await FeedRefreshRunCoordinator.shared.finish()
     }
+
+#if DEBUG
+    private func refreshHistoryTrigger(for reason: FeedRefreshReason) -> RefreshHistoryTrigger {
+        switch reason {
+        case .foregroundQuiet:
+            .backgroundForegroundQuiet
+        case .appRefresh:
+            .backgroundAppRefresh
+        case .processing:
+            .backgroundProcessing
+        }
+    }
+#endif
     
     func getLastRefreshDate() -> Date? {
         let lastDate = Date.dateFromRFC1123(dateString: UserDefaults.standard.string(forKey: "LastBackgroundRefresh") ?? "")
