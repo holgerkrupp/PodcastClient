@@ -1,5 +1,9 @@
 import SwiftData
 import SwiftUI
+import CloudKitSyncMonitor
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 class ModelContainerManager: ObservableObject {
@@ -20,6 +24,12 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var pendingSplitStoreWorkReason: String?
     @Published private(set) var lastSplitStoreReconcileSummary: String?
     @Published private(set) var lastSplitStoreReconcileAt: Date?
+    // Slice migration telemetry (surfaced in the development settings view).
+    @Published private(set) var migrationCurrentPhase: String?
+    @Published private(set) var migrationCursorSummary: String?
+    @Published private(set) var migrationProgressSummary: String?
+    @Published private(set) var migrationFootprintSummary: String?
+    @Published private(set) var migrationLastSliceError: String?
 #if DEBUG
     @Published private(set) var developmentResetRequiresRelaunch = false
 #endif
@@ -32,8 +42,6 @@ class ModelContainerManager: ObservableObject {
     private var lastMigrationCompletedAt: Date?
     private var lastAIContentImportAt: Date?
     private var lastUserStateImportAt: Date?
-    private let successfulMigrationRerunInterval: TimeInterval = 60 * 60 * 24
-    private let failedMigrationRerunInterval: TimeInterval = 60 * 60
     private let minimumAIContentImportInterval: TimeInterval = 60 * 15
     private let minimumForegroundUserStateImportInterval: TimeInterval = 60 * 10
     private let splitStoreCoordinator = StoreSplitWorkCoordinator.shared
@@ -288,6 +296,11 @@ class ModelContainerManager: ObservableObject {
             pendingSplitStoreWorkReason = "paused for stability"
             return
         }
+        // Requirement: never auto-run migration unless explicitly enabled.
+        guard StoreDevelopmentConfiguration.migrationAutoRunEnabled else {
+            pendingSplitStoreWorkReason = "migration auto-run disabled"
+            return
+        }
         await splitStoreCoordinator.scheduleForegroundMigration()
     }
 
@@ -303,8 +316,115 @@ class ModelContainerManager: ObservableObject {
         }
         await prepareSplitStores()
         guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
+#if !DEBUG
+        // In release builds the rollout decides reads automatically. In DEBUG the
+        // manual store-mode picker stays authoritative; use the development
+        // settings buttons to exercise the rollout instead.
+        await resolveStoreSplitRolloutIfNeeded()
+#endif
         await splitStoreCoordinator.scheduleLaunchWork()
     }
+
+    /// Entry point for the overnight `BGProcessingTask`. Prepares the split
+    /// stores and advances the rollout (which runs the bounded migration for
+    /// existing users). Runs in both DEBUG and release builds so the task can be
+    /// exercised on a debug device.
+    func runStoreSplitMigrationBackgroundPass() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
+        await prepareSplitStores()
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
+        await resolveStoreSplitRolloutIfNeeded()
+    }
+
+    /// Advances the on-device rollout: classifies new vs existing installs, runs
+    /// the bounded migration for existing users, and switches them to split-store
+    /// reads once the migration has fully completed.
+    func resolveStoreSplitRolloutIfNeeded() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
+        switch StoreSplitRollout.state {
+        case .newStoreReads:
+            return
+        case .unclassified:
+            await classifyStoreSplitRollout()
+        case .migrating:
+            await advanceStoreSplitRolloutAfterMigration()
+        }
+    }
+
+    private func classifyStoreSplitRollout() async {
+        guard let legacyContainer = preparedContainer else { return }
+        let podcastCount = legacyPodcastCount(legacyContainer)
+        if podcastCount > 0 {
+            StoreSplitRollout.set(.migrating)
+            CrashBreadcrumbs.shared.record(
+                "store_split_rollout_classified",
+                details: "existing,podcasts=\(podcastCount)"
+            )
+            await advanceStoreSplitRolloutAfterMigration()
+            return
+        }
+
+        // Empty legacy store: give CloudKit a few launches to deliver legacy data
+        // before declaring a brand-new install, unless legacy sync is off or the
+        // initial import already finished with nothing to import.
+        let importSettled = cloudKitLegacyImportSettled()
+        let exhaustedGrace = StoreSplitRollout.incrementUnclassifiedLaunches()
+            >= StoreSplitRollout.maxUnclassifiedLaunches
+        if StoreDevelopmentConfiguration.legacyCloudSyncEnabled == false
+            || importSettled
+            || exhaustedGrace {
+            StoreSplitRollout.set(.newStoreReads)
+            CrashBreadcrumbs.shared.record(
+                "store_split_rollout_classified",
+                details: "new,import_settled=\(importSettled),grace_exhausted=\(exhaustedGrace)"
+            )
+        }
+    }
+
+    private func advanceStoreSplitRolloutAfterMigration() async {
+        await prepareSplitStores()
+        guard let cacheContainer = preparedCacheContainer else { return }
+        if StoreSplitMigrationService.isSliceMigrationComplete(
+            cacheContainer: cacheContainer
+        ) == false {
+            await runMigrationSliceLoop()
+        }
+        guard let cacheContainer = preparedCacheContainer,
+              StoreSplitMigrationService.isSliceMigrationComplete(
+                cacheContainer: cacheContainer
+              ) else {
+            return
+        }
+        StoreSplitRollout.set(.newStoreReads)
+        CrashBreadcrumbs.shared.record("store_split_rollout_migration_complete")
+    }
+
+    private func legacyPodcastCount(_ container: ModelContainer) -> Int {
+        let context = ModelContext(container)
+        return (try? context.fetchCount(FetchDescriptor<Podcast>())) ?? 0
+    }
+
+    private func cloudKitLegacyImportSettled() -> Bool {
+        guard StoreDevelopmentConfiguration.legacyCloudSyncEnabled else { return true }
+        if case .succeeded = SyncMonitor.default.importState { return true }
+        return false
+    }
+
+#if DEBUG
+    /// Runs the rollout resolution on demand from the development settings so the
+    /// automatic release-build behaviour can be exercised on a debug device.
+    func resolveStoreSplitRolloutForDevelopment() async {
+        await resolveStoreSplitRolloutIfNeeded()
+    }
+
+    func resetStoreSplitRolloutForDevelopment() {
+        StoreSplitRollout.resetForDevelopment()
+    }
+
+    var storeSplitRolloutStateDescription: String {
+        StoreSplitRollout.state.rawValue
+    }
+#endif
 
     func pauseSplitStoreWorkForBackground() {
         migrationTask?.cancel()
@@ -340,6 +460,36 @@ class ModelContainerManager: ObservableObject {
         defaults.removeObject(forKey: Self.lastMigrationHadFailuresKey)
         lastMigrationCompletedAt = nil
         await splitStoreCoordinator.runManualMigration()
+    }
+
+    /// Runs exactly one bounded slice on demand. Explicit developer action, so it
+    /// bypasses the auto-run gate but still respects the heavy-work pause.
+    func runOneMigrationSliceForDevelopment() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            pendingSplitStoreWorkReason = "paused for stability"
+            return
+        }
+        await prepareSplitStores()
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer,
+              let cacheContainer = preparedCacheContainer else {
+            return
+        }
+        guard isMigratingSplitStores == false else { return }
+
+        isMigratingSplitStores = true
+        migrationError = nil
+        let report = await StoreSplitMigrationService.runSlice(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer,
+            shouldContinue: { true }
+        )
+        applyMigrationSliceTelemetry(report)
+        if report.status == .completed {
+            markMigrationCompleted(hadFailures: report.error != nil)
+        }
+        isMigratingSplitStores = false
     }
 #endif
 
@@ -474,58 +624,6 @@ class ModelContainerManager: ObservableObject {
     }
 #endif
 
-    private func startMigrationIfPossible() {
-        guard migrationTask == nil,
-              let legacyContainer = preparedContainer,
-              let userStateContainer = preparedUserStateContainer,
-              let cacheContainer = preparedCacheContainer else {
-            return
-        }
-        let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
-        let persistedCompletionDate = defaults.object(
-            forKey: Self.lastMigrationCompletedAtKey
-        ) as? Date
-        let previousCompletionDate = lastMigrationCompletedAt ?? persistedCompletionDate
-        let previousRunHadFailures = defaults.bool(forKey: Self.lastMigrationHadFailuresKey)
-        let rerunInterval = previousRunHadFailures
-            ? failedMigrationRerunInterval
-            : successfulMigrationRerunInterval
-
-        if let previousCompletionDate,
-           Date().timeIntervalSince(previousCompletionDate) < rerunInterval {
-            return
-        }
-
-        migrationError = nil
-        isMigratingSplitStores = true
-        migrationTask = Task { @MainActor in
-            let result = await StoreSplitMigrationService.migrate(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
-                cacheContainer: cacheContainer,
-                includeAIContent: false
-            )
-            guard Task.isCancelled == false else {
-                isMigratingSplitStores = false
-                migrationTask = nil
-                CrashBreadcrumbs.shared.record("store_split_migration_cancelled")
-                return
-            }
-            if result.failedCount > 0 {
-                migrationError = "\(result.failedCount) migration item(s) failed"
-            }
-            let completedAt = Date()
-            lastMigrationCompletedAt = completedAt
-            defaults.set(completedAt, forKey: Self.lastMigrationCompletedAtKey)
-            defaults.set(
-                result.failedCount > 0,
-                forKey: Self.lastMigrationHadFailuresKey
-            )
-            isMigratingSplitStores = false
-            migrationTask = nil
-        }
-    }
-
     func performSplitStoreMigrationIfNeeded() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             pendingSplitStoreWorkReason = "paused for stability"
@@ -536,10 +634,121 @@ class ModelContainerManager: ObservableObject {
         guard StoreDevelopmentConfiguration.legacyMigrationEnabled else {
             return
         }
-        startMigrationIfPossible()
+        await runMigrationSliceLoop()
+    }
+
+    /// Drives the slice engine one bounded slice at a time. Between slices it
+    /// yields to cancellation, playback, the live pause switch, and CloudKit
+    /// export backpressure so the migration never overwhelms memory or the
+    /// outbound CloudKit queue.
+    private func runMigrationSliceLoop() async {
         if let migrationTask {
             await migrationTask.value
+            return
         }
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer,
+              let cacheContainer = preparedCacheContainer else {
+            return
+        }
+
+        migrationError = nil
+        isMigratingSplitStores = true
+        let task = Task { @MainActor in
+            defer {
+                isMigratingSplitStores = false
+                migrationTask = nil
+            }
+            var exportWaitCount = 0
+            sliceLoop: while true {
+                if Task.isCancelled {
+                    CrashBreadcrumbs.shared.record("store_split_migration_cancelled")
+                    break
+                }
+                if StoreDevelopmentConfiguration.migrationSlicePaused {
+                    pendingSplitStoreWorkReason = "migration paused"
+                    break
+                }
+                if Player.shared.isPlaying {
+                    pendingSplitStoreWorkReason = "waiting for playback to stop"
+                    break
+                }
+                if cloudKitExportInProgress() {
+                    exportWaitCount += 1
+                    pendingSplitStoreWorkReason = "waiting for CloudKit export to drain"
+                    // Cap the wait so a stuck export does not pin a background task;
+                    // the loop resumes from its cursor on the next trigger.
+                    if exportWaitCount > 20 { break }
+                    try? await Task.sleep(for: .seconds(3))
+                    continue
+                }
+                exportWaitCount = 0
+
+                let report = await StoreSplitMigrationService.runSlice(
+                    legacyContainer: legacyContainer,
+                    userStateContainer: userStateContainer,
+                    cacheContainer: cacheContainer,
+                    shouldContinue: { Task.isCancelled == false }
+                )
+                applyMigrationSliceTelemetry(report)
+
+                switch report.status {
+                case .completed:
+                    markMigrationCompleted(hadFailures: report.error != nil)
+                    break sliceLoop
+                case .failed:
+                    if let error = report.error {
+                        migrationError = error
+                    }
+                    break sliceLoop
+                case .cancelled:
+                    break sliceLoop
+                case .advanced, .phaseCompleted:
+                    await Task.yield()
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+            }
+        }
+        migrationTask = task
+        await task.value
+    }
+
+    private func cloudKitExportInProgress() -> Bool {
+        guard StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+            || StoreDevelopmentConfiguration.legacyCloudSyncEnabled else {
+            return false
+        }
+        if case .inProgress = SyncMonitor.default.exportState {
+            return true
+        }
+        return false
+    }
+
+    private func applyMigrationSliceTelemetry(_ report: StoreSplitSliceReport) {
+        migrationCurrentPhase = report.phase
+        migrationFootprintSummary =
+            "\(MemoryFootprint.formatted(report.footprintAfter)) (\(report.footprintDeltaDescription))"
+        if let error = report.error {
+            migrationLastSliceError = error
+        }
+        if let status = storeSplitMigrationStatus() {
+            migrationProgressSummary =
+                "Phase \(status.completedPhaseCount)/\(status.totalPhaseCount), scanned \(status.scannedItemCount)"
+            if let phase = report.phase,
+               let cursor = status.phases.first(where: { $0.id == phase })?.cursor {
+                migrationCursorSummary = cursor
+            }
+        }
+    }
+
+    private func markMigrationCompleted(hadFailures: Bool) {
+        let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        let completedAt = Date()
+        lastMigrationCompletedAt = completedAt
+        defaults.set(completedAt, forKey: Self.lastMigrationCompletedAtKey)
+        defaults.set(hadFailures, forKey: Self.lastMigrationHadFailuresKey)
+        pendingSplitStoreWorkReason = nil
+        currentSplitStoreJobDescription = nil
     }
 
     private func applySyncedUserStateIfPossible(
@@ -565,6 +774,24 @@ class ModelContainerManager: ObservableObject {
             details: "authoritative_playlists=\(authoritativePlaylists),refresh_missing_feeds=\(refreshMissingFeeds)"
         )
         let task = Task {
+            // Hold a background-task assertion so that if the app is backgrounded
+            // mid-reconcile, iOS grants a few seconds for the (now cancellable)
+            // importer to reach a checkpoint and release the shared-container
+            // SQLite lock — instead of being suspended mid-transaction (0xdead10cc).
+#if canImport(UIKit)
+            let backgroundTaskID = UIApplication.shared.beginBackgroundTask(
+                withName: "StoreSplitUserStateImport"
+            ) { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.userStateImportTask?.cancel()
+                }
+            }
+            defer {
+                if backgroundTaskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                }
+            }
+#endif
             let result = await StoreSplitUserStateImporter.apply(
                 legacyContainer: legacyContainer,
                 userStateContainer: userStateContainer,

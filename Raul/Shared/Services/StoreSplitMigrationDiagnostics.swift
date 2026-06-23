@@ -33,6 +33,7 @@ struct StoreSplitMigrationPhaseStatus: Identifiable, Sendable, Equatable {
     let scannedCount: Int
     let activeDestinationCount: Int
     let failedCount: Int
+    let cursor: String?
     let updatedAt: Date?
 }
 
@@ -166,6 +167,7 @@ enum StoreSplitMigrationDiagnostics {
                     context: userStateContext
                 ),
                 failedCount: checkpoint?.failedCount ?? 0,
+                cursor: checkpoint?.cursor,
                 updatedAt: checkpoint?.updatedAt
             )
         }

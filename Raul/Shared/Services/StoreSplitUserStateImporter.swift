@@ -18,6 +18,9 @@ struct StoreSplitUserStateImportResult: Sendable {
 actor StoreSplitUserStateImporter {
     private let sourcePageSize = 200
     private let historyPageSize = 100
+    /// Page size for the last-resort feed scan. Kept small so each batch of
+    /// faulted episodes is released before the next one loads.
+    private let episodeScanPageSize = 200
     private let legacyContainer: ModelContainer
     private let userStateContainer: ModelContainer
     private var legacyContext: ModelContext
@@ -44,17 +47,19 @@ actor StoreSplitUserStateImporter {
         projectListeningHistoryToLegacy: Bool = true,
         episodeStateProjectionRecencyCutoff: Date? = nil
     ) async -> StoreSplitUserStateImportResult {
-        await Task.detached(priority: .utility) {
-            let importer = StoreSplitUserStateImporter(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer
-            )
-            return await importer.run(
-                authoritativePlaylists: authoritativePlaylists,
-                projectListeningHistoryToLegacy: projectListeningHistoryToLegacy,
-                episodeStateProjectionRecencyCutoff: episodeStateProjectionRecencyCutoff
-            )
-        }.value
+        // Run inline (not detached) so cancellation from the caller's task
+        // propagates into the importer. A detached task would keep scanning the
+        // legacy store after the app is backgrounded, holding the app-group
+        // SQLite lock across suspension and triggering an 0xdead10cc kill.
+        let importer = StoreSplitUserStateImporter(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+        return await importer.run(
+            authoritativePlaylists: authoritativePlaylists,
+            projectListeningHistoryToLegacy: projectListeningHistoryToLegacy,
+            episodeStateProjectionRecencyCutoff: episodeStateProjectionRecencyCutoff
+        )
     }
 
     private func run(
@@ -63,6 +68,10 @@ actor StoreSplitUserStateImporter {
         episodeStateProjectionRecencyCutoff: Date?
     ) async -> StoreSplitUserStateImportResult {
         var result = StoreSplitUserStateImportResult()
+        guard Task.isCancelled == false else {
+            result.interruptedByPlayback = true
+            return result
+        }
         let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
         podcastsByComparisonKey = podcasts.reduce(into: [String: PersistentIdentifier]()) { values, podcast in
             guard let feed = podcast.feed else { return }
@@ -117,7 +126,7 @@ actor StoreSplitUserStateImporter {
         }
         saveLegacyChanges(phase: "subscriptions", result: &result)
         refreshContexts()
-        if await shouldPauseForPlayback() {
+        if await shouldStop() {
             result.interruptedByPlayback = true
             return result
         }
@@ -134,7 +143,7 @@ actor StoreSplitUserStateImporter {
             result: &result
         )
         saveLegacyChanges(phase: "user_state", result: &result)
-        if await shouldPauseForPlayback() {
+        if await shouldStop() {
             result.interruptedByPlayback = true
             return result
         }
@@ -228,7 +237,7 @@ actor StoreSplitUserStateImporter {
                 result: &result
             )
             refreshContexts()
-            if await shouldPauseForPlayback() {
+            if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
@@ -312,7 +321,7 @@ actor StoreSplitUserStateImporter {
                 phase: "playlists_batch_\(playlistOffset)",
                 result: &result
             )
-            if await shouldPauseForPlayback() {
+            if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
@@ -408,7 +417,7 @@ actor StoreSplitUserStateImporter {
                 phase: "playlist_entries_batch_\(entryOffset)",
                 result: &result
             )
-            if await shouldPauseForPlayback() {
+            if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
@@ -526,7 +535,7 @@ actor StoreSplitUserStateImporter {
                 phase: "bookmarks_batch_\(offset)",
                 result: &result
             )
-            if await shouldPauseForPlayback() {
+            if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
@@ -629,7 +638,7 @@ actor StoreSplitUserStateImporter {
                 result: &result
             )
             refreshContexts()
-            if await shouldPauseForPlayback() {
+            if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
@@ -650,6 +659,7 @@ actor StoreSplitUserStateImporter {
             ListeningDeviceIdentity.splitStoreProjectionAppVersion
 
         while true {
+            if Task.isCancelled { break }
             var descriptor = FetchDescriptor<PlaySession>(
                 predicate: #Predicate<PlaySession> { session in
                     session.appVersion == projectionMarker
@@ -872,6 +882,14 @@ actor StoreSplitUserStateImporter {
         }
     }
 
+    /// Whether the importer should stop at the next checkpoint: the task was
+    /// cancelled (e.g. the app is backgrounding) or playback started. Stopping
+    /// promptly releases the shared-container SQLite lock before suspension.
+    private func shouldStop() async -> Bool {
+        if Task.isCancelled { return true }
+        return await shouldPauseForPlayback()
+    }
+
     private func shouldProjectEpisodeState(
         _ state: EpisodeStateSync,
         recencyCutoff: Date?
@@ -974,6 +992,7 @@ actor StoreSplitUserStateImporter {
 
         let unresolvedFeeds = Set(stillUnresolved.compactMap { decodeStableIdentityKey($0)?.feedURL })
         for feedURL in unresolvedFeeds {
+            if Task.isCancelled { return }
             resolveEpisodesByScanningFeed(feedURL, expectedKeys: Set(stillUnresolved))
         }
 
@@ -1032,18 +1051,50 @@ actor StoreSplitUserStateImporter {
         expectedKeys: Set<String>
     ) {
         guard let podcastID = podcastsByComparisonKey[normalizedFeedURL],
-              let podcast = legacyContext.model(for: podcastID) as? Podcast else {
+              let podcast = legacyContext.model(for: podcastID) as? Podcast,
+              let feed = podcast.feed else {
             return
         }
 
-        for episode in podcast.episodes ?? [] {
-            let identity = episode.stableEpisodeIdentity
-            let key = stableIdentityKey(
-                feedURL: identity.feedURL,
-                episodeID: identity.episodeID
-            )
-            guard expectedKeys.contains(key) else { continue }
-            resolvedEpisodeIDsByIdentity[key] = episode.persistentModelID
+        // Last-resort fallback after the targeted GUID/URL/link fetches missed.
+        //
+        // We deliberately do NOT walk `podcast.episodes`: the relationship getter
+        // faults every episode of the feed and pins them on the live `Podcast`
+        // object for the importer's lifetime, which materialises (and strongly
+        // retains) the entire episode library. Instead we page episodes for the
+        // feed with a fetch so each batch is released before the next one loads,
+        // and stop as soon as every expected key is resolved or the app backgrounds.
+        var remaining = expectedKeys
+        var offset = 0
+        while remaining.isEmpty == false {
+            if Task.isCancelled { return }
+            let reachedEnd = autoreleasepool { () -> Bool in
+                var descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
+                )
+                descriptor.fetchOffset = offset
+                descriptor.fetchLimit = episodeScanPageSize
+                guard let batch = try? legacyContext.fetch(descriptor),
+                      batch.isEmpty == false else {
+                    return true
+                }
+
+                for episode in batch {
+                    let identity = episode.stableEpisodeIdentity
+                    let key = stableIdentityKey(
+                        feedURL: identity.feedURL,
+                        episodeID: identity.episodeID
+                    )
+                    if remaining.remove(key) != nil {
+                        resolvedEpisodeIDsByIdentity[key] = episode.persistentModelID
+                    }
+                    if remaining.isEmpty { break }
+                }
+
+                offset += batch.count
+                return batch.count < episodeScanPageSize
+            }
+            if reachedEnd { return }
         }
     }
 
@@ -1094,6 +1145,7 @@ actor StoreSplitUserStateImporter {
             ListeningDeviceIdentity.splitStoreProjectionAppVersion
 
         while true {
+            if Task.isCancelled { break }
             var descriptor = FetchDescriptor<PlaySession>(
                 predicate: #Predicate<PlaySession> { session in
                     session.appVersion == projectionMarker

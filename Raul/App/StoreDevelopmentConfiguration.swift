@@ -31,6 +31,14 @@ struct StoreDevelopmentConfiguration: Equatable {
         "development.database.resetLocalSplitStoresOnNextLaunch"
     static let resetAllLocalStoresOnNextLaunchKey =
         "development.database.resetAllLocalStoresOnNextLaunch"
+    /// When false (the default), the slice migration never starts automatically
+    /// from foreground-active; it only runs via the explicit development controls.
+    static let migrationAutoRunEnabledKey =
+        "development.database.migrationAutoRunEnabled"
+    /// Pauses the slice migration loop without disabling the rest of split-store
+    /// work. Read live (not frozen at launch) so the toggle takes effect at once.
+    static let migrationPausedKey =
+        "development.database.migrationPaused"
 
     let mode: DevelopmentStoreMode
     let legacyCloudSyncEnabled: Bool
@@ -106,6 +114,25 @@ struct StoreDevelopmentConfiguration: Equatable {
 #endif
     }
 
+    /// Whether foreground-active is allowed to start the slice migration loop.
+    /// Defaults to disabled so migration only runs via explicit dev controls.
+    static var migrationAutoRunEnabled: Bool {
+#if DEBUG
+        UserDefaults.standard.object(forKey: migrationAutoRunEnabledKey) as? Bool ?? false
+#else
+        false
+#endif
+    }
+
+    /// Live pause switch for the slice migration loop (read each slice).
+    static var migrationSlicePaused: Bool {
+#if DEBUG
+        UserDefaults.standard.bool(forKey: migrationPausedKey)
+#else
+        false
+#endif
+    }
+
     private static func loadCurrent() -> StoreDevelopmentConfiguration {
 #if DEBUG
         let defaults = UserDefaults.standard
@@ -128,8 +155,11 @@ struct StoreDevelopmentConfiguration: Equatable {
             splitStoreWorkEnabled: splitStoreWorkEnabled
         )
 #else
+        // Release builds follow the on-device rollout: existing users read the
+        // legacy store while migrating; new and migrated users read the split
+        // store. Both stores keep syncing through CloudKit during the transition.
         return StoreDevelopmentConfiguration(
-            mode: .splitStores,
+            mode: StoreSplitRollout.resolvedMode,
             legacyCloudSyncEnabled: true,
             userStateCloudSyncEnabled: true,
             splitStoreWorkEnabled: true

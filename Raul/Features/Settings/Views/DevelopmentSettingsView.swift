@@ -11,6 +11,10 @@ struct DevelopmentSettingsView: View {
     private var userStateCloudSyncEnabled = false
     @AppStorage(StoreDevelopmentConfiguration.splitStoreWorkEnabledKey)
     private var splitStoreWorkEnabled = true
+    @AppStorage(StoreDevelopmentConfiguration.migrationPausedKey)
+    private var migrationPaused = false
+    @AppStorage(StoreDevelopmentConfiguration.migrationAutoRunEnabledKey)
+    private var migrationAutoRunEnabled = false
 
     @State private var launchConfiguration = StoreDevelopmentConfiguration.launch
     @State private var showLocalResetConfirmation = false
@@ -19,7 +23,6 @@ struct DevelopmentSettingsView: View {
     @State private var isResetting = false
     @State private var isRunningSyncAction = false
     @State private var resetMessage: String?
-    @State private var refreshHistory: [RefreshHistoryEntry] = []
 
     private var selectedConfiguration: StoreDevelopmentConfiguration {
         StoreDevelopmentConfiguration(
@@ -109,83 +112,65 @@ struct DevelopmentSettingsView: View {
                 }
             }
 
-            Section {
-                if refreshHistory.isEmpty {
-                    Text("No refresh history recorded yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(refreshHistory) { entry in
-                        DisclosureGroup {
-                            ForEach(entry.checkedPodcasts) { check in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack(alignment: .firstTextBaseline) {
-                                        Text(check.title)
-                                            .font(.subheadline.weight(.medium))
-                                            .lineLimit(1)
-
-                                        Spacer()
-
-                                        Text(check.result.title)
-                                            .font(.caption)
-                                            .foregroundStyle(resultColor(check.result))
-                                    }
-
-                                    Text(check.feedURL)
-                                        .font(.caption.monospaced())
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-
-                                    if let message = check.result.message, message.isEmpty == false {
-                                        Text(message)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                }
-                                .padding(.vertical, 2)
-                            }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(entry.trigger.title)
-                                        .font(.headline)
-
-                                    Spacer()
-
-                                    Text(entry.finishedAt, format: .dateTime.hour().minute().second())
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Text(entry.trigger.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-
-                                Text(entry.summary)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-
-                                Text("Duration \(entry.duration.formatted(.number.precision(.fractionLength(1))))s")
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.vertical, 2)
-                        }
+            if launchConfiguration.mode != .legacyOnly {
+                Section {
+                    Button("Run One Migration Slice") {
+                        runOneMigrationSlice()
                     }
+                    .disabled(
+                        isRunningSyncAction
+                            || isResetting
+                            || splitStoreWorkEnabled == false
+                            || modelContainerManager.isMigratingSplitStores
+                    )
+
+                    Toggle("Pause migration", isOn: $migrationPaused)
+                    Toggle("Auto-run migration (foreground)", isOn: $migrationAutoRunEnabled)
+
+                    LabeledContent(
+                        "Current phase",
+                        value: modelContainerManager.migrationCurrentPhase ?? "Idle"
+                    )
+                    LabeledContent(
+                        "Cursor",
+                        value: modelContainerManager.migrationCursorSummary ?? "—"
+                    )
+                    LabeledContent(
+                        "Progress",
+                        value: modelContainerManager.migrationProgressSummary ?? "—"
+                    )
+                    LabeledContent(
+                        "Memory footprint",
+                        value: modelContainerManager.migrationFootprintSummary ?? "—"
+                    )
+                    LabeledContent(
+                        "Last slice error",
+                        value: modelContainerManager.migrationLastSliceError ?? "None"
+                    )
+                } header: {
+                    Text("Slice Migration")
+                } footer: {
+                    Text("Each slice migrates one bounded page with fresh model contexts and reports its memory footprint delta. Slices skip while audio plays or while CloudKit is still exporting. SharedDatabase.sqlite is only ever read by the migrator.")
                 }
-            } header: {
-                HStack {
-                    Text("Refresh History")
-                    Spacer()
-                    if refreshHistory.isEmpty == false {
-                        Button("Clear") {
-                            clearRefreshHistory()
-                        }
-                        .font(.caption)
+
+                Section {
+                    LabeledContent(
+                        "Rollout state",
+                        value: modelContainerManager.storeSplitRolloutStateDescription
+                    )
+                    Button("Resolve Rollout Now") {
+                        resolveRollout()
                     }
+                    .disabled(isRunningSyncAction || isResetting)
+                    Button("Reset Rollout State") {
+                        modelContainerManager.resetStoreSplitRolloutForDevelopment()
+                    }
+                    .disabled(isRunningSyncAction || isResetting)
+                } header: {
+                    Text("Rollout")
+                } footer: {
+                    Text("Release builds resolve this automatically at launch: existing users migrate under legacy reads, then switch to new-store reads; brand-new users go straight to new-store reads. In DEBUG the store-mode picker above stays authoritative — use these buttons to exercise the rollout manually.")
                 }
-            } footer: {
-                Text("Recent development refresh runs stored locally on this device. This history is intentionally lightweight and limited to the latest entries.")
             }
 
             if requiresRelaunch {
@@ -306,14 +291,6 @@ struct DevelopmentSettingsView: View {
                 splitStoreWorkEnabled = false
             }
         }
-        .task {
-            await loadRefreshHistory()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshHistoryDidChange)) { _ in
-            Task {
-                await loadRefreshHistory()
-            }
-        }
         .confirmationDialog(
             "Reset only this device's split stores?",
             isPresented: $showLocalResetConfirmation,
@@ -422,6 +399,32 @@ struct DevelopmentSettingsView: View {
         }
     }
 
+    private func resolveRollout() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            await modelContainerManager.resolveStoreSplitRolloutForDevelopment()
+            resetMessage = "Rollout state: \(modelContainerManager.storeSplitRolloutStateDescription)."
+            isRunningSyncAction = false
+        }
+    }
+
+    private func runOneMigrationSlice() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            await modelContainerManager.runOneMigrationSliceForDevelopment()
+            if let error = modelContainerManager.migrationLastSliceError {
+                resetMessage = error
+            } else if let progress = modelContainerManager.migrationProgressSummary {
+                resetMessage = "Slice complete. \(progress)."
+            } else {
+                resetMessage = "Slice complete."
+            }
+            isRunningSyncAction = false
+        }
+    }
+
     private func republishLegacyState(
         _ scope: StoreSplitDevelopmentRepublishScope
     ) {
@@ -454,29 +457,6 @@ struct DevelopmentSettingsView: View {
         }
     }
 
-    private func loadRefreshHistory() async {
-        refreshHistory = await RefreshHistoryStore.shared.entries()
-    }
-
-    private func clearRefreshHistory() {
-        Task {
-            await RefreshHistoryStore.shared.clear()
-            await loadRefreshHistory()
-        }
-    }
-
-    private func resultColor(_ result: RefreshHistoryPodcastResult) -> Color {
-        switch result.kind {
-        case .feedNotUpdated:
-            .secondary
-        case .refreshed:
-            .green
-        case .refreshFailed, .timedOut:
-            .red
-        case .cancelled:
-            .orange
-        }
-    }
 }
 
 private extension StoreSplitDevelopmentRepublishScope {

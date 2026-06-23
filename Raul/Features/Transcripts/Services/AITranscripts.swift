@@ -12,35 +12,73 @@ import BasicLogger
 
 @Observable
 class AITranscripts {
+    /// Controls input throttling (duty-cycling) while feeding audio to the analyzer.
+    /// Automatic/background runs use a non-zero pause so the Speech XPC's rolling CPU
+    /// average stays under iOS's 50%/180s background CPU monitor. Manual runs use `.none`.
+    struct Throttle: Sendable {
+        /// Seconds of audio fed per chunk before pausing.
+        var chunkSeconds: Double
+        /// Seconds to sleep between chunks. `0` means continuous (no throttling).
+        var pauseSeconds: Double
+
+        static let none = Throttle(chunkSeconds: 0, pauseSeconds: 0)
+        /// ~45% duty cycle, assuming on-device transcription runs near 1× realtime.
+        static let backgroundFriendly = Throttle(chunkSeconds: 15, pauseSeconds: 18)
+
+        var isEnabled: Bool { chunkSeconds > 0 && pauseSeconds > 0 }
+    }
+
     //MARK: INPUT
     let url: URL
     var language: Locale = Locale.current
     let maxSnippetDurationSeconds: Double
     let maxWordsPerSnippet: Int
+    let analyzerPriority: TaskPriority
+    let throttle: Throttle
     let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
-    
-    
+
+
     //MARK: OUTPUT
     var transcript: [SFTranscriptionSegment] = []
-    
+
+    // Cached async lookups — each Speech framework query is an XPC round-trip, and the
+    // old code re-fetched supported/installed locales several times per job.
+    private var cachedSupportedLocales: [Locale]?
+    private var cachedInstalledLocaleIDs: Set<String>?
+    private var didResolveLanguage = false
+
     init(
         url: URL,
         language: String? = nil,
         maxSnippetDurationSeconds: Double = 1.2,
         maxWordsPerSnippet: Int = 3,
+        analyzerPriority: TaskPriority = .userInitiated,
+        throttle: Throttle = .none,
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
     ) async {
         self.url = url
         self.maxSnippetDurationSeconds = min(max(maxSnippetDurationSeconds, 0.4), 8.0)
         self.maxWordsPerSnippet = max(maxWordsPerSnippet, 1)
+        self.analyzerPriority = analyzerPriority
+        self.throttle = throttle
         self.progressHandler = progressHandler
-        if let language{
-            self.language = await bestMatchingSupportedLocale(for: language) ?? Locale.current
-        }else{
-            self.language = Locale.current
-        }
-        
+        self.language = language.map { Locale(identifier: $0) } ?? Locale.current
+        await resolveLanguageIfNeeded()
+    }
 
+    /// Resolves `language` to a supported locale exactly once for the lifetime of the job.
+    private func resolveLanguageIfNeeded() async {
+        guard didResolveLanguage == false else { return }
+        language = await bestMatchingSupportedLocale(for: language.identifier(.bcp47)) ?? Locale.current
+        didResolveLanguage = true
+    }
+
+    /// `SpeechTranscriber.supportedLocales` is an expensive async (XPC) property; cache it.
+    private func supportedLocales() async -> [Locale] {
+        if let cachedSupportedLocales { return cachedSupportedLocales }
+        let locales = await SpeechTranscriber.supportedLocales
+        cachedSupportedLocales = locales
+        return locales
     }
     
     func requestAuthorization() async {
@@ -104,7 +142,7 @@ class AITranscripts {
     
     
     func transcribeTovTT() async throws -> String? {
-        self.language = await bestMatchingSupportedLocale(for: language.identifier) ?? Locale.current
+        await resolveLanguageIfNeeded()
         await reportProgress(0.02, status: "Preparing audio…")
         // print("language finished")
         
@@ -136,12 +174,21 @@ class AITranscripts {
             return nil }
 
         let audioDuration = transcriptionDuration(for: audioFile)
-        
+
+        await resolveLanguageIfNeeded()
         print("transcribe to lang: \(language.identifier(.bcp47))")
-        self.language = await bestMatchingSupportedLocale(for: language.identifier(.bcp47)) ?? Locale.current
-        
+
         let locale = self.language
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        // Request only what the VTT output consumes: final results with audio time ranges
+        // and punctuation. Skipping volatile results, alternatives, and confidence avoids
+        // extra per-result compute in the Speech XPC (the `.transcription` preset bundles
+        // more than this pipeline reads — it only uses `result.range` and `result.text`).
+        let transcriber = SpeechTranscriber(
+            locale: locale,
+            transcriptionOptions: [],
+            reportingOptions: [],
+            attributeOptions: [.audioTimeRange]
+        )
         
         print("normalized:", locale.identifier(.bcp47))
         
@@ -186,36 +233,133 @@ class AITranscripts {
         }
         try Task.checkCancellation()
 
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
-        
-        
+        // Setting the analyzer's priority propagates QoS into the Speech XPC process,
+        // steering it onto performance vs efficiency cores. Release the model when the
+        // job ends to keep the resident footprint small.
+        let analyzer = SpeechAnalyzer(
+            modules: [transcriber],
+            options: SpeechAnalyzer.Options(priority: analyzerPriority, modelRetention: .whileInUse)
+        )
 
-        
         print(transcriber.selectedLocales)
-    
-     
         print("3")
-        if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
-            do{
+
+        do {
+            if throttle.isEnabled,
+               let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) {
+                // Duty-cycled path: feed the file in bounded chunks with pauses so the
+                // Speech XPC's rolling CPU average stays under the background monitor.
+                try await analyzeThrottled(
+                    analyzer: analyzer,
+                    audioFile: audioFile,
+                    analyzerFormat: analyzerFormat,
+                    throttle: throttle
+                )
+            } else if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
+                // Continuous path: fastest wall-clock, used for user-initiated runs.
                 try await analyzer.finalizeAndFinish(through: lastSample)
-                print("ok")
-            }catch{
-                print("analyzer failed")
-                print(error)
-            }
             } else {
-                print("analyzer failed 2")
+                await analyzer.cancelAndFinishNow()
+            }
+        } catch {
             await analyzer.cancelAndFinishNow()
+            throw error
         }
         print("4")
         try Task.checkCancellation()
         await reportProgress(0.92, status: "Finalizing transcript…")
         let transcription = try await transcriptionFuture
-        
+
         return transcription
     }
-    
-    
+
+    /// Feeds the audio file to the analyzer in bounded chunks, pausing between them.
+    /// The pause lets the Speech XPC go idle, dropping its rolling CPU average below
+    /// iOS's background CPU monitor threshold at the cost of longer wall-clock time.
+    private func analyzeThrottled(
+        analyzer: SpeechAnalyzer,
+        audioFile: AVAudioFile,
+        analyzerFormat: AVAudioFormat,
+        throttle: Throttle
+    ) async throws {
+        let (inputSequence, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        try await analyzer.start(inputSequence: inputSequence)
+
+        let readingFormat = audioFile.processingFormat
+        let sampleRate = readingFormat.sampleRate
+        let framesPerChunk = AVAudioFrameCount(max(sampleRate * throttle.chunkSeconds, 1))
+        // One converter instance reused across chunks so sample-rate conversion state
+        // carries over and there are no artifacts at chunk boundaries.
+        let converter = readingFormat == analyzerFormat
+            ? nil
+            : AVAudioConverter(from: readingFormat, to: analyzerFormat)
+
+        do {
+            while true {
+                try Task.checkCancellation()
+                guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: readingFormat, frameCapacity: framesPerChunk) else { break }
+                let startFrame = audioFile.framePosition
+                try audioFile.read(into: inputBuffer, frameCount: framesPerChunk)
+                guard inputBuffer.frameLength > 0 else { break }
+
+                let bufferStartTime = CMTime(value: startFrame, timescale: CMTimeScale(sampleRate))
+                let outputBuffer = try Self.convert(inputBuffer, using: converter, to: analyzerFormat)
+                continuation.yield(AnalyzerInput(buffer: outputBuffer, bufferStartTime: bufferStartTime))
+
+                if audioFile.framePosition >= audioFile.length { break }
+                try await Task.sleep(for: .seconds(throttle.pauseSeconds))
+            }
+        } catch {
+            continuation.finish()
+            throw error
+        }
+
+        continuation.finish()
+        try await analyzer.finalizeAndFinishThroughEndOfInput()
+    }
+
+    /// Converts one PCM buffer to the analyzer's preferred format, reusing `converter`
+    /// (and its internal resampling state) across calls.
+    private static func convert(
+        _ inputBuffer: AVAudioPCMBuffer,
+        using converter: AVAudioConverter?,
+        to analyzerFormat: AVAudioFormat
+    ) throws -> AVAudioPCMBuffer {
+        guard let converter else { return inputBuffer }
+
+        let ratio = analyzerFormat.sampleRate / inputBuffer.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(inputBuffer.frameLength) * ratio) + 1024
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: analyzerFormat, frameCapacity: capacity) else {
+            throw NSError(
+                domain: "AITranscripts",
+                code: -10,
+                userInfo: [NSLocalizedDescriptionKey: "Could not allocate audio conversion buffer."]
+            )
+        }
+
+        var consumed = false
+        var conversionError: NSError?
+        let status = converter.convert(to: outputBuffer, error: &conversionError) { _, inputStatus in
+            if consumed {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            inputStatus.pointee = .haveData
+            return inputBuffer
+        }
+        if let conversionError { throw conversionError }
+        if status == .error {
+            throw NSError(
+                domain: "AITranscripts",
+                code: -11,
+                userInfo: [NSLocalizedDescriptionKey: "Audio format conversion failed."]
+            )
+        }
+        return outputBuffer
+    }
+
+
     public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
             guard await supported(locale: locale) else {
                  print("locate \(locale.identifier) not supported")
@@ -233,20 +377,28 @@ class AITranscripts {
         }
         
         func supported(locale: Locale) async -> Bool {
-            let supported = await SpeechTranscriber.supportedLocales
+            let supported = await supportedLocales()
             let target = locale.identifier(.bcp47).lowercased()
             return supported.map { $0.identifier(.bcp47).lowercased() }.contains(target)
         }
 
         func installed(locale: Locale) async -> Bool {
-            let installed = await Set(SpeechTranscriber.installedLocales)
-            return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+            let installedIDs: Set<String>
+            if let cachedInstalledLocaleIDs {
+                installedIDs = cachedInstalledLocaleIDs
+            } else {
+                installedIDs = Set(await SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) })
+                cachedInstalledLocaleIDs = installedIDs
+            }
+            return installedIDs.contains(locale.identifier(.bcp47))
         }
-    
+
     func downloadIfNeeded(for module: SpeechTranscriber) async throws {
             if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
                  print(downloader.progress)
                 try await downloader.downloadAndInstall()
+                // Installation state changed; force a refresh on the next `installed` check.
+                cachedInstalledLocaleIDs = nil
             }
         }
 
@@ -392,9 +544,9 @@ class AITranscripts {
 
     
     func bestMatchingSupportedLocale(for input: String) async -> Locale? {
-        
-        let supported = await SpeechTranscriber.supportedLocales
-        
+
+        let supported = await supportedLocales()
+
         let preferred: [String: String] = [
             "de": "de-DE",
             "en": "en-US", // 'en-EN' does not exist; 'en-US' or 'en-GB' are standard

@@ -45,9 +45,12 @@ actor StoreSplitWorkCoordinator {
             return
         }
         if StoreDevelopmentConfiguration.newStoreReadsEnabled {
+            // Not forced: respect the recency debounce so a quick relaunch doesn't
+            // re-run a full heavy reconcile (which holds the shared-container DB
+            // lock). The projection from the previous run is already persisted.
             enqueueReconcile(
                 authoritativePlaylists: false,
-                force: true,
+                force: false,
                 refreshMissingFeeds: true,
                 reason: "launch"
             )

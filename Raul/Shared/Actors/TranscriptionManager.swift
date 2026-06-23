@@ -26,6 +26,11 @@ actor TranscriptionManager {
     private let automaticScanLimit = 12
     private let automaticSweepCooldown: TimeInterval = 30
 
+    // Serializes the heavy transcription work so at most one Speech analyzer runs at a
+    // time. Two concurrent analyzers double the e-core pressure, memory, and the odds of
+    // tripping the background CPU monitor.
+    private let transcriptionGate = AsyncSemaphore(value: 1)
+
     // Dependency
     private let container: ModelContainer
 
@@ -65,8 +70,13 @@ actor TranscriptionManager {
             return uiItem
         }
 
+        // User-requested transcriptions run at userInitiated so the Speech XPC lands on
+        // performance cores and finishes quickly (and isn't subject to the background
+        // 50%/180s CPU monitor). Automatic ones stay at background priority.
+        let jobPriority: TaskPriority = origin == .manual ? .userInitiated : .background
+
         // Kick off orchestration in a Task, but never carry @Model instances out of EpisodeActor.
-        let job = Task(priority: .background) { [weak self] in
+        let job = Task(priority: jobPriority) { [weak self] in
             guard let self else { return }
 
             let startedAt = Date()
@@ -92,6 +102,11 @@ actor TranscriptionManager {
             }
 #endif
 
+            // Only one transcription runs at a time; others wait here.
+            let transcriptionGate = self.transcriptionGate
+            await transcriptionGate.wait()
+            defer { Task { await transcriptionGate.signal() } }
+
             do {
                 await MainActor.run {
                     uiItem.setState(.preparingModel, progress: 0.02, status: "Preparing model…")
@@ -100,11 +115,15 @@ actor TranscriptionManager {
                 let settingsActor = PodcastSettingsModelActor(modelContainer: container)
                 let maxSnippetDurationSeconds = await settingsActor.getTranscriptionMaxSnippetDurationSeconds()
 
-                // Build transcriber (pure value types: URL + language string)
+                // Build transcriber (pure value types: URL + language string).
+                // Manual runs race to completion on performance cores; automatic runs
+                // duty-cycle on efficiency cores to stay under the background CPU monitor.
                 let transcriber = await AITranscripts(
                     url: snapshot.localFile,
                     language: snapshot.language,
                     maxSnippetDurationSeconds: maxSnippetDurationSeconds,
+                    analyzerPriority: origin == .manual ? .userInitiated : .background,
+                    throttle: origin == .manual ? .none : .backgroundFriendly,
                     progressHandler: { progress, status in
                         await MainActor.run {
                             let nextState: TranscriptionItem.State

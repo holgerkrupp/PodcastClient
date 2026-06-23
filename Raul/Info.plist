@@ -9,6 +9,22 @@
 		<string>processFeedUpdates</string>
 		<string>storageCleanup</string>
 		<string>automaticTranscriptionProcessing</string>
+		<string>processStoreSplitMigration</string>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Podcast Feed XML</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.xml</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -30,28 +46,11 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeName</key>
-			<string>Podcast Feed XML</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-			<key>LSHandlerRank</key>
-			<string>Alternate</string>
-			<key>LSItemContentTypes</key>
-			<array>
-				<string>public.xml</string>
-			</array>
-		</dict>
-	</array>
 	<key>IntentsSupported</key>
 	<array>
 		<string>ResumePlaybackIntent</string>
 		<string>BookmarkCurrentPlaybackIntent</string>
 	</array>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -68,6 +67,18 @@
 					</dict>
 				</array>
 			</dict>
+		</dict>
+	</dict>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.de.holgerkrupp.PodcastClient</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>Up Next</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
 		</dict>
 	</dict>
 	<key>UIApplicationSceneManifest</key>
@@ -89,8 +100,6 @@
 			</array>
 		</dict>
 	</dict>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
@@ -122,19 +131,5 @@
 			</dict>
 		</dict>
 	</array>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>To save exported clips to the library</string>
-	<key>NSUbiquitousContainers</key>
-	<dict>
-		<key>iCloud.de.holgerkrupp.PodcastClient</key>
-		<dict>
-			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
-			<true/>
-			<key>NSUbiquitousContainerName</key>
-			<string>Up Next</string>
-			<key>NSUbiquitousContainerSupportedFolderLevels</key>
-			<string>Any</string>
-		</dict>
-	</dict>
 </dict>
 </plist>

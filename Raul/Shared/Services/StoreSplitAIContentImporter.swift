@@ -9,7 +9,15 @@ struct StoreSplitAIContentImportResult: Sendable {
 }
 
 actor StoreSplitAIContentImporter {
-    private let legacyContext: ModelContext
+    /// How many episodes to apply before flushing and recycling the legacy
+    /// context. Each applied episode faults a full `Episode` row (including its
+    /// heavy `content`/`desc` text) and builds new transcript-line/chapter
+    /// objects, so without recycling the whole table would accumulate in one
+    /// context and blow the jetsam budget.
+    private static let recycleBatchSize = 50
+
+    private let legacyContainer: ModelContainer
+    private var legacyContext: ModelContext
     private let userStateContext: ModelContext
     private let cacheContext: ModelContext
 
@@ -18,12 +26,28 @@ actor StoreSplitAIContentImporter {
         userStateContainer: ModelContainer,
         cacheContainer: ModelContainer
     ) {
+        self.legacyContainer = legacyContainer
         legacyContext = ModelContext(legacyContainer)
         userStateContext = ModelContext(userStateContainer)
         cacheContext = ModelContext(cacheContainer)
         legacyContext.autosaveEnabled = false
         userStateContext.autosaveEnabled = false
         cacheContext.autosaveEnabled = false
+    }
+
+    /// Persists pending work and replaces the legacy context with a fresh one so
+    /// the faulted `Episode` graph from the processed batch can be released.
+    /// `userStateContext`/`cacheContext` are kept so cached `*Sync` lookups and
+    /// inserted receipts retain their identity across batches.
+    private func recycleLegacyContextIfNeeded(
+        processedSinceRecycle: inout Int,
+        result: inout StoreSplitAIContentImportResult
+    ) {
+        guard processedSinceRecycle >= Self.recycleBatchSize else { return }
+        saveChanges(result: &result)
+        legacyContext = ModelContext(legacyContainer)
+        legacyContext.autosaveEnabled = false
+        processedSinceRecycle = 0
     }
 
     nonisolated static func apply(
@@ -70,36 +94,54 @@ actor StoreSplitAIContentImporter {
                 }
             }
 
+        var processedSinceRecycle = 0
         for transcript in transcripts.values {
-            guard let episode = episode(
-                feedURL: transcript.feedURL,
-                episodeID: transcript.episodeID
-            ) else {
-                result.skipped += 1
-                continue
+            autoreleasepool {
+                guard let episode = episode(
+                    feedURL: transcript.feedURL,
+                    episodeID: transcript.episodeID
+                ) else {
+                    result.skipped += 1
+                    return
+                }
+                apply(
+                    transcript: transcript,
+                    to: episode,
+                    latestLocalTranscriptionDateByURL: latestLocalTranscriptionDateByURL,
+                    receiptsByID: &receiptsByID,
+                    result: &result
+                )
             }
-            apply(
-                transcript: transcript,
-                to: episode,
-                latestLocalTranscriptionDateByURL: latestLocalTranscriptionDateByURL,
-                receiptsByID: &receiptsByID,
+            processedSinceRecycle += 1
+            recycleLegacyContextIfNeeded(
+                processedSinceRecycle: &processedSinceRecycle,
                 result: &result
             )
         }
         saveChanges(result: &result)
+        legacyContext = ModelContext(legacyContainer)
+        legacyContext.autosaveEnabled = false
 
+        processedSinceRecycle = 0
         for chapterSet in chapterSets.values {
-            guard let episode = episode(
-                feedURL: chapterSet.feedURL,
-                episodeID: chapterSet.episodeID
-            ) else {
-                result.skipped += 1
-                continue
+            autoreleasepool {
+                guard let episode = episode(
+                    feedURL: chapterSet.feedURL,
+                    episodeID: chapterSet.episodeID
+                ) else {
+                    result.skipped += 1
+                    return
+                }
+                apply(
+                    chapterSet: chapterSet,
+                    to: episode,
+                    receiptsByID: &receiptsByID,
+                    result: &result
+                )
             }
-            apply(
-                chapterSet: chapterSet,
-                to: episode,
-                receiptsByID: &receiptsByID,
+            processedSinceRecycle += 1
+            recycleLegacyContextIfNeeded(
+                processedSinceRecycle: &processedSinceRecycle,
                 result: &result
             )
         }
@@ -153,12 +195,14 @@ actor StoreSplitAIContentImporter {
 
     private func episodesForHashFallback(feedURL: String) -> [Episode] {
         guard let url = URL(string: feedURL) else { return [] }
-        var descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feed == url }
+        // Fetch the feed's episodes directly rather than walking
+        // `podcast.episodes`: the relationship getter faults every episode onto
+        // the live Podcast object and pins them for the importer's lifetime.
+        // This transient array is released by the caller after matching.
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast?.feed == url }
         )
-        descriptor.fetchLimit = 2
-        return ((try? legacyContext.fetch(descriptor)) ?? [])
-            .flatMap { $0.episodes ?? [] }
+        return (try? legacyContext.fetch(descriptor)) ?? []
     }
 
     private func apply(

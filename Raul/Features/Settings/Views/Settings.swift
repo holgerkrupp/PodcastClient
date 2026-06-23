@@ -645,8 +645,14 @@ actor SideLoadedLibraryActor {
         let gracePeriod = SideloadingConfiguration.missingArchiveGracePeriod
         var missingState = SideLoadedMissingEpisodeState.load()
 
-        let allEpisodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
-        let sideLoadedEpisodes = allEpisodes.filter { $0.source == EpisodeSource.sideLoaded }
+        // Fetch only side-loaded episodes via a predicate on the stored raw value.
+        // Faulting the entire Episode table here loads every episode's heavy
+        // text/URL fields and is a major source of memory pressure.
+        let sideLoadedRawValue = EpisodeSource.sideLoaded.rawValue
+        let sideLoadedDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.sourceRawValue == sideLoadedRawValue }
+        )
+        let sideLoadedEpisodes = (try? modelContext.fetch(sideLoadedDescriptor)) ?? []
         let episodesByURL: [URL: Episode] = Dictionary(
             sideLoadedEpisodes.compactMap { episode in
                 guard let url = episode.url?.standardizedFileURL else { return nil }

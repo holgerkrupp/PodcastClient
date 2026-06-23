@@ -12,6 +12,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
     case appearance
     case integrations
     case dataAndStorage
+#if DEBUG
+    case refreshHistory
+#endif
     case helpAndAbout
 
     var id: Self { self }
@@ -24,6 +27,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .appearance: "Appearance"
         case .integrations: "Integrations"
         case .dataAndStorage: "Data & Storage"
+#if DEBUG
+        case .refreshHistory: "Refresh History"
+#endif
         case .helpAndAbout: "Help & About"
         }
     }
@@ -42,6 +48,10 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
             "Notifications, Shortcuts, and automations"
         case .dataAndStorage:
             "iCloud sync, sideloading, downloads, and maintenance"
+#if DEBUG
+        case .refreshHistory:
+            "Latest refreshes, triggers, and feed results"
+#endif
         case .helpAndAbout:
             "Guides, onboarding, version, and credits"
         }
@@ -55,6 +65,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .appearance: "paintbrush.fill"
         case .integrations: "puzzlepiece.extension.fill"
         case .dataAndStorage: "internaldrive.fill"
+#if DEBUG
+        case .refreshHistory: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+#endif
         case .helpAndAbout: "questionmark.circle.fill"
         }
     }
@@ -67,6 +80,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .appearance: .pink
         case .integrations: .indigo
         case .dataAndStorage: .green
+#if DEBUG
+        case .refreshHistory: .teal
+#endif
         case .helpAndAbout: .gray
         }
     }
@@ -518,6 +534,10 @@ struct PodcastSettingsView: View {
             maintenanceSection
 #if DEBUG
             developmentSection
+#endif
+#if DEBUG
+        case .refreshHistory:
+            refreshHistorySection
 #endif
         case .helpAndAbout:
             helpSection
@@ -1425,6 +1445,23 @@ struct PodcastSettingsView: View {
                     summary: "Store selection and CloudKit routing",
                     detail: "Choose legacy-only or split-store development and configure CloudKit independently for each synchronized store.",
                     systemImage: "wrench.and.screwdriver"
+                )
+            }
+        }
+    }
+#endif
+
+#if DEBUG
+    private var refreshHistorySection: some View {
+        Section("Development") {
+            NavigationLink {
+                RefreshHistorySettingsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Refresh History",
+                    summary: "Latest refreshes and outcomes",
+                    detail: "Inspect recent refresh runs, what triggered them, which podcasts were checked, and how each feed finished.",
+                    systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
                 )
             }
         }

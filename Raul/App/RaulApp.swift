@@ -11,7 +11,9 @@ enum BackgroundTaskConfiguration {
     static let feedProcessingIdentifier = "processFeedUpdates"
     static let storageCleanupIdentifier = "storageCleanup"
     static let automaticTranscriptionIdentifier = "automaticTranscriptionProcessing"
+    static let storeSplitMigrationIdentifier = "processStoreSplitMigration"
     static let feedRefreshInterval: TimeInterval = 60 * 60
+    static let storeSplitMigrationInterval: TimeInterval = 60 * 60 * 4
     static let feedProcessingInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
@@ -172,6 +174,7 @@ struct RaulApp: App {
                 Task {
                     await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
                 }
+                AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
 #endif
              
                 
