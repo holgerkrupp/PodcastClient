@@ -258,6 +258,11 @@ struct DevelopmentSettingsView: View {
                 }
                 .disabled(splitStoreActionDisabled)
 
+                Button("Rebuild Listening Summaries") {
+                    rebuildListeningSummaries()
+                }
+                .disabled(splitStoreActionDisabled)
+
                 Button("Show Local User-State Counts") {
                     loadSplitStoreCounts()
                 }
@@ -477,6 +482,21 @@ struct DevelopmentSettingsView: View {
                 let result = try await modelContainerManager
                     .republishLegacyStateToCloudKit(scope: scope)
                 resetMessage = "\(scope.title) complete. Source: \(result.sourceSummary). New store: \(result.storedCounts.summary)."
+            } catch {
+                resetMessage = error.localizedDescription
+            }
+            isRunningSyncAction = false
+        }
+    }
+
+    private func rebuildListeningSummaries() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            do {
+                let result = try await modelContainerManager
+                    .rebuildListeningSummariesForDevelopment()
+                resetMessage = "Listening summaries rebuilt (incl. forever rollups). Scanned \(result.scanned), inserted \(result.inserted), updated \(result.updated), skipped \(result.skipped)."
             } catch {
                 resetMessage = error.localizedDescription
             }

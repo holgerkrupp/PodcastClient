@@ -331,4 +331,55 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         XCTAssertEqual(report.status, .cancelled)
         XCTAssertEqual(try destinationCounts(containers.userState)["subscriptions"], 0)
     }
+
+    @MainActor
+    func testListeningSummaryMigrationSynthesizesForeverRollup() async throws {
+        let containers = try makeContainers()
+        let context = containers.legacy.mainContext
+        let feedA = URL(string: "https://example.com/a.xml")!
+        let feedB = URL(string: "https://example.com/b.xml")!
+
+        func summary(
+            _ feed: URL,
+            kind: PlaySessionSummaryPeriod,
+            year: Int,
+            seconds: Double
+        ) -> PlaySessionSummary {
+            PlaySessionSummary(
+                id: UUID(),
+                periodKind: kind.rawValue,
+                periodStart: Calendar.current.date(from: DateComponents(year: year))!,
+                podcastFeed: feed,
+                podcastName: feed.lastPathComponent,
+                totalSeconds: seconds,
+                silenceGapTimeSavedSeconds: 0,
+                playbackRateTimeSavedSeconds: 0,
+                activeHourCount: 1
+            )
+        }
+
+        // Two years of `.year` summaries for feed A, one for feed B, plus a `.month`
+        // row that must NOT contribute to the forever rollup (it overlaps the year).
+        context.insert(summary(feedA, kind: .year, year: 2023, seconds: 3_600))
+        context.insert(summary(feedA, kind: .year, year: 2024, seconds: 1_800))
+        context.insert(summary(feedA, kind: .month, year: 2024, seconds: 1_800))
+        context.insert(summary(feedB, kind: .year, year: 2024, seconds: 600))
+        try context.save()
+
+        await drainSlices(containers, shouldContinue: { true })
+
+        let destination = ModelContext(containers.userState)
+        let foreverRows = try destination
+            .fetch(FetchDescriptor<ListeningSummarySync>())
+            .filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
+
+        // One forever row per feed, each summed only from its `.year` rows.
+        XCTAssertEqual(foreverRows.map(\.totalSeconds).sorted(), [600, 5_400])
+
+        // Lifetime total ignores the `.month` overlap — no double-count.
+        XCTAssertEqual(
+            ListeningSummaryAggregation.globalStatistics(from: foreverRows).totalSeconds,
+            6_000
+        )
+    }
 }

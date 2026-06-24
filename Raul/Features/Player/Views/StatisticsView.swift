@@ -1749,22 +1749,33 @@ struct StatisticsView: View {
         let summaries = (try? context.fetch(
             FetchDescriptor<ListeningSummarySync>()
         )) ?? []
-        let foreverSummaries = summaries.filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
-        let filteredSummaries: [ListeningSummarySync]
-        if let selectedPodcastFeedString,
-           let selectedURL = URL(string: selectedPodcastFeedString) {
+        func summariesForSelectedFeed(
+            kind: PlaySessionSummaryPeriod
+        ) -> [ListeningSummarySync] {
+            let matching = summaries.filter { $0.periodKind == kind.rawValue }
+            guard let selectedPodcastFeedString,
+                  let selectedURL = URL(string: selectedPodcastFeedString) else {
+                return matching
+            }
             let selectedKeys = selectedURL.podcastFeedComparisonKeys
-            filteredSummaries = foreverSummaries.filter { record in
+            return matching.filter { record in
                 guard let feed = URL(string: record.feedURL) else { return false }
                 return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
             }
-        } else {
-            filteredSummaries = foreverSummaries
         }
-        if filteredSummaries.isEmpty == false {
-            return ListeningSummaryAggregation.globalStatistics(
-                from: filteredSummaries
-            ).totalSeconds
+
+        // Prefer the `.forever` rollup (a single non-overlapping lifetime total),
+        // then fall back to the `.year` summaries — which also partition time
+        // without overlap, so summing them never double-counts. The `.year` tier
+        // keeps stores migrated before `.forever` rollups were synthesised from
+        // reporting only the retained raw sessions instead of the full lifetime.
+        for kind in [PlaySessionSummaryPeriod.forever, .year] {
+            let scoped = summariesForSelectedFeed(kind: kind)
+            if scoped.isEmpty == false {
+                return ListeningSummaryAggregation.globalStatistics(
+                    from: scoped
+                ).totalSeconds
+            }
         }
 
         let selectedKeys = selectedPodcastFeedString

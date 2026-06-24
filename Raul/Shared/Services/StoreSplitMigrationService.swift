@@ -80,7 +80,12 @@ struct StoreSplitSliceReport: Sendable {
 }
 
 actor StoreSplitMigrationService {
-    nonisolated static let migrationVersion = 3
+    // v4: the listening-summary phase now synthesizes per-feed `.forever`
+    // rollups, so the split-store lifetime total reflects the full migrated
+    // history instead of only the retained raw sessions. Bumping the version
+    // invalidates the v3 checkpoints and re-runs migration once on each device;
+    // every phase is an idempotent upsert, so the re-run never double-counts.
+    nonisolated static let migrationVersion = 4
 
     /// Per-slice record budget for the light phases. Heavier phases override this
     /// with smaller pages because each record faults a larger object graph.
@@ -165,6 +170,25 @@ actor StoreSplitMigrationService {
         )
         return await worker.runToCompletion(includeAIContent: includeAIContent)
     }
+
+#if DEBUG
+    /// Development helper: re-runs only the listening-summary phase against the
+    /// live stores, rebuilding the per-period rows and the synthesized `.forever`
+    /// rollups. Idempotent — the upserts max-merge on a deterministic id, so
+    /// repeated runs never double-count. Used by the Development settings button.
+    nonisolated static func rebuildListeningSummaries(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) -> StoreSplitMigrationPhaseResult {
+        let legacyContext = makeContext(for: legacyContainer)
+        let destinationContext = makeContext(for: userStateContainer)
+        return processListeningSummaries(
+            offset: 0,
+            legacyContext: legacyContext,
+            destinationContext: destinationContext
+        ).delta
+    }
+#endif
 
     private func runOneSlice(
         shouldContinue: @Sendable () -> Bool
@@ -1230,21 +1254,7 @@ actor StoreSplitMigrationService {
         var recordsByID = ((try? destinationContext.fetch(FetchDescriptor<ListeningSummarySync>())) ?? [])
             .reduce(into: [String: ListeningSummarySync]()) { $0[$1.id] = $1 }
 
-        for (key, value) in aggregates {
-            let candidate = ListeningSummarySync(
-                feedURL: key.feedURL,
-                periodKind: key.periodKind,
-                periodStart: key.periodStart,
-                sourceDeviceID: ListeningDeviceIdentity.legacySharedID,
-                sourceDeviceName: "Migrated history",
-                podcastName: value.podcastName,
-                totalSeconds: value.totalSeconds,
-                silenceGapTimeSavedSeconds: value.silenceGapTimeSavedSeconds,
-                playbackRateTimeSavedSeconds: value.playbackRateTimeSavedSeconds,
-                activeHourCount: value.activeHourCount,
-                updatedAt: .now
-            )
-
+        func upsert(_ candidate: ListeningSummarySync) {
             if let destination = recordsByID[candidate.id] {
                 // Partial CloudKit imports may reveal additional legacy summaries later.
                 let totalSeconds = max(destination.totalSeconds, candidate.totalSeconds)
@@ -1283,6 +1293,61 @@ actor StoreSplitMigrationService {
                 recordsByID[candidate.id] = candidate
                 outcome.delta.inserted += 1
             }
+        }
+
+        for (key, value) in aggregates {
+            upsert(
+                ListeningSummarySync(
+                    feedURL: key.feedURL,
+                    periodKind: key.periodKind,
+                    periodStart: key.periodStart,
+                    sourceDeviceID: ListeningDeviceIdentity.legacySharedID,
+                    sourceDeviceName: "Migrated history",
+                    podcastName: value.podcastName,
+                    totalSeconds: value.totalSeconds,
+                    silenceGapTimeSavedSeconds: value.silenceGapTimeSavedSeconds,
+                    playbackRateTimeSavedSeconds: value.playbackRateTimeSavedSeconds,
+                    activeHourCount: value.activeHourCount,
+                    updatedAt: .now
+                )
+            )
+        }
+
+        // Synthesize a per-feed `.forever` rollup from the `.year` aggregates so the
+        // split-store lifetime reader has a single non-overlapping total to sum.
+        // `.year` periods partition all time, so summing them never double-counts;
+        // this mirrors how the legacy lifetime total is derived from `.year`
+        // summaries. The `.forever` rows reuse the deterministic id keyed on
+        // (feedURL, periodKind, periodStart, device), so re-running migration
+        // max-merges instead of duplicating.
+        var foreverByFeed: [String: LegacySummaryValue] = [:]
+        for (key, value) in aggregates
+        where key.periodKind == PlaySessionSummaryPeriod.year.rawValue {
+            var forever = foreverByFeed[key.feedURL] ?? LegacySummaryValue()
+            forever.podcastName = value.podcastName ?? forever.podcastName
+            forever.totalSeconds += value.totalSeconds
+            forever.silenceGapTimeSavedSeconds += value.silenceGapTimeSavedSeconds
+            forever.playbackRateTimeSavedSeconds += value.playbackRateTimeSavedSeconds
+            forever.activeHourCount += value.activeHourCount
+            foreverByFeed[key.feedURL] = forever
+        }
+
+        for (feedURL, value) in foreverByFeed {
+            upsert(
+                ListeningSummarySync(
+                    feedURL: feedURL,
+                    periodKind: PlaySessionSummaryPeriod.forever.rawValue,
+                    periodStart: .distantPast,
+                    sourceDeviceID: ListeningDeviceIdentity.legacySharedID,
+                    sourceDeviceName: "Migrated history",
+                    podcastName: value.podcastName,
+                    totalSeconds: value.totalSeconds,
+                    silenceGapTimeSavedSeconds: value.silenceGapTimeSavedSeconds,
+                    playbackRateTimeSavedSeconds: value.playbackRateTimeSavedSeconds,
+                    activeHourCount: value.activeHourCount,
+                    updatedAt: .now
+                )
+            )
         }
 
         save(destinationContext, result: &outcome.delta)

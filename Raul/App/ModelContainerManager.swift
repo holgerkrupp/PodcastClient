@@ -576,6 +576,21 @@ class ModelContainerManager: ObservableObject {
         )
     }
 
+    func rebuildListeningSummariesForDevelopment() async throws
+        -> StoreSplitMigrationPhaseResult {
+        await prepareSplitStores()
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        return await Task.detached(priority: .utility) {
+            StoreSplitMigrationService.rebuildListeningSummaries(
+                legacyContainer: legacyContainer,
+                userStateContainer: userStateContainer
+            )
+        }.value
+    }
+
     func splitStoreDevelopmentCounts() async throws
         -> StoreSplitDevelopmentStoreCounts {
         await prepareSplitStores()
