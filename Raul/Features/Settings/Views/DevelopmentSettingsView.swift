@@ -23,6 +23,12 @@ struct DevelopmentSettingsView: View {
     @State private var isResetting = false
     @State private var isRunningSyncAction = false
     @State private var resetMessage: String?
+    @State private var remoteConfigRefreshToken = 0
+
+    private var remoteConfig: StoreSplitRemoteConfig {
+        _ = remoteConfigRefreshToken
+        return StoreSplitRemoteConfigStore.current
+    }
 
     private var selectedConfiguration: StoreDevelopmentConfiguration {
         StoreDevelopmentConfiguration(
@@ -170,6 +176,29 @@ struct DevelopmentSettingsView: View {
                     Text("Rollout")
                 } footer: {
                     Text("Release builds resolve this automatically at launch: existing users migrate under legacy reads, then switch to new-store reads; brand-new users go straight to new-store reads. In DEBUG the store-mode picker above stays authoritative — use these buttons to exercise the rollout manually.")
+                }
+
+                Section {
+                    LabeledContent("Migration enabled", value: remoteConfig.migrationEnabled ? "yes" : "NO (paused)")
+                    LabeledContent("Force legacy reads", value: remoteConfig.forceLegacyReads ? "YES" : "no")
+                    LabeledContent("Min supported build", value: "\(remoteConfig.minSupportedBuild)")
+                    LabeledContent(
+                        "Last fetched",
+                        value: StoreSplitRemoteConfigStore.lastFetchedAt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "never"
+                    )
+                    Button("Refresh Remote Config Now") {
+                        refreshRemoteConfig()
+                    }
+                    .disabled(isRunningSyncAction || isResetting)
+                    Button("Clear Cached Remote Config", role: .destructive) {
+                        StoreSplitRemoteConfigStore.resetCacheForDevelopment()
+                        remoteConfigRefreshToken += 1
+                    }
+                    .disabled(isRunningSyncAction || isResetting)
+                } header: {
+                    Text("Remote Kill Switch")
+                } footer: {
+                    Text("Published from CloudKit Dashboard as the public-database record \"\(StoreSplitRemoteConfigStore.recordName)\" (type \(StoreSplitRemoteConfigStore.recordType)). migrationEnabled=0 pauses all split-store work live; forceLegacyReads=1 reverts reads to legacy on next launch. To lift a kill, set the fields back to permissive — do not delete the record.")
                 }
             }
 
@@ -405,6 +434,19 @@ struct DevelopmentSettingsView: View {
         Task {
             await modelContainerManager.resolveStoreSplitRolloutForDevelopment()
             resetMessage = "Rollout state: \(modelContainerManager.storeSplitRolloutStateDescription)."
+            isRunningSyncAction = false
+        }
+    }
+
+    private func refreshRemoteConfig() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            let result = await StoreSplitRemoteConfigStore.refresh()
+            remoteConfigRefreshToken += 1
+            resetMessage = result == nil
+                ? "Remote config fetch failed (cache unchanged)."
+                : "Remote config refreshed."
             isRunningSyncAction = false
         }
     }

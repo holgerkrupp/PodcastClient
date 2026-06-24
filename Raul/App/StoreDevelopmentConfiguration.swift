@@ -108,9 +108,11 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     static var splitStoreHeavyWorkPaused: Bool {
 #if DEBUG
-        launch.splitStoreHeavyWorkPaused
+        launch.splitStoreHeavyWorkPaused || StoreSplitRemoteConfigStore.migrationPausedRemotely
 #else
-        false
+        // Release builds have no manual toggle; the remote kill switch is the only
+        // lever. Read live so a published pause takes effect on the next check.
+        StoreSplitRemoteConfigStore.migrationPausedRemotely
 #endif
     }
 

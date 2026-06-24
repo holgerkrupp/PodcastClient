@@ -59,12 +59,20 @@ enum StoreSplitRollout {
     }
 
     /// The store mode this launch should run in, derived from the rollout state.
+    ///
+    /// The remote kill switch can force legacy reads regardless of the stored
+    /// state. It overrides only the resolved mode — the persisted state is left
+    /// untouched, so lifting the kill resumes the automatic rollout from where it
+    /// was (a migrated user stays migrated rather than re-running the migration).
     static var resolvedMode: DevelopmentStoreMode {
+        if StoreSplitRemoteConfigStore.forcesLegacyReads {
+            return .legacyOnly
+        }
         switch state {
         case .newStoreReads:
-            .splitStoreReads
+            return .splitStoreReads
         case .unclassified, .migrating:
-            .splitStores
+            return .splitStores
         }
     }
 

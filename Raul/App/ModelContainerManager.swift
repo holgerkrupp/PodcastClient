@@ -308,6 +308,10 @@ class ModelContainerManager: ObservableObject {
 #if DEBUG
         guard developmentResetRequiresRelaunch == false else { return }
 #endif
+        // Refresh the remote kill switch before any work decision so a published
+        // pause/rollback takes effect this launch (heavy work) and is cached for
+        // the next launch's read-mode resolution.
+        await StoreSplitRemoteConfigStore.refresh()
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             lastSplitStoreReconcileSummary = "Paused for stability"
             pendingSplitStoreWorkReason = "paused for stability"
@@ -330,6 +334,7 @@ class ModelContainerManager: ObservableObject {
     /// existing users). Runs in both DEBUG and release builds so the task can be
     /// exercised on a debug device.
     func runStoreSplitMigrationBackgroundPass() async {
+        await StoreSplitRemoteConfigStore.refresh()
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
         await prepareSplitStores()
         guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
