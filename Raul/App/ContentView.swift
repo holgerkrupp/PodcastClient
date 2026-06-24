@@ -97,6 +97,7 @@ struct ContentView: View {
             CrashBreadcrumbs.shared.record("content_view_task_completed")
         }
         .onChange(of: phase, {
+            SystemPressureGate.shared.setSceneActive(phase == .active)
             if SETTINGgoingBackToPlayerafterBackground{
                 switch phase {
                 case .background:

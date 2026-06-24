@@ -274,15 +274,16 @@ actor StoreSplitAIContentImporter {
                 expectedLineCount: transcript.lineCount,
                 expectedContentHash: transcript.contentHash
             )
+            // Assign the relationship once. Setting `line.episode` for every line
+            // makes SwiftData repeatedly reconcile the growing inverse collection,
+            // producing quadratic Core Data object-ID URL allocations.
             episode.transcriptLines = values.map {
-                let line = TranscriptLineAndTime(
+                TranscriptLineAndTime(
                     speaker: $0.speaker,
                     text: $0.text,
                     startTime: $0.startTime,
                     endTime: $0.endTime
                 )
-                line.episode = episode
-                return line
             }
             episode.refresh.toggle()
             receipt.transcriptRevisionID = transcript.revisionID

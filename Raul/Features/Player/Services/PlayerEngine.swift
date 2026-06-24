@@ -13,7 +13,8 @@ enum PlaybackInterruptionEvent {
      
 }
 
-actor PlayerEngine {
+@MainActor
+final class PlayerEngine {
     let avPlayer = AVPlayer()
 #if os(iOS)
     private let session = AVAudioSession.sharedInstance()

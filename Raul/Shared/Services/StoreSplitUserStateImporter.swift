@@ -72,6 +72,7 @@ actor StoreSplitUserStateImporter {
             result.interruptedByPlayback = true
             return result
         }
+        await awaitIdleWindow()
         let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
         podcastsByComparisonKey = podcasts.reduce(into: [String: PersistentIdentifier]()) { values, podcast in
             guard let feed = podcast.feed else { return }
@@ -131,14 +132,17 @@ actor StoreSplitUserStateImporter {
             return result
         }
 
+        await awaitIdleWindow()
         await applyEpisodeStates(
             recencyCutoff: episodeStateProjectionRecencyCutoff,
             result: &result
         )
+        await awaitIdleWindow()
         await applyPlaylists(
             authoritative: authoritativePlaylists,
             result: &result
         )
+        await awaitIdleWindow()
         await applyBookmarks(
             result: &result
         )
@@ -148,6 +152,7 @@ actor StoreSplitUserStateImporter {
             return result
         }
         if projectListeningHistoryToLegacy {
+            await awaitIdleWindow()
             await applyListeningHistory(
                 result: &result
             )
@@ -177,6 +182,7 @@ actor StoreSplitUserStateImporter {
         var seenStateIDs = Set<String>()
 
         while true {
+            await awaitIdleWindow()
             let page = fetchPage(
                 EpisodeStateSync.self,
                 offset: offset,
@@ -189,7 +195,7 @@ actor StoreSplitUserStateImporter {
                 seenStateIDs.insert($0.id).inserted
                 && shouldProjectEpisodeState($0, recencyCutoff: recencyCutoff)
             }
-            let episodesByIdentity = resolveEpisodesByIdentity(
+            let episodesByIdentity = await resolveEpisodesByIdentity(
                 identityKeys: freshStates.map {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
@@ -343,7 +349,7 @@ actor StoreSplitUserStateImporter {
             guard page.isEmpty == false else { break }
 
             let freshEntries = page.filter { seenEntryIDs.insert($0.id).inserted }
-            let episodesByIdentity = resolveEpisodesByIdentity(
+            let episodesByIdentity = await resolveEpisodesByIdentity(
                 identityKeys: freshEntries.map {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
@@ -480,7 +486,7 @@ actor StoreSplitUserStateImporter {
             guard page.isEmpty == false else { break }
 
             let freshRecords = page.filter { seenBookmarkIDs.insert($0.id).inserted }
-            let episodesByIdentity = resolveEpisodesByIdentity(
+            let episodesByIdentity = await resolveEpisodesByIdentity(
                 identityKeys: freshRecords.map {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
@@ -570,7 +576,7 @@ actor StoreSplitUserStateImporter {
                     ListeningHistoryIdentity.canonicalAggregationKey(for: $0)
                 ).inserted
             }
-            let episodesByIdentity = resolveEpisodesByIdentity(
+            let episodesByIdentity = await resolveEpisodesByIdentity(
                 identityKeys: freshRecords.map {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
@@ -890,6 +896,14 @@ actor StoreSplitUserStateImporter {
         return await shouldPauseForPlayback()
     }
 
+    /// Cooperatively pauses heavy import work while the device is under thermal
+    /// or memory pressure, or while the user is actively interacting. Keeps the
+    /// importer from competing with the UI for the main thread. Returns promptly
+    /// when the task is cancelled.
+    private func awaitIdleWindow() async {
+        await SystemPressureGate.shared.waitUntilIdle()
+    }
+
     private func shouldProjectEpisodeState(
         _ state: EpisodeStateSync,
         recencyCutoff: Date?
@@ -928,9 +942,9 @@ actor StoreSplitUserStateImporter {
 
     private func resolveEpisodesByIdentity(
         identityKeys: [String]
-    ) -> [String: Episode] {
+    ) async -> [String: Episode] {
         let uniqueKeys = Set(identityKeys)
-        resolveEpisodeIDsIfNeeded(for: uniqueKeys)
+        await resolveEpisodeIDsIfNeeded(for: uniqueKeys)
 
         var episodesByIdentity: [String: Episode] = [:]
         for identityKey in uniqueKeys {
@@ -943,7 +957,7 @@ actor StoreSplitUserStateImporter {
         return episodesByIdentity
     }
 
-    private func resolveEpisodeIDsIfNeeded(for identityKeys: Set<String>) {
+    private func resolveEpisodeIDsIfNeeded(for identityKeys: Set<String>) async {
         let unresolvedKeys = identityKeys.filter { resolvedEpisodeIDsByIdentity[$0] == nil }
         guard unresolvedKeys.isEmpty == false else { return }
 
@@ -993,7 +1007,8 @@ actor StoreSplitUserStateImporter {
         let unresolvedFeeds = Set(stillUnresolved.compactMap { decodeStableIdentityKey($0)?.feedURL })
         for feedURL in unresolvedFeeds {
             if Task.isCancelled { return }
-            resolveEpisodesByScanningFeed(feedURL, expectedKeys: Set(stillUnresolved))
+            await awaitIdleWindow()
+            await resolveEpisodesByScanningFeed(feedURL, expectedKeys: Set(stillUnresolved))
         }
 
         for identityKey in stillUnresolved where resolvedEpisodeIDsByIdentity[identityKey] == nil {
@@ -1049,7 +1064,7 @@ actor StoreSplitUserStateImporter {
     private func resolveEpisodesByScanningFeed(
         _ normalizedFeedURL: String,
         expectedKeys: Set<String>
-    ) {
+    ) async {
         guard let podcastID = podcastsByComparisonKey[normalizedFeedURL],
               let podcast = legacyContext.model(for: podcastID) as? Podcast,
               let feed = podcast.feed else {
@@ -1068,6 +1083,7 @@ actor StoreSplitUserStateImporter {
         var offset = 0
         while remaining.isEmpty == false {
             if Task.isCancelled { return }
+            await awaitIdleWindow()
             let reachedEnd = autoreleasepool { () -> Bool in
                 var descriptor = FetchDescriptor<Episode>(
                     predicate: #Predicate<Episode> { $0.podcast?.feed == feed }

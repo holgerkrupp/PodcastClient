@@ -1109,6 +1109,9 @@ final class StableIdentityTests: XCTestCase {
                 .map(\.text),
             ["Welcome", "Main topic"]
         )
+        XCTAssertTrue(refreshedEpisode.transcriptLines?.allSatisfy {
+            $0.episode?.persistentModelID == refreshedEpisode.persistentModelID
+        } == true)
         XCTAssertTrue(refreshedEpisode.chapters?.contains(where: {
             $0.type == .podlove && $0.title == "Publisher intro"
         }) == true)
@@ -1118,6 +1121,81 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertFalse(refreshedEpisode.chapters?.contains(where: {
             $0.type == .ai && $0.title == "Old AI"
         }) == true)
+    }
+
+    @MainActor
+    func testAIContentImporterAppliesLargeTranscriptWithRelationshipInverse() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let cacheContainer = try ModelContainerManager.makeCacheContainer(
+            isStoredInMemoryOnly: true
+        )
+        let podcast = Podcast(feed: URL(string: "https://example.com/large-feed.xml")!)
+        let episode = Episode(
+            guid: "large-ai-transcript",
+            title: "Large AI Transcript",
+            url: URL(string: "https://example.com/large-episode.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        legacyContainer.mainContext.insert(podcast)
+        try legacyContainer.mainContext.save()
+
+        let lineCount = 3_200
+        let transcriptLines = (0 ..< lineCount).map {
+            AITranscriptLineValue(
+                speaker: $0.isMultiple(of: 2) ? "Host" : nil,
+                text: "Transcript line \($0)",
+                startTime: Double($0),
+                endTime: Double($0 + 1)
+            )
+        }
+        let encodedTranscript = try AIContentSyncCodec.encodeTranscript(transcriptLines)
+        let identity = episode.stableEpisodeIdentity
+        userStateContainer.mainContext.insert(
+            AITranscriptSync(
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                revisionID: encodedTranscript.revisionID,
+                localeIdentifier: "en",
+                chunkCount: encodedTranscript.chunks.count,
+                lineCount: encodedTranscript.lineCount,
+                contentHash: encodedTranscript.contentHash,
+                generatedAt: Date(timeIntervalSince1970: 2_000)
+            )
+        )
+        for (index, payload) in encodedTranscript.chunks.enumerated() {
+            userStateContainer.mainContext.insert(
+                AITranscriptChunkSync(
+                    transcriptID: identity.key,
+                    revisionID: encodedTranscript.revisionID,
+                    chunkIndex: index,
+                    payloadJSON: payload,
+                    contentHash: AIContentSyncCodec.sha256Hex(Data(payload.utf8))
+                )
+            )
+        }
+        try userStateContainer.mainContext.save()
+
+        let result = await StoreSplitAIContentImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer
+        )
+
+        XCTAssertEqual(result.transcriptsApplied, 1)
+        let refreshedEpisode = try XCTUnwrap(
+            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
+        )
+        let importedLines = try XCTUnwrap(refreshedEpisode.transcriptLines)
+        XCTAssertEqual(importedLines.count, lineCount)
+        XCTAssertTrue(importedLines.allSatisfy {
+            $0.episode?.persistentModelID == refreshedEpisode.persistentModelID
+        })
     }
 
     @MainActor

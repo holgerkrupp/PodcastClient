@@ -10,6 +10,7 @@ enum RefreshHistoryTrigger: String, Codable, Sendable {
     case userInitiatedSingle
     case backgroundForegroundQuiet
     case backgroundAppRefresh
+    case backgroundPredictedRelease
     case backgroundProcessing
 
     var title: String {
@@ -22,6 +23,8 @@ enum RefreshHistoryTrigger: String, Codable, Sendable {
             return "Background"
         case .backgroundAppRefresh:
             return "App Refresh"
+        case .backgroundPredictedRelease:
+            return "Release Refresh"
         case .backgroundProcessing:
             return "Background Processing"
         }
@@ -37,6 +40,8 @@ enum RefreshHistoryTrigger: String, Codable, Sendable {
             return "Foreground quiet refresh"
         case .backgroundAppRefresh:
             return "Scheduled app refresh"
+        case .backgroundPredictedRelease:
+            return "Scheduled predicted release refresh"
         case .backgroundProcessing:
             return "Processing task refresh"
         }

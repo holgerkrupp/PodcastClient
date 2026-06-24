@@ -180,6 +180,10 @@ final class Podcast: Identifiable {
     // these properties are supposed to be used for background refresh checks
     var feedUpdated:Bool? // has the feed been updated and should refresh?
     var feedUpdateCheckDate:Date? // when has feedUpdated been set?
+    var nextPredictedReleaseDate: Date?
+    var nextPredictedRefreshStartDate: Date?
+    var nextPredictedRefreshEndDate: Date?
+    var releasePredictionUpdatedAt: Date?
     var consecutiveFeedFailureCount: Int = 0
     var firstConsecutiveFeedFailureDate: Date?
     var lastFeedFailureDate: Date?

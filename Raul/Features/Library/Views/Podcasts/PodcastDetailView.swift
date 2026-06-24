@@ -10,7 +10,7 @@ import SwiftData
 import RichText
 
 struct PodcastDetailView: View {
-    
+
     enum EpisodeSortOption: String, CaseIterable, Identifiable {
         case newestFirst
         case oldestFirst
@@ -44,7 +44,6 @@ struct PodcastDetailView: View {
 
     
     @Bindable var podcast: Podcast
-    @State private var backgroundUIImage: UIImage?
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
     @State private var refreshProgress: Double = 0
@@ -57,6 +56,9 @@ struct PodcastDetailView: View {
 
     @State private var showPodroll: Bool = false
     @State private var showDebugMetadata: Bool = false
+#if DEBUG
+    @State private var predictedReleaseDate: Date?
+#endif
     @State private var liveNotificationMessage: String?
     @State private var hasAttemptedInitialFeedImport = false
     @AppStorage("EpisodeSortOption") private var sortOptionRawValue: String = EpisodeSortOption.newestFirst.rawValue
@@ -71,10 +73,7 @@ struct PodcastDetailView: View {
     @State private var searchInDescription = true
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
-    @State private var displayedEpisodeLimit = Self.episodePageSize
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
-
-    private static let episodePageSize = 40
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
         podcast.alternativeFeeds.filter { $0.url != podcast.feed }
@@ -92,20 +91,18 @@ struct PodcastDetailView: View {
         podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
     }
 
-    private var displayedEpisodes: ArraySlice<Episode> {
-        filteredEpisodes.prefix(displayedEpisodeLimit)
-    }
-
-    private var hasMoreFilteredEpisodes: Bool {
-        displayedEpisodeLimit < filteredEpisodes.count
-    }
-
     private var needsInitialFeedImport: Bool {
         podcast.isSubscribed
             && podcast.feed != nil
             && podcast.metaData?.lastRefresh == nil
             && (podcast.episodes?.isEmpty ?? true)
     }
+
+#if DEBUG
+    private var displayedPredictedReleaseDate: Date? {
+        podcast.metaData?.nextPredictedReleaseDate ?? predictedReleaseDate
+    }
+#endif
 
     private var isFeedAbandoned: Bool {
         podcast.metaData?.isFeedLikelyAbandoned == true
@@ -236,18 +233,13 @@ struct PodcastDetailView: View {
     
   
     var body: some View {
-   
-        
-      
+            List {
 
-            
-            AnyView(List {
-                
-                
-                
+
+
                 Section{
                     VStack(alignment: .leading) {
-                        
+
                         HStack{
                             if let lastBuildDate = podcast.lastBuildDate {
                                 Text("Last updated: \(lastBuildDate.formatted(date: .numeric, time: .shortened))")
@@ -261,6 +253,15 @@ struct PodcastDetailView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+#if DEBUG
+                        Text(
+                            displayedPredictedReleaseDate.map {
+                                "Next predicted release: \($0.formatted(date: .abbreviated, time: .shortened))"
+                            } ?? "Next predicted release: Unavailable"
+                        )
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+#endif
 
                         abandonedFeedCard
 
@@ -376,30 +377,7 @@ struct PodcastDetailView: View {
                             Text(copyright)
                                 .font(.caption)
                         }
-                        SocialView(socials: podcast.social)
-                            .padding()
-                        PeopleView(people: podcast.people)
-                            .padding()
-                        PodcastNamespaceMetadataView(
-                            optionalTags: podcast.optionalTags,
-                            title: "Podcast Metadata",
-                            hidesRenderableValueBlocks: true
-                        )
-                            .padding()
-                        if let desc = podcast.desc {
-#if os(iOS)
-                            RichText(html: desc)
-                                .linkColor(light: Color.secondary, dark: Color.secondary)
-                                .backgroundColor(.transparent)
-                                .padding()
-#else
-                            RichText(html: desc)
-                                .backgroundColor(.transparent)
-                                .padding()
-#endif
-                            
-                            
-                        }
+                        PodcastDetailMetadataSections(podcast: podcast)
 
                         Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {
                             Task {
@@ -481,7 +459,7 @@ struct PodcastDetailView: View {
                 }
                 
                 Section{
-                    ForEach(displayedEpisodes, id: \.id) { episode in
+                    ForEach(filteredEpisodes, id: \.id) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
@@ -497,86 +475,77 @@ struct PodcastDetailView: View {
                                              leading: 0,
                                              bottom: 0,
                                              trailing: 0))
-                        .ignoresSafeArea()
-                        .onAppear {
-                            loadMoreEpisodesIfNeeded(currentEpisode: episode)
-                        }
-                        
-                        
                     }
                     .onDelete { indexSet in
                         Task {
                             for index in indexSet {
                                  let episodeID = filteredEpisodes[index].persistentModelID
                                     try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
-                                
+
                             }
                         }
                     }
-                    if hasMoreFilteredEpisodes {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .onAppear {
-                                loadMoreEpisodes()
-                            }
-                    }
                 }
                 .listRowSeparator(.hidden)
-            })
+            }
             .background{
-                if let backgroundUIImage {
-                    Image(uiImage: backgroundUIImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
-                                        .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                                        
-                        .blur(radius: 20)
-                        .opacity(0.5)
-
-                    
-                } else {
-                    Color.accent.ignoresSafeArea()
-                }
+                BlurredCoverImageView(podcast: podcast, radius: 15)
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
+                    .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
+                    .opacity(0.5)
             }
 
             .listStyle(PlainListStyle())
             .padding(.top, 0)
             .searchable(text: $searchText)
             .task {
+                SystemPressureGate.shared.noteUserInteraction()
                 applyEpisodeFilters()
+#if DEBUG
+                await updatePredictedReleaseDate()
+#endif
                 await refreshEpisodesIfNeeded()
-            }
-            .task(id: podcast.imageURL) {
-                await loadBackgroundImage()
+#if DEBUG
+                await updatePredictedReleaseDate()
+#endif
             }
             .onChange(of: searchText) { _, _ in
                 debounceEpisodeFilters()
             }
             .onChange(of: searchInTitle) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                applyEpisodeFilters()
             }
             .onChange(of: searchInAuthor) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                applyEpisodeFilters()
             }
             .onChange(of: searchInDescription) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                applyEpisodeFilters()
             }
             .onChange(of: searchInTranscript) { _, _ in
                 debounceEpisodeFilters()
             }
             .onChange(of: hidePlayedAndArchived) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                applyEpisodeFilters()
             }
             .onChange(of: sortOptionRawValue) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                applyEpisodeFilters()
             }
             .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                applyEpisodeFilters()
+#if DEBUG
+                Task {
+                    await updatePredictedReleaseDate()
+                }
+#endif
             }
+#if DEBUG
+            .onChange(of: podcast.metaData?.feedUpdateCheckDate) { _, _ in
+                Task {
+                    await updatePredictedReleaseDate()
+                }
+            }
+#endif
             .navigationTitle(podcast.title)
             .navigationDestination(isPresented: $showPodroll) {
                 PodcastPodrollView(
@@ -672,31 +641,25 @@ struct PodcastDetailView: View {
 
     }
 
+#if DEBUG
+    private func updatePredictedReleaseDate() async {
+        predictedReleaseDate = podcast.metaData?.nextPredictedReleaseDate
+
+        let podcastID = podcast.persistentModelID
+        let predictor = SubscriptionManager(modelContainer: modelContext.container)
+        let releaseDate = await predictor.predictedReleaseDate(for: podcastID)
+        predictedReleaseDate = releaseDate ?? podcast.metaData?.nextPredictedReleaseDate
+    }
+#endif
+
     private func debounceEpisodeFilters() {
         Debounce.shared.perform {
-            applyEpisodeFilters(resetDisplayLimit: true)
+            applyEpisodeFilters()
         }
     }
 
-    private func loadBackgroundImage() async {
-        guard let imageURL = podcast.imageURL else {
-            await MainActor.run {
-                backgroundUIImage = nil
-            }
-            return
-        }
-
-        let uiImage = await ImageLoaderAndCache.loadUIImage(from: imageURL)
-        await MainActor.run {
-            backgroundUIImage = uiImage
-        }
-    }
-
-    private func applyEpisodeFilters(resetDisplayLimit: Bool = false) {
+    private func applyEpisodeFilters() {
         let episodes = podcast.episodes ?? []
-        if resetDisplayLimit {
-            displayedEpisodeLimit = Self.episodePageSize
-        }
 
         let visibleEpisodes: [Episode]
         if hidePlayedAndArchived {
@@ -733,19 +696,6 @@ struct PodcastDetailView: View {
             .sorted(by: sortOption.comparator)
     }
 
-    private func loadMoreEpisodesIfNeeded(currentEpisode: Episode) {
-        guard hasMoreFilteredEpisodes else { return }
-        guard displayedEpisodes.last?.persistentModelID == currentEpisode.persistentModelID else { return }
-        loadMoreEpisodes()
-    }
-
-    private func loadMoreEpisodes() {
-        displayedEpisodeLimit = min(
-            displayedEpisodeLimit + Self.episodePageSize,
-            filteredEpisodes.count
-        )
-    }
-    
     private func refreshEpisodes() async {
         guard podcast.isSubscribed else {
             return
@@ -901,6 +851,38 @@ struct PodcastDetailView: View {
         }
     }
 
+}
+
+// Heavy metadata block (socials, people, namespace tags, HTML description).
+// Extracted so it forms an observation boundary and shrinks the very large
+// PodcastDetailView body type, making re-renders far cheaper.
+private struct PodcastDetailMetadataSections: View {
+    let podcast: Podcast
+
+    var body: some View {
+        SocialView(socials: podcast.social)
+            .padding()
+        PeopleView(people: podcast.people)
+            .padding()
+        PodcastNamespaceMetadataView(
+            optionalTags: podcast.optionalTags,
+            title: "Podcast Metadata",
+            hidesRenderableValueBlocks: true
+        )
+            .padding()
+        if let desc = podcast.desc {
+#if os(iOS)
+            RichText(html: desc)
+                .linkColor(light: Color.secondary, dark: Color.secondary)
+                .backgroundColor(.transparent)
+                .padding()
+#else
+            RichText(html: desc)
+                .backgroundColor(.transparent)
+                .padding()
+#endif
+        }
+    }
 }
 
 private struct PodcastLiveItemControlsView: View {

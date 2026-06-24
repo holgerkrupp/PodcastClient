@@ -8,11 +8,14 @@ import CloudKitSyncMonitor
 
 enum BackgroundTaskConfiguration {
     static let feedRefreshIdentifier = "checkFeedUpdates"
+    static let predictedReleaseRefreshIdentifier = "refreshPredictedRelease"
     static let feedProcessingIdentifier = "processFeedUpdates"
     static let storageCleanupIdentifier = "storageCleanup"
     static let automaticTranscriptionIdentifier = "automaticTranscriptionProcessing"
     static let storeSplitMigrationIdentifier = "processStoreSplitMigration"
     static let feedRefreshInterval: TimeInterval = 60 * 60
+    static let predictedReleaseRefreshOffset: TimeInterval = 5 * 60
+    static let predictedReleaseRefreshMinimumScheduleDelay: TimeInterval = 60
     static let storeSplitMigrationInterval: TimeInterval = 60 * 60 * 4
     static let feedProcessingInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
@@ -159,7 +162,10 @@ struct RaulApp: App {
                 deferredStoreSplitTask = nil
                 deferredForegroundFeedRefreshTask?.cancel()
                 deferredForegroundFeedRefreshTask = nil
-                Task { await scheduleFeedRefresh() }
+                Task {
+                    await scheduleFeedRefresh()
+                    await schedulePredictedReleaseRefresh()
+                }
                 scheduleFeedProcessing()
                 scheduleStorageCleanup()
                 guard modelContainerManager.preparedContainer != nil else {
@@ -210,6 +216,7 @@ struct RaulApp: App {
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_started")
             await scheduleFeedRefresh()
+            await schedulePredictedReleaseRefresh()
             await modelContainerManager.prepareContainer()
 
             guard let container = await MainActor.run(body: {
@@ -223,7 +230,34 @@ struct RaulApp: App {
             }
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .appRefresh)
+            await schedulePredictedReleaseRefresh()
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_completed")
+        }
+        .backgroundTask(.appRefresh(BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier)) { task in
+            CrashBreadcrumbs.shared.record("predicted_release_refresh_background_task_started")
+            await modelContainerManager.prepareContainer()
+
+            guard let container = await MainActor.run(body: {
+                modelContainerManager.preparedContainer
+            }) else {
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_background_task_aborted",
+                    details: "reason=model_container_unavailable"
+                )
+                await schedulePredictedReleaseRefresh()
+                return
+            }
+
+            let didAttempt = await SubscriptionManager(modelContainer: container)
+                .refreshNextPredictedReleasePodcast(
+                    releaseDelay: BackgroundTaskConfiguration.predictedReleaseRefreshOffset
+                )
+
+            await schedulePredictedReleaseRefresh()
+            CrashBreadcrumbs.shared.record(
+                "predicted_release_refresh_background_task_completed",
+                details: "did_attempt=\(didAttempt)"
+            )
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
             await scheduleStorageCleanup()
@@ -504,6 +538,24 @@ struct RaulApp: App {
         return min(max(predicted, minimumDelay), maximumDelay)
     }
 
+    private func predictedReleaseRefreshBeginDate() async -> Date? {
+        guard let container = await MainActor.run(body: { modelContainerManager.preparedContainer }) else {
+            return nil
+        }
+
+        guard let target = await SubscriptionManager(modelContainer: container)
+            .nextPredictedReleaseRefreshTarget() else {
+            return nil
+        }
+
+        let predictedBeginDate = target.releaseDate
+            .addingTimeInterval(BackgroundTaskConfiguration.predictedReleaseRefreshOffset)
+        let minimumBeginDate = Date(
+            timeIntervalSinceNow: BackgroundTaskConfiguration.predictedReleaseRefreshMinimumScheduleDelay
+        )
+        return max(predictedBeginDate, minimumBeginDate)
+    }
+
     func scheduleFeedRefresh() async {
 #if os(iOS)
         // this should replace scheduleAppRefresh
@@ -521,6 +573,43 @@ struct RaulApp: App {
             )
         } catch {
             CrashBreadcrumbs.shared.record("schedule_feed_refresh_failed", details: error.localizedDescription)
+            BasicLogger.shared.log(error.localizedDescription)
+        }
+#endif
+    }
+
+    func schedulePredictedReleaseRefresh() async {
+#if os(iOS)
+        CrashBreadcrumbs.shared.record("schedule_predicted_release_refresh_requested")
+        BasicLogger.shared.log("schedule refreshPredictedRelease")
+        BGTaskScheduler.shared.cancel(
+            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+
+        guard let earliestBeginDate = await predictedReleaseRefreshBeginDate() else {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_not_scheduled",
+                details: "reason=no_prediction"
+            )
+            return
+        }
+
+        let request = BGAppRefreshTaskRequest(
+            identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+        request.earliestBeginDate = earliestBeginDate
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_submitted",
+                details: "earliest=\(earliestBeginDate)"
+            )
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_failed",
+                details: error.localizedDescription
+            )
             BasicLogger.shared.log(error.localizedDescription)
         }
 #endif

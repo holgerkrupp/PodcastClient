@@ -50,7 +50,7 @@ struct EpisodeDetailView: View {
             ZStack {
 
 
-                AnyView(ScrollView {
+                ScrollView {
                     if let podcast = episode.podcast {
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
                             HStack {
@@ -253,41 +253,15 @@ struct EpisodeDetailView: View {
                     }
                     .padding()
                     
-                    SocialView(socials: episode.social)
-                        
-                    PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
-                       
-                    PodcastNamespaceMetadataView(
-                        optionalTags: episode.optionalTags,
-                        title: "Episode Metadata",
-                        hidesRenderableValueBlocks: true
-                    )
-                        
-                    
-#if os(iOS)
-                    RichText(html: episode.content ?? episode.desc ?? "")
-                            .linkColor(light: Color.secondary, dark: Color.secondary)
-                            .backgroundColor(.transparent)
-                            .padding()
-#else
-                    RichText(html: episode.content ?? episode.desc ?? "")
-                            .backgroundColor(.transparent)
-                            .padding()
-#endif
-                    
-                    if episode.hasDisplayableChaptersOrSoundbites {
-                        ChapterListView(episode: episode)
-                    }
-                })
+                    EpisodeDetailMetadataSections(episode: episode)
+                }
             }
             .background{
-                CoverImageView(episode: episode)
+                BlurredCoverImageView(episode: episode, radius: 50)
                     .aspectRatio(1, contentMode: .fill)
                     .scaledToFill()
                     .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
                                     .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                                    
-                    .blur(radius: 100)
                     .opacity(0.5)
             }
             .sheet(item: $shareURL) { identifiable in
@@ -322,6 +296,8 @@ struct EpisodeDetailView: View {
                 }
             }
             .task(id: episode.url) {
+                SystemPressureGate.shared.noteUserInteraction()
+                episode.materializeSoundbitesIfNeeded()
                 liveTranscriptionItem = await currentTranscriptionItem()
             }
             .onChange(of: activeTranscriptionItem?.state) {
@@ -336,17 +312,6 @@ struct EpisodeDetailView: View {
 
     private var canGenerateTranscriptChapters: Bool {
         episode.transcriptLines?.isEmpty == false
-    }
-
-    private var fallbackAuthor: String? {
-        guard episode.people.isEmpty else { return nil }
-        guard let author = episode.author?.trimmingCharacters(in: .whitespacesAndNewlines),
-              author.isEmpty == false,
-              author != episode.podcast?.author
-        else {
-            return nil
-        }
-        return author
     }
 
     private var isCurrentEpisode: Bool {
@@ -557,6 +522,53 @@ struct EpisodeDetailView: View {
     private func currentTranscriptionItem() async -> TranscriptionItem? {
         guard let episodeURL = episode.url else { return nil }
         return await TranscriptionManager.shared.item(for: episodeURL)
+    }
+}
+
+// Trailing metadata block (socials, people, namespace tags, description, chapters).
+// Extracted into its own view so it forms an observation boundary: it only
+// re-evaluates when the metadata it reads changes, not on every playback-position
+// or import-driven update to the episode. Keeping it small also shrinks the
+// EpisodeDetailView body type, which is far cheaper for SwiftUI to copy/diff.
+private struct EpisodeDetailMetadataSections: View {
+    let episode: Episode
+
+    private var fallbackAuthor: String? {
+        guard episode.people.isEmpty else { return nil }
+        guard let author = episode.author?.trimmingCharacters(in: .whitespacesAndNewlines),
+              author.isEmpty == false,
+              author != episode.podcast?.author
+        else {
+            return nil
+        }
+        return author
+    }
+
+    var body: some View {
+        SocialView(socials: episode.social)
+
+        PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
+
+        PodcastNamespaceMetadataView(
+            optionalTags: episode.optionalTags,
+            title: "Episode Metadata",
+            hidesRenderableValueBlocks: true
+        )
+
+#if os(iOS)
+        RichText(html: episode.content ?? episode.desc ?? "")
+                .linkColor(light: Color.secondary, dark: Color.secondary)
+                .backgroundColor(.transparent)
+                .padding()
+#else
+        RichText(html: episode.content ?? episode.desc ?? "")
+                .backgroundColor(.transparent)
+                .padding()
+#endif
+
+        if episode.hasDisplayableChaptersOrSoundbites {
+            ChapterListView(episode: episode)
+        }
     }
 }
 

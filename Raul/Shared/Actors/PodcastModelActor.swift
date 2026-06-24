@@ -487,6 +487,7 @@ actor PodcastModelActor {
             finalMeta.isUpdating = false
             finalMeta.feedUpdated = true
             await updateLastRefresh(for: finalMeta.persistentModelID)
+            PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
             return true
         } catch {
@@ -620,6 +621,9 @@ actor PodcastModelActor {
                 }
                 if let metaIDRef {
                     recordFeedRefreshSuccess(metadataID: metaIDRef)
+                    if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                        PodcastReleasePredictor.updateCachedPrediction(for: freshPodcast, after: Date())
+                    }
                     modelContext.saveIfNeeded()
                 }
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
@@ -690,6 +694,7 @@ actor PodcastModelActor {
             finalMeta.feedUpdated = true
             recordFeedRefreshSuccess(metadataID: finalMeta.persistentModelID)
             await updateLastRefresh(for: finalMeta.persistentModelID)
+            PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
             databaseDuration = databaseStartedAt.duration(to: .now)
             await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription complete"), using: progress)

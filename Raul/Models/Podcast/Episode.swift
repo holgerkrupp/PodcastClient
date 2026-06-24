@@ -457,22 +457,27 @@ class EpisodeDownloadStatus{
         ) != nil
     }
 
+    // Pure read of stored soundbite chapters. Must NOT mutate the model:
+    // this is read during SwiftUI body evaluation, and synthesizing markers
+    // (setting `marker.episode = self`) here mutates the episode's relationship
+    // graph, which invalidates the view, re-triggers the read, and produces a
+    // runaway main-thread update loop. Soundbites from optionalTags are
+    // materialized into `chapters` once via materializeSoundbitesIfNeeded().
     @Transient var soundbitesForDisplay: [Marker] {
-        let storedSoundbites = (chapters ?? [])
+        (chapters ?? [])
             .filter { $0.type == .soundbite }
             .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
 
-        if storedSoundbites.isEmpty == false {
-            return storedSoundbites
-        }
-
-        return (optionalTags?.soundbite ?? [])
-            .compactMap { node -> Marker? in
-                guard let marker = soundbiteMarker(from: node) else { return nil }
-                marker.episode = self
-                return marker
-            }
-            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    /// Materializes `podcast:soundbite` entries from `optionalTags` into stored
+    /// `.soundbite` chapters when they are missing. Idempotent and safe to call
+    /// off the render path (e.g. from a view `.task`); once soundbites are
+    /// stored the guard short-circuits so it never loops.
+    func materializeSoundbitesIfNeeded() {
+        let hasStoredSoundbites = (chapters ?? []).contains { $0.type == .soundbite }
+        guard hasStoredSoundbites == false else { return }
+        guard optionalTags?.soundbite?.isEmpty == false else { return }
+        refreshSoundbitesFromOptionalTags()
     }
 
     @Transient var hasDisplayableChaptersOrSoundbites: Bool {

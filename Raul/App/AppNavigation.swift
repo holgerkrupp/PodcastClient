@@ -86,15 +86,20 @@ final class AppNavigationModel {
     func pathBinding(for section: AppSection) -> Binding<NavigationPath> {
         Binding(
             get: { self.paths[section] ?? NavigationPath() },
-            set: { self.paths[section] = $0 }
+            set: {
+                SystemPressureGate.shared.noteUserInteraction()
+                self.paths[section] = $0
+            }
         )
     }
 
     func select(_ section: AppSection) {
+        SystemPressureGate.shared.noteUserInteraction()
         selectedSection = section
     }
 
     func openPlaylistEpisode(_ url: URL) {
+        SystemPressureGate.shared.noteUserInteraction()
         selectedSection = .queue
         requestedPlaylistEpisodeURL = url
     }
