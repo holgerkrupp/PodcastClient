@@ -182,7 +182,10 @@ struct ContentView: View {
         .sheet(isPresented: $showOnboarding, onDismiss: {
             didCompleteOnboarding = true
         }) {
-            OnboardingView()
+            OnboardingView(
+                requiresInitialCloudImport: ModelContainerManager.shared.requiresInitialCloudImport,
+                modelContainer: modelContext.container
+            )
                 .interactiveDismissDisabled()
         }
         .onChange(of: subscribedPodcastCount) { _, _ in

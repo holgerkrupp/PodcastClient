@@ -233,6 +233,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
             Self.scheduleFeedProcessing()
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .processing)
+            await PredictedReleaseRefreshScheduler.schedule(using: container)
             guard Task.isCancelled == false else {
                 task.setTaskCompleted(success: false)
                 return

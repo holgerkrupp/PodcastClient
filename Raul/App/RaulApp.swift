@@ -16,6 +16,8 @@ enum BackgroundTaskConfiguration {
     static let feedRefreshInterval: TimeInterval = 60 * 60
     static let predictedReleaseRefreshOffset: TimeInterval = 5 * 60
     static let predictedReleaseRefreshMinimumScheduleDelay: TimeInterval = 60
+    static let predictedReleaseRefreshRetryDelay: TimeInterval = 30 * 60
+    static let predictedReleaseRefreshPodcastLimit = 5
     static let storeSplitMigrationInterval: TimeInterval = 60 * 60 * 4
     static let feedProcessingInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
@@ -24,6 +26,99 @@ enum BackgroundTaskConfiguration {
     static let lastStorageCleanupKey = "LastStorageCleanup"
     static let lastForegroundDownloadCleanupKey = "LastForegroundDownloadCleanup"
     static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
+}
+
+enum PredictedReleaseRefreshScheduler {
+    static func schedule(using container: ModelContainer?) async {
+#if os(iOS)
+        CrashBreadcrumbs.shared.record("schedule_predicted_release_refresh_requested")
+        await BasicLogger.shared.log("schedule refreshPredictedRelease")
+        BGTaskScheduler.shared.cancel(
+            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+
+        guard let container else {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_not_scheduled",
+                details: "reason=model_container_unavailable"
+            )
+#if DEBUG
+            await PredictedReleaseRefreshScheduleStore.shared.clear()
+#endif
+            return
+        }
+
+        guard let schedule = await predictedReleaseRefreshSchedule(using: container) else {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_not_scheduled",
+                details: "reason=no_prediction"
+            )
+#if DEBUG
+            await PredictedReleaseRefreshScheduleStore.shared.clear()
+#endif
+            return
+        }
+
+        let request = BGAppRefreshTaskRequest(
+            identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+        request.earliestBeginDate = schedule.earliestBeginDate
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_submitted",
+                details: "earliest=\(schedule.earliestBeginDate)"
+            )
+#if DEBUG
+            await PredictedReleaseRefreshScheduleStore.shared.record(
+                PredictedReleaseRefreshSchedule(
+                    scheduledAt: Date(),
+                    title: schedule.target.title,
+                    feedURL: schedule.target.feed.absoluteString,
+                    releaseDate: schedule.target.releaseDate,
+                    earliestBeginDate: schedule.earliestBeginDate
+                )
+            )
+#endif
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_failed",
+                details: error.localizedDescription
+            )
+#if DEBUG
+            await PredictedReleaseRefreshScheduleStore.shared.clear()
+#endif
+            await BasicLogger.shared.log(error.localizedDescription)
+        }
+#endif
+    }
+
+#if os(iOS)
+    private static func predictedReleaseRefreshSchedule(
+        using container: ModelContainer
+    ) async -> (
+        target: SubscriptionManager.PredictedReleaseRefreshTarget,
+        earliestBeginDate: Date
+    )? {
+        guard let target = await SubscriptionManager(modelContainer: container)
+            .nextPredictedReleaseRefreshTarget(
+                releaseDelay: BackgroundTaskConfiguration.predictedReleaseRefreshOffset,
+                retryDelay: BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay
+            ) else {
+            return nil
+        }
+
+        let predictedBeginDate = target.nextAttemptDate(
+            releaseDelay: BackgroundTaskConfiguration.predictedReleaseRefreshOffset,
+            retryDelay: BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay
+        )
+        let minimumBeginDate = Date(
+            timeIntervalSinceNow: BackgroundTaskConfiguration.predictedReleaseRefreshMinimumScheduleDelay
+        )
+        return (target, max(predictedBeginDate, minimumBeginDate))
+    }
+#endif
 }
 
 @main
@@ -59,10 +154,7 @@ struct RaulApp: App {
         
         WindowGroup("Up Next", id: AppWindowID.main) {
             if let container = modelContainerManager.preparedContainer {
-                AppLaunchContainerView(
-                    requiresInitialCloudImport: modelContainerManager.requiresInitialCloudImport,
-                    modelContainer: container
-                ) {
+                AppLaunchContainerView {
                     ContentView()
                     .modelContainer(container)
                     .environment(downloadedFilesManager)
@@ -248,15 +340,16 @@ struct RaulApp: App {
                 return
             }
 
-            let didAttempt = await SubscriptionManager(modelContainer: container)
-                .refreshNextPredictedReleasePodcast(
+            let attemptedCount = await SubscriptionManager(modelContainer: container)
+                .refreshNextPredictedReleasePodcasts(
+                    limit: BackgroundTaskConfiguration.predictedReleaseRefreshPodcastLimit,
                     releaseDelay: BackgroundTaskConfiguration.predictedReleaseRefreshOffset
                 )
 
             await schedulePredictedReleaseRefresh()
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_background_task_completed",
-                details: "did_attempt=\(didAttempt)"
+                details: "attempted_count=\(attemptedCount)"
             )
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
@@ -538,24 +631,6 @@ struct RaulApp: App {
         return min(max(predicted, minimumDelay), maximumDelay)
     }
 
-    private func predictedReleaseRefreshBeginDate() async -> Date? {
-        guard let container = await MainActor.run(body: { modelContainerManager.preparedContainer }) else {
-            return nil
-        }
-
-        guard let target = await SubscriptionManager(modelContainer: container)
-            .nextPredictedReleaseRefreshTarget() else {
-            return nil
-        }
-
-        let predictedBeginDate = target.releaseDate
-            .addingTimeInterval(BackgroundTaskConfiguration.predictedReleaseRefreshOffset)
-        let minimumBeginDate = Date(
-            timeIntervalSinceNow: BackgroundTaskConfiguration.predictedReleaseRefreshMinimumScheduleDelay
-        )
-        return max(predictedBeginDate, minimumBeginDate)
-    }
-
     func scheduleFeedRefresh() async {
 #if os(iOS)
         // this should replace scheduleAppRefresh
@@ -580,38 +655,8 @@ struct RaulApp: App {
 
     func schedulePredictedReleaseRefresh() async {
 #if os(iOS)
-        CrashBreadcrumbs.shared.record("schedule_predicted_release_refresh_requested")
-        BasicLogger.shared.log("schedule refreshPredictedRelease")
-        BGTaskScheduler.shared.cancel(
-            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-        )
-
-        guard let earliestBeginDate = await predictedReleaseRefreshBeginDate() else {
-            CrashBreadcrumbs.shared.record(
-                "schedule_predicted_release_refresh_not_scheduled",
-                details: "reason=no_prediction"
-            )
-            return
-        }
-
-        let request = BGAppRefreshTaskRequest(
-            identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-        )
-        request.earliestBeginDate = earliestBeginDate
-
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            CrashBreadcrumbs.shared.record(
-                "schedule_predicted_release_refresh_submitted",
-                details: "earliest=\(earliestBeginDate)"
-            )
-        } catch {
-            CrashBreadcrumbs.shared.record(
-                "schedule_predicted_release_refresh_failed",
-                details: error.localizedDescription
-            )
-            BasicLogger.shared.log(error.localizedDescription)
-        }
+        let container = await MainActor.run(body: { modelContainerManager.preparedContainer })
+        await PredictedReleaseRefreshScheduler.schedule(using: container)
 #endif
     }
 

@@ -860,9 +860,6 @@ struct PodcastSettingsView: View {
                     systemImage: "waveform.and.mic"
                 )
             }
-            .simultaneousGesture(TapGesture().onEnded {
-                CrashBreadcrumbs.shared.record("open_transcription_settings")
-            })
 
             Text("When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.")
                 .font(.caption)
@@ -1464,7 +1461,34 @@ struct PodcastSettingsView: View {
                     systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
                 )
             }
-        }
+            
+                NavigationLink {
+                    PredictedRefreshQueueSettingsView()
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "calendar.badge.clock")
+                            .foregroundStyle(.accent)
+                            .frame(width: 24, height: 24)
+                            .padding(.top, 2)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Next Predicted Refreshes")
+                                .foregroundStyle(.primary)
+
+                            Text("Next \(BackgroundTaskConfiguration.predictedReleaseRefreshPodcastLimit) podcasts")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                            Text("Sorted by predicted release time, with the submitted background task marked.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        
     }
 #endif
 

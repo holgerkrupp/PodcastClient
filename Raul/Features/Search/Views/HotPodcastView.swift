@@ -6,26 +6,21 @@
 //
 
 import SwiftUI
-import fyyd_swift
 
 struct HotPodcastView: View {
-  
+
     @Environment(\.modelContext) private var context
     @StateObject private var viewModel = PodcastSearchViewModel()
-    
+
     var body: some View {
         List{
         Group{
-            if !viewModel.languages.isEmpty {
-                Picker("Language", selection: $viewModel.selectedLanguage) {
-                    ForEach(viewModel.languages, id: \.self) { name in
-                        Text(name.languageName()).tag(name)
-                    }
+            Picker("Region", selection: $viewModel.selectedRegion) {
+                ForEach(viewModel.regions) { region in
+                    Text(region.displayName).tag(region.code as String?)
                 }
-                .pickerStyle(.menu)
-            } else {
-                ProgressView("Loading languages...")
             }
+            .pickerStyle(.menu)
         }
         .padding()
         .listRowSeparator(.hidden)

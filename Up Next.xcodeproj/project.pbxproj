@@ -12,7 +12,6 @@
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
-		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 		48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
 		48BCBD602FC99A95008EC322 /* Apple Podcasts to OPML.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = 48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */; };
 		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
@@ -287,7 +286,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				4812C1023020000100000001 /* CloudKitSyncMonitor in Frameworks */,
-				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
@@ -418,7 +416,6 @@
 			name = UpNext;
 			packageProductDependencies = (
 				4812C1033020000100000001 /* CloudKitSyncMonitor */,
-				48B3BA072DA06825005B40B8 /* fyyd_swift */,
 				48C078062DB410D000D6DD9C /* DeviceInfo */,
 				48C078082DB4111500D6DD9C /* DeviceInfo */,
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
@@ -588,7 +585,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */,
-				48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
 				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
 				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
 				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
@@ -1333,10 +1329,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../fyyd-swift";
-		};
 		48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../DeviceInfo;
@@ -1380,10 +1372,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */;
 			productName = CloudKitSyncMonitor;
-		};
-		48B3BA072DA06825005B40B8 /* fyyd_swift */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = fyyd_swift;
 		};
 		48C078062DB410D000D6DD9C /* DeviceInfo */ = {
 			isa = XCSwiftPackageProductDependency;

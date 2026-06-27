@@ -522,13 +522,31 @@ actor SubscriptionManager:NSObject{
         case processing
     }
 
-    struct PredictedReleaseRefreshTarget: Sendable, Equatable {
+    struct PredictedReleaseRefreshTarget: Identifiable, Sendable, Equatable {
         let title: String
         let feed: URL
         let releaseDate: Date
+        let refreshStart: Date
+        let refreshEnd: Date
+        let lastCheck: Date?
+        let lastRefresh: Date?
+        let score: Int
+
+        var id: String { feed.absoluteString }
+
+        func nextAttemptDate(releaseDelay: TimeInterval, retryDelay: TimeInterval) -> Date {
+            let firstAttemptDate = releaseDate.addingTimeInterval(releaseDelay)
+            guard let lastRefresh, lastRefresh >= releaseDate else {
+                return firstAttemptDate
+            }
+
+            return max(firstAttemptDate, lastRefresh.addingTimeInterval(retryDelay))
+        }
     }
 
-    private static let predictedReleaseRefreshRuntimeLimit: TimeInterval = 22
+    private static let predictedReleaseRefreshRuntimeLimit: TimeInterval = 25
+    private static let predictedReleaseRefreshPerPodcastRuntimeLimit: TimeInterval = 5
+    private static let predictedReleaseRefreshMinimumRuntimeRemaining: TimeInterval = 2
 
     private struct BackgroundFeedRefreshPolicy: Sendable {
         let maxPodcastsPerRun: Int
@@ -551,7 +569,7 @@ actor SubscriptionManager:NSObject{
                 )
             case .appRefresh:
                 return .init(
-                    maxPodcastsPerRun: 4,
+                    maxPodcastsPerRun: 5,
                     maxConcurrentPodcastUpdates: 1,
                     maxRuntime: 25,
                     perPodcastRuntimeLimit: 7,
@@ -575,6 +593,7 @@ actor SubscriptionManager:NSObject{
         let title: String
         let feed: URL
         let lastCheckAge: Int
+        let forceParse: Bool
     }
 
     private struct BackgroundFeedRefreshResult: Sendable {
@@ -612,7 +631,7 @@ actor SubscriptionManager:NSObject{
     ) -> [BackgroundFeedRefreshCandidate] {
         var candidates: [BackgroundFeedRefreshCandidate] = []
 
-        for podcast in podcastsPrioritizedForBackgroundRefresh(now: startedAt) {
+        for ranked in podcastsPrioritizedForBackgroundRefresh(now: startedAt) {
             if candidates.count >= policy.maxPodcastsPerRun {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
                 break
@@ -628,6 +647,7 @@ actor SubscriptionManager:NSObject{
                 break
             }
 
+            let podcast = ranked.podcast
             guard let feed = podcast.feed else { continue }
 
             let lastCheckAge = podcast.metaData?.feedUpdateCheckDate.map { Int(Date().timeIntervalSince($0)) } ?? -1
@@ -635,7 +655,8 @@ actor SubscriptionManager:NSObject{
                 BackgroundFeedRefreshCandidate(
                     title: podcast.title,
                     feed: feed,
-                    lastCheckAge: lastCheckAge
+                    lastCheckAge: lastCheckAge,
+                    forceParse: ranked.forceParse
                 )
             )
         }
@@ -646,7 +667,8 @@ actor SubscriptionManager:NSObject{
     private func updatePodcastWithTimeBudget(
         _ feed: URL,
         timeBudget: TimeInterval,
-        notifyNewEpisodes: Bool
+        notifyNewEpisodes: Bool,
+        forceParse: Bool = false
     ) async -> (TimedPodcastUpdateResult, Int, String?) {
         let worker = PodcastModelActor(modelContainer: modelContainer)
         let deadline = Date().addingTimeInterval(timeBudget)
@@ -654,6 +676,7 @@ actor SubscriptionManager:NSObject{
         do {
             let summary = try await worker.updatePodcastWithSummary(
                 feed,
+                force: forceParse,
                 silent: true,
                 processNewEpisodesDuringSilentRefresh: notifyNewEpisodes,
                 deadline: deadline
@@ -703,45 +726,117 @@ actor SubscriptionManager:NSObject{
     }
 
     func nextPredictedReleaseRefreshTarget(
-        after now: Date = Date()
+        after now: Date = Date(),
+        releaseDelay: TimeInterval = 0,
+        retryDelay: TimeInterval = 0
     ) async -> PredictedReleaseRefreshTarget? {
         fetchData()
-        let target = nextPredictedReleaseRefreshTargetFromLoadedPodcasts(after: now)
+        let target = nextPredictedReleaseRefreshTargetFromLoadedPodcasts(
+            after: now,
+            releaseDelay: releaseDelay,
+            retryDelay: retryDelay
+        )
         modelContext.saveIfNeeded()
         return target
     }
 
+    func predictedReleaseRefreshCandidates(
+        after now: Date = Date(),
+        limit: Int? = nil
+    ) async -> [PredictedReleaseRefreshTarget] {
+        fetchData()
+        let targets = predictedReleaseRefreshCandidatesFromLoadedPodcasts(
+            after: now,
+            limit: limit
+        )
+        modelContext.saveIfNeeded()
+        return targets
+    }
+
     private func nextPredictedReleaseRefreshTargetFromLoadedPodcasts(
-        after now: Date
+        after now: Date,
+        releaseDelay: TimeInterval,
+        retryDelay: TimeInterval
     ) -> PredictedReleaseRefreshTarget? {
+        predictedReleaseRefreshScheduleCandidatesFromLoadedPodcasts(
+            after: now,
+            releaseDelay: releaseDelay,
+            retryDelay: retryDelay
+        ).first
+    }
+
+    private func predictedReleaseRefreshCandidatesFromLoadedPodcasts(
+        after now: Date,
+        limit: Int? = nil
+    ) -> [PredictedReleaseRefreshTarget] {
+        let sortedTargets = predictedReleaseRefreshTargetsFromLoadedPodcasts(after: now)
+            .sorted { lhs, rhs in
+                // Urgency first (overdue / in-window beats merely soon), then the
+                // earliest predicted release, then the least-recently refreshed.
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                if lhs.releaseDate != rhs.releaseDate {
+                    return lhs.releaseDate < rhs.releaseDate
+                }
+                return (lhs.lastRefresh ?? .distantPast) < (rhs.lastRefresh ?? .distantPast)
+            }
+
+        guard let limit else { return sortedTargets }
+        return Array(sortedTargets.prefix(max(0, limit)))
+    }
+
+    private func predictedReleaseRefreshScheduleCandidatesFromLoadedPodcasts(
+        after now: Date,
+        releaseDelay: TimeInterval,
+        retryDelay: TimeInterval
+    ) -> [PredictedReleaseRefreshTarget] {
+        predictedReleaseRefreshTargetsFromLoadedPodcasts(after: now)
+            .sorted { lhs, rhs in
+                let lhsAttempt = lhs.nextAttemptDate(
+                    releaseDelay: releaseDelay,
+                    retryDelay: retryDelay
+                )
+                let rhsAttempt = rhs.nextAttemptDate(
+                    releaseDelay: releaseDelay,
+                    retryDelay: retryDelay
+                )
+                if lhsAttempt != rhsAttempt { return lhsAttempt < rhsAttempt }
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                if lhs.releaseDate != rhs.releaseDate { return lhs.releaseDate < rhs.releaseDate }
+                return (lhs.lastRefresh ?? .distantPast) < (rhs.lastRefresh ?? .distantPast)
+            }
+    }
+
+    private func predictedReleaseRefreshTargetsFromLoadedPodcasts(
+        after now: Date
+    ) -> [PredictedReleaseRefreshTarget] {
         podcasts
             .filter { $0.metaData?.isSubscribed != false }
-            .compactMap { podcast -> (target: PredictedReleaseRefreshTarget, lastCheck: Date, lastRefresh: Date)? in
+            .compactMap { podcast -> PredictedReleaseRefreshTarget? in
                 guard let feed = podcast.feed,
                       let prediction = PodcastReleasePredictor
-                        .updateCachedPrediction(for: podcast, after: now) else {
+                        .updateCachedPrediction(
+                            for: podcast,
+                            after: now,
+                            allowRelationshipFallback: true
+                        ) else {
                     return nil
                 }
 
-                return (
-                    target: PredictedReleaseRefreshTarget(
-                        title: podcast.title,
-                        feed: feed,
-                        releaseDate: prediction.releaseDate
-                    ),
-                    lastCheck: podcast.metaData?.feedUpdateCheckDate ?? .distantPast,
-                    lastRefresh: podcast.metaData?.lastRefresh ?? .distantPast
+                return PredictedReleaseRefreshTarget(
+                    title: podcast.title,
+                    feed: feed,
+                    releaseDate: prediction.releaseDate,
+                    refreshStart: prediction.refreshStart,
+                    refreshEnd: prediction.refreshEnd,
+                    lastCheck: podcast.metaData?.feedUpdateCheckDate,
+                    lastRefresh: podcast.metaData?.lastRefresh,
+                    score: backgroundRefreshScore(
+                        for: podcast,
+                        prediction: prediction,
+                        now: now
+                    )
                 )
             }
-            .sorted { lhs, rhs in
-                if lhs.target.releaseDate != rhs.target.releaseDate {
-                    return lhs.target.releaseDate < rhs.target.releaseDate
-                }
-                if lhs.lastCheck != rhs.lastCheck { return lhs.lastCheck < rhs.lastCheck }
-                return lhs.lastRefresh < rhs.lastRefresh
-            }
-            .first?
-            .target
     }
 
     @discardableResult
@@ -749,21 +844,41 @@ actor SubscriptionManager:NSObject{
         releaseDelay: TimeInterval,
         now: Date = Date()
     ) async -> Bool {
+        await refreshNextPredictedReleasePodcasts(
+            limit: 1,
+            releaseDelay: releaseDelay,
+            now: now
+        ) > 0
+    }
+
+    @discardableResult
+    func refreshNextPredictedReleasePodcasts(
+        limit: Int,
+        releaseDelay: TimeInterval,
+        retryDelay: TimeInterval = BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay,
+        now: Date = Date()
+    ) async -> Int {
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_skipped",
                 details: "reason=already_running"
             )
-            return false
+            return 0
         }
 
         let startedAt = Date()
+        let maxPodcasts = max(1, limit)
 #if DEBUG
         var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
 #endif
 
         fetchData()
-        guard let target = nextPredictedReleaseRefreshTargetFromLoadedPodcasts(after: now) else {
+        let candidates = predictedReleaseRefreshCandidatesFromLoadedPodcasts(
+            after: now
+        )
+        modelContext.saveIfNeeded()
+
+        guard candidates.isEmpty == false else {
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_skipped",
                 details: "reason=no_prediction"
@@ -779,85 +894,148 @@ actor SubscriptionManager:NSObject{
             )
 #endif
             await FeedRefreshRunCoordinator.shared.finish()
-            return false
+            return 0
         }
 
-        let dueDate = target.releaseDate.addingTimeInterval(releaseDelay)
-        guard now >= dueDate else {
+        let dueTargets = candidates.filter {
+            now >= $0.nextAttemptDate(
+                releaseDelay: releaseDelay,
+                retryDelay: retryDelay
+            )
+        }
+        guard dueTargets.isEmpty == false else {
+            let nextTarget = candidates.min {
+                let lhsAttempt = $0.nextAttemptDate(
+                    releaseDelay: releaseDelay,
+                    retryDelay: retryDelay
+                )
+                let rhsAttempt = $1.nextAttemptDate(
+                    releaseDelay: releaseDelay,
+                    retryDelay: retryDelay
+                )
+                if lhsAttempt != rhsAttempt { return lhsAttempt < rhsAttempt }
+                return $0.releaseDate < $1.releaseDate
+            }
+            let nextDueDate = nextTarget?.nextAttemptDate(
+                releaseDelay: releaseDelay,
+                retryDelay: retryDelay
+            )
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_skipped",
-                details: "reason=too_early,release=\(target.releaseDate),due=\(dueDate),now=\(now)"
+                details: "reason=too_early,release=\(nextTarget?.releaseDate.description ?? "unknown"),due=\(nextDueDate?.description ?? "unknown"),now=\(now)"
             )
-            modelContext.saveIfNeeded()
             await FeedRefreshRunCoordinator.shared.finish()
-            return false
+            return 0
         }
 
-        guard let podcast = podcasts.first(where: { $0.feed == target.feed }) else {
+        var attemptedCount = 0
+        var updatedCount = 0
+        var timedOutCount = 0
+
+        for target in dueTargets.prefix(maxPodcasts) {
+            if Task.isCancelled {
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_stopped",
+                    details: "reason=cancelled,attempted=\(attemptedCount)"
+                )
+                break
+            }
+
+            let elapsed = Date().timeIntervalSince(startedAt)
+            if elapsed >= Self.predictedReleaseRefreshRuntimeLimit {
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_stopped",
+                    details: "reason=max_runtime,attempted=\(attemptedCount)"
+                )
+                break
+            }
+            if Self.predictedReleaseRefreshRuntimeLimit - elapsed
+                < Self.predictedReleaseRefreshMinimumRuntimeRemaining {
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_stopped",
+                    details: "reason=runtime_remaining,attempted=\(attemptedCount)"
+                )
+                break
+            }
+
+            guard let podcast = podcasts.first(where: { $0.feed == target.feed }) else {
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_skipped",
+                    details: "reason=podcast_missing,feed=\(target.feed.absoluteString)"
+                )
+                continue
+            }
+
+            let lastCheckAge = podcast.metaData?.feedUpdateCheckDate
+                .map { Int(Date().timeIntervalSince($0)) } ?? -1
+
             CrashBreadcrumbs.shared.record(
-                "predicted_release_refresh_skipped",
-                details: "reason=podcast_missing,feed=\(target.feed.absoluteString)"
+                "predicted_release_refresh_started",
+                details: "feed=\(target.feed.absoluteString),release=\(target.releaseDate)"
             )
-            await FeedRefreshRunCoordinator.shared.finish()
-            return false
-        }
 
-        let lastCheckAge = podcast.metaData?.feedUpdateCheckDate
-            .map { Int(Date().timeIntervalSince($0)) } ?? -1
+            let remainingRuntime = Self.predictedReleaseRefreshRuntimeLimit
+                - Date().timeIntervalSince(startedAt)
+            let timeBudget = min(
+                Self.predictedReleaseRefreshPerPodcastRuntimeLimit,
+                max(1, remainingRuntime)
+            )
+            // These targets are overdue / inside their predicted window, so parse
+            // the feed in full rather than trusting a possibly-stale Last-Modified.
+            let (result, newEpisodeCount, errorMessage) = await updatePodcastWithTimeBudget(
+                target.feed,
+                timeBudget: timeBudget,
+                notifyNewEpisodes: true,
+                forceParse: true
+            )
+            attemptedCount += 1
+
+            switch result {
+            case .completed(let didUpdate):
+                if didUpdate == true { updatedCount += 1 }
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_completed",
+                    details: "updated=\(didUpdate == true),new_episodes=\(newEpisodeCount),last_check_age=\(lastCheckAge)s"
+                )
+#if DEBUG
+                let podcastResult: RefreshHistoryPodcastResult
+                if let errorMessage {
+                    podcastResult = .failed(errorMessage)
+                } else if didUpdate == true {
+                    podcastResult = .refreshed(newEpisodeCount: newEpisodeCount)
+                } else {
+                    podcastResult = .feedNotUpdated
+                }
+                checkedPodcasts.append(
+                    RefreshHistoryPodcastCheck(
+                        title: target.title,
+                        feedURL: target.feed,
+                        result: podcastResult
+                    )
+                )
+#endif
+            case .timedOut:
+                timedOutCount += 1
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_timed_out",
+                    details: "feed=\(target.feed.absoluteString),last_check_age=\(lastCheckAge)s"
+                )
+#if DEBUG
+                checkedPodcasts.append(
+                    RefreshHistoryPodcastCheck(
+                        title: target.title,
+                        feedURL: target.feed,
+                        result: .timedOut
+                    )
+                )
+#endif
+            }
+        }
 
         CrashBreadcrumbs.shared.record(
-            "predicted_release_refresh_started",
-            details: "feed=\(target.feed.absoluteString),release=\(target.releaseDate)"
+            "predicted_release_refresh_completed_batch",
+            details: "attempted=\(attemptedCount),updated=\(updatedCount),timed_out=\(timedOutCount)"
         )
-
-        let (result, newEpisodeCount, errorMessage) = await updatePodcastWithTimeBudget(
-            target.feed,
-            timeBudget: Self.predictedReleaseRefreshRuntimeLimit,
-            notifyNewEpisodes: true
-        )
-
-        let didAttempt: Bool
-        switch result {
-        case .completed(let didUpdate):
-            didAttempt = true
-            CrashBreadcrumbs.shared.record(
-                "predicted_release_refresh_completed",
-                details: "updated=\(didUpdate == true),new_episodes=\(newEpisodeCount),last_check_age=\(lastCheckAge)s"
-            )
-#if DEBUG
-            let podcastResult: RefreshHistoryPodcastResult
-            if let errorMessage {
-                podcastResult = .failed(errorMessage)
-            } else if didUpdate == true {
-                podcastResult = .refreshed(newEpisodeCount: newEpisodeCount)
-            } else {
-                podcastResult = .feedNotUpdated
-            }
-            checkedPodcasts.append(
-                RefreshHistoryPodcastCheck(
-                    title: target.title,
-                    feedURL: target.feed,
-                    result: podcastResult
-                )
-            )
-#endif
-        case .timedOut:
-            didAttempt = true
-            CrashBreadcrumbs.shared.record(
-                "predicted_release_refresh_timed_out",
-                details: "feed=\(target.feed.absoluteString),last_check_age=\(lastCheckAge)s"
-            )
-#if DEBUG
-            checkedPodcasts.append(
-                RefreshHistoryPodcastCheck(
-                    title: target.title,
-                    feedURL: target.feed,
-                    result: .timedOut
-                )
-            )
-#endif
-        }
-
 #if DEBUG
         await RefreshHistoryStore.shared.record(
             RefreshHistoryEntry(
@@ -868,18 +1046,23 @@ actor SubscriptionManager:NSObject{
             )
         )
 #endif
-        WatchSyncCoordinator.refreshSoon()
+        if attemptedCount > 0 {
+            WatchSyncCoordinator.refreshSoon()
+        }
         await FeedRefreshRunCoordinator.shared.finish()
-        return didAttempt
+        return attemptedCount
     }
 
-    private func podcastsPrioritizedForBackgroundRefresh(now: Date) -> [Podcast] {
+    private func podcastsPrioritizedForBackgroundRefresh(
+        now: Date
+    ) -> [(podcast: Podcast, forceParse: Bool)] {
         let rankedPodcasts = podcasts
             .filter { $0.metaData?.isSubscribed != false }
-            .map { podcast in
+            .map { podcast -> (podcast: Podcast, prediction: PodcastReleasePredictor.Prediction?, score: Int) in
                 let prediction = PodcastReleasePredictor.updateCachedPrediction(for: podcast, after: now)
                 return (
                     podcast: podcast,
+                    prediction: prediction,
                     score: backgroundRefreshScore(for: podcast, prediction: prediction, now: now)
                 )
             }
@@ -890,13 +1073,20 @@ actor SubscriptionManager:NSObject{
             .sorted { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score > rhs.score }
 
-                let lhsCheck = lhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
-                let rhsCheck = rhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
-                if lhsCheck != rhsCheck { return lhsCheck < rhsCheck }
+                // Tie-break on the last *actual* parse so the daily floor cycles
+                // through the least-recently-refreshed feeds first.
                 return (lhs.podcast.metaData?.lastRefresh ?? .distantPast)
                     < (rhs.podcast.metaData?.lastRefresh ?? .distantPast)
             }
-            .map(\.podcast)
+            .map { entry in
+                (
+                    podcast: entry.podcast,
+                    forceParse: PodcastBackgroundRefreshPriority.shouldForceParse(
+                        prediction: entry.prediction,
+                        now: now
+                    )
+                )
+            }
     }
 
     private func backgroundRefreshScore(
@@ -906,8 +1096,8 @@ actor SubscriptionManager:NSObject{
     ) -> Int {
         PodcastBackgroundRefreshPriority.score(
             prediction: prediction,
-            lastCheck: podcast.metaData?.feedUpdateCheckDate,
-            now: now
+            now: now,
+            lastRefresh: podcast.metaData?.lastRefresh
         )
     }
 
@@ -980,7 +1170,8 @@ actor SubscriptionManager:NSObject{
                         let (result, newEpisodeCount, errorMessage) = await self.updatePodcastWithTimeBudget(
                             candidate.feed,
                             timeBudget: policy.perPodcastRuntimeLimit,
-                            notifyNewEpisodes: policy.notifyNewEpisodes
+                            notifyNewEpisodes: policy.notifyNewEpisodes,
+                            forceParse: candidate.forceParse
                         )
                         return BackgroundFeedRefreshResult(
                             title: candidate.title,
@@ -1166,7 +1357,9 @@ struct PodcastReleasePredictor {
     private static let minimumEpisodes = 3
     private static let refreshLeadTime: TimeInterval = 30 * 60
     private static let minimumInterval: TimeInterval = 6 * 60 * 60
-    private static let maximumInterval: TimeInterval = 21 * 24 * 60 * 60
+    private static let maximumInterval: TimeInterval = 45 * 24 * 60 * 60
+    private static let minimumIrregularIntervals = 4
+    private static let irregularIntervalPercentile = 0.75
     private static let minimumFollowUpTime: TimeInterval = 3 * 60 * 60
     private static let maximumFollowUpTime: TimeInterval = 24 * 60 * 60
 
@@ -1184,7 +1377,6 @@ struct PodcastReleasePredictor {
         return prediction(
             from: dates,
             after: now,
-            lastCheck: podcast.metaData?.feedUpdateCheckDate,
             calendar: .autoupdatingCurrent
         )
     }
@@ -1226,7 +1418,6 @@ struct PodcastReleasePredictor {
     static func prediction(
         from publishDates: [Date],
         after now: Date,
-        lastCheck: Date? = nil,
         calendar: Calendar = .autoupdatingCurrent
     ) -> Prediction? {
         let dates = normalizedPublishDates(publishDates, before: now.addingTimeInterval(24 * 60 * 60))
@@ -1251,18 +1442,24 @@ struct PodcastReleasePredictor {
         ), let scheduledRelease = nextScheduledRelease(
             in: slots,
             afterLatestRelease: latestRelease,
-            lastCheck: lastCheck,
             now: now,
             followUpTime: followUpTime,
             calendar: calendar
         ) {
             nextRelease = scheduledRelease
         } else {
-            guard intervalIsConsistent(intervals, around: typicalInterval) else { return nil }
+            let interval: TimeInterval
+            if intervalIsConsistent(intervals, around: typicalInterval) {
+                interval = typicalInterval
+            } else if let irregularInterval = irregularReleaseInterval(from: intervals) {
+                interval = irregularInterval
+            } else {
+                return nil
+            }
+
             nextRelease = nextIntervalRelease(
                 afterLatestRelease: latestRelease,
-                interval: typicalInterval,
-                lastCheck: lastCheck,
+                interval: interval,
                 now: now,
                 followUpTime: followUpTime
             )
@@ -1390,10 +1587,16 @@ struct PodcastReleasePredictor {
         return slots
     }
 
+    /// The predicted slot anchors to the episode we have *not yet fetched*: it
+    /// stays on the slot following the latest known release until either that
+    /// episode actually lands (advancing `latestRelease`) or the follow-up
+    /// window lapses (treating it as a skipped week). It deliberately does *not*
+    /// consult `feedUpdateCheckDate` — a bare HEAD/"not modified" probe must not
+    /// look like the release was handled, otherwise an in-window episode behind a
+    /// stale `Last-Modified` header would be dropped from the refresh queue.
     private static func nextScheduledRelease(
         in slots: [WeeklySlot],
         afterLatestRelease latestRelease: Date,
-        lastCheck: Date?,
         now: Date,
         followUpTime: TimeInterval,
         calendar: Calendar
@@ -1404,13 +1607,6 @@ struct PodcastReleasePredictor {
             calendar: calendar
         ) else {
             return nil
-        }
-
-        while let lastCheck, candidate <= lastCheck {
-            guard let following = nextWeeklySlot(in: slots, after: candidate, calendar: calendar) else {
-                return nil
-            }
-            candidate = following
         }
 
         while candidate < now.addingTimeInterval(-followUpTime) {
@@ -1455,14 +1651,10 @@ struct PodcastReleasePredictor {
     private static func nextIntervalRelease(
         afterLatestRelease latestRelease: Date,
         interval: TimeInterval,
-        lastCheck: Date?,
         now: Date,
         followUpTime: TimeInterval
     ) -> Date {
         var candidate = latestRelease.addingTimeInterval(interval)
-        while let lastCheck, candidate <= lastCheck {
-            candidate = candidate.addingTimeInterval(interval)
-        }
         while candidate < now.addingTimeInterval(-followUpTime) {
             candidate = candidate.addingTimeInterval(interval)
         }
@@ -1476,6 +1668,21 @@ struct PodcastReleasePredictor {
         let deviations = intervals.map { abs($0 - typicalInterval) }
         let allowedDeviation = max(2 * 60 * 60, typicalInterval * 0.25)
         return median(deviations) <= allowedDeviation
+    }
+
+    private static func irregularReleaseInterval(from intervals: [TimeInterval]) -> TimeInterval? {
+        guard intervals.count >= minimumIrregularIntervals else { return nil }
+        return upperPercentile(intervals, percentile: irregularIntervalPercentile)
+    }
+
+    private static func upperPercentile(
+        _ values: [TimeInterval],
+        percentile: Double
+    ) -> TimeInterval {
+        let sorted = values.sorted()
+        let clampedPercentile = min(1, max(0, percentile))
+        let index = Int(ceil(Double(sorted.count - 1) * clampedPercentile))
+        return sorted[min(sorted.count - 1, max(0, index))]
     }
 
     private static func minuteOfDay(for date: Date, calendar: Calendar) -> Int {
@@ -1499,30 +1706,71 @@ struct PodcastReleasePredictor {
 }
 
 struct PodcastBackgroundRefreshPriority {
+    /// Feeds that have not actually been parsed within this interval earn a
+    /// baseline boost on general-purpose runs, providing the "every podcast at
+    /// least daily" floor regardless of whether the feed is modelled.
+    static let dailyStalenessInterval: TimeInterval = 24 * 60 * 60
+    static let postReleaseRetryInterval: TimeInterval = 30 * 60
+
+    /// Priority tiers, highest first.
+    enum Tier: Int {
+        case overdue = 100        // inside the window and the episode is already due
+        case imminentWindow = 70  // inside the window, episode not quite due yet
+        case withinHour = 60      // window opens within the hour
+        case withinThreeHours = 40
+        case staleFloor = 50      // not parsed in a day — the daily catch-up floor
+        case idle = 0
+    }
+
+    /// `lastRefresh` is the last time the feed was *actually parsed* (not a bare
+    /// HEAD probe), so the staleness floor reflects real fetches. The prediction
+    /// stays anchored on an unfetched in-window release, so "inside the window"
+    /// already implies "episode not yet captured" — no separate check-date guard
+    /// is needed (and using one would mis-handle stale `Last-Modified` headers).
     static func score(
         prediction: PodcastReleasePredictor.Prediction?,
-        lastCheck: Date?,
-        now: Date
+        now: Date,
+        lastRefresh: Date?,
+        retryDelay: TimeInterval = postReleaseRetryInterval
     ) -> Int {
-        guard let prediction else { return 0 }
+        let isStale = lastRefresh.map { now.timeIntervalSince($0) >= dailyStalenessInterval } ?? true
+        let staleFloor = isStale ? Tier.staleFloor.rawValue : Tier.idle.rawValue
 
-        if now >= prediction.refreshStart, now <= prediction.refreshEnd {
-            if let lastCheck, lastCheck >= prediction.releaseDate {
-                return 0
+        guard let prediction else {
+            return staleFloor
+        }
+
+        // At or past the window opening we expect an episode we have not fetched
+        // yet (the predictor only advances once the real episode lands or the
+        // window lapses). Overdue outranks not-yet-due.
+        if now >= prediction.refreshStart {
+            if let lastRefresh,
+               lastRefresh >= prediction.releaseDate,
+               now < lastRefresh.addingTimeInterval(retryDelay) {
+                return staleFloor
             }
-            if let lastCheck, lastCheck >= prediction.refreshStart {
-                return now >= prediction.releaseDate ? 80 : 20
-            }
-            return 100
+
+            return now >= prediction.releaseDate
+                ? Tier.overdue.rawValue
+                : Tier.imminentWindow.rawValue
         }
 
         let secondsUntilWindow = prediction.refreshStart.timeIntervalSince(now)
-        if secondsUntilWindow >= 0, secondsUntilWindow <= 60 * 60 { return 60 }
-        if secondsUntilWindow > 60 * 60, secondsUntilWindow <= 3 * 60 * 60 { return 40 }
+        if secondsUntilWindow <= 60 * 60 { return max(Tier.withinHour.rawValue, staleFloor) }
+        if secondsUntilWindow <= 3 * 60 * 60 { return max(Tier.withinThreeHours.rawValue, staleFloor) }
 
-        // A reliable but distant prediction is scheduling information, not
-        // refresh urgency. Returning zero lets stale and unmodelled feeds compete
-        // on their actual last-check date instead of being crowded out.
-        return 0
+        // A reliable but distant prediction is scheduling information, not refresh
+        // urgency; fall back to the daily staleness floor.
+        return staleFloor
+    }
+
+    /// Whether a podcast is inside (or past) its predicted refresh window and so
+    /// should be parsed in full, bypassing the `Last-Modified` short-circuit.
+    static func shouldForceParse(
+        prediction: PodcastReleasePredictor.Prediction?,
+        now: Date
+    ) -> Bool {
+        guard let prediction else { return false }
+        return now >= prediction.refreshStart
     }
 }

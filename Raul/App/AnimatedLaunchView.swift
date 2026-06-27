@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import CloudKitSyncMonitor
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -34,49 +33,18 @@ struct ModelContainerLaunchView: View {
 
 struct AppLaunchContainerView<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var syncMonitor = SyncMonitor.default
 
-    private let requiresInitialCloudImport: Bool
-    private let modelContainer: ModelContainer
     private let content: Content
 
     @State private var isLaunchVisible = true
-    @State private var didContinueWithoutSync = false
-    @State private var didCompleteInitialCloudImport = false
 
-    init(
-        requiresInitialCloudImport: Bool,
-        modelContainer: ModelContainer,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.requiresInitialCloudImport = requiresInitialCloudImport
-        self.modelContainer = modelContainer
+    init(@ViewBuilder content: () -> Content) {
         self.content = content()
-    }
-
-    private var isWaitingForInitialCloudImport: Bool {
-        requiresInitialCloudImport
-            && !didContinueWithoutSync
-            && !didCompleteInitialCloudImport
-            && !syncMonitor.importState.didSucceed
     }
 
     var body: some View {
         ZStack {
-            if isWaitingForInitialCloudImport {
-                InitialCloudSyncView(
-                    syncMonitor: syncMonitor,
-                    modelContainer: modelContainer
-                ) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        didContinueWithoutSync = true
-                    }
-                }
-                .transition(.opacity)
-            } else {
-                content
-                    .transition(.opacity)
-            }
+            content
 
             if isLaunchVisible {
                 CompositorLaunchView(reduceMotion: reduceMotion) {
@@ -87,149 +55,6 @@ struct AppLaunchContainerView<Content: View>: View {
                     .allowsHitTesting(false)
             }
         }
-        .onAppear {
-            if syncMonitor.importState.didSucceed {
-                didCompleteInitialCloudImport = true
-            }
-        }
-        .onChange(of: syncMonitor.importState) { _, state in
-            if state.didSucceed {
-                didCompleteInitialCloudImport = true
-            }
-        }
-    }
-}
-
-private struct InitialCloudSyncView: View {
-    @ObservedObject var syncMonitor: SyncMonitor
-    let modelContainer: ModelContainer
-    let continueWithoutWaiting: () -> Void
-
-    @State private var localRecordCount = 0
-    @State private var referenceRecordCount: Int?
-
-    private var hasBlockingProblem: Bool {
-        if syncMonitor.importError != nil || syncMonitor.setupError != nil {
-            return true
-        }
-
-        switch syncMonitor.syncStateSummary {
-        case .noNetwork, .accountNotAvailable, .error:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private var title: LocalizedStringKey {
-        if syncMonitor.importError != nil || syncMonitor.setupError != nil {
-            return "iCloud Sync Could Not Finish"
-        }
-
-        switch syncMonitor.syncStateSummary {
-        case .noNetwork:
-            return "Waiting for a Network"
-        case .accountNotAvailable:
-            return "iCloud Is Not Available"
-        default:
-            return "Syncing Your Library"
-        }
-    }
-
-    private var detail: LocalizedStringKey {
-        if syncMonitor.importError != nil || syncMonitor.setupError != nil {
-            return "Your library can still open, but some data may not have arrived from iCloud yet."
-        }
-
-        switch syncMonitor.syncStateSummary {
-        case .noNetwork:
-            return "Connect to the internet to download your podcasts and playback data."
-        case .accountNotAvailable:
-            return "Sign in to iCloud and enable iCloud Drive to download your existing library."
-        default:
-            return "Downloading podcasts, playlists, and playback data from iCloud. Large libraries may take a moment."
-        }
-    }
-
-    private var estimatedProgress: Double? {
-        guard let referenceRecordCount, referenceRecordCount > 0 else { return nil }
-        return min(Double(localRecordCount) / Double(referenceRecordCount), 0.95)
-    }
-
-    var body: some View {
-        ZStack {
-            AnimatedLaunchView(isFinishing: false)
-
-            VStack(spacing: 14) {
-                Image(systemName: hasBlockingProblem ? "exclamationmark.icloud" : "arrow.clockwise.icloud")
-                    .font(.system(size: 30))
-                    .foregroundStyle(hasBlockingProblem ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                    .symbolEffect(.rotate, options: .repeating, isActive: !hasBlockingProblem)
-
-                Text(title)
-                    .font(.headline)
-
-                Text(detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 340)
-
-                if !hasBlockingProblem {
-                    VStack(spacing: 6) {
-                        if let estimatedProgress {
-                            ProgressView(value: estimatedProgress)
-                                .progressViewStyle(.linear)
-
-                            Text("\(localRecordCount.formatted()) of about \(referenceRecordCount?.formatted() ?? "0") records")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ProgressView()
-                                .progressViewStyle(.linear)
-                        }
-                    }
-                    .frame(maxWidth: 300)
-                }
-
-                if hasBlockingProblem {
-                    Button("Continue Without Waiting", action: continueWithoutWaiting)
-                        .buttonStyle(.borderedProminent)
-                } else {
-                    Button("Continue Without Waiting", action: continueWithoutWaiting)
-                        .buttonStyle(.bordered)
-                }
-            }
-            .padding(24)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .padding()
-        }
-        .task {
-            await updateEstimatedProgress()
-        }
-    }
-
-    private func updateEstimatedProgress() async {
-        while !Task.isCancelled {
-            if let reference = CloudSyncProgressReferenceStore.load() {
-                referenceRecordCount = reference.recordCount
-            }
-
-            localRecordCount = await CloudSyncProgressReferenceStore.localRecordCount(
-                modelContainer: modelContainer
-            )
-
-            try? await Task.sleep(for: .milliseconds(750))
-        }
-    }
-}
-
-private extension SyncMonitor.SyncState {
-    var didSucceed: Bool {
-        if case .succeeded = self {
-            return true
-        }
-        return false
     }
 }
 
