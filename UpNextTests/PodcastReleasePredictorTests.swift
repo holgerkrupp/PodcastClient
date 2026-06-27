@@ -23,6 +23,7 @@ final class PodcastReleasePredictorTests: XCTestCase {
         )
 
         XCTAssertEqual(prediction.releaseDate, date(2026, 6, 29, 8))
+        XCTAssertEqual(prediction.cadence.label(calendar: calendar), "Weekly on Mondays")
         // A week away and recently refreshed: scheduling information, not urgency.
         XCTAssertEqual(
             PodcastBackgroundRefreshPriority.score(prediction: prediction, now: now, lastRefresh: now),
@@ -94,6 +95,7 @@ final class PodcastReleasePredictorTests: XCTestCase {
         )
 
         XCTAssertEqual(prediction.releaseDate, date(2026, 6, 24, 5))
+        XCTAssertEqual(prediction.cadence.label(calendar: calendar), "Mon, Wed, Fri")
         // Window opens within the hour (30 min out): elevated but below in-window.
         XCTAssertEqual(
             PodcastBackgroundRefreshPriority.score(prediction: prediction, now: now, lastRefresh: now),
@@ -110,6 +112,7 @@ final class PodcastReleasePredictorTests: XCTestCase {
         )
 
         XCTAssertEqual(prediction.releaseDate, date(2026, 6, 23, 8))
+        XCTAssertEqual(prediction.cadence.label(calendar: calendar), "Daily")
     }
 
     func testFortnightlyPodcastIsNotMistakenForWeeklySchedule() throws {
@@ -128,6 +131,7 @@ final class PodcastReleasePredictorTests: XCTestCase {
         )
 
         XCTAssertEqual(prediction.releaseDate, date(2026, 7, 6, 8))
+        XCTAssertEqual(prediction.cadence.label(calendar: calendar), "Every 2 weeks")
     }
 
     func testIrregularPodcastUsesConservativeIntervalFallback() throws {
@@ -145,6 +149,7 @@ final class PodcastReleasePredictorTests: XCTestCase {
         )
 
         XCTAssertEqual(prediction.releaseDate, date(2026, 7, 2, 8))
+        XCTAssertEqual(prediction.cadence.label(calendar: calendar), "Irregular, about every 16 days")
     }
 
     func testStaleUnmodelledFeedOutranksDistantPrediction() throws {

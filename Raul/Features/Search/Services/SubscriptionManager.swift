@@ -544,6 +544,11 @@ actor SubscriptionManager:NSObject{
         }
     }
 
+    struct PredictedReleaseInfo: Sendable, Equatable {
+        let releaseDate: Date
+        let cadenceLabel: String
+    }
+
     private static let predictedReleaseRefreshRuntimeLimit: TimeInterval = 25
     private static let predictedReleaseRefreshPerPodcastRuntimeLimit: TimeInterval = 5
     private static let predictedReleaseRefreshMinimumRuntimeRemaining: TimeInterval = 2
@@ -723,6 +728,30 @@ actor SubscriptionManager:NSObject{
         modelContext.saveIfNeeded()
 
         return prediction?.releaseDate ?? podcast.metaData?.nextPredictedReleaseDate
+    }
+
+    func predictedReleaseInfo(
+        for podcastID: PersistentIdentifier,
+        after now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) async -> PredictedReleaseInfo? {
+        guard let podcast = fetchPodcast(by: podcastID) else { return nil }
+
+        _ = ensureMetadata(for: podcast)
+        guard let prediction = PodcastReleasePredictor.updateCachedPrediction(
+            for: podcast,
+            after: now,
+            allowRelationshipFallback: true
+        ) else {
+            modelContext.saveIfNeeded()
+            return nil
+        }
+        modelContext.saveIfNeeded()
+
+        return PredictedReleaseInfo(
+            releaseDate: prediction.releaseDate,
+            cadenceLabel: prediction.cadence.label(calendar: calendar)
+        )
     }
 
     func nextPredictedReleaseRefreshTarget(
@@ -1346,6 +1375,85 @@ struct PodcastReleasePredictor {
         let releaseDate: Date
         let refreshStart: Date
         let refreshEnd: Date
+        let cadence: ReleaseCadence
+    }
+
+    enum ReleaseCadence: Equatable {
+        case daily
+        case weekly(weekday: Int)
+        case weekdays([Int])
+        case interval(days: Int)
+        case frequent
+        case irregular(days: Int)
+
+        func label(calendar: Calendar = .autoupdatingCurrent) -> String {
+            switch self {
+            case .daily:
+                return "Daily"
+            case .weekly(let weekday):
+                return "Weekly on \(Self.fullWeekdayName(for: weekday))s"
+            case .weekdays(let weekdays):
+                return Self.sortedWeekdays(weekdays, calendar: calendar)
+                    .map(Self.shortWeekdayName(for:))
+                    .joined(separator: ", ")
+            case .interval(let days):
+                if days <= 1 { return "Daily" }
+                if days.isMultiple(of: 7) {
+                    let weeks = max(1, days / 7)
+                    return weeks == 1 ? "Weekly" : "Every \(weeks) weeks"
+                }
+                return "Every \(days) days"
+            case .frequent:
+                return "Several times a day"
+            case .irregular(let days):
+                if days <= 1 { return "Irregular, about daily" }
+                if days.isMultiple(of: 7) {
+                    let weeks = max(1, days / 7)
+                    return weeks == 1
+                        ? "Irregular, about weekly"
+                        : "Irregular, about every \(weeks) weeks"
+                }
+                return "Irregular, about every \(days) days"
+            }
+        }
+
+        static func sortedWeekdays(_ weekdays: [Int], calendar: Calendar) -> [Int] {
+            let firstWeekday = calendar.firstWeekday
+            return weekdays.sorted { lhs, rhs in
+                weekdaySortIndex(lhs, firstWeekday: firstWeekday)
+                    < weekdaySortIndex(rhs, firstWeekday: firstWeekday)
+            }
+        }
+
+        private static func weekdaySortIndex(_ weekday: Int, firstWeekday: Int) -> Int {
+            (weekday - firstWeekday + 7) % 7
+        }
+
+        private static func fullWeekdayName(for weekday: Int) -> String {
+            switch weekday {
+            case 1: "Sunday"
+            case 2: "Monday"
+            case 3: "Tuesday"
+            case 4: "Wednesday"
+            case 5: "Thursday"
+            case 6: "Friday"
+            case 7: "Saturday"
+            default: "Unknown"
+            }
+        }
+
+        private static func shortWeekdayName(for weekday: Int) -> String {
+            switch weekday {
+            case 1: "Sun"
+            case 2: "Mon"
+            case 3: "Tue"
+            case 4: "Wed"
+            case 5: "Thu"
+            case 6: "Fri"
+            case 7: "Sat"
+            default: "?"
+            }
+        }
     }
 
     private struct WeeklySlot {
@@ -1435,6 +1543,7 @@ struct PodcastReleasePredictor {
         )
 
         let nextRelease: Date
+        let cadence: ReleaseCadence
         if let slots = recurringWeeklySlots(
             from: dates,
             typicalInterval: typicalInterval,
@@ -1447,12 +1556,16 @@ struct PodcastReleasePredictor {
             calendar: calendar
         ) {
             nextRelease = scheduledRelease
+            cadence = releaseCadence(from: slots, calendar: calendar)
         } else {
             let interval: TimeInterval
+            let isIrregular: Bool
             if intervalIsConsistent(intervals, around: typicalInterval) {
                 interval = typicalInterval
+                isIrregular = false
             } else if let irregularInterval = irregularReleaseInterval(from: intervals) {
                 interval = irregularInterval
+                isIrregular = true
             } else {
                 return nil
             }
@@ -1463,12 +1576,14 @@ struct PodcastReleasePredictor {
                 now: now,
                 followUpTime: followUpTime
             )
+            cadence = releaseCadence(fromInterval: interval, isIrregular: isIrregular)
         }
 
         return Prediction(
             releaseDate: nextRelease,
             refreshStart: nextRelease.addingTimeInterval(-refreshLeadTime),
-            refreshEnd: nextRelease.addingTimeInterval(followUpTime)
+            refreshEnd: nextRelease.addingTimeInterval(followUpTime),
+            cadence: cadence
         )
     }
 
@@ -1585,6 +1700,29 @@ struct PodcastReleasePredictor {
 
         guard slots.count == activeGroups.count else { return nil }
         return slots
+    }
+
+    private static func releaseCadence(
+        from slots: [WeeklySlot],
+        calendar: Calendar
+    ) -> ReleaseCadence {
+        let weekdays = Array(Set(slots.map(\.weekday)))
+        if weekdays.count >= 7 { return .daily }
+        if weekdays.count == 1, let weekday = weekdays.first {
+            return .weekly(weekday: weekday)
+        }
+        return .weekdays(ReleaseCadence.sortedWeekdays(weekdays, calendar: calendar))
+    }
+
+    private static func releaseCadence(
+        fromInterval interval: TimeInterval,
+        isIrregular: Bool
+    ) -> ReleaseCadence {
+        let day: TimeInterval = 24 * 60 * 60
+        guard interval >= day else { return .frequent }
+
+        let days = max(1, Int(round(interval / day)))
+        return isIrregular ? .irregular(days: days) : .interval(days: days)
     }
 
     /// The predicted slot anchors to the episode we have *not yet fetched*: it

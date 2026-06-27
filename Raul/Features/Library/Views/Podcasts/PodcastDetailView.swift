@@ -56,6 +56,7 @@ struct PodcastDetailView: View {
 
     @State private var showPodroll: Bool = false
     @State private var showDebugMetadata: Bool = false
+    @State private var predictedReleaseFrequencyLabel: String?
 #if DEBUG
     @State private var predictedReleaseDate: Date?
 #endif
@@ -252,6 +253,14 @@ struct PodcastDetailView: View {
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
+                        }
+                        if let predictedReleaseFrequencyLabel {
+                            Label(
+                                "Release schedule: \(predictedReleaseFrequencyLabel)",
+                                systemImage: "calendar"
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                         }
 #if DEBUG
                         Text(
@@ -502,13 +511,9 @@ struct PodcastDetailView: View {
             .task {
                 SystemPressureGate.shared.noteUserInteraction()
                 applyEpisodeFilters()
-#if DEBUG
-                await updatePredictedReleaseDate()
-#endif
+                await updatePredictedReleaseInfo()
                 await refreshEpisodesIfNeeded()
-#if DEBUG
-                await updatePredictedReleaseDate()
-#endif
+                await updatePredictedReleaseInfo()
             }
             .onChange(of: searchText) { _, _ in
                 debounceEpisodeFilters()
@@ -533,19 +538,15 @@ struct PodcastDetailView: View {
             }
             .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
                 applyEpisodeFilters()
-#if DEBUG
                 Task {
-                    await updatePredictedReleaseDate()
+                    await updatePredictedReleaseInfo()
                 }
-#endif
             }
-#if DEBUG
             .onChange(of: podcast.metaData?.feedUpdateCheckDate) { _, _ in
                 Task {
-                    await updatePredictedReleaseDate()
+                    await updatePredictedReleaseInfo()
                 }
             }
-#endif
             .navigationTitle(podcast.title)
             .navigationDestination(isPresented: $showPodroll) {
                 PodcastPodrollView(
@@ -641,16 +642,15 @@ struct PodcastDetailView: View {
 
     }
 
-#if DEBUG
-    private func updatePredictedReleaseDate() async {
-        predictedReleaseDate = podcast.metaData?.nextPredictedReleaseDate
-
+    private func updatePredictedReleaseInfo() async {
         let podcastID = podcast.persistentModelID
         let predictor = SubscriptionManager(modelContainer: modelContext.container)
-        let releaseDate = await predictor.predictedReleaseDate(for: podcastID)
-        predictedReleaseDate = releaseDate ?? podcast.metaData?.nextPredictedReleaseDate
-    }
+        let releaseInfo = await predictor.predictedReleaseInfo(for: podcastID)
+        predictedReleaseFrequencyLabel = releaseInfo?.cadenceLabel
+#if DEBUG
+        predictedReleaseDate = releaseInfo?.releaseDate ?? podcast.metaData?.nextPredictedReleaseDate
 #endif
+    }
 
     private func debounceEpisodeFilters() {
         Debounce.shared.perform {
