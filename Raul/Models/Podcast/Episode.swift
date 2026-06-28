@@ -190,6 +190,14 @@ enum EpisodeSource: String, Codable, CaseIterable, Hashable, Sendable {
     case sideLoaded
 }
 
+extension Notification.Name {
+    static let episodeReferencesDidChange = Notification.Name("episodeReferencesDidChange")
+}
+
+enum EpisodeReferenceNotificationKey {
+    static let episodeURL = "episodeURL"
+}
+
 @Observable
 class EpisodeDownloadStatus{
      var isDownloading: Bool = false
@@ -252,7 +260,19 @@ class EpisodeDownloadStatus{
     @Relationship var playlist: [PlaylistEntry]? = []
     
     // temporary values that don't need to survive an app restart
-    @Transient @Published var refresh: Bool = false
+    @Transient @Published var refresh: Bool = false {
+        didSet {
+            var userInfo: [String: Any] = [:]
+            if let url {
+                userInfo[EpisodeReferenceNotificationKey.episodeURL] = url
+            }
+            NotificationCenter.default.post(
+                name: .episodeReferencesDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+        }
+    }
     @Transient var downloadItem: DownloadItem? = nil {
         didSet {
             // print("downloadItem changed")

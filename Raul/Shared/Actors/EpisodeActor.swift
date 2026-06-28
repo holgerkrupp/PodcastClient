@@ -1006,6 +1006,7 @@ actor EpisodeActor {
         for episode in episodes {
             ensureMetadata(for: episode)
             episode.metaData?.isAvailableLocally = false
+            episode.refresh.toggle()
         }
         
         modelContext.saveIfNeeded()
@@ -1023,14 +1024,23 @@ actor EpisodeActor {
             return
         }
         ensureMetadata(for: episode)
+        let wasAvailableLocally = episode.metaData?.isAvailableLocally == true
+            && episode.metaData?.calculatedIsAvailableLocally == true
+
+        if wasAvailableLocally == false {
+            episode.metaData?.isAvailableLocally = true
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+
         await updateDuration(fileURL: url)
         await createChapters(url)
 
-        if episode.metaData?.isAvailableLocally == true,
-           episode.metaData?.calculatedIsAvailableLocally == true {
+        if wasAvailableLocally {
             return
         }
-        episode.metaData?.isAvailableLocally = true
+
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
         let automaticOnDeviceTranscriptionsEnabled = await settingsActor

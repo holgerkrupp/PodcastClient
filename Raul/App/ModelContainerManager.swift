@@ -185,6 +185,9 @@ class ModelContainerManager: ObservableObject {
         } else {
             isInitializing = true
             initializationError = nil
+#if !DEBUG
+            Self.promoteRolloutForCompletedSplitStoreMigrationIfNeeded()
+#endif
             requiresInitialCloudImport =
                 StoreDevelopmentConfiguration.legacyCloudSyncEnabled
                 && (Self.sharedStoreURL.map {
@@ -413,6 +416,44 @@ class ModelContainerManager: ObservableObject {
         guard StoreDevelopmentConfiguration.legacyCloudSyncEnabled else { return true }
         if case .succeeded = SyncMonitor.default.importState { return true }
         return false
+    }
+
+    /// Promotes devices that already finished the current split-store migration
+    /// before the launch-time store mode is frozen. This covers users upgrading
+    /// from a build that created/backfilled the split stores while still reading
+    /// the legacy graph.
+    @discardableResult
+    nonisolated static func promoteRolloutForCompletedSplitStoreMigrationIfNeeded(
+        cacheContainer providedCacheContainer: ModelContainer? = nil
+    ) -> Bool {
+        guard StoreSplitRollout.state != .newStoreReads else {
+            return false
+        }
+
+        let cacheContainer: ModelContainer
+        if let providedCacheContainer {
+            cacheContainer = providedCacheContainer
+        } else {
+            do {
+                cacheContainer = try makeCacheContainer()
+            } catch {
+                CrashBreadcrumbs.shared.record(
+                    "store_split_rollout_preflight_failed",
+                    details: error.localizedDescription
+                )
+                return false
+            }
+        }
+
+        guard StoreSplitMigrationService.isSliceMigrationComplete(
+            cacheContainer: cacheContainer
+        ) else {
+            return false
+        }
+
+        StoreSplitRollout.set(.newStoreReads)
+        CrashBreadcrumbs.shared.record("store_split_rollout_preflight_promoted")
+        return true
     }
 
 #if DEBUG

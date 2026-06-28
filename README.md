@@ -14,12 +14,4 @@ Key principles of the project:
 * Independent of proprietary servers (all refreshes run locally on-device)
 * 100% open source and free to use
 * No locked features or restrictions
-
-
-### Next Steps
-
-- [ ] macOS App
-- [ ] ipad App
-- [ ] Align Player Settings with Global settings (design)
-- [ ] Update translations
-
+* No App-side Ads (ads within episodes can't be controlledBuxte)

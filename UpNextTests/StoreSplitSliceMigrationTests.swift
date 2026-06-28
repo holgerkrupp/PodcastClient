@@ -317,6 +317,64 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedMigrationPreflightPromotesRolloutToNewStoreReads() throws {
+        StoreSplitRollout.resetForDevelopment()
+        defer { StoreSplitRollout.resetForDevelopment() }
+        let containers = try makeContainers()
+        let context = containers.cache.mainContext
+
+        for phase in StoreSplitMigrationService.slicePhaseOrder {
+            context.insert(
+                StoreSplitMigrationCheckpoint(
+                    id: "v\(StoreSplitMigrationService.migrationVersion).\(phase)",
+                    migrationVersion: StoreSplitMigrationService.migrationVersion,
+                    phase: phase,
+                    completedAt: Date(timeIntervalSince1970: 1_000),
+                    scannedCount: 1
+                )
+            )
+        }
+        try context.save()
+
+        XCTAssertTrue(
+            ModelContainerManager.promoteRolloutForCompletedSplitStoreMigrationIfNeeded(
+                cacheContainer: containers.cache
+            )
+        )
+        XCTAssertEqual(StoreSplitRollout.state, .newStoreReads)
+        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStoreReads)
+    }
+
+    @MainActor
+    func testIncompleteMigrationPreflightDoesNotPromoteRollout() throws {
+        StoreSplitRollout.resetForDevelopment()
+        defer { StoreSplitRollout.resetForDevelopment() }
+        let containers = try makeContainers()
+        let context = containers.cache.mainContext
+
+        for phase in StoreSplitMigrationService.slicePhaseOrder.dropLast() {
+            context.insert(
+                StoreSplitMigrationCheckpoint(
+                    id: "v\(StoreSplitMigrationService.migrationVersion).\(phase)",
+                    migrationVersion: StoreSplitMigrationService.migrationVersion,
+                    phase: phase,
+                    completedAt: Date(timeIntervalSince1970: 1_000),
+                    scannedCount: 1
+                )
+            )
+        }
+        try context.save()
+
+        XCTAssertFalse(
+            ModelContainerManager.promoteRolloutForCompletedSplitStoreMigrationIfNeeded(
+                cacheContainer: containers.cache
+            )
+        )
+        XCTAssertEqual(StoreSplitRollout.state, .unclassified)
+        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
+    }
+
+    @MainActor
     func testCancellationBeforeWorkReportsCancelled() async throws {
         let containers = try makeContainers()
         try populate(containers.legacy, episodeCount: 10)
