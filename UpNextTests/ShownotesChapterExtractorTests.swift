@@ -149,6 +149,35 @@ final class ShownotesChapterExtractorTests: XCTestCase {
         XCTAssertFalse(extracted?.values.contains(where: { $0.contains("Werbepartner") }) ?? true)
         XCTAssertFalse(extracted?.values.contains(where: { $0.contains("Pilzpaten, metalem Stress") }) ?? true)
     }
+
+    func testExtractsCurrentHakenDranFeedChapterParagraph() {
+        let shownotes = """
+        <p>Die Expertenkommission hat geliefert - und dabei rausgekommen sind 56 Handlungsempfehlungen auf 115 Seiten, die sagen: “Wir als Expert:innen WÜRDEN es so machen, aber you do you.” Und wie die Regierung jetzt handelt, wird die nächste spannende Frage werden.
+        Außerdem schielt Meta auf das Geschäftsfeld “prediction markets” und Musk ist kein Billionär mehr.</p>
+        <p>➡️ Mit der "Haken Dran"-Community ins Gespräch kommen könnt ihr am besten im Discord: <a href="http://hakendran.org">http://hakendran.org</a></p>
+        <p>💡 12 Wochen heise+ mit 50 % Rabatt: <a href="http://heiseplus.de/haken-dran">http://heiseplus.de/haken-dran</a>, vierwöchentlich kündbar mit einem Klick! </p>
+        <p>➡️&nbsp;netzpolitik.org hat das Papier zusammengefasst: <a href="https://netzpolitik.org/2026/jugendschutz-empfehlungen-expertinnen-kommission-schlaegt-alternativen-zum-social-media-verbot-vor/">https://netzpolitik.org/2026/jugendschutz-empfehlungen-expertinnen-kommission-schlaegt-alternativen-zum-social-media-verbot-vor/</a></p>
+        <p>➡️&nbsp;Nicole Diekmann bei t-online über den “schlechten Witz” Empfehlungspapier: <a href="https://www.t-online.de/digital/kolumne-nicole-diekmann/id_101309610/kinderschutz-im-netz-kommission-setzt-auf-eltern-und-eu-das-reicht-nicht.html">https://www.t-online.de/digital/kolumne-nicole-diekmann/id_101309610/kinderschutz-im-netz-kommission-setzt-auf-eltern-und-eu-das-reicht-nicht.html</a></p>
+        <p>➡️&nbsp;Gavins Gedanken nochmal sortiert und ausformuliert: <a href="https://gavinkarlmeier.de/t/abschlussberichtverbot">https://gavinkarlmeier.de/t/abschlussberichtverbot</a></p>
+        <p>➡️&nbsp;Der Bericht im Volltext: <a href="https://www.bmbfsfj.bund.de/resource/blob/290236/32c7a742b1ee00b498fca42c37784c99/20260624-handlungsempfehlungen-expertenkommission-kinder-und-jugendmedienschutz-data.pdf">https://www.bmbfsfj.bund.de/resource/blob/290236/32c7a742b1ee00b498fca42c37784c99/20260624-handlungsempfehlungen-expertenkommission-kinder-und-jugendmedienschutz-data.pdf</a></p>
+        <p>Kapitelmarken, KI-unterstützt
+        00:00:19 - Kriegen wir jetzt ein Social-Media-Verbot?
+        00:24:42 - Metas Vorstoß in Prediction Markets (Arena, Antwerp, FB Forecast) 00:34:02 - Metas Automatisierung der Content-Moderation durch KI
+        00:41:10 - Elon Musk: Vom Billionär zum Ex-Billionär
+        00:44:32 - Grok im US-Militär
+        00:48:13 - US-Breitbandförderung: Geld für Starlink statt Menschen
+        00:54:16 - Funktionen und Emotionen</p>
+        <p>ℹ️ Hinweis: Dieser Podcast wird von einem Sponsor unterstützt. Alle Infos zu unseren Werbepartnern findet ihr hier: <a href="https://wonderl.ink/%40heise-podcasts">https://wonderl.ink/%40heise-podcasts</a></p>
+        """
+
+        let extracted = ShownotesChapterExtractor.extractTimeCodesAndTitles(from: shownotes)
+
+        XCTAssertEqual(extracted?.count, 7)
+        XCTAssertEqual(extracted?["00:00:19"], "Kriegen wir jetzt ein Social-Media-Verbot?")
+        XCTAssertEqual(extracted?["00:24:42"], "Metas Vorstoß in Prediction Markets (Arena, Antwerp, FB Forecast)")
+        XCTAssertEqual(extracted?["00:34:02"], "Metas Automatisierung der Content-Moderation durch KI")
+        XCTAssertEqual(extracted?["00:54:16"], "Funktionen und Emotionen")
+    }
 }
 
 private struct ChapterExtractionCase {

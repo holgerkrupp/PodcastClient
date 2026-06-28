@@ -334,7 +334,7 @@ actor StoreSplitAIContentImporter {
                     chapterKey(title: value.title, start: value.startTime)
                 ] {
                     chapter.shouldPlay = existing.shouldPlay
-                    chapter.progress = existing.progress
+                    chapter.progress = episode.hasPlaybackHistory ? existing.progress : 0
                 }
                 return chapter
             }

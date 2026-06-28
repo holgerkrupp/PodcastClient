@@ -375,6 +375,7 @@
       }
     },
     "Abandoned" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2316,6 +2317,9 @@
         }
       }
     },
+    "Expected releases missed" : {
+
+    },
     "Export" : {
       "localizations" : {
         "de" : {
@@ -3363,6 +3367,9 @@
           }
         }
       }
+    },
+    "Last checked" : {
+
     },
     "Last refresh: %@" : {
       "localizations" : {
@@ -5598,6 +5605,7 @@
       }
     },
     "Podcast feed abandoned" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5836,6 +5844,9 @@
           }
         }
       }
+    },
+    "Predicted cadence" : {
+
     },
     "Preset" : {
       "localizations" : {
@@ -6211,6 +6222,9 @@
       }
     },
     "Region" : {
+
+    },
+    "Release schedule: %@" : {
 
     },
     "Remove Current" : {

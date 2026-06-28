@@ -230,6 +230,7 @@ struct ChapterListView: View {
 
     private func chapterBackgroundProgress(for chapter: Marker) -> Double {
         guard chapter.id == currentDisplayedChapter?.id else {
+            guard episode.hasPlaybackHistory else { return 0.0 }
             return chapter.progress ?? 0.0
         }
 

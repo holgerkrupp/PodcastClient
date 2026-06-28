@@ -74,6 +74,8 @@ actor EpisodeActor {
             episode.chapters = []
         }
 
+        let shouldPreserveChapterProgress = episode.hasPlaybackHistory
+
         var existingByIdentity: [String: Marker] = [:]
         for chapter in (episode.chapters ?? []) where types.contains(chapter.type) {
             let identity = chapterIdentity(for: chapter)
@@ -87,7 +89,7 @@ actor EpisodeActor {
             chapter.episode = episode
             if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
                 chapter.shouldPlay = existing.shouldPlay
-                chapter.progress = existing.progress
+                chapter.progress = shouldPreserveChapterProgress ? existing.progress : 0
                 chapter.image = chapter.image ?? existing.image
                 chapter.imageData = chapter.imageData ?? existing.imageData
                 chapter.link = chapter.link ?? existing.link
@@ -340,8 +342,16 @@ actor EpisodeActor {
         let storedMaxPosition = episode.metaData?.maxPlayposition ?? 0.0
         episode.metaData?.playPosition = playPosition
         episode.metaData?.maxPlayposition = max(storedMaxPosition, maxPlayPosition, playPosition)
+        let hasRecoveredPlaybackState = playPosition > 0
+            || maxPlayPosition > 0
+            || chapterProgresses.values.contains(where: { $0 > 0 })
         if let lastPlayed {
             episode.metaData?.lastPlayed = lastPlayed
+        } else if hasRecoveredPlaybackState, episode.metaData?.lastPlayed == nil {
+            episode.metaData?.lastPlayed = .now
+        }
+        if hasRecoveredPlaybackState, episode.metaData?.firstListenDate == nil {
+            episode.metaData?.firstListenDate = episode.metaData?.lastPlayed ?? .now
         }
 
         for (chapterIDString, progress) in chapterProgresses {

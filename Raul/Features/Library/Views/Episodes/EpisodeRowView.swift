@@ -36,7 +36,7 @@ struct EpisodeRowView: View {
         let podcastTitle = episode.displayPodcastTitle ?? ""
         let publishText = episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""
         let duration = episode.duration ?? 0.0
-        let remainingTime = episode.remainingTime
+        let remainingTime = episode.displayRemainingTime
         let showRemaining = remainingTime != nil && remainingTime != duration && (remainingTime ?? 0) > 0
         let timeText = Duration.seconds(showRemaining ? (remainingTime ?? 0) : duration).formatted(.units(width: .narrow))
         let timeDisplay = showRemaining ? timeText + " remaining" : timeText
@@ -47,7 +47,7 @@ struct EpisodeRowView: View {
             || episode.hasLoadedTranscript
             || episode.externalFiles.contains(where: { $0.category == .transcript })
         let hasBookmarks = episode.bookmarks?.isEmpty == false
-        let progress = max(0.0, min(1.0, episode.maxPlayProgress))
+        let progress = max(0.0, min(1.0, episode.displayProgress))
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
         ZStack {

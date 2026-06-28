@@ -589,6 +589,7 @@
 				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
 				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
 				4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */,
+				48D2E76E2FF1512C00D1D330 /* XCLocalSwiftPackageReference "../ESADesignKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1340,6 +1341,10 @@
 		48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../mp3ChapterReader;
+		};
+		48D2E76E2FF1512C00D1D330 /* XCLocalSwiftPackageReference "../ESADesignKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ESADesignKit;
 		};
 /* End XCLocalSwiftPackageReference section */
 

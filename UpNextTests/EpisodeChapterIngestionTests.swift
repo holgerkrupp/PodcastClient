@@ -101,6 +101,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         existingMP3Chapter.progress = 0.35
         existingMP3Chapter.episode = episode
         episode.chapters = [feedChapter, existingMP3Chapter]
+        episode.metaData?.lastPlayed = Date(timeIntervalSince1970: 1_000)
         try fixture.context.save()
 
         let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
@@ -140,6 +141,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         existingChapter.imageData = Data([0x01, 0x02, 0x03])
         existingChapter.episode = episode
         episode.chapters = [existingChapter]
+        episode.metaData?.lastPlayed = Date(timeIntervalSince1970: 1_000)
         try fixture.context.save()
 
         let originalLoader = ChapterExtractionHooks.loadLocalMP3Chapters

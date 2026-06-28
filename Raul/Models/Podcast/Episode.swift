@@ -299,6 +299,22 @@ class EpisodeDownloadStatus{
     var remainingTime: Double? {
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
     }
+
+    var hasPlaybackHistory: Bool {
+        metaData?.hasPlaybackHistory ?? false
+    }
+
+    var displayRemainingTime: Double? {
+        guard let duration else { return nil }
+        guard hasPlaybackHistory else { return duration }
+
+        let remaining = duration - (metaData?.playPosition ?? 0.0)
+        return remaining > 0 ? remaining : nil
+    }
+
+    var displayProgress: Double {
+        hasPlaybackHistory ? maxPlayProgress : 0
+    }
     
     var playProgress: Double {
         get{
@@ -704,6 +720,8 @@ class EpisodeDownloadStatus{
             chapters = []
         }
 
+        let shouldPreserveChapterProgress = hasPlaybackHistory
+
         var existingByIdentity: [String: Marker] = [:]
         for chapter in (chapters ?? []) where chapter.type == type {
             let identity = chapterIdentity(for: chapter)
@@ -717,7 +735,7 @@ class EpisodeDownloadStatus{
             chapter.episode = self
             if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
                 chapter.shouldPlay = existing.shouldPlay
-                chapter.progress = existing.progress
+                chapter.progress = shouldPreserveChapterProgress ? existing.progress : 0
                 chapter.imageData = chapter.imageData ?? existing.imageData
             }
         }
@@ -862,6 +880,17 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
         }
         return FileManager.default.fileExists(atPath: url.path)
     }
+
+    var hasPlaybackHistory: Bool {
+        completionDate != nil
+            || firstListenDate != nil
+            || lastPlayed != nil
+            || wasSkipped
+            || totalListenTime > 0
+            || (playbackDurations?.elements.isEmpty == false)
+            || (playbackStartTimes?.elements.isEmpty == false)
+    }
+
     var isAvailableLocally: Bool = false
     
     var lastPlayed: Date?
