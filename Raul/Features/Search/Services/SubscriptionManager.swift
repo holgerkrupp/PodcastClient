@@ -1378,6 +1378,12 @@ struct PodcastReleasePredictor {
         let cadence: ReleaseCadence
     }
 
+    struct ReleasePattern {
+        let latestReleaseDate: Date
+        let cadence: ReleaseCadence
+        let estimatedInterval: TimeInterval
+    }
+
     enum ReleaseCadence: Equatable {
         case daily
         case weekly(weekday: Int)
@@ -1414,6 +1420,27 @@ struct PodcastReleasePredictor {
                         : "Irregular, about every \(weeks) weeks"
                 }
                 return "Irregular, about every \(days) days"
+            }
+        }
+
+        var isIrregular: Bool {
+            if case .irregular = self { return true }
+            return false
+        }
+
+        var estimatedInterval: TimeInterval {
+            let day: TimeInterval = 24 * 60 * 60
+            switch self {
+            case .frequent:
+                return 12 * 60 * 60
+            case .daily:
+                return day
+            case .weekly:
+                return 7 * day
+            case .weekdays(let weekdays):
+                return 7 * day / Double(max(1, weekdays.count))
+            case .interval(let days), .irregular(let days):
+                return TimeInterval(max(1, days)) * day
             }
         }
 
@@ -1486,6 +1513,64 @@ struct PodcastReleasePredictor {
             from: dates,
             after: now,
             calendar: .autoupdatingCurrent
+        )
+    }
+
+    static func releasePattern(
+        for podcast: Podcast,
+        before now: Date,
+        allowRelationshipFallback: Bool = false
+    ) -> ReleasePattern? {
+        let dates = recentPublishDates(
+            for: podcast,
+            before: now.addingTimeInterval(24 * 60 * 60),
+            limit: maximumEpisodes,
+            allowRelationshipFallback: allowRelationshipFallback
+        )
+        return releasePattern(
+            from: dates,
+            before: now,
+            calendar: .autoupdatingCurrent
+        )
+    }
+
+    static func releasePattern(
+        from publishDates: [Date],
+        before now: Date,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> ReleasePattern? {
+        let dates = normalizedPublishDates(publishDates, before: now.addingTimeInterval(24 * 60 * 60))
+        guard dates.count >= minimumEpisodes, let latestRelease = dates.last else { return nil }
+
+        let intervals = zip(dates.dropFirst(), dates)
+            .map { newer, older in newer.timeIntervalSince(older) }
+            .filter { $0 >= minimumInterval && $0 <= maximumInterval }
+        guard intervals.count >= minimumEpisodes - 1 else { return nil }
+
+        let typicalInterval = median(intervals)
+        let cadence: ReleaseCadence
+        let estimatedInterval: TimeInterval
+        if let slots = recurringWeeklySlots(
+            from: dates,
+            typicalInterval: typicalInterval,
+            calendar: calendar
+        ) {
+            cadence = releaseCadence(from: slots, calendar: calendar)
+            estimatedInterval = cadence.estimatedInterval
+        } else if intervalIsConsistent(intervals, around: typicalInterval) {
+            cadence = releaseCadence(fromInterval: typicalInterval, isIrregular: false)
+            estimatedInterval = typicalInterval
+        } else if let irregularInterval = irregularReleaseInterval(from: intervals) {
+            cadence = releaseCadence(fromInterval: irregularInterval, isIrregular: true)
+            estimatedInterval = irregularInterval
+        } else {
+            return nil
+        }
+
+        return ReleasePattern(
+            latestReleaseDate: latestRelease,
+            cadence: cadence,
+            estimatedInterval: estimatedInterval
         )
     }
 

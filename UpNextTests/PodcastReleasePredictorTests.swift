@@ -404,6 +404,79 @@ final class PodcastReleasePredictorTests: XCTestCase {
         ])
     }
 
+    func testSustainedHttpFailureMarksPodcastFeedUnavailable() throws {
+        let metadata = PodcastMetaData()
+        let now = date(2026, 6, 22, 12)
+        metadata.consecutiveFeedFailureCount = 3
+        metadata.firstConsecutiveFeedFailureDate = date(2026, 6, 14, 12)
+        metadata.lastFeedFailureDate = date(2026, 6, 22, 11)
+        metadata.lastFeedFailureStatusCode = 410
+
+        let assessment = try XCTUnwrap(metadata.abandonmentAssessment(at: now))
+
+        XCTAssertEqual(assessment.kind, .unavailableFeed)
+        XCTAssertTrue(metadata.isLikelyAbandoned(at: now))
+    }
+
+    func testMissedPredictedReleasesMarkLikelyCancelledPodcast() throws {
+        let podcast = Podcast(feed: URL(string: "https://example.com/cancelled-weekly.xml")!)
+        podcast.title = "Cancelled Weekly"
+        let metadata = try XCTUnwrap(podcast.metaData)
+        metadata.podcast = podcast
+        let dates = try weeklyDates(
+            weekday: 2,
+            through: date(2026, 4, 6, 8),
+            count: 8
+        )
+        podcast.episodes = dates.enumerated().map { index, publishDate in
+            Episode(
+                guid: "cancelled-\(index)",
+                title: "Cancelled \(index)",
+                publishDate: publishDate,
+                url: URL(string: "https://example.com/cancelled-\(index).mp3")!,
+                podcast: podcast
+            )
+        }
+        let now = date(2026, 6, 22, 12)
+        metadata.lastRefresh = date(2026, 6, 21, 12)
+        metadata.feedUpdateCheckDate = date(2026, 6, 22, 11)
+        metadata.feedUpdated = false
+
+        let assessment = try XCTUnwrap(metadata.abandonmentAssessment(at: now))
+
+        XCTAssertEqual(assessment.kind, .likelyCancelled)
+        XCTAssertEqual(assessment.predictedCadenceLabel, "Weekly on Mondays")
+        XCTAssertEqual(assessment.missedReleaseCount, 11)
+        XCTAssertTrue(metadata.isLikelyAbandoned(at: now))
+    }
+
+    func testOldPodcastWithoutPostDueEvidenceIsNotMarkedCancelled() throws {
+        let podcast = Podcast(feed: URL(string: "https://example.com/stale-weekly.xml")!)
+        let metadata = try XCTUnwrap(podcast.metaData)
+        metadata.podcast = podcast
+        let dates = try weeklyDates(
+            weekday: 2,
+            through: date(2026, 4, 6, 8),
+            count: 8
+        )
+        podcast.episodes = dates.enumerated().map { index, publishDate in
+            Episode(
+                guid: "stale-\(index)",
+                title: "Stale \(index)",
+                publishDate: publishDate,
+                url: URL(string: "https://example.com/stale-\(index).mp3")!,
+                podcast: podcast
+            )
+        }
+        let now = date(2026, 6, 22, 12)
+        metadata.lastRefresh = date(2026, 4, 7, 12)
+        metadata.feedUpdateCheckDate = date(2026, 6, 22, 11)
+        metadata.feedUpdated = nil
+
+        XCTAssertNil(metadata.abandonmentAssessment(at: now))
+        XCTAssertFalse(metadata.isLikelyAbandoned(at: now))
+    }
+
     private func weeklyDates(
         weekday: Int,
         through lastDate: Date,

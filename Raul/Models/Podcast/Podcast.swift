@@ -174,6 +174,8 @@ final class Podcast: Identifiable {
 @Model final class PodcastMetaData{
     static let abandonedFailureThreshold = 3
     static let abandonedFailureDuration: TimeInterval = 7 * 24 * 60 * 60
+    static let cancelledMinimumRegularSilenceDuration: TimeInterval = 45 * 24 * 60 * 60
+    static let cancelledMinimumIrregularSilenceDuration: TimeInterval = 90 * 24 * 60 * 60
 
     var lastRefresh:Date?
     
@@ -202,18 +204,24 @@ final class Podcast: Identifiable {
     init() {
     }
 
-    var isFeedLikelyAbandoned: Bool {
-        guard consecutiveFeedFailureCount >= Self.abandonedFailureThreshold,
-              let firstConsecutiveFeedFailureDate,
-              Date().timeIntervalSince(firstConsecutiveFeedFailureDate) >= Self.abandonedFailureDuration,
-              let lastFeedFailureStatusCode else {
-            return false
-        }
+    var feedAbandonmentAssessment: PodcastFeedAbandonmentAssessment? {
+        abandonmentAssessment(at: Date())
+    }
 
-        return lastFeedFailureStatusCode == 404
-            || lastFeedFailureStatusCode == 410
-            || lastFeedFailureStatusCode == 451
-            || lastFeedFailureStatusCode >= 500
+    var isFeedLikelyAbandoned: Bool {
+        isLikelyAbandoned(at: Date())
+    }
+
+    func isLikelyAbandoned(at now: Date) -> Bool {
+        abandonmentAssessment(at: now) != nil
+    }
+
+    func abandonmentAssessment(at now: Date) -> PodcastFeedAbandonmentAssessment? {
+        PodcastFeedAbandonmentAssessment.evaluate(
+            metadata: self,
+            podcast: podcast,
+            now: now
+        )
     }
 
     var feedFailureStatusDescription: String? {
@@ -231,5 +239,127 @@ final class Podcast: Identifiable {
         default:
             return "HTTP \(lastFeedFailureStatusCode)"
         }
+    }
+}
+
+struct PodcastFeedAbandonmentAssessment: Equatable {
+    enum Kind: Equatable {
+        case unavailableFeed
+        case likelyCancelled
+    }
+
+    let kind: Kind
+    let title: String
+    let detail: String
+    let evidenceDate: Date?
+    let predictedCadenceLabel: String?
+    let missedReleaseCount: Int?
+
+    static func evaluate(
+        metadata: PodcastMetaData,
+        podcast: Podcast?,
+        now: Date = Date()
+    ) -> PodcastFeedAbandonmentAssessment? {
+        if hasSustainedTerminalFailure(metadata: metadata, now: now) {
+            return PodcastFeedAbandonmentAssessment(
+                kind: .unavailableFeed,
+                title: "Podcast feed unavailable",
+                detail: "The feed has been unreachable repeatedly for more than seven days.",
+                evidenceDate: metadata.lastFeedFailureDate,
+                predictedCadenceLabel: nil,
+                missedReleaseCount: nil
+            )
+        }
+
+        guard metadata.isSubscribed,
+              let podcast,
+              let pattern = PodcastReleasePredictor.releasePattern(
+                for: podcast,
+                before: now,
+                allowRelationshipFallback: true
+              )
+        else {
+            return nil
+        }
+
+        let interval = max(pattern.estimatedInterval, 24 * 60 * 60)
+        let quietDuration = now.timeIntervalSince(pattern.latestReleaseDate)
+        let requiredSilence = requiredSilenceDuration(
+            for: pattern.cadence,
+            estimatedInterval: interval
+        )
+        guard quietDuration >= requiredSilence else { return nil }
+
+        let firstMissedReleaseDate = pattern.latestReleaseDate.addingTimeInterval(interval)
+        guard let latestEvidenceDate = latestEvidenceDate(metadata: metadata),
+              latestEvidenceDate >= firstMissedReleaseDate,
+              now.timeIntervalSince(latestEvidenceDate) <= requiredEvidenceRecency(
+                estimatedInterval: interval
+              )
+        else {
+            return nil
+        }
+
+        let hasParsedAfterMissedRelease = metadata.lastRefresh.map { $0 >= firstMissedReleaseDate } ?? false
+        let hasUnmodifiedCheckAfterMissedRelease = metadata.feedUpdated == false
+            && (metadata.feedUpdateCheckDate.map { $0 >= firstMissedReleaseDate } ?? false)
+        guard hasParsedAfterMissedRelease || hasUnmodifiedCheckAfterMissedRelease else {
+            return nil
+        }
+
+        let missedReleaseCount = max(1, Int(quietDuration / interval))
+        let cadenceLabel = pattern.cadence.label()
+        return PodcastFeedAbandonmentAssessment(
+            kind: .likelyCancelled,
+            title: "Podcast may be cancelled",
+            detail: "The feed still checks successfully, but no new episode has appeared after multiple expected releases.",
+            evidenceDate: latestEvidenceDate,
+            predictedCadenceLabel: cadenceLabel,
+            missedReleaseCount: missedReleaseCount
+        )
+    }
+
+    private static func hasSustainedTerminalFailure(
+        metadata: PodcastMetaData,
+        now: Date
+    ) -> Bool {
+        guard metadata.consecutiveFeedFailureCount >= PodcastMetaData.abandonedFailureThreshold,
+              let firstFailureDate = metadata.firstConsecutiveFeedFailureDate,
+              now.timeIntervalSince(firstFailureDate) >= PodcastMetaData.abandonedFailureDuration,
+              let statusCode = metadata.lastFeedFailureStatusCode else {
+            return false
+        }
+
+        return statusCode == 404
+            || statusCode == 410
+            || statusCode == 451
+            || statusCode >= 500
+    }
+
+    private static func requiredSilenceDuration(
+        for cadence: PodcastReleasePredictor.ReleaseCadence,
+        estimatedInterval: TimeInterval
+    ) -> TimeInterval {
+        if cadence.isIrregular {
+            return max(
+                PodcastMetaData.cancelledMinimumIrregularSilenceDuration,
+                min(180 * 24 * 60 * 60, estimatedInterval * 4)
+            )
+        }
+
+        return max(
+            PodcastMetaData.cancelledMinimumRegularSilenceDuration,
+            min(180 * 24 * 60 * 60, estimatedInterval * 6)
+        )
+    }
+
+    private static func requiredEvidenceRecency(estimatedInterval: TimeInterval) -> TimeInterval {
+        max(14 * 24 * 60 * 60, min(60 * 24 * 60 * 60, estimatedInterval * 2))
+    }
+
+    private static func latestEvidenceDate(metadata: PodcastMetaData) -> Date? {
+        [metadata.lastRefresh, metadata.feedUpdateCheckDate]
+            .compactMap { $0 }
+            .max()
     }
 }

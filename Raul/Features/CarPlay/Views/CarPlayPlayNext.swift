@@ -109,17 +109,18 @@ class CarPlayPlayNext {
             item.isPlaying = (episode.url == Player.shared.currentEpisodeURL)
             item.handler = { [weak self] _, _ in
                 guard let self else { return }
+                self.interfaceController.pushTemplate(
+                    CarPlayNowPlaying(interfaceController: self.interfaceController).template,
+                    animated: true,
+                    completion: { _, _ in }
+                )
                 Task {
                     if episode.url == Player.shared.currentEpisodeURL {
                         Player.shared.play()
                     } else {
                         await Player.shared.playEpisode(episode.url)
                     }
-                    self.interfaceController.pushTemplate(
-                        CarPlayNowPlaying(interfaceController: self.interfaceController).template,
-                        animated: true,
-                        completion: { _, _ in }
-                    )
+                    _ = CarPlayNowPlaying(interfaceController: self.interfaceController)
                     await self.setupTemplate()
                 }
             }

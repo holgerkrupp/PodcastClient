@@ -105,18 +105,20 @@ struct PodcastDetailView: View {
     }
 #endif
 
-    private var isFeedAbandoned: Bool {
-        podcast.metaData?.isFeedLikelyAbandoned == true
-    }
-
     @ViewBuilder
     private var abandonedFeedCard: some View {
-        if isFeedAbandoned, let metadata = podcast.metaData {
+        if let metadata = podcast.metaData,
+           let assessment = metadata.feedAbandonmentAssessment {
             VStack(alignment: .leading, spacing: 10) {
-                Label("Podcast feed abandoned", systemImage: "exclamationmark.triangle.fill")
+                Label(
+                    assessment.title,
+                    systemImage: assessment.kind == .unavailableFeed
+                        ? "exclamationmark.triangle.fill"
+                        : "calendar.badge.exclamationmark"
+                )
                     .font(.headline)
 
-                Text("The feed has been unreachable repeatedly for more than seven days.")
+                Text(assessment.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -124,21 +126,40 @@ struct PodcastDetailView: View {
                     Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
                 }
 
-                LabeledContent("Server response") {
-                    Text(metadata.feedFailureStatusDescription ?? "Unknown")
+                LabeledContent("Last checked") {
+                    Text(metadata.feedUpdateCheckDate?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
                 }
 
-                LabeledContent("First failed check") {
-                    Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                if let cadence = assessment.predictedCadenceLabel {
+                    LabeledContent("Predicted cadence") {
+                        Text(cadence)
+                    }
                 }
 
-                LabeledContent("Latest failed check") {
-                    Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                if let missedReleaseCount = assessment.missedReleaseCount {
+                    LabeledContent("Expected releases missed") {
+                        Text("\(missedReleaseCount)")
+                            .monospacedDigit()
+                    }
                 }
 
-                LabeledContent("Consecutive failures") {
-                    Text("\(metadata.consecutiveFeedFailureCount)")
-                        .monospacedDigit()
+                if assessment.kind == .unavailableFeed {
+                    LabeledContent("Server response") {
+                        Text(metadata.feedFailureStatusDescription ?? "Unknown")
+                    }
+
+                    LabeledContent("First failed check") {
+                        Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                    }
+
+                    LabeledContent("Latest failed check") {
+                        Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                    }
+
+                    LabeledContent("Consecutive failures") {
+                        Text("\(metadata.consecutiveFeedFailureCount)")
+                            .monospacedDigit()
+                    }
                 }
 
                 if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {

@@ -12,11 +12,19 @@ struct PodcastRowView: View {
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
 
-    private var isAbandoned: Bool {
-        podcast.metaData?.isFeedLikelyAbandoned == true
+    private func abandonmentLabel(for assessment: PodcastFeedAbandonmentAssessment) -> String {
+        switch assessment.kind {
+        case .unavailableFeed:
+            return "Unavailable"
+        case .likelyCancelled:
+            return "Possibly Cancelled"
+        }
     }
 
     var body: some View {
+        let abandonmentAssessment = podcast.metaData?.feedAbandonmentAssessment
+        let isAbandoned = abandonmentAssessment != nil
+
         ZStack {
             BlurredCoverImageView(podcast: podcast)
                 .scaledToFill()
@@ -69,15 +77,16 @@ struct PodcastRowView: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .grayscale(isAbandoned ? 1 : 0)
         .overlay(alignment: .topLeading) {
-            if isAbandoned {
-                Text("Abandoned")
+            if let abandonmentAssessment {
+                let label = abandonmentLabel(for: abandonmentAssessment)
+                Text(label)
                     .font(.caption2.weight(.bold))
                     .textCase(.uppercase)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(.black.opacity(0.85), in: UnevenRoundedRectangle(bottomTrailingRadius: 8))
-                    .accessibilityLabel("Podcast feed abandoned")
+                    .accessibilityLabel(label)
             }
         }
         .overlay {

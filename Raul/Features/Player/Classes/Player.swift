@@ -120,6 +120,12 @@ class Player {
         let savedAt: Date
     }
 
+    private struct PlaybackAudioProcessingSettings {
+        let reduceSilenceGapsEnabled: Bool
+        let silenceGapReductionLevel: SilenceGapReductionLevel
+        let voiceEnhancementEnabled: Bool
+    }
+
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
     private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
     private static let playSessionRecoveryStartupDelayNanoseconds: UInt64 = 15_000_000_000
@@ -161,6 +167,7 @@ class Player {
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
     private var currentPlaybackUsesAlternateMedia = false
+    private var playbackLoadGeneration: UInt64 = 0
     private var hasStartedRecovery = false
     private var finishingEpisodeURL: URL?
     private var isSkippingChapters = false
@@ -503,10 +510,22 @@ class Player {
     }
 
     private func loadPlaybackAudioProcessingSettings() async {
-        let podcastFeed = currentEpisode?.podcast?.feed
-        reduceSilenceGapsEnabled = await settingsActor?.getReduceSilenceGapsEnabled(for: podcastFeed) ?? false
-        silenceGapReductionLevel = await settingsActor?.getSilenceGapReductionLevel(for: podcastFeed) ?? .low
-        voiceEnhancementEnabled = await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false
+        let settings = await playbackAudioProcessingSettings(for: currentEpisode?.podcast?.feed)
+        applyPlaybackAudioProcessingSettings(settings)
+    }
+
+    private func playbackAudioProcessingSettings(for podcastFeed: URL?) async -> PlaybackAudioProcessingSettings {
+        PlaybackAudioProcessingSettings(
+            reduceSilenceGapsEnabled: await settingsActor?.getReduceSilenceGapsEnabled(for: podcastFeed) ?? false,
+            silenceGapReductionLevel: await settingsActor?.getSilenceGapReductionLevel(for: podcastFeed) ?? .low,
+            voiceEnhancementEnabled: await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false
+        )
+    }
+
+    private func applyPlaybackAudioProcessingSettings(_ settings: PlaybackAudioProcessingSettings) {
+        reduceSilenceGapsEnabled = settings.reduceSilenceGapsEnabled
+        silenceGapReductionLevel = settings.silenceGapReductionLevel
+        voiceEnhancementEnabled = settings.voiceEnhancementEnabled
     }
 
     private func accumulateSilenceGapTimeSaved(upTo date: Date = Date(), normalRate: Float? = nil) {
@@ -534,6 +553,31 @@ class Player {
     private func stopSilenceGapTimeSavedMeasurement() {
         accumulateSilenceGapTimeSaved()
         silenceGapReductionStartedAt = nil
+    }
+
+    @discardableResult
+    private func advancePlaybackLoadGeneration() -> UInt64 {
+        playbackLoadGeneration &+= 1
+        return playbackLoadGeneration
+    }
+
+    private func isCurrentPlaybackLoad(
+        _ generation: UInt64,
+        episodeURL: URL,
+        item: AVPlayerItem
+    ) -> Bool {
+        playbackLoadGeneration == generation &&
+        currentEpisodeURL == episodeURL &&
+        videoPlayer.currentItem === item
+    }
+
+    private func resetPlaybackAudioProcessing(for item: AVPlayerItem? = nil) async {
+        resetSilenceGapReduction(updateEngine: false)
+        await flushSilenceGapTimeSaved()
+#if !os(watchOS)
+        currentAudioPlaybackProcessor = nil
+        item?.audioMix = nil
+#endif
     }
 
     private func flushSilenceGapTimeSaved() async {
@@ -592,13 +636,14 @@ class Player {
         }
     }
 
-    private func configurePlaybackAudioProcessing(for item: AVPlayerItem) async {
-        resetSilenceGapReduction(updateEngine: false)
-        await flushSilenceGapTimeSaved()
+    private func configurePlaybackAudioProcessing(
+        for item: AVPlayerItem,
+        shouldApply: () -> Bool = { true }
+    ) async {
+        guard shouldApply() else { return }
+        await resetPlaybackAudioProcessing(for: item)
+        guard shouldApply() else { return }
 #if !os(watchOS)
-        currentAudioPlaybackProcessor = nil
-        item.audioMix = nil
-
         guard currentPlaybackSource != .liveRemote,
               currentPlaybackUsesAlternateMedia == false,
               currentPlaybackIsVideo == false,
@@ -609,6 +654,7 @@ class Player {
         guard let audioTrack = try? await item.asset.loadTracks(withMediaType: .audio).first else {
             return
         }
+        guard shouldApply() else { return }
 
         let processor = AudioPlaybackProcessor(
             reduceSilenceGapsEnabled: reduceSilenceGapsEnabled,
@@ -630,6 +676,29 @@ class Player {
         item.audioMix = audioMix
         currentAudioPlaybackProcessor = processor
 #endif
+    }
+
+    private func schedulePlaybackAudioProcessing(
+        for item: AVPlayerItem,
+        episodeURL: URL,
+        generation: UInt64
+    ) {
+        let podcastFeed = currentEpisode?.podcast?.feed
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            guard isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else {
+                return
+            }
+            let settings = await playbackAudioProcessingSettings(for: podcastFeed)
+            guard isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else {
+                return
+            }
+            applyPlaybackAudioProcessingSettings(settings)
+            await configurePlaybackAudioProcessing(for: item) { [weak self] in
+                guard let self else { return false }
+                return isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item)
+            }
+        }
     }
     
     func fetchEpisode(with url: URL?) async -> Episode? {
@@ -1102,6 +1171,7 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        advancePlaybackLoadGeneration()
         configureChapterBoundaryObserver()
         currentPlaybackSource = nil
         currentPlaybackUsesAlternateMedia = false
@@ -1166,13 +1236,12 @@ class Player {
             }
         }
         loadSkipDurations()
-        await loadPlaybackAudioProcessingSettings()
         lastProgressSaveDate = Date()
-        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
         updateChapters()
 
         guard let playback = playbackItem(for: episode, mediaSelection: selectedMedia) else { return }
+        let playbackGeneration = advancePlaybackLoadGeneration()
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
         let item = playback.item
@@ -1211,16 +1280,15 @@ class Player {
             }
         }
 
-        if let fastSwitchUnloadSnapshot {
-            Task {
-                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
-            }
-        }
-
         await engine.pause()
-        await configurePlaybackAudioProcessing(for: item)
+        await resetPlaybackAudioProcessing(for: item)
         await engine.replaceCurrentItem(with: item)
         configureChapterBoundaryObserver()
+        schedulePlaybackAudioProcessing(
+            for: item,
+            episodeURL: episodeURL,
+            generation: playbackGeneration
+        )
 
         BasicLogger.shared.log(
             "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
@@ -1254,6 +1322,12 @@ class Player {
         if playDirectly {
             await playPreparedEpisode()
         }
+        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        if let fastSwitchUnloadSnapshot {
+            Task(priority: .utility) {
+                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
+            }
+        }
 
         Task {
             await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
@@ -1284,13 +1358,20 @@ class Player {
         let preservedRate = playbackRate
         let hadPlaybackUpdates = playbackTask != nil
 
+        let playbackGeneration = advancePlaybackLoadGeneration()
         mediaSelection = nextSelection
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
-        await loadPlaybackAudioProcessingSettings()
-        await configurePlaybackAudioProcessing(for: playback.item)
+        await resetPlaybackAudioProcessing(for: playback.item)
         await engine.replaceCurrentItem(with: playback.item)
         configureChapterBoundaryObserver()
+        if let episodeURL = currentEpisodeURL {
+            schedulePlaybackAudioProcessing(
+                for: playback.item,
+                episodeURL: episodeURL,
+                generation: playbackGeneration
+            )
+        }
         await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
 
         playPosition = preservedPosition
@@ -1339,18 +1420,20 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        advancePlaybackLoadGeneration()
         configureChapterBoundaryObserver()
         playPosition = 0
         lastProgressSaveDate = .distantPast
 
-        await loadPlaybackAudioProcessingSettings()
         let item = AVPlayerItem(url: url)
-        await configurePlaybackAudioProcessing(for: item)
+        await resetPlaybackAudioProcessing(for: item)
         await engine.replaceCurrentItem(with: item)
         setupStaticNowPlayingInfo()
-        await updateNowPlayingCover()
         play()
         isPlayerSheetPresented = true
+        Task {
+            await updateNowPlayingCover(for: url)
+        }
     }
     
     var progress: Double {
@@ -1936,11 +2019,18 @@ class Player {
         let wasPlaying = isPlaying
         let preservedRate = playbackRate
         let hadPlaybackUpdates = playbackTask != nil
+        let playbackGeneration = advancePlaybackLoadGeneration()
 
-        await loadPlaybackAudioProcessingSettings()
-        await configurePlaybackAudioProcessing(for: replacementItem)
+        await resetPlaybackAudioProcessing(for: replacementItem)
         await engine.replaceCurrentItem(with: replacementItem)
         currentPlaybackSource = .local
+        if let episodeURL = currentEpisodeURL {
+            schedulePlaybackAudioProcessing(
+                for: replacementItem,
+                episodeURL: episodeURL,
+                generation: playbackGeneration
+            )
+        }
         await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
 
         playPosition = preservedPosition

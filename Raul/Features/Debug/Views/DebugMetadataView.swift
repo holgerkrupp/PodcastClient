@@ -126,9 +126,14 @@ struct AppDebugMetadataView: View {
             }
 
             DebugCollectionSection(title: "Likely Abandoned Podcasts", items: likelyAbandonedPodcasts) { podcast in
-                [
+                let assessment = podcast.metaData?.feedAbandonmentAssessment
+                return [
                     ("Title", podcast.title),
                     ("Feed", podcast.feed?.absoluteString),
+                    ("Reason", assessment?.title),
+                    ("Cadence", assessment?.predictedCadenceLabel),
+                    ("Missed Releases", assessment?.missedReleaseCount.map(String.init)),
+                    ("Evidence Date", assessment?.evidenceDate.map(DebugFormat.date)),
                     ("HTTP Status", podcast.metaData?.lastFeedFailureStatusCode.map(String.init)),
                     ("Failures", podcast.metaData.map { "\($0.consecutiveFeedFailureCount)" }),
                     ("First Failure", podcast.metaData?.firstConsecutiveFeedFailureDate.map(DebugFormat.date)),
@@ -198,11 +203,14 @@ struct AppDebugMetadataView: View {
 
     private var likelyAbandonedPodcasts: [Podcast] {
         return podcasts
-            .filter { $0.metaData?.isFeedLikelyAbandoned == true }
-            .sorted {
-                ($0.metaData?.firstConsecutiveFeedFailureDate ?? .distantFuture)
-                    < ($1.metaData?.firstConsecutiveFeedFailureDate ?? .distantFuture)
+            .compactMap { podcast -> (podcast: Podcast, evidenceDate: Date)? in
+                guard let assessment = podcast.metaData?.feedAbandonmentAssessment else {
+                    return nil
+                }
+                return (podcast, assessment.evidenceDate ?? .distantFuture)
             }
+            .sorted { $0.evidenceDate < $1.evidenceDate }
+            .map(\.podcast)
     }
 }
 
@@ -482,6 +490,9 @@ struct PodcastDebugMetadataView: View {
                     DebugRow("Last Failure", date: metaData.lastFeedFailureDate)
                     DebugRow("Last HTTP Status", value: metaData.lastFeedFailureStatusCode.map(String.init))
                     DebugRow("Last Feed Error", value: metaData.lastFeedFailureMessage, limit: 240)
+                    DebugRow("Abandonment Reason", value: metaData.feedAbandonmentAssessment?.title)
+                    DebugRow("Abandonment Detail", value: metaData.feedAbandonmentAssessment?.detail, limit: 240)
+                    DebugRow("Abandonment Evidence", date: metaData.feedAbandonmentAssessment?.evidenceDate)
                     DebugRow("Subscription Date", date: metaData.subscriptionDate)
                     DebugRow("Is Updating", value: metaData.isUpdating.description)
                     DebugRow("Message", value: metaData.message)
