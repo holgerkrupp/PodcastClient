@@ -4,6 +4,7 @@ import SwiftData
 import UIKit
 #endif
 import BasicLogger
+import ESADesignKit
 
 private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiable {
     case playback
@@ -1579,7 +1580,7 @@ struct PodcastSettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            CreatedByView()
+            CreatedByView(gitURL: URL(string: "https://github.com/holgerkrupp/PodcastClient"))
                 .frame(maxWidth: .infinity)
         }
     }

@@ -1574,6 +1574,7 @@
       }
     },
     "Created in Buxtehude by" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2374,6 +2375,7 @@
       }
     },
     "Extremely Successful Apps" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2720,6 +2722,7 @@
       }
     },
     "Get the source code" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

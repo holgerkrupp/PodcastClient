@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import RichText
+import ESADesignKit
 
 @MainActor
 final class PodcastBrowseViewModel: ObservableObject {
@@ -171,7 +172,6 @@ final class PodcastBrowseViewModel: ObservableObject {
 
 struct PodcastBrowseView: View {
     @StateObject private var viewModel: PodcastBrowseViewModel
-    @State private var backgroundUIImage: UIImage?
 
     init(feed: PodcastFeed, modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastBrowseViewModel(feed: feed, modelContainer: modelContainer))
@@ -263,39 +263,10 @@ struct PodcastBrowseView: View {
         .task {
             await viewModel.loadInitialPageIfNeeded()
         }
-        .task(id: viewModel.podcastFeed.artworkURL) {
-            await loadBackgroundImage()
-        }
         .refreshable {
             await viewModel.reload()
         }
-        .background {
-            if let backgroundUIImage {
-                Image(uiImage: backgroundUIImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea(.all)
-                    .blur(radius: 20)
-                    .opacity(0.5)
-            } else {
-                Color.accent.ignoresSafeArea()
-            }
-        }
-    }
-
-    private func loadBackgroundImage() async {
-        guard let imageURL = viewModel.podcastFeed.artworkURL else {
-            await MainActor.run {
-                backgroundUIImage = nil
-            }
-            return
-        }
-
-        let uiImage = await ImageLoaderAndCache.loadUIImage(from: imageURL)
-        await MainActor.run {
-            backgroundUIImage = uiImage
-        }
+        .ESAFullBackground(image: viewModel.podcastFeed.artworkURL)
     }
 }
 
@@ -503,14 +474,7 @@ private struct PodcastBrowseEpisodeRowView: View {
     }
 
     var body: some View {
-        ZStack {
-            BlurredCoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
-                .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                .clipped()
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
                         CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
@@ -617,13 +581,7 @@ private struct PodcastBrowseEpisodeRowView: View {
                 }
                 .frame(minHeight: controlsHeight)
             }
-            .padding(8)
-            .background(
-                Rectangle()
-                    .fill(.thinMaterial)
-            )
-        }
-        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .ESA_RowView(image: episode.imageURL ?? podcastFeed.artworkURL, minHeight: rowHeight)
         .overlay(alignment: .bottomLeading) {
             Rectangle()
                 .fill(Color.accent.opacity(0.18))

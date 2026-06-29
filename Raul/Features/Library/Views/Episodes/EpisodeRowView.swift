@@ -7,6 +7,7 @@
 import SwiftUI
 import SwiftData
 import Combine
+import ESADesignKit
 
 struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style
@@ -50,15 +51,7 @@ struct EpisodeRowView: View {
         let progress = max(0.0, min(1.0, episode.displayProgress))
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
-        ZStack {
-            BlurredCoverImageView(episode: episode)
-                .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                //.opacity(0.45)
-                .clipped()
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
                         CoverImageView(episode: episode)
@@ -149,14 +142,7 @@ struct EpisodeRowView: View {
                         .frame(minHeight: controlsHeight)
                 }
             }
-            .padding(8)
-            .background(
-                Rectangle()
-                    .fill(.thinMaterial)
-            )
-            
-        }
-        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .ESA_RowView(image: episode.imageURL ?? episode.podcast?.imageURL, minHeight: rowHeight)
         .overlay(alignment: .bottomLeading) {
             Rectangle()
                 .fill(Color.accent)

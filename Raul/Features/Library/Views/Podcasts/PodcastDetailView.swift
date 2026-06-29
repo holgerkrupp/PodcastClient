@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import RichText
+import ESADesignKit
 
 struct PodcastDetailView: View {
 
@@ -518,13 +519,7 @@ struct PodcastDetailView: View {
                 }
                 .listRowSeparator(.hidden)
             }
-            .background{
-                BlurredCoverImageView(podcast: podcast, radius: 15)
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
-                    .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                    .opacity(0.5)
-            }
+            .ESAFullBackground(image: podcast.imageURL)
 
             .listStyle(PlainListStyle())
             .padding(.top, 0)

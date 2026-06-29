@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import SwiftData
+import ESADesignKit
 
 struct PodcastRowView: View {
     let podcast: Podcast
@@ -25,56 +26,41 @@ struct PodcastRowView: View {
         let abandonmentAssessment = podcast.metaData?.feedAbandonmentAssessment
         let isAbandoned = abandonmentAssessment != nil
 
-        ZStack {
-            BlurredCoverImageView(podcast: podcast)
-                .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                .opacity(0.45)
-                .clipped()
+        HStack(spacing: 14) {
+            CoverImageView(podcast: podcast)
+                .frame(width: artworkSize, height: artworkSize)
                 .accessibilityHidden(true)
 
-            HStack(spacing: 14) {
-                CoverImageView(podcast: podcast)
-                    .frame(width: artworkSize, height: artworkSize)
-                    .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(podcast.title)
+                    .font(.headline)
+                    .lineLimit(2)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(podcast.title)
-                        .font(.headline)
-                        .lineLimit(2)
-
-                    if let author = podcast.author, author.isEmpty == false {
-                        Text(author)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    if let desc = podcast.desc, desc.isEmpty == false {
-                        Text(desc)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-
-                    if podcast.isSubscribed == false {
-                        Label("Not Subscribed", systemImage: "pause.circle")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
-                    }
-
-                    Spacer(minLength: 0)
+                if let author = podcast.author, author.isEmpty == false {
+                    Text(author)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let desc = podcast.desc, desc.isEmpty == false {
+                    Text(desc)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+
+                if podcast.isSubscribed == false {
+                    Label("Not Subscribed", systemImage: "pause.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
+                Spacer(minLength: 0)
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-            .background(
-                Rectangle()
-                    .fill(.thinMaterial)
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .ESA_RowView(image: podcast.imageURL, minHeight: rowHeight)
         .grayscale(isAbandoned ? 1 : 0)
         .overlay(alignment: .topLeading) {
             if let abandonmentAssessment {

@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 import BackgroundTasks
-import DeviceInfo
+import ESADesignKit
 import BasicLogger
 import TipKit
 import CloudKitSyncMonitor

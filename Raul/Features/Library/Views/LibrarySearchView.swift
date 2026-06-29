@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import ESADesignKit
 
 struct LibrarySearchView: View {
     enum LibraryScope: String, CaseIterable, Identifiable {
@@ -209,160 +210,115 @@ struct LibrarySearchView: View {
 
     @ViewBuilder
     private func podcastGroupHeader(_ group: PodcastSearchResultGroup) -> some View {
-        ZStack {
-            BlurredCoverImageView(imageURL: group.podcast.imageURL)
-                .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: groupHeaderHeight, maxHeight: groupHeaderHeight)
-                .opacity(0.45)
-                .clipped()
+        HStack(spacing: 14) {
+            CoverImageView(imageURL: group.podcast.imageURL)
+                .frame(width: groupArtworkSize, height: groupArtworkSize)
                 .accessibilityHidden(true)
 
-            HStack(spacing: 14) {
-                CoverImageView(imageURL: group.podcast.imageURL)
-                    .frame(width: groupArtworkSize, height: groupArtworkSize)
-                    .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(group.podcast.title)
+                    .font(.headline)
+                    .lineLimit(2)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(group.podcast.title)
-                        .font(.headline)
-                        .lineLimit(2)
-
-                    if let author = group.podcast.author, author.isEmpty == false {
-                        Text(author)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Text(group.resultCountLabel)
-                        .font(.caption.weight(.semibold))
+                if let author = group.podcast.author, author.isEmpty == false {
+                    Text(author)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(group.resultCountLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: groupHeaderHeight, alignment: .leading)
-            .background(
-                Rectangle()
-                    .fill(.thinMaterial)
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, minHeight: groupHeaderHeight, alignment: .leading)
+        .ESA_RowView(image: group.podcast.imageURL, minHeight: groupHeaderHeight)
     }
 
     @ViewBuilder
     private func podcastMatchRow(_ result: PodcastSearchResult) -> some View {
-        ZStack {
-            BlurredCoverImageView(imageURL: result.podcast.imageURL)
-                .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: resultRowHeight, maxHeight: resultRowHeight)
-                .opacity(0.45)
-                .clipped()
+        HStack(spacing: 12) {
+            CoverImageView(imageURL: result.podcast.imageURL)
+                .frame(width: resultArtworkSize, height: resultArtworkSize)
                 .accessibilityHidden(true)
 
-            HStack(spacing: 12) {
-                CoverImageView(imageURL: result.podcast.imageURL)
-                    .frame(width: resultArtworkSize, height: resultArtworkSize)
-                    .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(result.title)
+                    .font(.headline)
+                    .lineLimit(2)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(result.title)
-                        .font(.headline)
-                        .lineLimit(2)
-
-                    if let author = result.author, author.isEmpty == false {
-                        Text(author)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Text("Matched in podcast metadata")
-                        .font(.caption.weight(.semibold))
+                if let author = result.author, author.isEmpty == false {
+                    Text(author)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    if let snippet = result.snippet, snippet.isEmpty == false {
-                        Text(snippet)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
+                        .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("Matched in podcast metadata")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                if let snippet = result.snippet, snippet.isEmpty == false {
+                    Text(snippet)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: resultRowHeight, alignment: .leading)
-            .background(
-                Rectangle()
-                    .fill(.thinMaterial)
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, minHeight: resultRowHeight, alignment: .leading)
+        .ESA_RowView(image: result.podcast.imageURL, minHeight: resultRowHeight)
     }
 
     @ViewBuilder
     private func episodeMatchRow(_ result: EpisodeSearchResult) -> some View {
-        ZStack {
-            BlurredCoverImageView(imageURL: result.podcast.imageURL)
-                .scaledToFill()
-                .frame(maxWidth: .infinity, minHeight: resultRowHeight, maxHeight: resultRowHeight)
-                .opacity(0.45)
-                .clipped()
+        HStack(alignment: .top, spacing: 12) {
+            CoverImageView(imageURL: result.episodeImageURL ?? result.podcast.imageURL)
+                .frame(width: resultArtworkSize, height: resultArtworkSize)
                 .accessibilityHidden(true)
 
-            HStack(alignment: .top, spacing: 12) {
-                CoverImageView(imageURL: result.episodeImageURL ?? result.podcast.imageURL)
-                    .frame(width: resultArtworkSize, height: resultArtworkSize)
-                    .accessibilityHidden(true)
+            NavigationLink(destination: EpisodeSearchDestinationView(episodeID: result.episodeID)) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(result.episodeTitle)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
 
-                NavigationLink(destination: EpisodeSearchDestinationView(episodeID: result.episodeID)) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(result.episodeTitle)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                            .lineLimit(2)
+                    Text(result.kind.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
 
-                        Text(result.kind.label)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                    Text(result.snippet)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
 
-                        Text(result.snippet)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+            if let startTime = result.kind.transcriptStartTime,
+               let episodeURL = result.episodeURL {
+                Button {
+                    Task {
+                        await Player.shared.playEpisode(
+                            episodeURL,
+                            playDirectly: true,
+                            startingAt: startTime
+                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                } label: {
+                    Label("Play from transcript match", systemImage: "play.fill")
+                        .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.plain)
-
-                if let startTime = result.kind.transcriptStartTime,
-                   let episodeURL = result.episodeURL {
-                    Button {
-                        Task {
-                            await Player.shared.playEpisode(
-                                episodeURL,
-                                playDirectly: true,
-                                startingAt: startTime
-                            )
-                        }
-                    } label: {
-                        Label("Play from transcript match", systemImage: "play.fill")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(8)
-                    .background(.thinMaterial, in: Circle())
-                    .accessibilityLabel("Play from \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))")
-                }
+                .padding(8)
+                .background(.thinMaterial, in: Circle())
+                .accessibilityLabel("Play from \(Duration.seconds(startTime).formatted(.units(width: .abbreviated)))")
             }
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: resultRowHeight, alignment: .topLeading)
-            .background(
-                Rectangle()
-                    .fill(.thinMaterial)
-            )
         }
-        .frame(maxWidth: .infinity, minHeight: resultRowHeight, alignment: .leading)
+        .ESA_RowView(image: result.podcast.imageURL, minHeight: resultRowHeight)
     }
 
     private func expandedBinding(for groupID: String) -> Binding<Bool> {

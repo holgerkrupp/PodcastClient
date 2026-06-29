@@ -14,10 +14,9 @@
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
 		48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
 		48BCBD602FC99A95008EC322 /* Apple Podcasts to OPML.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = 48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */; };
-		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
-		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
+		48D2E7710001000000000001 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 48D2E7700001000000000001 /* ESADesignKit */; };
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
 		48F5872D2FBA3D940027EE58 /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48F5872C2FBA3D940027EE58 /* DeviceInfo */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -289,8 +288,7 @@
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
-				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
-				48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */,
+				48D2E7710001000000000001 /* ESADesignKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -416,11 +414,10 @@
 			name = UpNext;
 			packageProductDependencies = (
 				4812C1033020000100000001 /* CloudKitSyncMonitor */,
-				48C078062DB410D000D6DD9C /* DeviceInfo */,
-				48C078082DB4111500D6DD9C /* DeviceInfo */,
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
+				48D2E7700001000000000001 /* ESADesignKit */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
@@ -872,7 +869,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 219;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -910,16 +907,16 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2,6";
+				TARGETED_DEVICE_FAMILY = "1,6";
 			};
 			name = Debug;
 		};
@@ -934,7 +931,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 84;
+				CURRENT_PROJECT_VERSION = 219;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -972,16 +969,16 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2,6";
+				TARGETED_DEVICE_FAMILY = "1,6";
 			};
 			name = Release;
 		};
@@ -1002,7 +999,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1030,7 +1027,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1056,7 +1053,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1084,7 +1081,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1159,7 +1156,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1188,7 +1185,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1219,7 +1216,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1249,7 +1246,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 2026.15;
+				MARKETING_VERSION = 2026.16;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1378,14 +1375,6 @@
 			package = 4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */;
 			productName = CloudKitSyncMonitor;
 		};
-		48C078062DB410D000D6DD9C /* DeviceInfo */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = DeviceInfo;
-		};
-		48C078082DB4111500D6DD9C /* DeviceInfo */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = DeviceInfo;
-		};
 		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BasicLogger;
@@ -1393,6 +1382,11 @@
 		48C30C262E4B5B8200E51444 /* mp3ChapterReader */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = mp3ChapterReader;
+		};
+		48D2E7700001000000000001 /* ESADesignKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 48D2E76E2FF1512C00D1D330 /* XCLocalSwiftPackageReference "../ESADesignKit" */;
+			productName = ESADesignKit;
 		};
 		48F5872C2FBA3D940027EE58 /* DeviceInfo */ = {
 			isa = XCSwiftPackageProductDependency;

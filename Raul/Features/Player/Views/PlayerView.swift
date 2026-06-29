@@ -1,5 +1,6 @@
 import SwiftUI
 import RichText
+import ESADesignKit
 
 
 
@@ -136,17 +137,7 @@ struct PlayerView: View {
                                 }
                             }
                             
-                                .background(
-
-                                    BlurredCoverImageView(episode: episode, radius: 50)
-                                        .aspectRatio(1, contentMode: .fill)
-                                        .scaledToFill()
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
-                                                        .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                                        .opacity(0.5)
-
-
-                                )
+                                .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
                                 
                               
                             
