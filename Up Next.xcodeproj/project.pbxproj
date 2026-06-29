@@ -582,11 +582,11 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */,
-				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
-				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
-				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
 				4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */,
-				48D2E76E2FF1512C00D1D330 /* XCLocalSwiftPackageReference "../ESADesignKit" */,
+				48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */,
+				48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */,
+				48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */,
+				48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1326,25 +1326,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../DeviceInfo;
-		};
-		48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../BasicLogger;
-		};
-		48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../mp3ChapterReader;
-		};
-		48D2E76E2FF1512C00D1D330 /* XCLocalSwiftPackageReference "../ESADesignKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../ESADesignKit;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1362,6 +1343,38 @@
 				minimumVersion = 3.1.0;
 			};
 		};
+		48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/mp3ChapterReader";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/SwiftDeviceInfo.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/BasicLogger";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/ESADesignKit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1377,20 +1390,22 @@
 		};
 		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */;
 			productName = BasicLogger;
 		};
 		48C30C262E4B5B8200E51444 /* mp3ChapterReader */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */;
 			productName = mp3ChapterReader;
 		};
 		48D2E7700001000000000001 /* ESADesignKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 48D2E76E2FF1512C00D1D330 /* XCLocalSwiftPackageReference "../ESADesignKit" */;
+			package = 48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */;
 			productName = ESADesignKit;
 		};
 		48F5872C2FBA3D940027EE58 /* DeviceInfo */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */;
+			package = 48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */;
 			productName = DeviceInfo;
 		};
 /* End XCSwiftPackageProductDependency section */
