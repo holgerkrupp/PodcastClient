@@ -125,6 +125,47 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertEqual(remoteChapter.progress ?? -1, 0.35, accuracy: 0.0001)
     }
 
+    func testRemoteChapterRefreshExtractsShownotesForStreamingEpisodes() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/streaming-episode.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.content = """
+        <p>Kapitelmarken, KI-unterstützt
+        00:00:00 - Hallo Jannis!
+        00:03:39 - Studie zur Wirksamkeit des Social-Media-Verbots in Australien
+        00:07:44 - Nachhak: DAK Mediensuchtstudie und Zahlen zur Mediennutzung
+        00:11:38 - Australien erhöht Strafen für Tech-Unternehmen nach unwirksamem Verbot
+        00:13:27 - Meta fordert Immunität bei Kindesmissbrauchsklagen in Kalifornien
+        00:20:05 - Grok-Hauptnutzung: Adult Content
+        00:25:03 - US-Regierung schränkt Verfügbarkeit von KI-Modellen ein
+        00:29:52 - Amazon Prime blockiert Film über Sam Altman wegen OpenAI-Kooperation
+        00:33:46 - OpenAI-Börsengang auf 2027 verschoben
+        00:40:15 - KI-generierte Texte im Journalismus
+        00:46:46 - Medienaufsichtsbehörde vs. ungeskriptet
+        00:53:02 - Funktionen und Emotionen
+        01:00:31 - Elon Musk muss unter Eid aussagen</p>
+        """
+        try fixture.context.save()
+
+        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
+        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in [] }
+
+        await EpisodeActor(modelContainer: fixture.container).getRemoteChapters(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = try XCTUnwrap(reloaded.chapters)
+        let extracted = chapters.filter { $0.type == .extracted }
+        XCTAssertEqual(extracted.count, 13)
+        XCTAssertTrue(extracted.contains { $0.start == 0 && $0.title == "Hallo Jannis!" })
+        XCTAssertTrue(extracted.contains { $0.start == 3_631 && $0.title == "Elon Musk muss unter Eid aussagen" })
+    }
+
     func testRefreshingLocalMP3ChaptersPreservesExistingStateAndDoesNotDuplicateMarkers() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "mp3")

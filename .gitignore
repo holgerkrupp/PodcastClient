@@ -3,6 +3,7 @@ build/
 build-*/
 .derivedData*/
 DerivedData/
+diagnostics/
 
 # Xcode per-user state
 *.xcuserstate

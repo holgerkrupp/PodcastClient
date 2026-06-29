@@ -978,6 +978,11 @@ actor EpisodeActor {
             return }
         guard let url = episode.url else { return }
 
+        // Remote episodes do not pass through markEpisodeAvailable(), so run the
+        // regular chapter creation flow here before attempting MP3-only remote
+        // extraction. This keeps shownotes/external JSON chapters available for
+        // streamed episodes published without embedded chapter metadata.
+        _ = await createChapters(url)
         await extractRemoteMP3Chapters(url)
         await applyAutoSkipWords(episodeURL: episodeURL)
     }
