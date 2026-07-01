@@ -6,7 +6,6 @@ struct AudioClipExportView: View {
     private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var trimStart: Double = 0
     @State private var trimEnd: Double = 60
     @State private var isExporting = false
@@ -22,7 +21,12 @@ struct AudioClipExportView: View {
     @State private var exportProgress: Double = 0.0
     @State private var videoSize = CGSize(width: 720, height: 720)
     @State private var previewImage: UIImage?
-    @State private var exportPlaybackRate = Player.shared.playbackRate
+    @State private var exportPlaybackRate: Float = 1.0
+    // Visible portion of the full episode waveform; scrollable and pinch-zoomable by the user.
+    @State private var windowStart: Double = 0
+    @State private var windowEnd: Double = 60
+    @State private var isWaveformLoading = false
+    @State private var waveformLoadTask: Task<Void, Never>?
     var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
@@ -32,12 +36,12 @@ struct AudioClipExportView: View {
     let playPosition: Double // The center position for +/- 30s
     let duration: Double // Audio duration
 
-    private var trimRange: ClosedRange<Double> {
+    private var initialWindow: ClosedRange<Double> {
         let minTime = max(0, playPosition - 30)
         let maxTime = min(duration, playPosition + 30)
         return minTime...maxTime
     }
-    
+
 
     var body: some View {
         GeometryReader { geometry in
@@ -111,8 +115,9 @@ struct AudioClipExportView: View {
                             VStack(spacing: 6) {
                                 WaveformView(
                                     samples: waveformSamples.map { max($0, 0.05) },
-                                    trimRange: trimRange,
-                                    duration: duration,
+                                    windowStart: $windowStart,
+                                    windowEnd: $windowEnd,
+                                    fullDuration: duration,
                                     trimStart: trimStart,
                                     trimEnd: trimEnd,
                                     onTrimStartChanged: { newStart in
@@ -124,17 +129,27 @@ struct AudioClipExportView: View {
                                         trimEnd = newEnd
                                         if trimEnd < trimStart { trimEnd = trimStart }
                                         stopAudioPlayer()
-                                    }, progress: $playbackProgress
+                                    },
+                                    progress: $playbackProgress,
+                                    onWindowChanged: { newWindow in
+                                        reloadWaveform(for: newWindow)
+                                    }
                                 )
                                 .frame(height: 70)
-                                .animation(reduceMotion ? nil : .easeInOut, value: waveformSamples)
                                 .background{
                                     RoundedRectangle(cornerRadius:  8.0)
                                         .fill(.black.opacity(0.5))
                                 }
+                                .overlay(alignment: .topTrailing) {
+                                    if isWaveformLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .accent))
+                                            .padding(6)
+                                    }
+                                }
 
-                                    
-                                    
+
+
                                     Button {
                                         togglePreview()
                                     } label: {
@@ -198,8 +213,10 @@ struct AudioClipExportView: View {
                 }
                 .onAppear {
                     Player.shared.pause()
-                    trimStart = trimRange.lowerBound
-                    trimEnd = trimRange.upperBound
+                    trimStart = initialWindow.lowerBound
+                    trimEnd = initialWindow.upperBound
+                    windowStart = initialWindow.lowerBound
+                    windowEnd = initialWindow.upperBound
                     Task {
                         if let url = coverImageURL {
                             if let loaded = await ImageLoaderAndCache.loadUIImage(from: url) {
@@ -214,7 +231,7 @@ struct AudioClipExportView: View {
                         } else {
                             self.coverImage = UIImage()
                         }
-                        waveformSamples = await WaveformView.extractSamples(from: audioURL, in: trimRange)
+                        waveformSamples = await WaveformView.extractSamples(from: audioURL, in: initialWindow)
                         if waveformSamples.allSatisfy({ $0 < 0.07 }) {
                             waveformSamples = Array(repeating: 0.5, count: 480)
                         }
@@ -226,6 +243,7 @@ struct AudioClipExportView: View {
                 }
                 .onDisappear {
                     stopAudioPlayer()
+                    waveformLoadTask?.cancel()
                 }
                 
                 
@@ -301,6 +319,24 @@ struct AudioClipExportView: View {
         return nil
     }
     
+    private func reloadWaveform(for window: ClosedRange<Double>) {
+        waveformLoadTask?.cancel()
+        isWaveformLoading = true
+        waveformLoadTask = Task {
+            var samples = await WaveformView.extractSamples(from: audioURL, in: window)
+            if Task.isCancelled { return }
+            if samples.allSatisfy({ $0 < 0.07 }) {
+                samples = Array(repeating: 0.5, count: samples.count)
+            }
+            await MainActor.run {
+                self.waveformSamples = samples
+                self.windowStart = window.lowerBound
+                self.windowEnd = window.upperBound
+                self.isWaveformLoading = false
+            }
+        }
+    }
+
     private func updatePreviewImage() {
         if isVideo {
             previewImage = nil
