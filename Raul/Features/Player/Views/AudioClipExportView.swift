@@ -43,12 +43,12 @@ struct AudioClipExportView: View {
         GeometryReader { geometry in
             ZStack{
                 
-                CoverImageView(episode: Player.shared.currentEpisode)
+                BlurredCoverImageView(imageURL: coverImageURL ?? fallbackCoverImageURL, radius: 50)
                     .aspectRatio(1, contentMode: .fill)
                     .scaledToFill()
                     .ignoresSafeArea(.all, edges: .bottom)
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .blur(radius: 50)
+                    .opacity(0.5)
                 
                 Group{
                     Spacer()
@@ -176,6 +176,8 @@ struct AudioClipExportView: View {
                     .padding()
                    
                 }
+                
+                .ESAFullBackground(image: coverImageURL ?? fallbackCoverImageURL)
                 
                 
                 .frame(width: geometry.size.width, height: geometry.size.height)
@@ -529,7 +531,7 @@ struct AudioClipExportView: View {
                 in: Self.clipPlaybackRateRange,
                 step: 0.1
             ) {
-                Text("Export speed")
+                Text("Export speed \(exportPlaybackRate.formattedPlaybackSpeed)")
             }
             .onChange(of: exportPlaybackRate) { _, _ in
                 if let player = audioPlayer {
@@ -540,6 +542,7 @@ struct AudioClipExportView: View {
                 }
                 updatePreviewImage()
             }
+            .accessibilityValue(exportPlaybackRate.formattedPlaybackSpeed)
         }
         .padding(.horizontal)
     }

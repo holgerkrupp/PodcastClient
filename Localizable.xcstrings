@@ -1362,6 +1362,9 @@
         }
       }
     },
+    "Clip" : {
+
+    },
     "Clip Length" : {
       "localizations" : {
         "de" : {
@@ -2332,7 +2335,7 @@
         }
       }
     },
-    "Export speed" : {
+    "Export speed %@" : {
 
     },
     "Exporting…" : {
@@ -3586,6 +3589,9 @@
           }
         }
       }
+    },
+    "Load" : {
+
     },
     "Loading" : {
       "localizations" : {
@@ -6396,6 +6402,9 @@
         }
       }
     },
+    "Search bookmarks" : {
+
+    },
     "Search captions…" : {
       "localizations" : {
         "de" : {
@@ -7130,6 +7139,9 @@
           }
         }
       }
+    },
+    "Sort bookmarks" : {
+
     },
     "Sort by" : {
       "localizations" : {

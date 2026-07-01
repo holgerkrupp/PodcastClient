@@ -129,20 +129,22 @@ struct WaveformView: View {
 extension WaveformView {
     /// Extract normalized samples for the specified time range of the audio file.
     static func extractSamples(from url: URL, in range: ClosedRange<Double>, sampleCount: Int = 120) async -> [Float] {
+        let fallback = Array(repeating: Float(0.05), count: sampleCount)
         let asset = AVURLAsset(url: url)
-        guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return Array(repeating: 0.05, count: sampleCount) }
-        let assetReader = try? AVAssetReader(asset: asset)
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return fallback }
+        guard let assetReader = try? AVAssetReader(asset: asset) else { return fallback }
         let timeRange = CMTimeRange(start: .init(seconds: range.lowerBound, preferredTimescale: 600), duration: .init(seconds: range.upperBound-range.lowerBound, preferredTimescale: 600))
-        assetReader?.timeRange = timeRange
+        assetReader.timeRange = timeRange
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMIsBigEndianKey: false,
             AVLinearPCMIsFloatKey: false,
             AVLinearPCMBitDepthKey: 16
         ])
-        assetReader?.add(output)
+        guard assetReader.canAdd(output) else { return fallback }
+        assetReader.add(output)
+        guard assetReader.startReading() else { return fallback }
         var samples: [Float] = []
-        assetReader?.startReading()
         while let buffer = output.copyNextSampleBuffer(), CMSampleBufferIsValid(buffer) {
             if let blockBuffer = CMSampleBufferGetDataBuffer(buffer) {
                 let length = CMBlockBufferGetDataLength(blockBuffer)
@@ -158,7 +160,7 @@ extension WaveformView {
                 samples.append(contentsOf: floats)
             }
         }
-        assetReader?.cancelReading()
+        assetReader.cancelReading()
         // Downsample to sampleCount using RMS per window
         let windowSize = max(samples.count / sampleCount, 1)
         var downsampled: [Float] = []
