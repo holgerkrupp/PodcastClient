@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 4803081E2E5B7D6C0059DFA2 /* RichText */; };
 		4812C1023020000100000001 /* CloudKitSyncMonitor in Frameworks */ = {isa = PBXBuildFile; productRef = 4812C1033020000100000001 /* CloudKitSyncMonitor */; };
+		48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */ = {isa = PBXBuildFile; productRef = 48C038EE2FF7806300343AF1 /* CloudDataPresence */; };
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
@@ -285,6 +286,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4812C1023020000100000001 /* CloudKitSyncMonitor in Frameworks */,
+				48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
@@ -414,6 +416,7 @@
 			name = UpNext;
 			packageProductDependencies = (
 				4812C1033020000100000001 /* CloudKitSyncMonitor */,
+				48C038EE2FF7806300343AF1 /* CloudDataPresence */,
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
@@ -587,6 +590,7 @@
 				48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */,
 				48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */,
 				48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */,
+				48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1343,6 +1347,14 @@
 				minimumVersion = 3.1.0;
 			};
 		};
+		48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/CloudDataPresence";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/holgerkrupp/mp3ChapterReader";
@@ -1387,6 +1399,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */;
 			productName = CloudKitSyncMonitor;
+		};
+		48C038EE2FF7806300343AF1 /* CloudDataPresence */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */;
+			productName = CloudDataPresence;
 		};
 		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
 			isa = XCSwiftPackageProductDependency;

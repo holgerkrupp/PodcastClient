@@ -1,5 +1,5 @@
 {
-  "originHash" : "e9cca60bbf0822f2529d79a780e0091d88d736b8ae0fde5decb0e8df810fa1d5",
+  "originHash" : "70a14273338fd3788cf665c5b409e60154b6bfc1921512a6d650e4be220c8998",
   "pins" : [
     {
       "identity" : "basiclogger",
@@ -8,6 +8,15 @@
       "state" : {
         "branch" : "main",
         "revision" : "2707ca1ba7f634cf01d8d22cce852e37be3afe6d"
+      }
+    },
+    {
+      "identity" : "clouddatapresence",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/holgerkrupp/CloudDataPresence",
+      "state" : {
+        "branch" : "main",
+        "revision" : "822dbe3ccaaed19c09d9a54b22347a5c06ca8efe"
       }
     },
     {

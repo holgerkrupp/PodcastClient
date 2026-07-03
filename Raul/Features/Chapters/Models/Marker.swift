@@ -104,16 +104,23 @@ class Marker: Identifiable, Equatable, Hashable{
     }
     
     @Transient var end:Double? {
-        if endTime != nil{
-            return endTime
-        }else{
-            let end = ((start ?? 0) + (duration ?? 0))
-            if end > 0{
-                return end
-            }else{
-                return nil
+        if let endTime {
+            if let start {
+                if endTime > start {
+                    return endTime
+                }
+            } else if endTime > 0 {
+                return endTime
             }
         }
+
+        guard let start,
+              let duration else {
+            return nil
+        }
+
+        let end = start + duration
+        return end > start ? end : nil
     }
     
     

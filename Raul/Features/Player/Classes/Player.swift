@@ -766,8 +766,10 @@ class Player {
 
         guard currentChapter != playingChapter else { return false }
 
-        if let chapterProgress, let currentChapter {
-            saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
+        if let currentChapter {
+            let progressAtBoundary = chapterProgress(for: currentChapter, at: playPosition)
+            let progressToSave = max(chapterProgress ?? 0.0, progressAtBoundary)
+            saveChapterProgress(chapter: currentChapter, progress: progressToSave)
         }
 
         currentChapter = playingChapter
@@ -802,14 +804,18 @@ class Player {
     
     private func updateChapterProgress(){
         guard let currentChapter = currentChapter else { return }
-        let chapterEnd = currentChapter.end ?? nextChapter?.start ?? currentEpisode?.duration ?? 1.0
-        let chapterStart = currentChapter.start ?? 0
-        let duration = max(chapterEnd - chapterStart, .leastNonzeroMagnitude)
-        chapterProgress = (playPosition - chapterStart) / duration
+        chapterProgress = chapterProgress(for: currentChapter, at: playPosition)
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
-        cacheCurrentPlaybackState(chapterID: chapter.uuid, chapterProgress: progress)
+        let clampedProgress = clampedProgress(progress)
+        chapter.progress = clampedProgress
+        cacheCurrentPlaybackState(chapterID: chapter.uuid, chapterProgress: clampedProgress)
+
+        guard let chapterID = chapter.uuid else { return }
+        Task {
+            await chapterActor?.setChapterProgress(clampedProgress, for: chapterID)
+        }
     }
 
     private func sanitizedPosition(_ value: Double?) -> Double {
@@ -819,6 +825,31 @@ class Player {
         }
 
         return max(0, value)
+    }
+
+    private func clampedProgress(_ value: Double?) -> Double {
+        guard let value,
+              value.isFinite else {
+            return 0
+        }
+
+        return min(max(value, 0), 1)
+    }
+
+    private func chapterProgress(for chapter: Marker, at position: Double) -> Double {
+        guard let chapterStart = chapter.start else { return 0 }
+
+        let chapterEnd = chapter.end
+            ?? chapters?
+                .compactMap(\.start)
+                .filter { $0 > chapterStart }
+                .min()
+            ?? currentEpisode?.duration
+            ?? chapterStart
+        guard chapterEnd > chapterStart else { return 0 }
+
+        let clampedPosition = min(max(position, chapterStart), chapterEnd)
+        return clampedProgress((clampedPosition - chapterStart) / (chapterEnd - chapterStart))
     }
 
     private func resolvedResumePosition(
@@ -884,7 +915,7 @@ class Player {
             currentPlayPosition
         )
         let resolvedChapterID = chapterID ?? currentChapter?.uuid
-        let resolvedChapterProgress = explicitChapterProgress ?? chapterProgress
+        let resolvedChapterProgress = (explicitChapterProgress ?? chapterProgress).map(clampedProgress)
 
         PlaybackProgressDefaultsStore.update(
             episodeURL: currentEpisodeURL,
@@ -905,7 +936,7 @@ class Player {
                 episodeURL: episodeURL,
                 playPosition: sanitizedPosition(cached.playPosition),
                 maxPlayPosition: sanitizedPosition(cached.maxPlayPosition),
-                chapterProgresses: cached.chapterProgresses
+                chapterProgresses: cached.chapterProgresses.mapValues(clampedProgress)
             ) ?? false
             if didPersist {
                 PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
@@ -925,11 +956,9 @@ class Player {
             sanitizedPosition(currentEpisode?.metaData?.maxPlayposition),
             currentPlayPosition
         )
-        let chapterProgresses: [String: Double]
+        var chapterProgresses = cachedPlaybackProgress(for: currentEpisodeURL)?.chapterProgresses ?? [:]
         if let currentChapterID, let currentChapterProgress {
-            chapterProgresses = [currentChapterID.uuidString: currentChapterProgress]
-        } else {
-            chapterProgresses = [:]
+            chapterProgresses[currentChapterID.uuidString] = clampedProgress(currentChapterProgress)
         }
 
         let didPersist = await episodeActor?.applyCachedPlaybackProgress(
@@ -1111,9 +1140,16 @@ class Player {
             force: true
         )
 
+        var chapterProgresses = PlaybackProgressDefaultsStore
+            .cachedProgress(for: snapshot.episodeURL)?
+            .chapterProgresses ?? [:]
         if let chapterID = snapshot.chapterID,
            let chapterProgress = snapshot.chapterProgress {
-            await chapterActor?.setChapterProgress(chapterProgress, for: chapterID)
+            chapterProgresses[chapterID.uuidString] = clampedProgress(chapterProgress)
+        }
+        for (chapterIDString, chapterProgress) in chapterProgresses {
+            guard let chapterID = UUID(uuidString: chapterIDString) else { continue }
+            await chapterActor?.setChapterProgress(clampedProgress(chapterProgress), for: chapterID)
         }
 
         PlaybackProgressDefaultsStore.removeProgress(for: snapshot.episodeURL)

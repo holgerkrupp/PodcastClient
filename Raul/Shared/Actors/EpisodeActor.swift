@@ -230,11 +230,20 @@ actor EpisodeActor {
         if let  chapters = episode.chapters{
             var lastEnd = totalDuration
             for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
-                if chapter.duration == nil{
-                    chapter.duration = lastEnd - (chapter.start ?? 0.0)
-                    lastEnd = chapter.start ?? 0.0
+                let start = chapter.start ?? 0.0
+                let end = max(lastEnd, start)
+                let duration = end - start
+
+                if chapter.duration != duration {
+                    chapter.duration = duration
                     didChange = true
                 }
+                if chapter.endTime != end {
+                    chapter.endTime = end
+                    didChange = true
+                }
+
+                lastEnd = start
             }
         }
         if didChange {
@@ -1959,15 +1968,20 @@ actor EpisodeActor {
         var didChange = false
         for i in 0..<chapters.count {
             guard let start = chapters[i].start else { continue }
-            let end: Double
+            let end: Double?
             if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
-                end = nextStart
+                end = max(nextStart, start)
             } else {
-                end = episode.duration ?? start
+                end = episode.duration.map { max($0, start) }
             }
-            let duration = end - start
+
+            let duration = end.map { $0 - start }
             if chapters[i].duration != duration {
                 chapters[i].duration = duration
+                didChange = true
+            }
+            if chapters[i].endTime != end {
+                chapters[i].endTime = end
                 didChange = true
             }
         }

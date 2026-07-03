@@ -258,6 +258,69 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertFalse(chapters.contains { $0.title.contains("Werbepartner") })
         XCTAssertFalse(chapters.contains { $0.title.contains("Pilzpaten, metalem Stress") })
     }
+
+    func testUpdateChapterDurationsSetsEndTimeFromNextChapterOrEpisodeEnd() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/chapter-durations.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.duration = 120
+
+        let intro = Marker(start: 0, title: "Intro", type: .extracted)
+        let topic = Marker(start: 30, title: "Topic", type: .extracted)
+        let outro = Marker(start: 90, title: "Outro", type: .extracted)
+        intro.episode = episode
+        topic.episode = episode
+        outro.episode = episode
+        episode.chapters = [intro, topic, outro]
+        try fixture.context.save()
+
+        await EpisodeActor(modelContainer: fixture.container).updateChapterDurations(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = reloaded.preferredChapters
+        XCTAssertEqual(chapters.count, 3)
+        XCTAssertEqual(chapters[0].duration, 30)
+        XCTAssertEqual(chapters[0].endTime, 30)
+        XCTAssertEqual(chapters[1].duration, 60)
+        XCTAssertEqual(chapters[1].endTime, 90)
+        XCTAssertEqual(chapters[2].duration, 30)
+        XCTAssertEqual(chapters[2].endTime, 120)
+    }
+
+    func testUpdateChapterDurationsLeavesLastChapterEndNilWhenEpisodeDurationIsUnknown() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/chapter-durations-nil.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.duration = nil
+
+        let intro = Marker(start: 0, title: "Intro", type: .extracted)
+        let topic = Marker(start: 30, title: "Topic", type: .extracted)
+        intro.episode = episode
+        topic.episode = episode
+        episode.chapters = [intro, topic]
+        try fixture.context.save()
+
+        await EpisodeActor(modelContainer: fixture.container).updateChapterDurations(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = reloaded.preferredChapters
+        XCTAssertEqual(chapters.count, 2)
+        XCTAssertEqual(chapters[0].duration, 30)
+        XCTAssertEqual(chapters[0].endTime, 30)
+        XCTAssertNil(chapters[1].duration)
+        XCTAssertNil(chapters[1].endTime)
+        XCTAssertNil(chapters[1].end)
+    }
 }
 
 private extension EpisodeChapterIngestionTests {

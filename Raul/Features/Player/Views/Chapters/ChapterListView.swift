@@ -109,8 +109,18 @@ struct ChapterListView: View {
         sortedSoundbites.isEmpty == false
     }
 
+    private var displayedPlayPosition: Double? {
+        if player.currentEpisodeURL == episode.url {
+            return player.playPosition
+        }
+
+        guard episode.hasPlaybackHistory else { return nil }
+        return episode.metaData?.playPosition
+    }
+
     private var currentDisplayedChapter: Marker? {
-        displayedMarkers.last(where: { ($0.start ?? 0) <= player.playPosition })
+        guard let displayedPlayPosition else { return nil }
+        return displayedMarkers.last(where: { ($0.start ?? 0) <= displayedPlayPosition })
     }
 
     private var emptyStateText: String {
@@ -231,15 +241,21 @@ struct ChapterListView: View {
     private func chapterBackgroundProgress(for chapter: Marker) -> Double {
         guard chapter.id == currentDisplayedChapter?.id else {
             guard episode.hasPlaybackHistory else { return 0.0 }
-            return chapter.progress ?? 0.0
+            return clampedProgress(chapter.progress)
         }
 
-        guard let chapterStart = chapter.start else { return 0.0 }
+        guard let displayedPlayPosition,
+              let chapterStart = chapter.start else { return 0.0 }
         let chapterEnd = endTime(for: chapter)
         guard chapterEnd > chapterStart else { return 0.0 }
 
-        let clampedPosition = min(max(player.playPosition, chapterStart), chapterEnd)
+        let clampedPosition = min(max(displayedPlayPosition, chapterStart), chapterEnd)
         return (clampedPosition - chapterStart) / (chapterEnd - chapterStart)
+    }
+
+    private func clampedProgress(_ progress: Double?) -> Double {
+        guard let progress, progress.isFinite else { return 0.0 }
+        return min(max(progress, 0.0), 1.0)
     }
 
     private func endTime(for chapter: Marker) -> Double {
