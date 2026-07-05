@@ -1709,12 +1709,34 @@ struct StatisticsView: View {
         selectedPodcastFeedString: String?,
         selectedPodcastURL: URL?
     ) -> Double {
+        let legacySummaryTotal = legacyLifetimeSummarySeconds(
+            selectedPodcastFeedString: selectedPodcastFeedString,
+            selectedPodcastURL: selectedPodcastURL
+        )
+
         if StoreDevelopmentConfiguration.newStoreReadsEnabled,
            let syncedTotal = syncedLifetimeListeningSeconds(
                selectedPodcastFeedString: selectedPodcastFeedString
            ) {
+            if let legacySummaryTotal {
+                return max(syncedTotal, legacySummaryTotal)
+            }
             return syncedTotal
         }
+
+        if let legacySummaryTotal {
+            return legacySummaryTotal
+        }
+
+        return legacyLifetimeSessionSeconds(
+            selectedPodcastFeedString: selectedPodcastFeedString
+        )
+    }
+
+    private func legacyLifetimeSummarySeconds(
+        selectedPodcastFeedString: String?,
+        selectedPodcastURL: URL?
+    ) -> Double? {
         let endOfToday = Calendar.current.date(
             byAdding: .day,
             value: 1,
@@ -1731,6 +1753,18 @@ struct StatisticsView: View {
         if !summaries.isEmpty {
             return summaries.reduce(0) { $0 + max(0, $1.totalSeconds ?? 0) }
         }
+
+        return nil
+    }
+
+    private func legacyLifetimeSessionSeconds(
+        selectedPodcastFeedString: String?
+    ) -> Double {
+        let endOfToday = Calendar.current.date(
+            byAdding: .day,
+            value: 1,
+            to: Calendar.current.startOfDay(for: Date())
+        ) ?? Date().addingTimeInterval(86_400)
 
         return fetchSessionsInWindow(
             overviewStart: .distantPast,

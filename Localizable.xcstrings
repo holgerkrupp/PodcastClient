@@ -311,6 +311,9 @@
         }
       }
     },
+    "%lld rejected record(s):" : {
+
+    },
     "%lld. %@: %@" : {
       "localizations" : {
         "de" : {
@@ -337,6 +340,9 @@
           }
         }
       }
+    },
+    "+ %lld more" : {
+
     },
     "+%lld" : {
       "localizations" : {
@@ -4143,9 +4149,6 @@
           }
         }
       }
-    },
-    "Next predicted release: Unavailable" : {
-
     },
     "Next week" : {
       "localizations" : {

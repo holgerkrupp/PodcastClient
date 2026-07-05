@@ -810,20 +810,39 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<Bookmark>(
-            sortBy: [SortDescriptor(\Bookmark.creationtime)]
-        )
-        descriptor.fetchOffset = offset
-        descriptor.fetchLimit = defaultPageSize
 
-        let bookmarks: [Bookmark]
+        // `Bookmark` is an @Model subclass of `Marker`, and every stored
+        // property — including `creationtime` — is declared on the `Marker`
+        // superclass. SwiftData's SortDescriptor keypath resolution
+        // (`PersistentModel.graph_keyPathToString`) hits an assertion failure
+        // and crashes when a subclass keypath points at an inherited property,
+        // so we must NOT pass `sortBy:` for `Bookmark` here. Instead fetch the
+        // rows unsorted and order them in memory, which keeps the offset-based
+        // paging below stable. Bookmark counts are small (user-created), so
+        // materializing them in one fetch during this one-time migration is
+        // cheap, and the sort only touches faulted scalar properties.
+        let allBookmarks: [Bookmark]
         do {
-            bookmarks = try legacyContext.fetch(descriptor)
+            allBookmarks = try legacyContext.fetch(FetchDescriptor<Bookmark>())
         } catch {
             outcome.error = error.localizedDescription
             outcome.reachedEnd = false
             return outcome
         }
+
+        let sortedBookmarks = allBookmarks.sorted { lhs, rhs in
+            let lhsTime = lhs.creationtime ?? .distantPast
+            let rhsTime = rhs.creationtime ?? .distantPast
+            if lhsTime != rhsTime {
+                return lhsTime < rhsTime
+            }
+            // Stable tiebreaker so paged windows never overlap or skip rows.
+            return (lhs.uuid?.uuidString ?? "") < (rhs.uuid?.uuidString ?? "")
+        }
+
+        let bookmarks: [Bookmark] = offset < sortedBookmarks.count
+            ? Array(sortedBookmarks[offset..<min(offset + defaultPageSize, sortedBookmarks.count)])
+            : []
 
         for bookmark in bookmarks {
             guard shouldContinue() else {
