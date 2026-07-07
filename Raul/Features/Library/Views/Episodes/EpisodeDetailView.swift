@@ -227,6 +227,9 @@ struct EpisodeDetailView: View {
                     .padding()
                     if let podcast = episode.podcast {
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                            
+                            PodcastRowView(podcast: podcast)
+                            /*
                             HStack {
                                 CoverImageView(episode: episode)
                                     .frame(width: 50, height: 50)
@@ -234,10 +237,11 @@ struct EpisodeDetailView: View {
                                     .font(.title2)
                                     .foregroundColor(.primary)
                             }
+                             */
                         }
-                        .padding()
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(maxWidth: podcastCardWidth)
+                     //   .padding()
+                     //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                        .frame(maxWidth: .infinity)
                     } else if episode.source == .sideLoaded {
                         Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
                             .font(.title2.weight(.semibold))
@@ -292,7 +296,7 @@ struct EpisodeDetailView: View {
                 }
             }
         
-        .navigationTitle(episode.title)
+        //.navigationTitle(episode.title)
         .platformInlineNavigationTitle()
     }
 

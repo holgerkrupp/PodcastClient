@@ -564,7 +564,7 @@ struct PodcastDetailView: View {
                     await updatePredictedReleaseInfo()
                 }
             }
-            .navigationTitle(podcast.title)
+      //      .navigationTitle(podcast.title)
             .navigationDestination(isPresented: $showPodroll) {
                 PodcastPodrollView(
                     podcastTitle: podcast.title,
