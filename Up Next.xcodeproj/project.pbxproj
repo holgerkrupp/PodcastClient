@@ -17,7 +17,7 @@
 		48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */ = {isa = PBXBuildFile; productRef = 48C038EE2FF7806300343AF1 /* CloudDataPresence */; };
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
-		48D2E7710001000000000001 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 48D2E7700001000000000001 /* ESADesignKit */; };
+		48CCC2ED2FFCF61D00517567 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 48CCC2EC2FFCF61D00517567 /* ESADesignKit */; };
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
 		48F5872D2FBA3D940027EE58 /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48F5872C2FBA3D940027EE58 /* DeviceInfo */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -290,7 +290,7 @@
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
-				48D2E7710001000000000001 /* ESADesignKit in Frameworks */,
+				48CCC2ED2FFCF61D00517567 /* ESADesignKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -420,7 +420,7 @@
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
-				48D2E7700001000000000001 /* ESADesignKit */,
+				48CCC2EC2FFCF61D00517567 /* ESADesignKit */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
@@ -589,8 +589,8 @@
 				48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */,
 				48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */,
 				48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */,
-				48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */,
 				48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */,
+				48CCC2EB2FFCF61D00517567 /* XCLocalSwiftPackageReference "../ESADesignKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1338,6 +1338,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		48CCC2EB2FFCF61D00517567 /* XCLocalSwiftPackageReference "../ESADesignKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ESADesignKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1387,14 +1394,6 @@
 				kind = branch;
 			};
 		};
-		48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/holgerkrupp/ESADesignKit.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1423,9 +1422,8 @@
 			package = 48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */;
 			productName = mp3ChapterReader;
 		};
-		48D2E7700001000000000001 /* ESADesignKit */ = {
+		48CCC2EC2FFCF61D00517567 /* ESADesignKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 48CE1CFB2FF2880300AD6067 /* XCRemoteSwiftPackageReference "ESADesignKit" */;
 			productName = ESADesignKit;
 		};
 		48F5872C2FBA3D940027EE58 /* DeviceInfo */ = {

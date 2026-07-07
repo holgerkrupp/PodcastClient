@@ -32,7 +32,6 @@ struct EpisodeDetailView: View {
     @State private var chapterGenerationMessage: String?
     @State private var showTranscriptSheet: Bool = false
     @ScaledMetric(relativeTo: .title2) private var podcastCardWidth: CGFloat = 300
-    @ScaledMetric(relativeTo: .title2) private var artworkSize: CGFloat = 300
 
 
     
@@ -49,34 +48,7 @@ struct EpisodeDetailView: View {
         let activeTranscriptionItem = liveTranscriptionItem ?? episode.transcriptionItem
         
             ZStack {
-
-
                 ScrollView {
-                    if let podcast = episode.podcast {
-                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                            HStack {
-                                CoverImageView(episode: episode)
-                                    .frame(width: 50, height: 50)
-                                Text(podcast.title)
-                                    .font(.title2)
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        .padding()
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(maxWidth: podcastCardWidth)
-                    } else if episode.source == .sideLoaded {
-                        Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
-                            .font(.title2.weight(.semibold))
-                            .padding()
-                            .frame(maxWidth: podcastCardWidth, alignment: .leading)
-                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                    }
-
-                    CoverImageView(episode: episode)
-                        .frame(width: artworkSize, height: artworkSize)
-                        .accessibilityHidden(true)
-                  
                     EpisodeProgressView(episode: episode)
                         .padding()
                         
@@ -253,9 +225,29 @@ struct EpisodeDetailView: View {
                         }
                     }
                     .padding()
-                    
+                    if let podcast = episode.podcast {
+                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                            HStack {
+                                CoverImageView(episode: episode)
+                                    .frame(width: 50, height: 50)
+                                Text(podcast.title)
+                                    .font(.title2)
+                                    .foregroundColor(.primary)
+                            }
+                        }
+                        .padding()
+                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                        .frame(maxWidth: podcastCardWidth)
+                    } else if episode.source == .sideLoaded {
+                        Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
+                            .font(.title2.weight(.semibold))
+                            .padding()
+                            .frame(maxWidth: podcastCardWidth, alignment: .leading)
+                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                    }
                     EpisodeDetailMetadataSections(episode: episode)
                 }
+                .coverHero(image: .url(episode.imageURL ?? episode.podcast?.imageURL), title: episode.title)
             }
             .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
             .sheet(item: $shareURL) { identifiable in

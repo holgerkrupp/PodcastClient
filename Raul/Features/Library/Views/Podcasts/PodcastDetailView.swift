@@ -519,6 +519,7 @@ struct PodcastDetailView: View {
                 }
                 .listRowSeparator(.hidden)
             }
+            .coverHero(image: .url(podcast.imageURL), title: podcast.title)
             .ESAFullBackground(image: podcast.imageURL)
 
             .listStyle(PlainListStyle())

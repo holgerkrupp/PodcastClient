@@ -156,6 +156,7 @@ struct RaulApp: App {
             if let container = modelContainerManager.preparedContainer {
                 AppLaunchContainerView {
                     ContentView()
+                    .coverHeroHarnessOverride()
                     .modelContainer(container)
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
