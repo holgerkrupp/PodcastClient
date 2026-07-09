@@ -18,7 +18,6 @@ struct EpisodeRowView: View {
 
     @Bindable var episode: Episode
     @State private var referenceAvailability = EpisodeReferenceAvailability()
-    @State private var referenceRefreshID = UUID()
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
@@ -27,12 +26,13 @@ struct EpisodeRowView: View {
 
     init(episode: Episode) {
         self._episode = Bindable(wrappedValue: episode)
+        self._referenceAvailability = State(
+            initialValue: EpisodeReferenceAvailability.seeded(from: episode)
+        )
     }
   
     
     var body: some View {
-        let _ = episode.refresh
-        let _ = referenceRefreshID
         let downloadedFiles = fileManager.downloadedFiles
         let podcastTitle = episode.displayPodcastTitle ?? ""
         let publishText = episode.publishDate?.formatted(.relative(presentation: .named)) ?? ""
@@ -42,11 +42,10 @@ struct EpisodeRowView: View {
         let timeText = Duration.seconds(showRemaining ? (remainingTime ?? 0) : duration).formatted(.units(width: .narrow))
         let timeDisplay = showRemaining ? timeText + " remaining" : timeText
         let completionDate = episode.metaData?.completionDate
-        let isDownloaded = referenceAvailability.isDownloaded || isDownloaded(downloadedFiles: downloadedFiles)
-        let hasChapters = referenceAvailability.hasChapters || episode.chapters?.isEmpty == false
+        let isDownloaded = isDownloaded(downloadedFiles: downloadedFiles)
+            || episode.metaData?.calculatedIsAvailableLocally == true
+        let hasChapters = referenceAvailability.hasChapters
         let hasTranscript = referenceAvailability.hasTranscript
-            || episode.hasLoadedTranscript
-            || episode.externalFiles.contains(where: { $0.category == .transcript })
         let hasBookmarks = episode.bookmarks?.isEmpty == false
         let progress = max(0.0, min(1.0, episode.displayProgress))
         let episodeTypeBadgeText = badgeText(for: episode.type)
@@ -193,7 +192,7 @@ struct EpisodeRowView: View {
                 refreshReferenceAvailability(invalidate: true)
             }
             .onChange(of: fileManager.downloadedFiles) { _, _ in
-                refreshReferenceAvailability(invalidate: true)
+                refreshReferenceAvailability()
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange).receive(on: DispatchQueue.main)) { notification in
                 handleEpisodeReferencesDidChange(notification)
@@ -222,15 +221,17 @@ struct EpisodeRowView: View {
     }
 
     private func refreshReferenceAvailability(invalidate: Bool = false) {
-        var availability = EpisodeReferenceAvailability(
-            hasChapters: episode.chapters?.isEmpty == false,
-            hasTranscript: episode.hasLoadedTranscript
-                || episode.externalFiles.contains(where: { $0.category == .transcript }),
-            isDownloaded: isDownloaded(downloadedFiles: fileManager.downloadedFiles)
-                || episode.metaData?.calculatedIsAvailableLocally == true
-        )
+        var availability = EpisodeReferenceAvailability.seeded(from: episode)
 
         if let episodeURL = episode.url {
+            if invalidate {
+                EpisodeReferenceAvailabilityCache.shared.invalidate(episodeURL)
+            } else if let cachedAvailability = EpisodeReferenceAvailabilityCache.shared.availability(for: episodeURL) {
+                availability = cachedAvailability
+                updateReferenceAvailability(availability)
+                return
+            }
+
             let episodeDescriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { candidate in
                     candidate.url == episodeURL
@@ -244,11 +245,6 @@ struct EpisodeRowView: View {
                     || matchingEpisodes.contains {
                         $0.hasLoadedTranscript
                             || $0.externalFiles.contains(where: { $0.category == .transcript })
-                    }
-                availability.isDownloaded = availability.isDownloaded
-                    || matchingEpisodes.contains {
-                        $0.metaData?.isAvailableLocally == true
-                            || $0.metaData?.calculatedIsAvailableLocally == true
                     }
             }
 
@@ -269,13 +265,16 @@ struct EpisodeRowView: View {
                 )
                 availability.hasTranscript = ((try? modelContext.fetchCount(transcriptDescriptor)) ?? 0) > 0
             }
+
+            EpisodeReferenceAvailabilityCache.shared.store(availability, for: episodeURL)
         }
 
+        updateReferenceAvailability(availability)
+    }
+
+    private func updateReferenceAvailability(_ availability: EpisodeReferenceAvailability) {
         if referenceAvailability != availability {
             referenceAvailability = availability
-        }
-        if invalidate {
-            referenceRefreshID = UUID()
         }
     }
 
@@ -288,7 +287,7 @@ struct EpisodeRowView: View {
     private func handleEpisodeDownloadFinished(_ notification: Notification) {
         guard notificationMatchesEpisode(notification, urlKey: EpisodeDownloadNotificationKey.episodeURL) else { return }
         fileManager.refreshDownloadedFiles()
-        refreshReferenceAvailability(invalidate: true)
+        refreshReferenceAvailability()
     }
 
     private func notificationMatchesEpisode(_ notification: Notification, urlKey: String) -> Bool {
@@ -317,7 +316,37 @@ struct EpisodeRowView: View {
 private struct EpisodeReferenceAvailability: Equatable {
     var hasChapters = false
     var hasTranscript = false
-    var isDownloaded = false
+
+    static func seeded(from episode: Episode) -> EpisodeReferenceAvailability {
+        EpisodeReferenceAvailability(
+            hasChapters: episode.chapters?.isEmpty == false,
+            hasTranscript: episode.hasLoadedTranscript
+                || episode.externalFiles.contains(where: { $0.category == .transcript })
+        )
+    }
+}
+
+@MainActor
+private final class EpisodeReferenceAvailabilityCache {
+    static let shared = EpisodeReferenceAvailabilityCache()
+
+    private var cache: [URL: EpisodeReferenceAvailability] = [:]
+
+    func availability(for url: URL) -> EpisodeReferenceAvailability? {
+        cache[url]
+    }
+
+    func store(_ availability: EpisodeReferenceAvailability, for url: URL) {
+        cache[url] = availability
+    }
+
+    func invalidate(_ url: URL?) {
+        if let url {
+            cache[url] = nil
+        } else {
+            cache.removeAll()
+        }
+    }
 }
 
 #Preview {

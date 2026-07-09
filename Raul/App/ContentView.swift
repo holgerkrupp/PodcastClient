@@ -17,7 +17,8 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
-    @Query private var podcasts: [Podcast]
+    @Query(filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false })
+    private var subscribedPodcasts: [Podcast]
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
@@ -37,37 +38,24 @@ struct ContentView: View {
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
 
-    private var playlistTabTitle: String {
+    private var playlistTabMetadata: (title: String, symbolName: String) {
         let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
 
         if let selectedID = UUID(uuidString: selectedPlaylistID),
            let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
-            return selectedPlaylist.displayTitle
+            return (selectedPlaylist.displayTitle, selectedPlaylist.displaySymbolName)
         }
 
         if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
-            return defaultPlaylist.displayTitle
+            return (defaultPlaylist.displayTitle, defaultPlaylist.displaySymbolName)
         }
 
-        return Playlist.defaultQueueDisplayName
-    }
-
-    private var playlistTabSymbolName: String {
-        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
-
-        if let selectedID = UUID(uuidString: selectedPlaylistID),
-           let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
-            return selectedPlaylist.displaySymbolName
-        }
-
-        if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
-            return defaultPlaylist.displaySymbolName
-        }
-
-        return Playlist.defaultQueueSymbolName
+        return (Playlist.defaultQueueDisplayName, Playlist.defaultQueueSymbolName)
     }
     
     var body: some View {
+        let currentPlaylistTabMetadata = playlistTabMetadata
+
         Group {
             if usesSidebarLayout {
                 SidebarAppShell(
@@ -79,8 +67,8 @@ struct ContentView: View {
                 CompactAppShell(
                     navigation: navigation,
                     inboxCount: inboxCount,
-                    playlistTitle: playlistTabTitle,
-                    playlistSymbolName: playlistTabSymbolName,
+                    playlistTitle: currentPlaylistTabMetadata.title,
+                    playlistSymbolName: currentPlaylistTabMetadata.symbolName,
                     search: $search
                 )
             }
@@ -203,7 +191,7 @@ struct ContentView: View {
     }
 
     private var subscribedPodcastCount: Int {
-        podcasts.filter(\.isSubscribed).count
+        subscribedPodcasts.count
     }
 
     private var usesSidebarLayout: Bool {

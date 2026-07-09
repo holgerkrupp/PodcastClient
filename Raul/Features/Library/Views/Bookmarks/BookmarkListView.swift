@@ -36,6 +36,7 @@ struct BookmarkListView: View {
 
     private let pageSize = 30
     @State private var visibleCount = 30
+    @State private var filteredSortedBookmarks: [Bookmark] = []
 
     init(podcast: Podcast? = nil, episode: Episode? = nil) {
         self.podcast = podcast
@@ -74,7 +75,11 @@ struct BookmarkListView: View {
         }
     }
 
-    private var filteredSortedBookmarks: [Bookmark] {
+    private var visibleBookmarks: [Bookmark] {
+        Array(filteredSortedBookmarks.prefix(visibleCount))
+    }
+
+    private func buildFilteredSortedBookmarks() -> [Bookmark] {
         var result = bookmarks
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
@@ -101,10 +106,6 @@ struct BookmarkListView: View {
         }
 
         return result
-    }
-
-    private var visibleBookmarks: [Bookmark] {
-        Array(filteredSortedBookmarks.prefix(visibleCount))
     }
 
     var body: some View {
@@ -171,11 +172,21 @@ struct BookmarkListView: View {
                 }
                 .onChange(of: searchText) { _, _ in
                     visibleCount = pageSize
+                    Debounce.shared.perform(key: "BookmarkListView.search") {
+                        rebuildFilteredSortedBookmarks()
+                    }
                 }
                 .onChange(of: sortRaw) { _, _ in
                     visibleCount = pageSize
+                    rebuildFilteredSortedBookmarks()
+                }
+                .onChange(of: bookmarks.map(\.persistentModelID)) { _, _ in
+                    rebuildFilteredSortedBookmarks()
                 }
             }
+        }
+        .task {
+            rebuildFilteredSortedBookmarks()
         }
         .onDisappear {
             stopInlinePlayback()
@@ -200,6 +211,11 @@ struct BookmarkListView: View {
         guard currentItem.id == visibleBookmarks.last?.id else { return }
         guard visibleCount < filteredSortedBookmarks.count else { return }
         visibleCount = min(visibleCount + pageSize, filteredSortedBookmarks.count)
+    }
+
+    private func rebuildFilteredSortedBookmarks() {
+        filteredSortedBookmarks = buildFilteredSortedBookmarks()
+        visibleCount = min(max(visibleCount, pageSize), max(filteredSortedBookmarks.count, pageSize))
     }
 
     private func deleteMarker(_ marker: Marker) async {

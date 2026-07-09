@@ -11,6 +11,7 @@ import RichText
 import ESADesignKit
 
 struct PodcastDetailView: View {
+    private static let episodePageSize = 80
 
     enum EpisodeSortOption: String, CaseIterable, Identifiable {
         case newestFirst
@@ -75,6 +76,7 @@ struct PodcastDetailView: View {
     @State private var searchInDescription = true
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
+    @State private var filteredEpisodeDisplayLimit = Self.episodePageSize
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
@@ -91,6 +93,10 @@ struct PodcastDetailView: View {
 
     private var liveItems: [PodcastLiveItem] {
         podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
+    }
+
+    private var visibleFilteredEpisodes: [Episode] {
+        Array(filteredEpisodes.prefix(filteredEpisodeDisplayLimit))
     }
 
     private var needsInitialFeedImport: Bool {
@@ -490,7 +496,7 @@ struct PodcastDetailView: View {
                 }
                 
                 Section{
-                    ForEach(filteredEpisodes, id: \.id) { episode in
+                    ForEach(visibleFilteredEpisodes, id: \.id) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
@@ -506,6 +512,9 @@ struct PodcastDetailView: View {
                                              leading: 0,
                                              bottom: 0,
                                              trailing: 0))
+                        .onAppear {
+                            loadMoreEpisodesIfNeeded(currentEpisode: episode)
+                        }
                     }
                     .onDelete { indexSet in
                         Task {
@@ -533,27 +542,35 @@ struct PodcastDetailView: View {
                 await updatePredictedReleaseInfo()
             }
             .onChange(of: searchText) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 debounceEpisodeFilters()
             }
             .onChange(of: searchInTitle) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
             }
             .onChange(of: searchInAuthor) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
             }
             .onChange(of: searchInDescription) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
             }
             .onChange(of: searchInTranscript) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 debounceEpisodeFilters()
             }
             .onChange(of: hidePlayedAndArchived) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
             }
             .onChange(of: sortOptionRawValue) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
             }
             .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
                 Task {
                     await updatePredictedReleaseInfo()
@@ -670,9 +687,18 @@ struct PodcastDetailView: View {
     }
 
     private func debounceEpisodeFilters() {
-        Debounce.shared.perform {
+        Debounce.shared.perform(key: "PodcastDetailView.episodeFilters") {
             applyEpisodeFilters()
         }
+    }
+
+    private func loadMoreEpisodesIfNeeded(currentEpisode: Episode) {
+        guard filteredEpisodeDisplayLimit < filteredEpisodes.count else { return }
+        guard visibleFilteredEpisodes.last?.persistentModelID == currentEpisode.persistentModelID else { return }
+        filteredEpisodeDisplayLimit = min(
+            filteredEpisodeDisplayLimit + Self.episodePageSize,
+            filteredEpisodes.count
+        )
     }
 
     private func applyEpisodeFilters() {

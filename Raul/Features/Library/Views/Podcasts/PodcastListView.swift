@@ -51,6 +51,8 @@ struct PodcastListView: View {
     }
 
     var body: some View {
+        let visiblePodcasts = podcastsInScope
+
         List {
             NavigationLink(destination: LibrarySearchView()) {
                 Label("Search Library", systemImage: "magnifyingglass")
@@ -92,7 +94,7 @@ struct PodcastListView: View {
                     .font(.headline)
             }
 
-            if podcastsInScope.isEmpty {
+            if visiblePodcasts.isEmpty {
                 if selectedScope == .subscribed {
                     PodcastsEmptyView()
                         .listRowSeparator(.hidden)
@@ -115,7 +117,7 @@ struct PodcastListView: View {
                                          trailing: 0))
                 }
             } else {
-                ForEach(podcastsInScope) { podcast in
+                ForEach(visiblePodcasts) { podcast in
                     ZStack {
                         PodcastRowView(podcast: podcast)
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
@@ -135,14 +137,14 @@ struct PodcastListView: View {
                 .onDelete { indexSet in
                     Task {
                         for index in indexSet {
-                            await viewModel.deletePodcast(podcastsInScope[index])
+                            await viewModel.deletePodcast(visiblePodcasts[index])
                         }
                     }
                 }
             }
         }
         .navigationTitle("Library")
-        .animation(.easeInOut, value: podcastsInScope.map(\.persistentModelID))
+        .animation(.easeInOut, value: visiblePodcasts.map(\.persistentModelID))
         .listStyle(.plain)
         .task {
             _ = Playlist.ensureDefaultQueue(in: modelContext)
