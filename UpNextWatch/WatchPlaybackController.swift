@@ -24,6 +24,7 @@ final class WatchPlaybackController: ObservableObject {
     private var fallbackEpisode: WatchSyncEpisode?
     private var lastSyncedPosition: Double = 0
     private var lastSyncDate = Date.distantPast
+    private var isAudioSessionActive = false
 
     private let progressSyncInterval: TimeInterval = 20
     private let progressSyncDistance: Double = 15
@@ -228,27 +229,32 @@ final class WatchPlaybackController: ObservableObject {
         }
 
         errorMessage = nil
-        configureAudioSessionIfNeeded()
         applyPlaybackSettings(for: episode)
 
         let shouldReplaceItem = currentEpisodeID != episode.episodeURL || currentSourceURL != sourceURL
         if shouldReplaceItem {
             flushProgressSync(force: true)
             replaceCurrentItem(with: sourceURL, episode: episode)
-            seek(to: startTime ?? episode.playPosition ?? 0) { [weak self] in
-                self?.resume()
-            }
-            return
         }
 
+        let resumeTime: Double?
         if let startTime {
-            seek(to: startTime) { [weak self] in
-                self?.resume()
-            }
-            return
+            resumeTime = startTime
+        } else if shouldReplaceItem {
+            resumeTime = episode.playPosition ?? 0
+        } else {
+            resumeTime = nil
         }
 
-        resume()
+        // resume() activates the audio session (async on watchOS, which is what
+        // grants the background-audio assertion) before starting playback.
+        if let resumeTime {
+            seek(to: resumeTime) { [weak self] in
+                self?.resume()
+            }
+        } else {
+            resume()
+        }
     }
 
     func pause() {
@@ -271,11 +277,17 @@ final class WatchPlaybackController: ObservableObject {
         }
 
         guard currentEpisode != nil else { return }
-        player.play()
-        player.rate = playbackRate
-        isPlaying = true
-        isBuffering = false
-        store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: true)
+
+        // Route every resume through activation so background audio keeps working
+        // after the app is backgrounded or an interruption deactivated the session.
+        activateAudioSession { [weak self] activated in
+            guard let self, activated else { return }
+            self.player.play()
+            self.player.rate = self.playbackRate
+            self.isPlaying = true
+            self.isBuffering = false
+            self.store?.updateComplicationSnapshot(currentEpisodeID: self.currentEpisodeID, playPosition: self.playPosition, isPlaying: true)
+        }
     }
 
     func cyclePlaybackRate(for episode: WatchSyncEpisode? = nil) {
@@ -369,13 +381,34 @@ final class WatchPlaybackController: ObservableObject {
         flushProgressSync(force: true)
     }
 
-    private func configureAudioSessionIfNeeded() {
+    private func activateAudioSession(completion: @escaping @MainActor (Bool) -> Void) {
+        let session = AVAudioSession.sharedInstance()
         do {
-            let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
-            try session.setActive(true)
         } catch {
             errorMessage = error.localizedDescription
+            completion(false)
+            return
+        }
+
+        if isAudioSessionActive {
+            completion(true)
+            return
+        }
+
+        // On watchOS the session must be activated asynchronously. This is what
+        // registers the app for background audio (and routes to Bluetooth output
+        // if needed); the synchronous setActive(true) used on iOS does not, which
+        // is why playback previously stopped once the app was backgrounded.
+        session.activate(options: []) { [weak self] activated, error in
+            Task { @MainActor in
+                guard let self else { return }
+                if let error {
+                    self.errorMessage = error.localizedDescription
+                }
+                self.isAudioSessionActive = activated
+                completion(activated)
+            }
         }
     }
 
@@ -509,6 +542,9 @@ final class WatchPlaybackController: ObservableObject {
 
         isPlaying = false
         isBuffering = false
+        // The system deactivates our session during an interruption, so force a
+        // fresh activation before the next resume.
+        isAudioSessionActive = false
         store?.updateComplicationSnapshot(currentEpisodeID: currentEpisodeID, playPosition: playPosition, isPlaying: false)
         flushProgressSync(force: true)
     }
