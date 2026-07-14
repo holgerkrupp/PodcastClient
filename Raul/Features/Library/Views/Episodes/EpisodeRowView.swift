@@ -15,6 +15,7 @@ struct EpisodeRowView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @Bindable var episode: Episode
     @State private var referenceAvailability = EpisodeReferenceAvailability()
@@ -61,7 +62,8 @@ struct EpisodeRowView: View {
                             Text(episodeTypeBadgeText)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 4)
                                 .background(.ultraThinMaterial, in: Capsule())
@@ -86,7 +88,8 @@ struct EpisodeRowView: View {
                             Text(podcastTitle)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                             Spacer(minLength: 8)
                             Text(publishText)
                                 .font(.caption)
@@ -95,7 +98,8 @@ struct EpisodeRowView: View {
 
                         Text(episode.title)
                             .font(.headline)
-                            .lineLimit(4)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 6 : 4)
+                            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                             .foregroundStyle(.primary)
 
                         Spacer(minLength: 0)

@@ -321,6 +321,7 @@ private struct WatchRemotePlaylistControls: View {
 }
 
 private struct WatchNowPlayingHero: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var playback: WatchPlaybackController
     let episode: WatchSyncEpisode
 
@@ -343,14 +344,16 @@ private struct WatchNowPlayingHero: View {
                         Text(episode.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         if let chapterTitle = playback.currentChapter?.title {
                             Text(chapterTitle)
                                 .font(.caption2)
                                 .foregroundStyle(.white.opacity(0.78))
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                         }
                     }
                 }

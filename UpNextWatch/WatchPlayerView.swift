@@ -413,6 +413,8 @@ struct WatchProgressBar: View {
 }
 
 private struct WatchPrimaryControlButton: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let systemName: String
     let accessibilityLabelText: String
     let accessibilityHintText: String?
@@ -434,7 +436,10 @@ private struct WatchPrimaryControlButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.headline.weight(.bold))
-                .frame(width: 48, height: 48)
+                .frame(
+                    width: dynamicTypeSize.isAccessibilitySize ? 54 : 48,
+                    height: dynamicTypeSize.isAccessibilitySize ? 54 : 48
+                )
                 .background(
                     Circle()
                         .fill(
@@ -454,6 +459,7 @@ private struct WatchPrimaryControlButton: View {
 }
 
 private struct WatchSmallControlButton: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let systemName: String
     let accessibilityLabelText: String
     let accessibilityHintText: String?
@@ -476,7 +482,7 @@ private struct WatchSmallControlButton: View {
             Image(systemName: systemName)
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .frame(height: 34)
+                .frame(height: dynamicTypeSize.isAccessibilitySize ? 44 : 34)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(Color.upNextAccent.opacity(0.18))
@@ -490,6 +496,8 @@ private struct WatchSmallControlButton: View {
 }
 
 struct WatchCapsuleButtonStyle: ButtonStyle {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let accent: Color
 
     func makeBody(configuration: Configuration) -> some View {
@@ -497,7 +505,7 @@ struct WatchCapsuleButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .frame(height: 34)
+            .frame(height: dynamicTypeSize.isAccessibilitySize ? 44 : 34)
             .background(
                 Capsule()
                     .fill(accent.opacity(configuration.isPressed ? 0.4 : 0.28))
