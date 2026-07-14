@@ -9,6 +9,8 @@ import SwiftData
 import ESADesignKit
 
 struct PodcastRowView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let podcast: Podcast
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
@@ -34,20 +36,23 @@ struct PodcastRowView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(podcast.title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
 
                 if let author = podcast.author, author.isEmpty == false {
                     Text(author)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 }
 
                 if let desc = podcast.desc, desc.isEmpty == false {
                     Text(desc)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(3)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 }
 
                 if podcast.isSubscribed == false {

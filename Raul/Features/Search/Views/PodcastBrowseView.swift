@@ -433,6 +433,8 @@ private struct PodcastBrowseHeaderView: View {
 }
 
 private struct PodcastBrowseEpisodeRowView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let episode: PodcastEpisodeDraft
     let podcastFeed: PodcastFeed
     let queueAction: (Playlist.Position) async -> Void
@@ -485,7 +487,8 @@ private struct PodcastBrowseEpisodeRowView: View {
                             Text(episodeTypeBadgeText)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 4)
                                 .background(.ultraThinMaterial, in: Capsule())
@@ -501,7 +504,8 @@ private struct PodcastBrowseEpisodeRowView: View {
                             Text(podcastFeed.title ?? "Untitled Podcast")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                             Spacer(minLength: 8)
                             Text(publishText)
                                 .font(.caption)
@@ -510,7 +514,8 @@ private struct PodcastBrowseEpisodeRowView: View {
 
                         Text(episode.title)
                             .font(.headline)
-                            .lineLimit(4)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 6 : 4)
+                            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                             .foregroundStyle(.primary)
 
                         Spacer(minLength: 0)

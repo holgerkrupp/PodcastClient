@@ -321,6 +321,7 @@ struct PlayNextQueueWidget: Widget {
 }
 
 private struct PlayNextQueueWidgetView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.widgetFamily) private var family
 
     let entry: QueueTimelineEntry
@@ -328,15 +329,15 @@ private struct PlayNextQueueWidgetView: View {
     var body: some View {
         switch family {
         case .systemSmall:
-            listView(rowCount: 3)
+            listView(rowCount: dynamicTypeSize.isAccessibilitySize ? 2 : 3)
         case .systemMedium:
-            listView(rowCount: 3)
+            listView(rowCount: dynamicTypeSize.isAccessibilitySize ? 2 : 3)
         case .systemLarge:
-            listView(rowCount: 8)
+            listView(rowCount: dynamicTypeSize.isAccessibilitySize ? 4 : 8)
         case .accessoryRectangular:
             accessoryView
         default:
-            listView(rowCount: 3)
+            listView(rowCount: dynamicTypeSize.isAccessibilitySize ? 2 : 3)
         }
     }
 
@@ -359,7 +360,7 @@ private struct PlayNextQueueWidgetView: View {
         )
 
         return GeometryReader { proxy in
-            let headerHeight: CGFloat = 32
+            let headerHeight: CGFloat = dynamicTypeSize.isAccessibilitySize ? 44 : 32
             let rowHeight = items.isEmpty
                 ? 0
                 : max((proxy.size.height - headerHeight) / CGFloat(items.count), 0)
@@ -391,7 +392,8 @@ private struct PlayNextQueueWidgetView: View {
             Text(entry.playlistTitle)
                 .font(.caption2)
                 .foregroundStyle(Color.upNextAccent)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
 
             if let first = entry.snapshot.upcomingItems.first ?? entry.snapshot.currentItem {
                 HStack(spacing: 6) {
@@ -401,20 +403,23 @@ private struct PlayNextQueueWidgetView: View {
                         Text(first.title)
                             .font(.caption)
                             .fontWeight(.semibold)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
 
                         if let podcast = first.podcast, podcast.isEmpty == false {
                             Text(podcast)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                         }
                     }
                 }
             } else {
                 Text(entry.statusMessage ?? "Queue is empty")
                     .font(.caption)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
             }
         }
         .widgetURL(widgetURL)
@@ -429,7 +434,8 @@ private struct PlayNextQueueWidgetView: View {
             Text(entry.playlistTitle)
                 .font(.caption)
                 .fontWeight(.semibold)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 .foregroundStyle(Color.upNextAccent)
                 .widgetAccentable()
             Spacer(minLength: 0)
@@ -437,7 +443,8 @@ private struct PlayNextQueueWidgetView: View {
                 Text(progressText)
                     .font(.caption2)
                     .fontWeight(.medium)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
             }
         }
         .padding(.horizontal, 14)
@@ -471,6 +478,7 @@ private struct PlayNextQueueWidgetView: View {
 }
 
 private struct QueueLine: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     enum Style {
         case current
         case upNext
@@ -498,7 +506,11 @@ private struct QueueLine: View {
                 if let playURL {
                     Button(intent: OpenURLIntent(playURL)) {
                         Image(systemName: "play.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(
+                                dynamicTypeSize.isAccessibilitySize
+                                    ? .title3.weight(.semibold)
+                                    : .system(size: 18, weight: .semibold)
+                            )
                             .foregroundStyle(Color.upNextAccent)
                             .widgetAccentable()
                     }
@@ -557,14 +569,16 @@ private struct QueueLine: View {
                     .font(.subheadline)
                     .fontWeight(style == .current ? .semibold : .regular)
                     .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     .widgetAccentable(style == .current)
 
                 if let supportingText = supportingText, supportingText.isEmpty == false {
                     Text(supportingText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 }
             }
         }

@@ -54,6 +54,7 @@ struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
     @Environment(\.openPodcastSettings) private var openSettings
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
 
     @State private var showPodroll: Bool = false
@@ -160,7 +161,8 @@ struct PodcastDetailView: View {
                 ProgressView()
                 Text(refreshProgressMessage ?? "Refreshing podcast")
                     .font(.caption.weight(.semibold))
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                 Spacer()
                 Text(refreshProgress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -246,7 +248,8 @@ struct PodcastDetailView: View {
                                 }
                                 Text(podcast.title)
                                     .font(.headline)
-                                    .lineLimit(2)
+                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                             }
 
                             Spacer(minLength: 8)

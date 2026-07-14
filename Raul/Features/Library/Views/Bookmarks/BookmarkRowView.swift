@@ -11,6 +11,8 @@ import SwiftUI
 import ESADesignKit
 
 struct BookmarkRowView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let marker: Bookmark
     var isPlaying: Bool
     var clipDisabled: Bool
@@ -34,11 +36,13 @@ struct BookmarkRowView: View {
                 Text(episode?.displayPodcastTitle ?? episode?.title ?? "")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
 
                 Text(marker.title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
 
                 if let start = marker.start {
                     Text("at \(Duration.seconds(start).formatted(.units(width: .abbreviated)))")
@@ -49,7 +53,7 @@ struct BookmarkRowView: View {
                 Spacer(minLength: 0)
 
                 if episode != nil {
-                    HStack(spacing: 10) {
+                    HStack(spacing: dynamicTypeSize.isAccessibilitySize ? 14 : 10) {
                         Button(action: onPlayToggle) {
                             Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
                         }
