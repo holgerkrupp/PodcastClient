@@ -11,12 +11,11 @@ enum PlatformSupport {
 }
 
 extension View {
-    @ViewBuilder
     func platformInlineNavigationTitle() -> some View {
 #if os(iOS)
-        navigationBarTitleDisplayMode(.inline)
+        return navigationBarTitleDisplayMode(.inline)
 #else
-        self
+        return self
 #endif
     }
 }

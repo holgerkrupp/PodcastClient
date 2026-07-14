@@ -112,82 +112,8 @@ struct PodcastDetailView: View {
     }
 #endif
 
-    @ViewBuilder
     private var abandonedFeedCard: some View {
-        if let metadata = podcast.metaData,
-           let assessment = metadata.feedAbandonmentAssessment {
-            VStack(alignment: .leading, spacing: 10) {
-                Label(
-                    assessment.title,
-                    systemImage: assessment.kind == .unavailableFeed
-                        ? "exclamationmark.triangle.fill"
-                        : "calendar.badge.exclamationmark"
-                )
-                    .font(.headline)
-
-                Text(assessment.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                LabeledContent("Last visible") {
-                    Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                }
-
-                LabeledContent("Last checked") {
-                    Text(metadata.feedUpdateCheckDate?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                }
-
-                if let cadence = assessment.predictedCadenceLabel {
-                    LabeledContent("Predicted cadence") {
-                        Text(cadence)
-                    }
-                }
-
-                if let missedReleaseCount = assessment.missedReleaseCount {
-                    LabeledContent("Expected releases missed") {
-                        Text("\(missedReleaseCount)")
-                            .monospacedDigit()
-                    }
-                }
-
-                if assessment.kind == .unavailableFeed {
-                    LabeledContent("Server response") {
-                        Text(metadata.feedFailureStatusDescription ?? "Unknown")
-                    }
-
-                    LabeledContent("First failed check") {
-                        Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-                    }
-
-                    LabeledContent("Latest failed check") {
-                        Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-                    }
-
-                    LabeledContent("Consecutive failures") {
-                        Text("\(metadata.consecutiveFeedFailureCount)")
-                            .monospacedDigit()
-                    }
-                }
-
-                if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-            .font(.caption)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.secondary.opacity(0.12))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.secondary.opacity(0.3))
-            }
-            .padding(.top, 6)
-        }
+        PodcastAbandonedFeedCard(metadata: podcast.metaData)
     }
 
     private var currentLiveItem: PodcastLiveItem? {
@@ -894,6 +820,87 @@ struct PodcastDetailView: View {
         }
     }
 
+}
+
+private struct PodcastAbandonedFeedCard: View {
+    let metadata: PodcastMetaData?
+
+    var body: some View {
+        if let metadata,
+           let assessment = metadata.feedAbandonmentAssessment {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(
+                    assessment.title,
+                    systemImage: assessment.kind == .unavailableFeed
+                        ? "exclamationmark.triangle.fill"
+                        : "calendar.badge.exclamationmark"
+                )
+                    .font(.headline)
+
+                Text(assessment.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                LabeledContent("Last visible") {
+                    Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+                }
+
+                LabeledContent("Last checked") {
+                    Text(metadata.feedUpdateCheckDate?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+                }
+
+                if let cadence = assessment.predictedCadenceLabel {
+                    LabeledContent("Predicted cadence") {
+                        Text(cadence)
+                    }
+                }
+
+                if let missedReleaseCount = assessment.missedReleaseCount {
+                    LabeledContent("Expected releases missed") {
+                        Text("\(missedReleaseCount)")
+                            .monospacedDigit()
+                    }
+                }
+
+                if assessment.kind == .unavailableFeed {
+                    LabeledContent("Server response") {
+                        Text(metadata.feedFailureStatusDescription ?? "Unknown")
+                    }
+
+                    LabeledContent("First failed check") {
+                        Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                    }
+
+                    LabeledContent("Latest failed check") {
+                        Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                    }
+
+                    LabeledContent("Consecutive failures") {
+                        Text("\(metadata.consecutiveFeedFailureCount)")
+                            .monospacedDigit()
+                    }
+                }
+
+                if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .font(.caption)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.secondary.opacity(0.12))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.3))
+            }
+            .padding(.top, 6)
+        }
+    }
 }
 
 // Heavy metadata block (socials, people, namespace tags, HTML description).

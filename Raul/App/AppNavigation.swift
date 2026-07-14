@@ -184,12 +184,11 @@ extension EnvironmentValues {
 }
 
 extension View {
-    @ViewBuilder
     func hostsPlayerPresentation(navigation: AppNavigationModel) -> some View {
 #if os(macOS) || targetEnvironment(macCatalyst)
-        modifier(MacPlayerPresentationHost(navigation: navigation))
+        return modifier(MacPlayerPresentationHost(navigation: navigation))
 #else
-        modifier(IOSPlayerPresentationHost(navigation: navigation))
+        return modifier(IOSPlayerPresentationHost(navigation: navigation))
 #endif
     }
 }

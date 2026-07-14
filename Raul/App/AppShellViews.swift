@@ -78,15 +78,9 @@ struct SidebarAppShell: View {
         )
     }
 
-    @ViewBuilder
     private func sidebarRow(for section: AppSection) -> some View {
-        if section == .inbox {
-            AppSidebarRow(section: section, badge: inboxCount)
-                .tag(section)
-        } else {
-            AppSidebarRow(section: section, badge: nil)
-                .tag(section)
-        }
+        AppSidebarRow(section: section, badge: section == .inbox ? inboxCount : nil)
+            .tag(section)
     }
 }
 
@@ -119,11 +113,13 @@ struct AppSectionHost: View {
     @Bindable var navigation: AppNavigationModel
     @Binding var search: String
 
-    @Environment(\.modelContext) private var modelContext
-
     var body: some View {
         NavigationStack(path: navigation.pathBinding(for: section)) {
-            destination
+            AppSectionDestinationView(
+                section: section,
+                requestedPlaylistEpisodeURL: $navigation.requestedPlaylistEpisodeURL,
+                search: $search
+            )
                 .navigationDestination(for: AppRoute.self) { route in
                     switch route {
                     case .episode(let url):
@@ -132,12 +128,17 @@ struct AppSectionHost: View {
                 }
         }
     }
+}
 
-    @ViewBuilder
-    private var destination: some View {
+private struct AppSectionDestinationView: View {
+    let section: AppSection
+    @Binding var requestedPlaylistEpisodeURL: URL?
+    @Binding var search: String
+
+    var body: some View {
         switch section {
         case .queue:
-            PlaylistView(requestedEpisodeURL: $navigation.requestedPlaylistEpisodeURL)
+            PlaylistView(requestedEpisodeURL: $requestedPlaylistEpisodeURL)
         case .inbox:
             InboxView()
         case .library:

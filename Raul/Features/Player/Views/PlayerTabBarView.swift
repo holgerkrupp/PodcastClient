@@ -8,16 +8,15 @@
 import SwiftUI
 
 extension View {
-    @ViewBuilder
     func platformPlayerAccessory() -> some View {
 #if os(iOS)
-        self
+        return self
             .tabBarMinimizeBehavior(.automatic)
             .tabViewBottomAccessory {
                 PlayerTabBarView()
             }
 #else
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             self
             Divider()
             PlayerTabBarView()

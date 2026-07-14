@@ -590,7 +590,7 @@
 				48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */,
 				48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */,
 				48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */,
-				48CCC2EB2FFCF61D00517567 /* XCLocalSwiftPackageReference "../ESADesignKit" */,
+				48CDCCF13000141D006A32F8 /* XCRemoteSwiftPackageReference "ESADesignKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1338,13 +1338,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		48CCC2EB2FFCF61D00517567 /* XCLocalSwiftPackageReference "../ESADesignKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../ESADesignKit;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1365,6 +1358,14 @@
 		48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/holgerkrupp/CloudDataPresence";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CDCCF13000141D006A32F8 /* XCRemoteSwiftPackageReference "ESADesignKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/ESADesignKit";
 			requirement = {
 				branch = main;
 				kind = branch;

@@ -367,7 +367,6 @@ struct PodcastSettingsView: View {
         .platformInlineNavigationTitle()
     }
 
-    @ViewBuilder
     private func podcastSpecificSettingsShortcutSection(podcast: Podcast) -> some View {
         Section {
             NavigationLink {
@@ -419,7 +418,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func globalSettingsRoot(
         effectiveSettings: PodcastSettings,
         globalSettings: PodcastSettings
@@ -609,10 +607,9 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var appearanceSection: some View {
 #if canImport(UIKit)
-        Section("Appearance") {
+        return Section("Appearance") {
             NavigationLink {
                 AppIconSelectionView(
                     selectedAppIconID: $selectedAppIconID,
@@ -635,23 +632,22 @@ struct PodcastSettingsView: View {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
         }
 #elseif os(macOS)
-        Section("Menu Bar Player") {
+        return Section("Menu Bar Player") {
             Text("The menu bar shows the current episode cover and playback state. Click it to open compact playback controls and the selected playlist.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
 #elseif targetEnvironment(macCatalyst)
-        Section("Desktop Controls") {
+        return Section("Desktop Controls") {
             Text("On Mac Catalyst, Up Next exposes the desktop command menus and separate player/settings windows, but Apple doesn’t provide the macOS-only menu bar extra scene API here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
 #else
-        EmptyView()
+        return EmptyView()
 #endif
     }
 
-    @ViewBuilder
     private func appliedBehaviorSection(effectiveSettings: PodcastSettings, globalSettings: PodcastSettings) -> some View {
         Section("Applied Right Now") {
             SettingsBehaviorRow(
@@ -773,7 +769,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func appControlsSection(settings: PodcastSettings) -> some View {
         Section("Player Controls") {
             Toggle(
@@ -825,7 +820,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func transcriptionSection(settings: PodcastSettings) -> some View {
         Section("Transcriptions") {
             Toggle(
@@ -868,7 +862,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func liveNotificationsSection(settings: PodcastSettings, isGlobal: Bool) -> some View {
         Section("Live Notifications") {
             Toggle(
@@ -894,7 +887,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func podcastLiveNotificationsSection(settings: PodcastSettings) -> some View {
         Section("Live Notifications") {
             if podcastSupportsLiveItems {

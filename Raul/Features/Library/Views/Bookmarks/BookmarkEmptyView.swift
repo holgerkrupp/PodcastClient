@@ -19,6 +19,3 @@ struct BookmarkEmptyView: View {
     }
 }
 
-#Preview {
-    PodcastsEmptyView()
-}

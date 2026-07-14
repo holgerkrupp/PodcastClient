@@ -58,7 +58,7 @@ struct WatchPlayerView: View {
                                 url: playback.artworkURL(for: episode),
                                 title: ""
                             )
-                            .frame(maxWidth: 30)
+                            .frame(width: 30, height: 30)
                             .accessibilityHidden(true)
                             
                             Text(episode.title)
@@ -166,7 +166,8 @@ struct WatchPlayerView: View {
                             url: playback.artworkURL(for: episode),
                             title: ""
                         )
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 104, height: 104)
+                        .frame(maxWidth: .infinity, alignment: .center)
                         .accessibilityHidden(true)
 
                         VStack(spacing: 4) {
@@ -320,37 +321,40 @@ struct WatchArtworkView: View {
    
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.upNextAccent,
-                            Color.upNextAccent.opacity(0.54)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+        GeometryReader { geometry in
+            ZStack {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.upNextAccent,
+                                Color.upNextAccent.opacity(0.54)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
 
-            if let url {
-                AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
-                    switch phase {
-                    case .empty:
-                        WatchArtworkPlaceholder(title: title)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        WatchArtworkPlaceholder(title: title)
-                    @unknown default:
-                        WatchArtworkPlaceholder(title: title)
+                if let url {
+                    AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
+                        switch phase {
+                        case .empty:
+                            WatchArtworkPlaceholder(title: title)
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            WatchArtworkPlaceholder(title: title)
+                        @unknown default:
+                            WatchArtworkPlaceholder(title: title)
+                        }
                     }
+                } else {
+                    WatchArtworkPlaceholder(title: title)
                 }
-            } else {
-                WatchArtworkPlaceholder(title: title)
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))

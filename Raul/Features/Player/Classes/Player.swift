@@ -1996,26 +1996,77 @@ class Player {
                 nextEpisodeURL = nil
             }
 
-            await episodeActor?.setLastPlayed(episodeURL: finishedEpisodeURL)
-            await episodeActor?.setPlayPosition(
-                episodeURL: finishedEpisodeURL,
-                position: finalPlaybackPosition,
-                force: true
-            )
-            PlaybackProgressDefaultsStore.removeProgress(for: finishedEpisodeURL)
-            await unloadEpisode(episodeURL: finishedEpisodeURL, finishedPlayback: true)
+            // Clear the in-memory playback state of the finished episode so the next episode
+            // can load cleanly (and isn't mistaken for a fast-switch and re-queued). This is
+            // cheap main-actor work only — all persistence for the finished episode is deferred.
+            await resetPlaybackStateForFinishedEpisode(refreshPresentation: nextEpisodeURL == nil)
 
+            // Start the next episode immediately. Persisting the *finished* episode (last-played,
+            // play position, completion, move-to-history, download policy) is bookkeeping the user
+            // is no longer waiting for, so it runs afterwards in the background — mirroring the
+            // fast-switch unload path used when the user manually switches episodes.
             if let nextEpisodeURL {
                 BasicLogger.shared.log("Playing next episode")
                 await playEpisode(nextEpisodeURL, playDirectly: true)
             } else {
                 finishingEpisodeURL = nil
             }
+
+            Task(priority: .utility) { [weak self] in
+                await self?.finalizeFinishedEpisode(
+                    episodeURL: finishedEpisodeURL,
+                    finalPlaybackPosition: finalPlaybackPosition
+                )
+            }
         }
+    }
 
+    /// Resets the in-memory state left behind by the episode that just finished, so the next
+    /// episode can be loaded without inheriting stale chapters/artwork/audio-processing state.
+    /// Deliberately excludes all SwiftData persistence — that is handled by
+    /// `finalizeFinishedEpisode(episodeURL:finalPlaybackPosition:)` off the critical path.
+    private func resetPlaybackStateForFinishedEpisode(refreshPresentation: Bool) async {
+        stopPlaybackUpdates()
+        currentEpisode = nil
+        currentEpisodeURL = nil
+        currentChapter = nil
+        chapterProgress = nil
+        nextChapter = nil
+        chapters = []
+        advancePlaybackLoadGeneration()
+        configureChapterBoundaryObserver()
+        currentPlaybackSource = nil
+        currentPlaybackUsesAlternateMedia = false
+        mediaSelection = .primary
+        resetSilenceGapReduction(updateEngine: false)
+        await flushSilenceGapTimeSaved()
+#if !os(watchOS)
+        currentAudioPlaybackProcessor = nil
+#endif
+        lastProgressSaveDate = .distantPast
+        lastArtworkIdentifier = nil
 
-        
+        // Only refresh the widget/watch for an "empty" state when there is no next episode.
+        // When a next episode follows, `playEpisode` refreshes them with the correct URL.
+        if refreshPresentation {
+            await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+    }
 
+    /// Persists the finished episode: last-played, final position, completion, and move-to-history.
+    /// Runs at utility priority after the next episode has already started playing.
+    private func finalizeFinishedEpisode(episodeURL: URL, finalPlaybackPosition: Double) async {
+        await episodeActor?.setLastPlayed(episodeURL: episodeURL)
+        await episodeActor?.setPlayPosition(
+            episodeURL: episodeURL,
+            position: finalPlaybackPosition,
+            force: true
+        )
+        PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+        await episodeActor?.setCompletionDate(episodeURL: episodeURL)
+        await episodeActor?.moveToHistory(episodeURL: episodeURL)
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     private func ensureDownloadForCurrentEpisodeIfNeeded() async {

@@ -136,7 +136,6 @@ struct StorageManagementView: View {
     }
 
 #if DEBUG
-    @ViewBuilder
     private var migrationStatusSection: some View {
         Section {
             if let migrationStatus {
@@ -262,7 +261,6 @@ struct StorageManagementView: View {
 
 #endif
 
-    @ViewBuilder
     private func overviewSection(_ report: StorageUsageReport) -> some View {
         Section("Overview") {
             LabeledContent("Total Used") {
@@ -298,7 +296,6 @@ struct StorageManagementView: View {
         }
     }
 
-    @ViewBuilder
     private func databaseArtifactsSection(_ report: StorageUsageReport) -> some View {
         Section("Database Files") {
             ForEach(report.databaseArtifacts) { artifact in
@@ -325,7 +322,6 @@ struct StorageManagementView: View {
         }
     }
 
-    @ViewBuilder
     private func databaseBreakdownSection(_ report: StorageUsageReport) -> some View {
         Section {
             ForEach(report.databaseBreakdown) { usage in
@@ -354,7 +350,6 @@ struct StorageManagementView: View {
         }
     }
 
-    @ViewBuilder
     private func podcastsSection(_ report: StorageUsageReport) -> some View {
         Section("By Podcast") {
             if report.podcasts.isEmpty {
@@ -378,11 +373,10 @@ struct StorageManagementView: View {
         }
     }
 
-    @ViewBuilder
     private func fileActionsSection(_ report: StorageUsageReport) -> some View {
         let outsideUpNextFiles = filesOutsideUpNext(report)
 
-        Section("File Cleanup") {
+        return Section("File Cleanup") {
             if report.files.isEmpty {
                 ContentUnavailableView(
                     "No Stored Files",

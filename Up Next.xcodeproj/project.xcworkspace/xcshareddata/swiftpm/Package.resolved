@@ -1,5 +1,5 @@
 {
-  "originHash" : "98fc248e26d2a259b32f751c573c4182c17cdacded0384f9d344ae6e340fc2f8",
+  "originHash" : "269b7103dc2e182b25621a2ba3639f928aef73b8ed11889cb8448d4a5d7a41d2",
   "pins" : [
     {
       "identity" : "basiclogger",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "a421ba7b38fa2e37bb78fc1425db491ca5e93c9a",
         "version" : "3.1.0"
+      }
+    },
+    {
+      "identity" : "esadesignkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/holgerkrupp/ESADesignKit",
+      "state" : {
+        "branch" : "main",
+        "revision" : "cac09d79ac271a4d11caef2c533f926df1afbbee"
       }
     },
     {

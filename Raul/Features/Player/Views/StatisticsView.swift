@@ -1340,7 +1340,6 @@ struct StatisticsView: View {
         )
     }
 
-    @ViewBuilder
     private func summaryCard(title: String, value: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
