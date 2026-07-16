@@ -330,6 +330,32 @@ class ModelContainerManager: ObservableObject {
         await resolveStoreSplitRolloutIfNeeded()
 #endif
         await splitStoreCoordinator.scheduleLaunchWork()
+        await bootstrapFeedCacheIfNeeded(feedLimit: 15)
+    }
+
+    /// Phase 2 bootstrap: copy a bounded number of not-yet-cached legacy feeds into
+    /// the local-only cache store. Runs off-main, is idempotent (presence of a
+    /// `CachedPodcast` is the checkpoint), and only fills the cache — nothing reads
+    /// it yet.
+    func bootstrapFeedCacheIfNeeded(feedLimit: Int) async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              StoreDevelopmentConfiguration.splitStoresEnabled else { return }
+        await prepareSplitStores()
+        guard let legacyContainer = preparedContainer,
+              let cacheContainer = preparedCacheContainer else { return }
+        let copied = await Task.detached(priority: .utility) {
+            StoreSplitFeedCacheWriter.bootstrapMissingFeeds(
+                legacyContainer: legacyContainer,
+                cacheContainer: cacheContainer,
+                limit: feedLimit
+            )
+        }.value
+        if copied > 0 {
+            CrashBreadcrumbs.shared.record(
+                "store_split_feed_cache_bootstrap",
+                details: "feeds=\(copied)"
+            )
+        }
     }
 
     /// Entry point for the overnight `BGProcessingTask`. Prepares the split
@@ -342,6 +368,7 @@ class ModelContainerManager: ObservableObject {
         await prepareSplitStores()
         guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
         await resolveStoreSplitRolloutIfNeeded()
+        await bootstrapFeedCacheIfNeeded(feedLimit: 200)
     }
 
     /// Advances the on-device rollout: classifies new vs existing installs, runs
@@ -359,22 +386,47 @@ class ModelContainerManager: ObservableObject {
         }
     }
 
+    /// Split-first classification: read from the synced user-state store by
+    /// default, and only fall back to legacy reads while the split store is
+    /// empty/partial and the legacy store still holds the data.
     private func classifyStoreSplitRollout() async {
         guard let legacyContainer = preparedContainer else { return }
-        let podcastCount = legacyPodcastCount(legacyContainer)
-        if podcastCount > 0 {
+        await prepareSplitStores()
+
+        let legacyHasData = legacyPodcastCount(legacyContainer) > 0
+        let splitHasData = preparedUserStateContainer
+            .map(splitUserStateHasData) ?? false
+        // Migration is "not applicable" (treated as complete) when there is no
+        // legacy data to back-fill from.
+        let migrationComplete = !legacyHasData || (preparedCacheContainer.map {
+            StoreSplitMigrationService.isSliceMigrationComplete(cacheContainer: $0)
+        } ?? false)
+
+        // Prefer split reads whenever it is safe: the split store has data and
+        // either this device's legacy data is fully migrated or there is none.
+        if splitHasData && migrationComplete {
+            StoreSplitRollout.set(.newStoreReads)
+            CrashBreadcrumbs.shared.record(
+                "store_split_rollout_classified",
+                details: "split_first,legacy=\(legacyHasData)"
+            )
+            return
+        }
+
+        // Split store empty or not yet backfilled: fall back to legacy reads and
+        // migrate, but only if the legacy store actually has data to read.
+        if legacyHasData {
             StoreSplitRollout.set(.migrating)
             CrashBreadcrumbs.shared.record(
                 "store_split_rollout_classified",
-                details: "existing,podcasts=\(podcastCount)"
+                details: "fallback_legacy,split_has_data=\(splitHasData)"
             )
             await advanceStoreSplitRolloutAfterMigration()
             return
         }
 
-        // Empty legacy store: give CloudKit a few launches to deliver legacy data
-        // before declaring a brand-new install, unless legacy sync is off or the
-        // initial import already finished with nothing to import.
+        // Nothing locally in either store: give CloudKit a few launches to
+        // deliver data before committing a brand-new install to split reads.
         let importSettled = cloudKitLegacyImportSettled()
         let exhaustedGrace = StoreSplitRollout.incrementUnclassifiedLaunches()
             >= StoreSplitRollout.maxUnclassifiedLaunches
@@ -410,6 +462,19 @@ class ModelContainerManager: ObservableObject {
     private func legacyPodcastCount(_ container: ModelContainer) -> Int {
         let context = ModelContext(container)
         return (try? context.fetchCount(FetchDescriptor<Podcast>())) ?? 0
+    }
+
+    /// Whether the synced user-state store holds any user-owned data — meaning it
+    /// was migrated here previously or delivered by CloudKit from another device.
+    private func splitUserStateHasData(_ container: ModelContainer) -> Bool {
+        let context = ModelContext(container)
+        func hasAny<Model: PersistentModel>(_ type: Model.Type) -> Bool {
+            ((try? context.fetchCount(FetchDescriptor<Model>())) ?? 0) > 0
+        }
+        return hasAny(SubscriptionSync.self)
+            || hasAny(EpisodeStateSync.self)
+            || hasAny(PlaylistSync.self)
+            || hasAny(BookmarkSync.self)
     }
 
     private func cloudKitLegacyImportSettled() -> Bool {
@@ -1100,7 +1165,9 @@ class ModelContainerManager: ObservableObject {
         let schema = Schema([
             StoreSplitMigrationCheckpoint.self,
             CachedFeedExtensionElement.self,
-            AppliedAIContentRevision.self
+            AppliedAIContentRevision.self,
+            CachedPodcast.self,
+            CachedEpisode.self
         ])
         let configuration: ModelConfiguration
 

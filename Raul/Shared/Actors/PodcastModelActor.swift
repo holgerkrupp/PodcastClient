@@ -1009,7 +1009,33 @@ actor PodcastModelActor {
             }
         }
 
+        if let podcastFeed = podcast.feed {
+            // The cache writer reads a fresh legacy context, so flush first.
+            modelContext.saveIfNeeded()
+            await updateFeedCache(feedURL: podcastFeed)
+        }
+
         return newEpisodeCount
+    }
+
+    /// Phase 2 dual-write: mirror this feed's feed-derivable data into the
+    /// local-only cache store after it has been written to legacy. Additive and
+    /// gated by the rollout; nothing reads the cache yet.
+    private func updateFeedCache(feedURL: URL) async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            return
+        }
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let cacheContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedCacheContainer
+        }) else { return }
+
+        StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feedURL,
+            legacyContainer: modelContainer,
+            cacheContainer: cacheContainer
+        )
     }
     
     func createPodcast(

@@ -97,6 +97,177 @@ final class CachedFeedExtensionElement: Identifiable {
     }
 }
 
+/// Local-only cache of feed-derivable podcast data. Lives in `PodcastCache.sqlite`
+/// (`cloudKitDatabase: .none`) so this bulk, rebuildable data never syncs to
+/// iCloud. Everything here can be reconstructed by re-parsing the RSS feed; user
+/// state (subscription, play position, bookmarks) is NOT stored here — it lives in
+/// the CloudKit-backed `UserState.sqlite`.
+///
+/// Relationships to other *cache* models are allowed; cross-store references use
+/// scalar keys (`feedURL`) only — never a SwiftData relationship across stores.
+@Model
+final class CachedPodcast: Identifiable {
+    /// Normalized feed-URL key — the stable feed identity shared across stores.
+    var id: String = ""
+    var feedURL: String = ""
+    var title: String = ""
+    var desc: String?
+    var author: String?
+    var feed: URL?
+    var link: URL?
+    var language: String?
+    var copyright: String?
+    var imageURL: URL?
+    var lastBuildDate: Date?
+    var funding: [FundingInfo] = []
+    var social: [SocialInfo] = []
+    var people: [PersonInfo] = []
+    var alternativeFeeds: [PodcastAlternativeFeed] = []
+    var optionalTags: PodcastNamespaceOptionalTags?
+
+    // Device-local, rebuildable feed-refresh diagnostics.
+    var lastRefresh: Date?
+    var feedUpdated: Bool?
+    var feedUpdateCheckDate: Date?
+    var consecutiveFeedFailureCount: Int = 0
+    var lastFeedFailureDate: Date?
+    var lastFeedFailureStatusCode: Int?
+    var lastFeedFailureMessage: String?
+
+    var updatedAt: Date = Date.distantPast
+
+    @Relationship(deleteRule: .cascade, inverse: \CachedEpisode.podcast)
+    var episodes: [CachedEpisode]? = []
+
+    init(
+        id: String,
+        feedURL: String,
+        title: String = "",
+        desc: String? = nil,
+        author: String? = nil,
+        feed: URL? = nil,
+        link: URL? = nil,
+        language: String? = nil,
+        copyright: String? = nil,
+        imageURL: URL? = nil,
+        lastBuildDate: Date? = nil,
+        funding: [FundingInfo] = [],
+        social: [SocialInfo] = [],
+        people: [PersonInfo] = [],
+        alternativeFeeds: [PodcastAlternativeFeed] = [],
+        optionalTags: PodcastNamespaceOptionalTags? = nil,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.title = title
+        self.desc = desc
+        self.author = author
+        self.feed = feed
+        self.link = link
+        self.language = language
+        self.copyright = copyright
+        self.imageURL = imageURL
+        self.lastBuildDate = lastBuildDate
+        self.funding = funding
+        self.social = social
+        self.people = people
+        self.alternativeFeeds = alternativeFeeds
+        self.optionalTags = optionalTags
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Local-only cache of feed-derivable episode data. See `CachedPodcast`. User play
+/// state and bookmarks are kept out of here — they belong to `UserState.sqlite`.
+@Model
+final class CachedEpisode: Identifiable {
+    /// Stable episode identity (GUID/enclosure/link/hash precedence).
+    var id: String = ""
+    /// Owner feed key — scalar cross-store reference to subscription/user state.
+    var feedURL: String = ""
+    var guid: String?
+    var title: String = ""
+    var author: String?
+    var desc: String?
+    var subtitle: String?
+    var content: String?
+    var publishDate: Date?
+    var url: URL?
+    var deeplinks: [URL]?
+    var fileSize: Int64?
+    var mediaType: String?
+    var link: URL?
+    var imageURL: URL?
+    var duration: Double?
+    var number: String?
+    var typeRawValue: String?
+    var sourceRawValue: String = EpisodeSource.feedDownload.rawValue
+    var externalFiles: [ExternalFile] = []
+    var funding: [FundingInfo] = []
+    var social: [SocialInfo] = []
+    var people: [PersonInfo] = []
+    var optionalTags: PodcastNamespaceOptionalTags?
+
+    var updatedAt: Date = Date.distantPast
+
+    var podcast: CachedPodcast?
+
+    init(
+        id: String,
+        feedURL: String,
+        guid: String? = nil,
+        title: String = "",
+        author: String? = nil,
+        desc: String? = nil,
+        subtitle: String? = nil,
+        content: String? = nil,
+        publishDate: Date? = nil,
+        url: URL? = nil,
+        deeplinks: [URL]? = nil,
+        fileSize: Int64? = nil,
+        mediaType: String? = nil,
+        link: URL? = nil,
+        imageURL: URL? = nil,
+        duration: Double? = nil,
+        number: String? = nil,
+        typeRawValue: String? = nil,
+        sourceRawValue: String = EpisodeSource.feedDownload.rawValue,
+        externalFiles: [ExternalFile] = [],
+        funding: [FundingInfo] = [],
+        social: [SocialInfo] = [],
+        people: [PersonInfo] = [],
+        optionalTags: PodcastNamespaceOptionalTags? = nil,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.guid = guid
+        self.title = title
+        self.author = author
+        self.desc = desc
+        self.subtitle = subtitle
+        self.content = content
+        self.publishDate = publishDate
+        self.url = url
+        self.deeplinks = deeplinks
+        self.fileSize = fileSize
+        self.mediaType = mediaType
+        self.link = link
+        self.imageURL = imageURL
+        self.duration = duration
+        self.number = number
+        self.typeRawValue = typeRawValue
+        self.sourceRawValue = sourceRawValue
+        self.externalFiles = externalFiles
+        self.funding = funding
+        self.social = social
+        self.people = people
+        self.optionalTags = optionalTags
+        self.updatedAt = updatedAt
+    }
+}
+
 @Model
 final class AppliedAIContentRevision: Identifiable {
     var id: String = ""
