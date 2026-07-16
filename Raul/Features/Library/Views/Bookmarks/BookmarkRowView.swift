@@ -23,52 +23,55 @@ struct BookmarkRowView: View {
 
     var body: some View {
         let episode = marker.bookmarkEpisode
-
-        HStack(alignment: .top, spacing: 14) {
-            CoverImageView(episode: episode)
-                .frame(width: artworkSize, height: artworkSize)
-                .cornerRadius(8)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(episode?.displayPodcastTitle ?? episode?.title ?? "")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Text(marker.title)
-                    .font(.headline)
-                    .lineLimit(2)
-
-                if let start = marker.start {
-                    Text("at \(Duration.seconds(start).formatted(.units(width: .abbreviated)))")
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 14) {
+                CoverImageView(episode: episode)
+                    .frame(width: artworkSize, height: artworkSize)
+                    .cornerRadius(8)
+                    .accessibilityHidden(true)
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(episode?.displayPodcastTitle ?? episode?.title ?? "")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    
+                    Text(marker.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                    
+                    if let start = marker.start {
+                        Text("at \(Duration.seconds(start).formatted(.units(width: .abbreviated)))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    Spacer(minLength: 0)
+                    
+                    
                 }
-
-                Spacer(minLength: 0)
-
+            }
+                .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                 if episode != nil {
                     HStack(spacing: 10) {
                         Button(action: onPlayToggle) {
                             Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
                         }
                         .buttonStyle(.glass(.clear))
-
+                        Spacer()
                         Button(action: onClip) {
                             Label("Clip", systemImage: "scissors")
                         }
                         .buttonStyle(.glass(.clear))
                         .disabled(clipDisabled)
-
+                        Spacer()
                         Button(action: onLoad) {
                             Label("Load", systemImage: "play.circle")
                         }
                         .buttonStyle(.glass(.clear))
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
+            
         }
         .ESA_RowView(image: episode?.imageURL ?? episode?.podcast?.imageURL, minHeight: rowHeight)
     }

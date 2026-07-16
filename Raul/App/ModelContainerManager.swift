@@ -900,57 +900,61 @@ class ModelContainerManager: ObservableObject {
             details: "authoritative_playlists=\(authoritativePlaylists),refresh_missing_feeds=\(refreshMissingFeeds)"
         )
         let task = Task {
-            // Hold a background-task assertion so that if the app is backgrounded
-            // mid-reconcile, iOS grants a few seconds for the (now cancellable)
-            // importer to reach a checkpoint and release the shared-container
-            // SQLite lock — instead of being suspended mid-transaction (0xdead10cc).
-#if canImport(UIKit)
-            let backgroundTaskID = UIApplication.shared.beginBackgroundTask(
-                withName: "StoreSplitUserStateImport"
-            ) { [weak self] in
-                MainActor.assumeIsolated {
-                    self?.userStateImportTask?.cancel()
+            // The importer's SQLite write is the checkpoint-critical section, so
+            // the background-task assertion is held ONLY around it: a mid-reconcile
+            // backgrounding still reaches a safe checkpoint and releases the
+            // shared-container lock (instead of 0xdead10cc). Network feed
+            // bootstrapping is deliberately not covered by the assertion and is
+            // skipped once the task is cancelled (i.e. backgrounded), so the
+            // assertion is never held for tens of seconds in the background.
+            func runImport() async -> StoreSplitUserStateImportResult {
+                await self.withUserStateImportAssertion {
+                    await StoreSplitUserStateImporter.apply(
+                        legacyContainer: legacyContainer,
+                        userStateContainer: userStateContainer,
+                        authoritativePlaylists: authoritativePlaylists,
+                        projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
+                            .projectsListeningHistoryToLegacy,
+                        episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
+                            .episodeStateProjectionRecencyCutoff
+                    )
                 }
             }
-            defer {
-                if backgroundTaskID != .invalid {
-                    UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                }
-            }
-#endif
-            let result = await StoreSplitUserStateImporter.apply(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
-                authoritativePlaylists: authoritativePlaylists,
-                projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
-                    .projectsListeningHistoryToLegacy,
-                episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
-                    .episodeStateProjectionRecencyCutoff
-            )
-            guard refreshMissingFeeds, result.feedsToBootstrap.isEmpty == false else {
+
+            let result = await runImport()
+
+            // Only bootstrap missing feeds over the network while foreground and
+            // not cancelled; otherwise defer to the next foreground reconcile.
+            guard refreshMissingFeeds,
+                  result.feedsToBootstrap.isEmpty == false,
+                  Task.isCancelled == false else {
                 return result
             }
 
+            // Bound network work per pass so a large backlog can never pin the
+            // task; remaining feeds are retried on later reconciles.
+            let maxFeedsPerPass = 5
             let retryInterval: TimeInterval = 60 * 15
             let now = Date()
-            let feedsToRefresh = result.feedsToBootstrap.filter { feed in
+            let dueFeeds = result.feedsToBootstrap.filter { feed in
                 let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
                 guard let lastAttempt = self.missingFeedRefreshAttempts[key] else {
-                    self.missingFeedRefreshAttempts[key] = now
                     return true
                 }
-                guard now.timeIntervalSince(lastAttempt) >= retryInterval else {
-                    return false
-                }
-                self.missingFeedRefreshAttempts[key] = now
-                return true
+                return now.timeIntervalSince(lastAttempt) >= retryInterval
             }
+            let feedsToRefresh = Array(dueFeeds.prefix(maxFeedsPerPass))
+
+            var didRefreshAny = false
             for feed in feedsToRefresh {
+                if Task.isCancelled { break }
                 let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
+                self.missingFeedRefreshAttempts[key] = now
                 do {
                     let refreshed = try await PodcastModelActor(
                         modelContainer: legacyContainer
                     ).updatePodcast(feed, force: true, silent: true)
+                    didRefreshAny = true
                     if refreshed == false {
                         self.missingFeedRefreshAttempts.removeValue(forKey: key)
                     }
@@ -958,16 +962,8 @@ class ModelContainerManager: ObservableObject {
                     self.missingFeedRefreshAttempts.removeValue(forKey: key)
                 }
             }
-            if feedsToRefresh.isEmpty == false {
-                return await StoreSplitUserStateImporter.apply(
-                    legacyContainer: legacyContainer,
-                    userStateContainer: userStateContainer,
-                    authoritativePlaylists: authoritativePlaylists,
-                    projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
-                        .projectsListeningHistoryToLegacy,
-                    episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
-                        .episodeStateProjectionRecencyCutoff
-                )
+            if didRefreshAny, Task.isCancelled == false {
+                return await runImport()
             }
             return result
         }
@@ -975,6 +971,32 @@ class ModelContainerManager: ObservableObject {
         let result = await task.value
         userStateImportTask = nil
         return result
+    }
+
+    /// Runs `body` while holding a UIKit background-task assertion named
+    /// `StoreSplitUserStateImport`, ending it as soon as `body` returns. Scoping
+    /// the assertion to just the SQLite-critical import keeps it from being held
+    /// for tens of seconds (and risking termination) during background network work.
+    private func withUserStateImportAssertion<T>(
+        _ body: () async -> T
+    ) async -> T {
+#if canImport(UIKit)
+        let backgroundTaskID = UIApplication.shared.beginBackgroundTask(
+            withName: "StoreSplitUserStateImport"
+        ) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.userStateImportTask?.cancel()
+            }
+        }
+        defer {
+            if backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            }
+        }
+        return await body()
+#else
+        return await body()
+#endif
     }
 
     private func shouldRunUserStateImport(

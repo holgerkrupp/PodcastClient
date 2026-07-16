@@ -49,14 +49,15 @@ struct InboxView: View {
 }
 
 struct InboxListView: View {
- 
+
     @State private var episodes: [Episode] = []
     @State private var isArchiving = false
+    @State private var hasLoaded = false
 
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
     @StateObject private var refreshViewModel: PodcastListViewModel
-    
+
     init() {
         _refreshViewModel = StateObject(
             wrappedValue: PodcastListViewModel(modelContainer: ModelContainerManager.shared.container)
@@ -64,111 +65,86 @@ struct InboxListView: View {
     }
 
     var body: some View {
-        if episodes.isEmpty{
-            InboxEmptyView()
-                .navigationTitle("Inbox")
-                .task {
+        Group {
+            if !hasLoaded {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if episodes.isEmpty {
+                InboxEmptyView()
+            } else {
+                List {
+                    ForEach(episodes) { episode in
+                        ZStack{
+                            EpisodeRowView(episode: episode)
+                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                EmptyView()
+                            }.opacity(0)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open episode \(episode.title)")
+                        .accessibilityHint("Opens this episode details screen")
+                        .swipeActions(edge: .trailing){
+                            Button(role: .none) {
+                                Task { @MainActor in
+                                    await archiveEpisode(episode)
+                                    await loadEpisodes()
+                                }
+                            } label: {
+                                Label("Archive Episode", systemImage: "archivebox.fill")
+                            }
+                        }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                    }
+                }
+                .listStyle(.plain)
+                .refreshable {
+                    await refreshEpisodes()
                     await loadEpisodes()
                 }
-                .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
-                    Task { await loadEpisodes() }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: {
-                            Task {
-                                await refreshEpisodes()
-                                await loadEpisodes()
-                            }
-                        }) {
-                            if refreshViewModel.isLoading {
-                                if refreshViewModel.total != 0 {
-                                    CircularProgressView(
-                                        value: Double(refreshViewModel.completed),
-                                        total: Double(refreshViewModel.total)
-                                    )
-                                } else {
-                                    ProgressView()
-                                }
-                            }else{
-                                Image(systemName: "arrow.clockwise")
-                            }
-                        }
-                        .disabled(refreshViewModel.isLoading)
-                        .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
-                        .accessibilityHint("Fetches new episodes and reloads your inbox")
-                        .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
-                    }
-                }
-        }else{
-            List {
-                ForEach(episodes) { episode in
-                    ZStack{
-                        EpisodeRowView(episode: episode)
-                        NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                            EmptyView()
-                        }.opacity(0)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open episode \(episode.title)")
-                    .accessibilityHint("Opens this episode details screen")
-                    .swipeActions(edge: .trailing){
-                        Button(role: .none) {
-                            Task { @MainActor in
-                                await archiveEpisode(episode)
-                                await loadEpisodes()
-                            }
-                        } label: {
-                            Label("Archive Episode", systemImage: "archivebox.fill")
-                        }
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-                }
             }
-            .listStyle(.plain)
-            .navigationTitle("Inbox")
-            .task {
+        }
+        .navigationTitle("Inbox")
+        .task {
+            if !hasLoaded {
                 await loadEpisodes()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
-                Task { await loadEpisodes() }
-            }
-            .refreshable {
-                await refreshEpisodes()
-                await loadEpisodes()
-            }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: {
-                        Task {
-                            await refreshEpisodes()
-                            await loadEpisodes()
-                        }
-                    }) {
-                        if refreshViewModel.isLoading {
-                            if refreshViewModel.total != 0 {
-                                CircularProgressView(
-                                    value: Double(refreshViewModel.completed),
-                                    total: Double(refreshViewModel.total)
-                                )
-                            } else {
-                                ProgressView()
-                            }
-                        }else{
-                            Image(systemName: "arrow.clockwise")
-                        }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
+            Task { await loadEpisodes() }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: {
+                    Task {
+                        await refreshEpisodes()
+                        await loadEpisodes()
                     }
-                    .disabled(refreshViewModel.isLoading)
-                    .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
-                    .accessibilityHint("Fetches new episodes and reloads your inbox")
-                    .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
+                }) {
+                    if refreshViewModel.isLoading {
+                        if refreshViewModel.total != 0 {
+                            CircularProgressView(
+                                value: Double(refreshViewModel.completed),
+                                total: Double(refreshViewModel.total)
+                            )
+                        } else {
+                            ProgressView()
+                        }
+                    }else{
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
+                .disabled(refreshViewModel.isLoading)
+                .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
+                .accessibilityHint("Fetches new episodes and reloads your inbox")
+                .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
+            }
 
+            if !episodes.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         Task {
@@ -188,39 +164,36 @@ struct InboxListView: View {
                     .accessibilityInputLabels([Text("Archive inbox"), Text("Archive all inbox episodes")])
                 }
             }
-            .overlay {
-                if refreshViewModel.isLoading && refreshViewModel.total == 0 {
-                    ProgressView()
-                }
+        }
+        .overlay {
+            if refreshViewModel.isLoading && refreshViewModel.total == 0 && !episodes.isEmpty {
+                ProgressView()
             }
-            .alert("Error", isPresented: .constant(errorMessage != nil)) {
-                Button("OK") {
-                    errorMessage = nil
-                }
-            } message: {
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                }
+        }
+        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            Button("OK") {
+                errorMessage = nil
+            }
+        } message: {
+            if let errorMessage = errorMessage {
+                Text(errorMessage)
             }
         }
     }
-    
+
     // MARK: - Data Loading
-    
+
     private func loadEpisodes() async {
-        _ = Playlist.ensureDefaultQueue(in: modelContext)
         let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
         let descriptor = FetchDescriptor<Episode>(predicate: predicate, sortBy: [sortDescriptor])
         do {
             let results = try modelContext.fetch(descriptor)
-            await MainActor.run {
-                self.episodes = results
-            }
+            self.episodes = results
+            self.hasLoaded = true
         } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to load episodes: \(error.localizedDescription)"
-            }
+            self.errorMessage = "Failed to load episodes: \(error.localizedDescription)"
+            self.hasLoaded = true
         }
     }
     
