@@ -92,7 +92,10 @@ final class PhoneWatchSyncController: NSObject {
         let context = ModelContext(container)
 
         let selection = resolvePlaylistSelection(with: context)
-        let playlistEntries = selection.selectedPlaylist.ordered
+        let playlistEntries = (try? WatchSyncPlaylistEntryQuery.fetchOrdered(
+            playlistID: selection.selectedPlaylist.id,
+            in: context
+        )) ?? []
         let inboxEpisodes = fetchInboxEpisodes(with: context)
         let settings = fetchStandardSettings(with: context)
         let enabledSettingsByFeed = fetchEnabledPodcastSettingsByFeed(with: context)
@@ -970,6 +973,24 @@ extension PhoneWatchSyncController: WCSessionDelegate {
         Task { @MainActor in
             handleFinishedTransfer(episodeID: episodeID, error: error)
         }
+    }
+}
+
+/// Keeps filtering and ordering inside the persistent-store fetch. Sorting a
+/// relationship array in memory can read a model after a CloudKit import has
+/// invalidated it, which makes SwiftData trap in the generated property getter.
+enum WatchSyncPlaylistEntryQuery {
+    static func fetchOrdered(
+        playlistID: UUID,
+        in context: ModelContext
+    ) throws -> [PlaylistEntry] {
+        let descriptor = FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { entry in
+                entry.playlist?.id == playlistID
+            },
+            sortBy: [SortDescriptor(\PlaylistEntry.order, order: .forward)]
+        )
+        return try context.fetch(descriptor)
     }
 }
 

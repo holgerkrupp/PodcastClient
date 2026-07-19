@@ -57,9 +57,9 @@ class ModelContainerManager: ObservableObject {
         return preparedContainer
     }
     
-    static let shared = ModelContainerManager()
+    nonisolated static let shared = ModelContainerManager()
 
-    init() {
+    nonisolated private init() {
 #if DEBUG
         Self.resetLocalStoreFilesIfRequested()
 #endif

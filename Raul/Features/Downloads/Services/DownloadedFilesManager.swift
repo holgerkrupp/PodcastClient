@@ -4,6 +4,10 @@ import Observation
 
 @Observable
 class DownloadedFilesManager: @unchecked Sendable {
+    static let shared = DownloadedFilesManager(
+        folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    )
+
     private struct WeakObjectBox<Object: AnyObject>: @unchecked Sendable {
         weak var object: Object?
     }

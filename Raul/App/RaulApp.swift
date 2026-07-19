@@ -125,7 +125,7 @@ enum PredictedReleaseRefreshScheduler {
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @StateObject private var syncMonitor = SyncMonitor.default
-    @State private var downloadedFilesManager = DownloadedFilesManager(folder: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
+    @State private var downloadedFilesManager = DownloadedFilesManager.shared
     @State private var settingsRequest = SettingsWindowRequest.global
     @State private var deferredStoreSplitTask: Task<Void, Never>?
     @State private var deferredForegroundFeedRefreshTask: Task<Void, Never>?
@@ -152,92 +152,26 @@ struct RaulApp: App {
     var body: some Scene {
 
         
-        WindowGroup("Up Next", id: AppWindowID.main) {
-            if let container = modelContainerManager.preparedContainer {
-                AppLaunchContainerView {
-                    ContentView()
-                    .coverHeroHarnessOverride()
-                    .modelContainer(container)
-                    .environment(downloadedFilesManager)
-                    .accentColor(.accent)
-                    .withDeviceStyle()
-                    .hostsSettingsPresentation(
-                        modelContainer: container,
-                        settingsRequest: $settingsRequest
-                    )
-                
-                    .onAppear {
-                        CrashBreadcrumbs.shared.record("root_view_on_appear")
-                        WatchSyncCoordinator.activate()
-                        let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
-                        Task {
-                            await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
-                                modelContainer: container
-                            )
-                            await CloudSyncProgressReferenceStore.publish(modelContainer: container)
-                            await PlayNextWidgetSync.refresh(using: container)
-                            WatchSyncCoordinator.refreshSoon()
-                        }
-                        Task {
-                            await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
-                        }
-                        Task {
-                            await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
-                                modelContainer: container
-                            )
-                        }
-                        Task {
-                            let actor = EpisodeActor(modelContainer: container)
-                            await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
-                        }
-#if canImport(UIKit)
-                        UIDevice.current.isBatteryMonitoringEnabled = true
-#endif
-                        Task {
-                            await runAutomaticTranscriptionSweep(reason: "launch")
-                        }
-                        Task { @MainActor in
-                            Player.shared.startRecoveryIfNeeded()
-                        }
-                        Task {
-                            let enabled = UserDefaults.standard.bool(forKey: SideloadingConfiguration.enabledKey)
-                            do {
-                                try await SideloadingCoordinator.shared.syncEnabledState(enabled)
-                            } catch {
-                                BasicLogger.shared.log("Failed to restore sideloading state: \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                    .task {
-                        try? await Task.sleep(for: .seconds(15))
-                        guard Task.isCancelled == false else { return }
-                        await modelContainerManager.runLaunchStoreMaintenance()
-                    }
-                
-
-#if canImport(UIKit)
-                    .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
-                        CrashBreadcrumbs.shared.record("battery_state_changed")
-                        Task {
-                            await runAutomaticTranscriptionSweep(reason: "power state changed")
-                        }
-                    }
-#endif
-                }
-            } else {
-                ModelContainerLaunchView(
-                    errorMessage: modelContainerManager.initializationError,
-                    retry: {
-                        Task {
-                            await modelContainerManager.prepareContainer()
-                        }
-                    }
-                )
-                .task {
-                    await modelContainerManager.prepareContainer()
-                }
-            }
+#if os(iOS) && !targetEnvironment(macCatalyst)
+        // SwiftUI may evaluate a WindowGroup's static content callback on its
+        // async-renderer thread. Pass a genuinely nonisolated function value:
+        // writing an equivalent trailing closure here makes Swift emit a main-
+        // actor executor guard, which is the guard seen in the crash reports.
+        let mainWindow = WindowGroup<RootWindowView>(
+            "Up Next",
+            id: AppWindowID.main,
+            makeContent: RootWindowView.make
+        )
+#else
+        let mainWindow = WindowGroup("Up Next", id: AppWindowID.main) {
+            RootWindowView(
+                modelContainerManager: modelContainerManager,
+                downloadedFilesManager: downloadedFilesManager,
+                settingsRequest: $settingsRequest
+            )
         }
+#endif
+        mainWindow
 #if os(macOS) || targetEnvironment(macCatalyst)
         .commands {
             AppCommands(
@@ -293,7 +227,7 @@ struct RaulApp: App {
                     )
                 }
                 Task {
-                    await runAutomaticTranscriptionSweep(reason: "active")
+                    await RaulApp.runAutomaticTranscriptionSweep(reason: "active")
                 }
           
                 
@@ -697,7 +631,7 @@ struct RaulApp: App {
 #endif
     }
 
-    func runAutomaticTranscriptionSweep(reason: String) async {
+    static func runAutomaticTranscriptionSweep(reason: String) async {
         let isPlaying = await MainActor.run {
             Player.shared.isPlaying || Player.shared.currentEpisode != nil
         }
@@ -766,7 +700,124 @@ struct RaulApp: App {
         guard timestamp > 0 else { return nil }
         return Date(timeIntervalSince1970: timestamp)
     }
-    
+
+}
+
+
+/// Root window content.
+///
+/// The container-gating lives here — inside a real `View` that observes
+/// `ModelContainerManager` — rather than directly in `RaulApp`'s
+/// `WindowGroup` content closure. That closure was being classified by
+/// SwiftUI as a `StaticBody` and re-evaluated on its off-main async-renderer
+/// thread; reading `@MainActor` `ModelContainerManager` state there trapped on
+/// the main-actor isolation check (EXC_BREAKPOINT /
+/// swift_task_isCurrentExecutorWithFlagsImpl). Observing the object here makes
+/// SwiftUI treat the read as a tracked dynamic dependency and update on the
+/// main actor. On iOS, `make()` also keeps the `WindowGroup` callback itself
+/// nonisolated so the async renderer can safely invoke it.
+private struct RootWindowView: View {
+#if os(iOS) && !targetEnvironment(macCatalyst)
+    @StateObject private var modelContainerManager = ModelContainerManager.shared
+    @State private var downloadedFilesManager = DownloadedFilesManager.shared
+    @State private var settingsRequest = SettingsWindowRequest.global
+
+    nonisolated init() {}
+
+    nonisolated static func make() -> RootWindowView {
+        RootWindowView()
+    }
+#else
+    @ObservedObject var modelContainerManager: ModelContainerManager
+    let downloadedFilesManager: DownloadedFilesManager
+    @Binding var settingsRequest: SettingsWindowRequest
+#endif
+
+    var body: some View {
+        if let container = modelContainerManager.preparedContainer {
+            AppLaunchContainerView {
+                ContentView()
+                .coverHeroHarnessOverride()
+                .modelContainer(container)
+                .environment(downloadedFilesManager)
+                .accentColor(.accent)
+                .withDeviceStyle()
+                .hostsSettingsPresentation(
+                    modelContainer: container,
+                    settingsRequest: $settingsRequest
+                )
+
+                .onAppear {
+                    CrashBreadcrumbs.shared.record("root_view_on_appear")
+                    WatchSyncCoordinator.activate()
+                    let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
+                    Task {
+                        await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
+                            modelContainer: container
+                        )
+                        await CloudSyncProgressReferenceStore.publish(modelContainer: container)
+                        await PlayNextWidgetSync.refresh(using: container)
+                        WatchSyncCoordinator.refreshSoon()
+                    }
+                    Task {
+                        await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
+                    }
+                    Task {
+                        await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
+                            modelContainer: container
+                        )
+                    }
+                    Task {
+                        let actor = EpisodeActor(modelContainer: container)
+                        await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
+                    }
+#if canImport(UIKit)
+                    UIDevice.current.isBatteryMonitoringEnabled = true
+#endif
+                    Task {
+                        await RaulApp.runAutomaticTranscriptionSweep(reason: "launch")
+                    }
+                    Task { @MainActor in
+                        Player.shared.startRecoveryIfNeeded()
+                    }
+                    Task {
+                        let enabled = UserDefaults.standard.bool(forKey: SideloadingConfiguration.enabledKey)
+                        do {
+                            try await SideloadingCoordinator.shared.syncEnabledState(enabled)
+                        } catch {
+                            BasicLogger.shared.log("Failed to restore sideloading state: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                .task {
+                    try? await Task.sleep(for: .seconds(15))
+                    guard Task.isCancelled == false else { return }
+                    await modelContainerManager.runLaunchStoreMaintenance()
+                }
+
+#if canImport(UIKit)
+                .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification)) { _ in
+                    CrashBreadcrumbs.shared.record("battery_state_changed")
+                    Task {
+                        await RaulApp.runAutomaticTranscriptionSweep(reason: "power state changed")
+                    }
+                }
+#endif
+            }
+        } else {
+            ModelContainerLaunchView(
+                errorMessage: modelContainerManager.initializationError,
+                retry: {
+                    Task {
+                        await modelContainerManager.prepareContainer()
+                    }
+                }
+            )
+            .task {
+                await modelContainerManager.prepareContainer()
+            }
+        }
+    }
 }
 
 

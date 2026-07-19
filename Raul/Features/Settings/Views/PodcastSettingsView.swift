@@ -1572,8 +1572,10 @@ struct PodcastSettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            CreatedByView(gitURL: URL(string: "https://github.com/holgerkrupp/PodcastClient"))
-                .frame(maxWidth: .infinity)
+            ESADesignKit.CreatedByView(
+                gitURL: URL(string: "https://github.com/holgerkrupp/PodcastClient")
+            )
+            .frame(maxWidth: .infinity)
         }
     }
 
