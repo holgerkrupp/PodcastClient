@@ -459,9 +459,17 @@ final class WatchSyncStore: NSObject, ObservableObject {
         let payload = [WatchSyncTransport.commandMessageKey: data]
 
         if preferImmediateDelivery && session.isReachable {
-            session.sendMessage(payload, replyHandler: nil) { [weak self] error in
+            // @Sendable keeps this closure from inheriting the enclosing
+            // @MainActor isolation; WatchConnectivity calls it on its own queue.
+            // Capture only Sendable values and rebuild the payload on the hop.
+            session.sendMessage(payload, replyHandler: nil) { @Sendable [weak self] error in
+                let message = error.localizedDescription
                 Task { @MainActor in
-                    self?.enqueue(payload: payload, showErrors: showErrors, fallbackError: error)
+                    self?.enqueue(
+                        payload: [WatchSyncTransport.commandMessageKey: data],
+                        showErrors: showErrors,
+                        fallbackErrorMessage: message
+                    )
                 }
             }
             return
@@ -473,11 +481,11 @@ final class WatchSyncStore: NSObject, ObservableObject {
     private func enqueue(
         payload: [String: Any],
         showErrors: Bool,
-        fallbackError: Error? = nil
+        fallbackErrorMessage: String? = nil
     ) {
         guard let session, session.activationState == .activated else {
             if showErrors {
-                errorMessage = fallbackError?.localizedDescription
+                errorMessage = fallbackErrorMessage
                     ?? "Open the iPhone app once so the watch can finish pairing."
             }
             return
@@ -510,7 +518,9 @@ final class WatchSyncStore: NSObject, ObservableObject {
         do {
             try session.updateApplicationContext(payload)
             if session.isReachable {
-                session.sendMessage(payload, replyHandler: nil) { error in
+                // @Sendable keeps this closure from inheriting the enclosing
+                // @MainActor isolation; WatchConnectivity calls it on its own queue.
+                session.sendMessage(payload, replyHandler: nil) { @Sendable error in
                     #if DEBUG
                     print("Watch sync immediate storage report failed: \(error)")
                     #endif
