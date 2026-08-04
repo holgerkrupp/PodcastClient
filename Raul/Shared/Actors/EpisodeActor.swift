@@ -32,6 +32,16 @@ actor EpisodeActor {
 
     static func scheduleRemoteChapterFetch(episodeURL: URL, modelContainer: ModelContainer) {
         Task.detached(priority: .utility) {
+#if canImport(UIKit)
+            // Chapter extraction parses arbitrary HTML and may fault several
+            // related SwiftData records. Starting that work from a download
+            // callback while the app is backgrounded can keep scene updates
+            // alive long enough for the watchdog to terminate the process.
+            let isBackgrounded = await MainActor.run {
+                UIApplication.shared.applicationState != .active
+            }
+            guard isBackgrounded == false else { return }
+#endif
             await EpisodeActor(modelContainer: modelContainer)
                 .getRemoteChapters(episodeURL: episodeURL)
         }

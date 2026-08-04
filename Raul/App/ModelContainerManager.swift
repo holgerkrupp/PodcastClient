@@ -333,10 +333,9 @@ class ModelContainerManager: ObservableObject {
         await bootstrapFeedCacheIfNeeded(feedLimit: 15)
     }
 
-    /// Phase 2 bootstrap: copy a bounded number of not-yet-cached legacy feeds into
-    /// the local-only cache store. Runs off-main, is idempotent (presence of a
-    /// `CachedPodcast` is the checkpoint), and only fills the cache — nothing reads
-    /// it yet.
+    /// Copy or upgrade a bounded number of legacy feed projections in the
+    /// local-only cache store. Runs off-main and is idempotent; the per-feed cache
+    /// schema version is the checkpoint. Nothing reads the cache directly yet.
     func bootstrapFeedCacheIfNeeded(feedLimit: Int) async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               StoreDevelopmentConfiguration.splitStoresEnabled else { return }
@@ -1189,7 +1188,12 @@ class ModelContainerManager: ObservableObject {
             CachedFeedExtensionElement.self,
             AppliedAIContentRevision.self,
             CachedPodcast.self,
-            CachedEpisode.self
+            CachedEpisode.self,
+            CachedChapter.self,
+            CachedTranscriptLine.self,
+            CachedTranscriptionRecord.self,
+            CachedDownloadRecord.self,
+            FeedAlias.self
         ])
         let configuration: ModelConfiguration
 

@@ -1,12 +1,10 @@
 // TEMPORARY visual-debug harness for the ESADesignKit coverHero. Rendered only
 // when the app is launched with `-coverHeroHarness` (optionally `-harnessCase N`).
 // Delete after verification.
-#if DEBUG
 import SwiftUI
+#if DEBUG && canImport(UIKit)
 import ESADesignKit
-#if canImport(UIKit)
 import UIKit
-#endif
 
 private func makeSquareCoverData() -> Data {
     let size = CGSize(width: 400, height: 400)
@@ -126,6 +124,12 @@ struct CoverHeroHarness: View {
                     .padding()
             }
         }
+    }
+}
+#else
+extension View {
+    func coverHeroHarnessOverride() -> some View {
+        self
     }
 }
 #endif

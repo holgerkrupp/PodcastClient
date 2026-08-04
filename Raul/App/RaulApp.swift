@@ -131,6 +131,10 @@ struct RaulApp: App {
     @State private var deferredForegroundFeedRefreshTask: Task<Void, Never>?
     @State private var cloudImportReconciliationTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
+#if os(macOS)
+    @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
+    private var isMacMenuBarPlayerEnabled = true
+#endif
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 #endif
@@ -317,7 +321,7 @@ struct RaulApp: App {
         }
         .defaultSize(width: 760, height: 820)
 
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $isMacMenuBarPlayerEnabled) {
             if let container = modelContainerManager.preparedContainer {
                 MacMenuBarPlayerView()
                     .modelContainer(container)

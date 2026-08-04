@@ -7,6 +7,10 @@ enum AppWindowID {
 }
 
 #if os(macOS) || targetEnvironment(macCatalyst)
+enum MacMenuBarPlayerPreferenceKeys {
+    static let isEnabled = "MacMenuBarPlayer.isEnabled"
+}
+
 struct MacPlayerWindowContent: View {
     var body: some View {
         NavigationStack {
@@ -118,6 +122,8 @@ private extension CGImage {
 
 struct MacMenuBarPlayerView: View {
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
+    private var isMenuBarPlayerEnabled = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -132,6 +138,14 @@ struct MacMenuBarPlayerView: View {
                 } label: {
                     Label("Open Player", systemImage: "rectangle.on.rectangle")
                 }
+
+                Spacer()
+
+                MacMenuBarActionsMenu(
+                    hideMenuBarPlayer: {
+                        isMenuBarPlayerEnabled = false
+                    }
+                )
 
                 Spacer()
 
@@ -152,6 +166,90 @@ struct MacMenuBarPlayerView: View {
         }
         .frame(width: 420, height: 620)
         .fixedSize(horizontal: true, vertical: true)
+    }
+}
+
+private struct MacMenuBarActionsMenu: View {
+    @Environment(\.openWindow) private var openWindow
+    @Bindable private var player = Player.shared
+
+    let hideMenuBarPlayer: () -> Void
+
+    private let playbackSpeeds: [Float] = [
+        0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0
+    ]
+
+    var body: some View {
+        Menu {
+            Button("Add Bookmark", systemImage: "bookmark") {
+                player.createBookmark()
+            }
+            .disabled(player.currentEpisode == nil)
+
+            Divider()
+
+            Button("Restart Current Chapter", systemImage: "backward.end") {
+                Task {
+                    await player.skipToChapterStart()
+                }
+            }
+            .disabled(player.currentChapter == nil)
+
+            Button("Previous Chapter", systemImage: "backward.end.fill") {
+                Task {
+                    await player.skipToPreviousChapter()
+                }
+            }
+            .disabled(hasChapters == false)
+
+            Button("Next Chapter", systemImage: "forward.end.fill") {
+                Task {
+                    await player.skipToNextChapter()
+                }
+            }
+            .disabled(hasChapters == false)
+
+            Menu("Playback Speed", systemImage: "speedometer") {
+                ForEach(playbackSpeeds, id: \.self) { speed in
+                    Button {
+                        player.playbackRate = speed
+                    } label: {
+                        if isSelected(speed) {
+                            Label(speedLabel(speed), systemImage: "checkmark")
+                        } else {
+                            Text(speedLabel(speed))
+                        }
+                    }
+                }
+            }
+            .disabled(player.currentEpisode == nil)
+
+            Divider()
+
+            Button("Settings…", systemImage: "gearshape") {
+                openWindow(id: SettingsWindowRequest.sceneID)
+            }
+
+            Button("Hide Menu Bar Player", systemImage: "menubar.dock.rectangle") {
+                hideMenuBarPlayer()
+            }
+        } label: {
+            Label("Actions", systemImage: "ellipsis.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .help("More playback actions")
+    }
+
+    private var hasChapters: Bool {
+        player.chapters?.isEmpty == false
+    }
+
+    private func isSelected(_ speed: Float) -> Bool {
+        abs(player.playbackRate - speed) < 0.01
+    }
+
+    private func speedLabel(_ speed: Float) -> String {
+        speed.formatted(.number.precision(.fractionLength(0...2))) + "×"
     }
 }
 

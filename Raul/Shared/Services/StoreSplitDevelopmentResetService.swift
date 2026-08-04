@@ -94,6 +94,34 @@ actor StoreSplitDevelopmentResetService {
             AppliedAIContentRevision.self,
             from: cacheContext
         )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedChapter.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedTranscriptLine.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedTranscriptionRecord.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedDownloadRecord.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            FeedAlias.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedEpisode.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedPodcast.self,
+            from: cacheContext
+        )
 
         if userStateContext.hasChanges {
             try userStateContext.save()

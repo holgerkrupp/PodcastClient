@@ -176,14 +176,21 @@ final class PlayerEngine {
         activateSession()
         avPlayer.play()
     }
-    
-    func setRate(_ newRate: Float) async {
-        if newRate > 0 {
-            activateSession()
-            avPlayer.playImmediately(atRate: newRate)
-        } else {
+
+    /// Starts playback synchronously so hardware and CarPlay play commands are not
+    /// delayed behind unrelated work queued on the main actor.
+    func resume(atRate rate: Float) {
+        guard rate > 0 else {
             avPlayer.pause()
+            return
         }
+
+        activateSession()
+        avPlayer.playImmediately(atRate: rate)
+    }
+
+    func setRate(_ newRate: Float) async {
+        resume(atRate: newRate)
     }
 
     func pause() {

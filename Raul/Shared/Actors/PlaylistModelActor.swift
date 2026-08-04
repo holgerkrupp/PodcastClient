@@ -125,6 +125,24 @@ actor PlaylistModelActor {
         return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
     }
 
+    /// Fetch entries in storage order instead of sorting the relationship
+    /// collection in memory. SwiftData can invalidate a relationship object
+    /// while another context is updating the playlist; reading `order` from
+    /// that invalidated object traps inside the generated property getter.
+    private func fetchOrderedEntries() throws -> [PlaylistEntry] {
+        let predicate = #Predicate<PlaylistEntry> { entry in
+            entry.playlist?.id == playlistID
+        }
+        let descriptor = FetchDescriptor<PlaylistEntry>(
+            predicate: predicate,
+            sortBy: [
+                SortDescriptor(\PlaylistEntry.order, order: .forward),
+                SortDescriptor(\PlaylistEntry.dateAdded, order: .forward)
+            ]
+        )
+        return try modelContext.fetch(descriptor)
+    }
+
     // MARK: - Public API (safe)
 
     /// Re-fetches and returns the up-to-date playlist. Useful if callers want to verify presence.
@@ -147,7 +165,7 @@ actor PlaylistModelActor {
             return SmartPlaylistEngine.episodes(from: episodes, for: playlist)
         }
 
-        return playlist.ordered.compactMap { $0.episode }
+        return try fetchOrderedEntries().compactMap { $0.episode }
     }
 
     func orderedEpisodes() throws -> [Episode] {
@@ -285,7 +303,7 @@ actor PlaylistModelActor {
             let ordered = try orderedEpisodes(for: playlist)
             episodes = limit.map { Array(ordered.prefix($0)) } ?? ordered
         } else {
-            let orderedEntries = playlist.ordered
+            let orderedEntries = try fetchOrderedEntries()
             let limitedEntries = limit.map { Array(orderedEntries.prefix($0)) } ?? orderedEntries
             episodes = limitedEntries.compactMap { $0.episode }
         }
@@ -317,7 +335,7 @@ actor PlaylistModelActor {
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
 
-        var sortedEntries = playlist.ordered
+        var sortedEntries = try fetchOrderedEntries()
         let reusableEntry = detachExistingEntries(
             for: episodeURL,
             in: playlist,
@@ -372,7 +390,7 @@ actor PlaylistModelActor {
         guard let episode = matchingEpisodes.first else { return }
 
         // Create a working copy of the ordered entries
-        var sortedEntries = playlist.ordered
+        var sortedEntries = try fetchOrderedEntries()
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
         let reusableEntry = detachExistingEntries(
@@ -432,7 +450,7 @@ actor PlaylistModelActor {
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
 
-        var sortedEntries = playlist.ordered
+        var sortedEntries = try fetchOrderedEntries()
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
         let reusableEntry = detachExistingEntries(
@@ -538,12 +556,16 @@ actor PlaylistModelActor {
 
     /// Reorders by reindexing .ordered (sorted view) to contiguous 0...n and saves.
     func normalizeOrder()  {
-        guard let playlist = try? fetchPlaylist() else { return }
-        guard playlist.isSmartPlaylist == false else { return }
-        for (i, entry) in playlist.ordered.enumerated() {
-            entry.order = i
+        do{
+            guard let playlist = try? fetchPlaylist() else { return }
+            guard playlist.isSmartPlaylist == false else { return }
+            for (i, entry) in try fetchOrderedEntries().enumerated() {
+                entry.order = i
+            }
+            modelContext.saveIfNeeded()
+        }catch{
+            
         }
-        modelContext.saveIfNeeded()
     }
 
     /// Move an entry by source/destination indices as seen in sorted order.
@@ -605,7 +627,7 @@ actor PlaylistModelActor {
                 predicate: #Predicate<Playlist> { $0.id == playlistID }
             )
             if let playlist = try modelContext.fetch(playlistDescriptor).first, playlist.isSmartPlaylist == false {
-                for (index, entry) in playlist.ordered.enumerated() {
+                for (index, entry) in try fetchOrderedEntries().enumerated() {
                     entry.order = index
                 }
             }

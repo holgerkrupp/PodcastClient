@@ -1562,26 +1562,32 @@ class Player {
     }
 
     private func transitionToPlaying(updateEngineRate: Bool, preparePlaybackSource: Bool) {
-        loadSkipDurations()
-        cacheCurrentPlaybackState()
-        startPlaybackUpdates()
-        initRemoteCommandCenter()
-        isPlaying = true
-        updateNowPlayingInfo()
-        WatchSyncCoordinator.refreshSoon(force: true)
-
         let desiredRate = playbackRate
         let desiredEngineRate = silenceGapReductionActive
             ? AudioSilenceGapDetector.silenceReducedRate(for: desiredRate, level: silenceGapReductionLevel)
             : desiredRate
+
+        // Start audio before caching progress or scheduling persistence/sync work.
+        // In particular, MPRemoteCommandCenter invokes this path while the app is
+        // backgrounded, where a queued main-actor task can otherwise be delayed
+        // long enough to make AirPods and CarPlay appear unresponsive.
+        if updateEngineRate {
+            engine.resume(atRate: desiredEngineRate)
+        }
+
+        isPlaying = true
+        updateNowPlayingInfo()
+        loadSkipDurations()
+        startPlaybackUpdates()
+        initRemoteCommandCenter()
+        WatchSyncCoordinator.refreshSoon(force: true)
+
         let position = playPosition
         let currentEpisodeURL = currentEpisode?.url
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         Task {
-            if updateEngineRate, await engine.getRate() != desiredEngineRate {
-                await engine.setRate(desiredEngineRate)
-            }
+            cacheCurrentPlaybackState()
 
             if preparePlaybackSource {
                 await switchCurrentEpisodeToDownloadedCopyIfNeeded()
@@ -1653,8 +1659,8 @@ class Player {
     }
 
     private func playPreparedEpisode() async {
+        engine.resume(atRate: playbackRate)
         transitionToPlaying(updateEngineRate: false, preparePlaybackSource: true)
-        await engine.setRate(playbackRate)
     }
     
     

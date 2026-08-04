@@ -1701,16 +1701,16 @@ struct PodcastReleasePredictor {
 
         do {
             let dates = try context.fetch(descriptor).compactMap(\.publishDate)
-            if dates.isEmpty == false || allowRelationshipFallback == false {
-                return dates
-            }
+            // Never fall back to `podcast.episodes` from a UI-accessible
+            // model context. That relationship can fault thousands of
+            // episodes and their transformable fields synchronously on the
+            // main actor, which is enough to trip the scene watchdog. An
+            // empty bounded query simply means there is not enough evidence
+            // for an abandonment assessment yet.
+            return dates
         } catch {
-            if allowRelationshipFallback == false {
-                return []
-            }
+            return []
         }
-
-        return relationshipPublishDates(for: podcast, before: cutoff, limit: limit)
     }
 
     private static func relationshipPublishDates(

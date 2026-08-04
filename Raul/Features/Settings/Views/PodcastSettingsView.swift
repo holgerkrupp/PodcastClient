@@ -96,6 +96,10 @@ struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
+#if os(macOS)
+    @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
+    private var isMacMenuBarPlayerEnabled = true
+#endif
 
     let podcastID: PersistentIdentifier?
     let embedInNavigationStack: Bool
@@ -633,7 +637,16 @@ struct PodcastSettingsView: View {
         }
 #elseif os(macOS)
         return Section("Menu Bar Player") {
-            Text("The menu bar shows the current episode cover and playback state. Click it to open compact playback controls and the selected playlist.")
+            Toggle(
+                isOn: $isMacMenuBarPlayerEnabled
+            ) {
+                SettingsControlLabel(
+                    title: "Show menu bar player",
+                    detail: "Keep playback controls and the selected playlist available from the macOS menu bar."
+                )
+            }
+
+            Text("The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

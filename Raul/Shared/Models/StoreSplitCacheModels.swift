@@ -125,6 +125,12 @@ final class CachedPodcast: Identifiable {
     var alternativeFeeds: [PodcastAlternativeFeed] = []
     var optionalTags: PodcastNamespaceOptionalTags?
 
+    /// Version of the cache projection that has been fully written for this
+    /// feed. Existing Phase 2 rows default to 1, which lets the Phase 3
+    /// bootstrap revisit them once to add chapters, transcripts and download
+    /// records without repeatedly scanning feeds that legitimately have none.
+    var cacheSchemaVersion: Int = 1
+
     // Device-local, rebuildable feed-refresh diagnostics.
     var lastRefresh: Date?
     var feedUpdated: Bool?
@@ -264,6 +270,218 @@ final class CachedEpisode: Identifiable {
         self.social = social
         self.people = people
         self.optionalTags = optionalTags
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Cache-local chapter data. Bookmark markers are intentionally excluded: they
+/// are user-owned and live in `BookmarkSync` instead.
+@Model
+final class CachedChapter: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var sourceUUID: String?
+    var title: String = ""
+    var link: URL?
+    var imageURL: URL?
+    var imageData: Data?
+    var start: Double?
+    var endTime: Double?
+    var duration: Double?
+    var creationTime: Date?
+    var progress: Double?
+    var typeRawValue: String = MarkerType.unknown.rawValue
+    var shouldPlay: Bool = true
+    var ordinal: Int = 0
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        feedURL: String,
+        episodeID: String,
+        sourceUUID: String? = nil,
+        title: String = "",
+        link: URL? = nil,
+        imageURL: URL? = nil,
+        imageData: Data? = nil,
+        start: Double? = nil,
+        endTime: Double? = nil,
+        duration: Double? = nil,
+        creationTime: Date? = nil,
+        progress: Double? = nil,
+        typeRawValue: String = MarkerType.unknown.rawValue,
+        shouldPlay: Bool = true,
+        ordinal: Int = 0,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.episodeID = episodeID
+        self.sourceUUID = sourceUUID
+        self.title = title
+        self.link = link
+        self.imageURL = imageURL
+        self.imageData = imageData
+        self.start = start
+        self.endTime = endTime
+        self.duration = duration
+        self.creationTime = creationTime
+        self.progress = progress
+        self.typeRawValue = typeRawValue
+        self.shouldPlay = shouldPlay
+        self.ordinal = ordinal
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Publisher or locally generated transcript text kept out of CloudKit. Synced
+/// AI transcript revisions are materialized into this cache only after their
+/// manifest and chunks have been validated.
+@Model
+final class CachedTranscriptLine: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var sourceUUID: String?
+    var speaker: String?
+    var text: String = ""
+    var startTime: Double = 0
+    var endTime: Double?
+    var ordinal: Int = 0
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        feedURL: String,
+        episodeID: String,
+        sourceUUID: String? = nil,
+        speaker: String? = nil,
+        text: String = "",
+        startTime: Double = 0,
+        endTime: Double? = nil,
+        ordinal: Int = 0,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.episodeID = episodeID
+        self.sourceUUID = sourceUUID
+        self.speaker = speaker
+        self.text = text
+        self.startTime = startTime
+        self.endTime = endTime
+        self.ordinal = ordinal
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Device-local transcription job history. This is diagnostics/history rather
+/// than transcript content and never belongs in the synchronized store.
+@Model
+final class CachedTranscriptionRecord: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var episodeURL: URL?
+    var episodeTitle: String = ""
+    var podcastTitle: String?
+    var localeIdentifier: String = ""
+    var startedAt: Date = Date.distantPast
+    var finishedAt: Date = Date.distantPast
+    var audioDuration: Double = 0
+    var transcriptionDuration: Double = 0
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        feedURL: String,
+        episodeID: String,
+        episodeURL: URL? = nil,
+        episodeTitle: String = "",
+        podcastTitle: String? = nil,
+        localeIdentifier: String = "",
+        startedAt: Date = .distantPast,
+        finishedAt: Date = .distantPast,
+        audioDuration: Double = 0,
+        transcriptionDuration: Double = 0,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.episodeID = episodeID
+        self.episodeURL = episodeURL
+        self.episodeTitle = episodeTitle
+        self.podcastTitle = podcastTitle
+        self.localeIdentifier = localeIdentifier
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.audioDuration = audioDuration
+        self.transcriptionDuration = transcriptionDuration
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Cache-local index of the expected audio file and its current availability.
+/// The audio itself remains in the caches directory.
+@Model
+final class CachedDownloadRecord: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var remoteURL: URL?
+    var localFileURL: URL?
+    var isAvailableLocally: Bool = false
+    var fileSize: Int64?
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        feedURL: String,
+        episodeID: String,
+        remoteURL: URL? = nil,
+        localFileURL: URL? = nil,
+        isAvailableLocally: Bool = false,
+        fileSize: Int64? = nil,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.episodeID = episodeID
+        self.remoteURL = remoteURL
+        self.localFileURL = localFileURL
+        self.isAvailableLocally = isAvailableLocally
+        self.fileSize = fileSize
+        self.updatedAt = updatedAt
+    }
+}
+
+enum FeedAliasReason: String, Codable, Sendable {
+    case permanentRedirect
+    case explicitSwitch
+}
+
+/// Local mapping between an obsolete feed key and the accepted replacement.
+/// User-state records keep their original stable key during the transition;
+/// repositories resolve aliases when composing cache and sync snapshots.
+@Model
+final class FeedAlias: Identifiable {
+    var id: String = ""
+    var oldFeedURL: String = ""
+    var newFeedURL: String = ""
+    var reasonRawValue: String = FeedAliasReason.permanentRedirect.rawValue
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        oldFeedURL: String,
+        newFeedURL: String,
+        reason: FeedAliasReason,
+        updatedAt: Date = .now
+    ) {
+        self.id = StableIdentityKey.make(oldFeedURL)
+        self.oldFeedURL = oldFeedURL
+        self.newFeedURL = newFeedURL
+        self.reasonRawValue = reason.rawValue
         self.updatedAt = updatedAt
     }
 }

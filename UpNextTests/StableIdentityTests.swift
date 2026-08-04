@@ -495,6 +495,12 @@ final class StableIdentityTests: XCTestCase {
         cacheContainer.mainContext.insert(
             AppliedAIContentRevision(episodeIdentityKey: "episode")
         )
+        cacheContainer.mainContext.insert(
+            CachedPodcast(
+                id: "https://example.com/feed.xml",
+                feedURL: "https://example.com/feed.xml"
+            )
+        )
         try legacyContainer.mainContext.save()
         try userStateContainer.mainContext.save()
         try cacheContainer.mainContext.save()
@@ -505,7 +511,7 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.userStateRecordsDeleted, 2)
-        XCTAssertEqual(result.cacheRecordsDeleted, 2)
+        XCTAssertEqual(result.cacheRecordsDeleted, 3)
         let legacyVerification = ModelContext(legacyContainer)
         let userStateVerification = ModelContext(userStateContainer)
         let cacheVerification = ModelContext(cacheContainer)
@@ -531,6 +537,10 @@ final class StableIdentityTests: XCTestCase {
             try cacheVerification.fetchCount(
                 FetchDescriptor<AppliedAIContentRevision>()
             ),
+            0
+        )
+        XCTAssertEqual(
+            try cacheVerification.fetchCount(FetchDescriptor<CachedPodcast>()),
             0
         )
     }

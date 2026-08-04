@@ -67,6 +67,10 @@ This app is being migrated from one CloudKit-backed SwiftData store to a split-s
 2. Stage 2
    - Switch app reads to the split stores.
    - Keep legacy fallback reads only as a safety net.
+   - In progress: the Phase 3 read-cutover prerequisites now cache chapters,
+     transcripts, local download references, and feed aliases behind a
+     repeatable versioned backfill. Screen reads still remain on legacy until
+     the repository layer is ready.
 3. Stage 3
    - Remove legacy fallbacks after the rollout is stable.
    - Consider old-store cleanup only after a later release.

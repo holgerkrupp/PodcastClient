@@ -14,6 +14,11 @@ extension View {
             .tabBarMinimizeBehavior(.automatic)
             .tabViewBottomAccessory {
                 PlayerTabBarView()
+                    // The iPad regular-width accessory can propose the full
+                    // detail height. Keep the mini player intrinsically compact
+                    // instead of allowing its progress background to fill it.
+                    .frame(height: 48)
+                    .clipped()
             }
 #else
         return VStack(spacing: 0) {
@@ -105,6 +110,8 @@ struct PlayerTabBarView: View {
             .onTapGesture {
                 openPlayer()
             }
+            .frame(height: 48)
+            .clipped()
         }
     }
 }

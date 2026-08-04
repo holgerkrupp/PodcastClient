@@ -150,6 +150,7 @@ actor PodcastModelActor {
     ) async throws {
         guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
         let metaData = ensureMetadata(for: podcast)
+        let previousFeedURL = podcast.feed
         let alternativeFeedURL: URL? = alternativeFeed.url
         let existingDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.feed == alternativeFeedURL }
@@ -164,6 +165,14 @@ actor PodcastModelActor {
         metaData.feedUpdated = nil
         metaData.feedUpdateCheckDate = nil
         modelContext.saveIfNeeded()
+
+        if let previousFeedURL {
+            await recordFeedAlias(
+                from: previousFeedURL,
+                to: alternativeFeed.url,
+                reason: .explicitSwitch
+            )
+        }
 
         _ = try await updatePodcast(alternativeFeed.url, force: true, silent: true, progress: progress)
         await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
@@ -376,6 +385,13 @@ actor PodcastModelActor {
         if let newURL = status?.newURL, newURL != feedURL, status?.statusCode == 301 {
             freshPodcast.feed = newURL
             modelContext.saveIfNeeded()
+            if let feedURL {
+                await recordFeedAlias(
+                    from: feedURL,
+                    to: newURL,
+                    reason: .permanentRedirect
+                )
+            }
             await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         }
         
@@ -428,6 +444,11 @@ actor PodcastModelActor {
         if let newURL = reachable?.finalURL, newURL != feedURL{
             podcast.feed = newURL
             modelContext.saveIfNeeded()
+            await recordFeedAlias(
+                from: feedURL,
+                to: newURL,
+                reason: .permanentRedirect
+            )
             await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         }
     }
@@ -1018,9 +1039,9 @@ actor PodcastModelActor {
         return newEpisodeCount
     }
 
-    /// Phase 2 dual-write: mirror this feed's feed-derivable data into the
-    /// local-only cache store after it has been written to legacy. Additive and
-    /// gated by the rollout; nothing reads the cache yet.
+    /// Mirror this feed's feed-derivable data into the local-only cache store
+    /// after it has been written to legacy. Phase 3 extends the projection with
+    /// chapters, transcripts and device-local download metadata.
     private func updateFeedCache(feedURL: URL) async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
@@ -1034,6 +1055,28 @@ actor PodcastModelActor {
         StoreSplitFeedCacheWriter.upsertFeed(
             feedURL: feedURL,
             legacyContainer: modelContainer,
+            cacheContainer: cacheContainer
+        )
+    }
+
+    private func recordFeedAlias(
+        from oldURL: URL,
+        to newURL: URL,
+        reason: FeedAliasReason
+    ) async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            return
+        }
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let cacheContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedCacheContainer
+        }) else { return }
+
+        StoreSplitFeedCacheWriter.upsertFeedAlias(
+            from: oldURL,
+            to: newURL,
+            reason: reason,
             cacheContainer: cacheContainer
         )
     }
@@ -1057,6 +1100,11 @@ actor PodcastModelActor {
         case 410:
             if let newURL = status?.newURL{
                 feedURL = newURL
+                await recordFeedAlias(
+                    from: url,
+                    to: newURL,
+                    reason: .permanentRedirect
+                )
             }else{
                throw SubscriptionManager.SubscribeError.loadfeed
             }

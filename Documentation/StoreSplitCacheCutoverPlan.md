@@ -47,6 +47,11 @@ Key facts that shape everything below:
 - **Split-first classification.** `ModelContainerManager.classifyStoreSplitRollout`
   now defaults to reading the split store, falling back to legacy only while the
   split store is empty/partial and legacy has data.
+- **Phase 3.0 started — supplemental cache schema.** Cache-local chapter,
+  transcript-line, transcription-history, download-index, and feed-alias models
+  are registered. The feed writer projects and prunes the episode-owned rows,
+  accepted redirects/switches record aliases, and a per-feed schema version
+  revisits existing Phase 2 cache rows exactly once. No UI read has cut over yet.
 
 ## Phase 3 — Read cutover (the large one)
 
@@ -59,6 +64,11 @@ Scope reality: ~17 files use `@Query` on `Podcast`/`Episode`, ~59 files referenc
 
 ### 3.0 Additional cache models (prerequisite)
 
+Status: **in progress.** The models, versioned backfill, feed-refresh dual-write,
+pruning, and feed-alias capture are implemented. Remaining work before 3.1 is to
+materialize incoming validated AI content directly into these cache models and
+verify the persistent-store lightweight migration on upgrade test devices.
+
 Add the remaining local-only models before cutting screens that need them:
 
 - `CachedChapter` (from `Marker`, feed/extracted/AI chapters — keep AI-vs-publisher
@@ -67,9 +77,9 @@ Add the remaining local-only models before cutting screens that need them:
 - `CachedDownloadRecord` (download availability / file references).
 - `FeedAlias` (permanent-redirect / feed-switch mapping).
 
-Register them in `makeCacheContainer`. Extend `StoreSplitFeedCacheWriter.upsert`
-to populate them (chapters/transcripts are large — keep them cache-local and never
-in any synced schema). Add a matching migration/bootstrap slice.
+They are registered in `makeCacheContainer`, and `StoreSplitFeedCacheWriter`
+populates them (chapters/transcripts remain cache-local and never enter a synced
+schema). The cache projection version supplies the matching bounded bootstrap.
 
 ### 3.1 Repository layer
 
