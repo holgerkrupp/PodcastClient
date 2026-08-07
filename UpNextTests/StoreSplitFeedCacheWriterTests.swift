@@ -116,6 +116,33 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testExpiredDeadlineDoesNotCommitPartialCacheProjection() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/deadline",
+            episodeGUIDs: ["e1", "e2"]
+        )
+
+        XCTAssertFalse(
+            StoreSplitFeedCacheWriter.upsertFeed(
+                feedURL: try XCTUnwrap(podcast.feed),
+                legacyContainer: legacy,
+                cacheContainer: cache,
+                deadline: .distantPast
+            )
+        )
+
+        let verification = ModelContext(cache)
+        XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedPodcast>()), 0)
+        XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedEpisode>()), 0)
+        XCTAssertEqual(
+            try verification.fetchCount(FetchDescriptor<CachedDownloadRecord>()),
+            0
+        )
+    }
+
+    @MainActor
     func testUpsertCopiesPhaseThreeSupplementalCacheData() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(

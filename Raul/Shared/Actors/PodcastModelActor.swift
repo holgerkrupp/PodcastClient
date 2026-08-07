@@ -1033,7 +1033,7 @@ actor PodcastModelActor {
         if let podcastFeed = podcast.feed {
             // The cache writer reads a fresh legacy context, so flush first.
             modelContext.saveIfNeeded()
-            await updateFeedCache(feedURL: podcastFeed)
+            await updateFeedCache(feedURL: podcastFeed, deadline: deadline)
         }
 
         return newEpisodeCount
@@ -1042,21 +1042,33 @@ actor PodcastModelActor {
     /// Mirror this feed's feed-derivable data into the local-only cache store
     /// after it has been written to legacy. Phase 3 extends the projection with
     /// chapters, transcripts and device-local download metadata.
-    private func updateFeedCache(feedURL: URL) async {
+    private func updateFeedCache(feedURL: URL, deadline: Date?) async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             return
         }
+        guard deadline.map({ Date() < $0 }) ?? true else { return }
         await ModelContainerManager.shared.prepareSplitStores()
+        guard Task.isCancelled == false,
+              deadline.map({ Date() < $0 }) ?? true else {
+            return
+        }
         guard let cacheContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedCacheContainer
         }) else { return }
 
-        StoreSplitFeedCacheWriter.upsertFeed(
+        let completed = StoreSplitFeedCacheWriter.upsertFeed(
             feedURL: feedURL,
             legacyContainer: modelContainer,
-            cacheContainer: cacheContainer
+            cacheContainer: cacheContainer,
+            deadline: deadline
         )
+        if completed == false {
+            CrashBreadcrumbs.shared.record(
+                "feed_cache_projection_deferred",
+                details: "reason=not_committed,feed=\(feedURL.absoluteString)"
+            )
+        }
     }
 
     private func recordFeedAlias(

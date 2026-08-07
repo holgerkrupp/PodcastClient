@@ -107,6 +107,8 @@ final class CachedFeedExtensionElement: Identifiable {
 /// scalar keys (`feedURL`) only — never a SwiftData relationship across stores.
 @Model
 final class CachedPodcast: Identifiable {
+    #Index<CachedPodcast>([\.id], [\.feedURL])
+
     /// Normalized feed-URL key — the stable feed identity shared across stores.
     var id: String = ""
     var feedURL: String = ""
@@ -188,6 +190,8 @@ final class CachedPodcast: Identifiable {
 /// state and bookmarks are kept out of here — they belong to `UserState.sqlite`.
 @Model
 final class CachedEpisode: Identifiable {
+    #Index<CachedEpisode>([\.feedURL])
+
     /// Stable episode identity (GUID/enclosure/link/hash precedence).
     var id: String = ""
     /// Owner feed key — scalar cross-store reference to subscription/user state.
@@ -278,6 +282,8 @@ final class CachedEpisode: Identifiable {
 /// are user-owned and live in `BookmarkSync` instead.
 @Model
 final class CachedChapter: Identifiable {
+    #Index<CachedChapter>([\.feedURL, \.episodeID])
+
     var id: String = ""
     var feedURL: String = ""
     var episodeID: String = ""
@@ -340,6 +346,8 @@ final class CachedChapter: Identifiable {
 /// manifest and chunks have been validated.
 @Model
 final class CachedTranscriptLine: Identifiable {
+    #Index<CachedTranscriptLine>([\.feedURL, \.episodeID])
+
     var id: String = ""
     var feedURL: String = ""
     var episodeID: String = ""
@@ -380,6 +388,8 @@ final class CachedTranscriptLine: Identifiable {
 /// than transcript content and never belongs in the synchronized store.
 @Model
 final class CachedTranscriptionRecord: Identifiable {
+    #Index<CachedTranscriptionRecord>([\.feedURL, \.episodeID])
+
     var id: String = ""
     var feedURL: String = ""
     var episodeID: String = ""
@@ -426,6 +436,8 @@ final class CachedTranscriptionRecord: Identifiable {
 /// The audio itself remains in the caches directory.
 @Model
 final class CachedDownloadRecord: Identifiable {
+    #Index<CachedDownloadRecord>([\.feedURL, \.episodeID])
+
     var id: String = ""
     var feedURL: String = ""
     var episodeID: String = ""

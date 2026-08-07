@@ -20,25 +20,39 @@ enum StoreSplitFeedCacheWriter {
 
     /// Upserts a single feed's cache rows from the legacy store. Call after a feed
     /// refresh/create has been written to the legacy container.
+    @discardableResult
     static func upsertFeed(
         feedURL: URL,
         legacyContainer: ModelContainer,
-        cacheContainer: ModelContainer
-    ) {
+        cacheContainer: ModelContainer,
+        deadline: Date? = nil
+    ) -> Bool {
+        guard shouldContinue(deadline: deadline) else { return false }
         let legacyContext = ModelContext(legacyContainer)
         var descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate { $0.feed == feedURL }
         )
         descriptor.fetchLimit = 1
-        guard let podcast = try? legacyContext.fetch(descriptor).first else { return }
+        guard let podcast = try? legacyContext.fetch(descriptor).first,
+              shouldContinue(deadline: deadline) else {
+            return false
+        }
 
         let cacheContext = ModelContext(cacheContainer)
-        upsert(
+        guard upsert(
             podcast: podcast,
             transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(in: legacyContext),
-            into: cacheContext
-        )
-        try? cacheContext.save()
+            into: cacheContext,
+            deadline: deadline
+        ) else {
+            return false
+        }
+        do {
+            try cacheContext.save()
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Bounded bootstrap: copies new feeds and upgrades older cache projections,
@@ -59,6 +73,7 @@ enum StoreSplitFeedCacheWriter {
         let transcriptionRecords = transcriptionRecordsByEpisodeURL(in: legacyContext)
         var processed = 0
         for podcast in podcasts {
+            guard shouldContinue(deadline: nil) else { break }
             guard processed < limit else { break }
             guard let feed = podcast.feed else { continue }
             let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
@@ -66,12 +81,19 @@ enum StoreSplitFeedCacheWriter {
                cached.cacheSchemaVersion >= currentCacheSchemaVersion {
                 continue
             }
-            upsert(
+            guard upsert(
                 podcast: podcast,
                 transcriptionRecordsByEpisodeURL: transcriptionRecords,
-                into: cacheContext
-            )
-            try? cacheContext.save()
+                into: cacheContext,
+                deadline: nil
+            ) else {
+                break
+            }
+            do {
+                try cacheContext.save()
+            } catch {
+                break
+            }
             processed += 1
         }
         return processed
@@ -118,9 +140,13 @@ enum StoreSplitFeedCacheWriter {
     private static func upsert(
         podcast: Podcast,
         transcriptionRecordsByEpisodeURL: [URL: [TranscriptionRecord]],
-        into cacheContext: ModelContext
-    ) {
-        guard let feed = podcast.feed else { return }
+        into cacheContext: ModelContext,
+        deadline: Date?
+    ) -> Bool {
+        guard let feed = podcast.feed,
+              shouldContinue(deadline: deadline) else {
+            return false
+        }
         let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
 
         let cached = fetchCachedPodcast(id: feedKey, in: cacheContext)
@@ -156,7 +182,14 @@ enum StoreSplitFeedCacheWriter {
         cached.lastFeedFailureMessage = meta?.lastFeedFailureMessage
         cached.updatedAt = .now
 
+        // CachedEpisode.feedURL is indexed, so this does not scan the complete
+        // cache store. Supplemental rows are fetched per episode below using
+        // their compound (feedURL, episodeID) indexes. Besides making each query
+        // bounded, that avoids materializing a feed's entire transcript in one
+        // synchronous fetch that cannot observe cancellation or a deadline.
         let existingEpisodes = fetchCachedEpisodes(feedKey: feedKey, in: cacheContext)
+        guard shouldContinue(deadline: deadline) else { return false }
+
         var existingByID = Dictionary(
             existingEpisodes.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -164,6 +197,7 @@ enum StoreSplitFeedCacheWriter {
         var seenIDs = Set<String>()
 
         for episode in podcast.episodes ?? [] {
+            guard shouldContinue(deadline: deadline) else { return false }
             let identity = episode.stableEpisodeIdentity
             let episodeID = identity.key
             seenIDs.insert(episodeID)
@@ -206,18 +240,33 @@ enum StoreSplitFeedCacheWriter {
                 episode.chapters ?? [],
                 feedKey: feedKey,
                 episodeID: episodeID,
+                existing: fetchCachedChapters(
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    in: cacheContext
+                ),
                 into: cacheContext
             )
             upsertTranscriptLines(
                 episode.transcriptLines ?? [],
                 feedKey: feedKey,
                 episodeID: episodeID,
+                existing: fetchCachedTranscriptLines(
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    in: cacheContext
+                ),
                 into: cacheContext
             )
             upsertDownloadRecord(
                 episode: episode,
                 feedKey: feedKey,
                 episodeID: episodeID,
+                existing: fetchCachedDownloadRecord(
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    in: cacheContext
+                ),
                 into: cacheContext
             )
             let transcriptionRecords = episode.url.flatMap {
@@ -227,6 +276,11 @@ enum StoreSplitFeedCacheWriter {
                 transcriptionRecords,
                 feedKey: feedKey,
                 episodeID: episodeID,
+                existing: fetchCachedTranscriptionRecords(
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    in: cacheContext
+                ),
                 into: cacheContext
             )
         }
@@ -234,25 +288,26 @@ enum StoreSplitFeedCacheWriter {
         // Prune cache episodes no longer present in the legacy feed so the cache
         // stays a faithful projection.
         for (episodeID, staleEpisode) in existingByID where seenIDs.contains(episodeID) == false {
+            deleteSupplementalRows(
+                feedKey: feedKey,
+                episodeID: episodeID,
+                in: cacheContext
+            )
             cacheContext.delete(staleEpisode)
+            guard shouldContinue(deadline: deadline) else { return false }
         }
-
-        pruneSupplementalRows(
-            feedKey: feedKey,
-            validEpisodeIDs: seenIDs,
-            in: cacheContext
-        )
         cached.cacheSchemaVersion = currentCacheSchemaVersion
+        return shouldContinue(deadline: deadline)
     }
 
     private static func upsertChapters(
         _ legacyChapters: [Marker],
         feedKey: String,
         episodeID: String,
+        existing: [CachedChapter],
         into context: ModelContext
     ) {
         let chapters = legacyChapters.filter { $0.type != .bookmark }
-        let existing = fetchCachedChapters(episodeID: episodeID, in: context)
         var existingByID = Dictionary(
             existing.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -307,9 +362,9 @@ enum StoreSplitFeedCacheWriter {
         _ legacyLines: [TranscriptLineAndTime],
         feedKey: String,
         episodeID: String,
+        existing: [CachedTranscriptLine],
         into context: ModelContext
     ) {
-        let existing = fetchCachedTranscriptLines(episodeID: episodeID, in: context)
         var existingByID = Dictionary(
             existing.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -351,13 +406,10 @@ enum StoreSplitFeedCacheWriter {
         episode: Episode,
         feedKey: String,
         episodeID: String,
+        existing: CachedDownloadRecord?,
         into context: ModelContext
     ) {
-        var descriptor = FetchDescriptor<CachedDownloadRecord>(
-            predicate: #Predicate { $0.id == episodeID }
-        )
-        descriptor.fetchLimit = 1
-        let record = (try? context.fetch(descriptor).first)
+        let record = existing
             ?? {
                 let created = CachedDownloadRecord(
                     id: episodeID,
@@ -393,9 +445,9 @@ enum StoreSplitFeedCacheWriter {
         _ legacyRecords: [TranscriptionRecord],
         feedKey: String,
         episodeID: String,
+        existing: [CachedTranscriptionRecord],
         into context: ModelContext
     ) {
-        let existing = fetchCachedTranscriptionRecords(episodeID: episodeID, in: context)
         var existingByID = Dictionary(
             existing.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -434,25 +486,37 @@ enum StoreSplitFeedCacheWriter {
         }
     }
 
-    private static func pruneSupplementalRows(
+    private static func deleteSupplementalRows(
         feedKey: String,
-        validEpisodeIDs: Set<String>,
+        episodeID: String,
         in context: ModelContext
     ) {
-        for chapter in fetchCachedChapters(feedKey: feedKey, in: context)
-            where validEpisodeIDs.contains(chapter.episodeID) == false {
+        for chapter in fetchCachedChapters(
+            feedKey: feedKey,
+            episodeID: episodeID,
+            in: context
+        ) {
             context.delete(chapter)
         }
-        for line in fetchCachedTranscriptLines(feedKey: feedKey, in: context)
-            where validEpisodeIDs.contains(line.episodeID) == false {
+        for line in fetchCachedTranscriptLines(
+            feedKey: feedKey,
+            episodeID: episodeID,
+            in: context
+        ) {
             context.delete(line)
         }
-        for record in fetchCachedTranscriptionRecords(feedKey: feedKey, in: context)
-            where validEpisodeIDs.contains(record.episodeID) == false {
+        for record in fetchCachedTranscriptionRecords(
+            feedKey: feedKey,
+            episodeID: episodeID,
+            in: context
+        ) {
             context.delete(record)
         }
-        for download in fetchCachedDownloadRecords(feedKey: feedKey, in: context)
-            where validEpisodeIDs.contains(download.episodeID) == false {
+        if let download = fetchCachedDownloadRecord(
+            feedKey: feedKey,
+            episodeID: episodeID,
+            in: context
+        ) {
             context.delete(download)
         }
     }
@@ -481,73 +545,56 @@ enum StoreSplitFeedCacheWriter {
     }
 
     private static func fetchCachedChapters(
-        episodeID: String,
-        in context: ModelContext
-    ) -> [CachedChapter] {
-        let descriptor = FetchDescriptor<CachedChapter>(
-            predicate: #Predicate { $0.episodeID == episodeID }
-        )
-        return (try? context.fetch(descriptor)) ?? []
-    }
-
-    private static func fetchCachedChapters(
         feedKey: String,
+        episodeID: String,
         in context: ModelContext
     ) -> [CachedChapter] {
         let descriptor = FetchDescriptor<CachedChapter>(
-            predicate: #Predicate { $0.feedURL == feedKey }
-        )
-        return (try? context.fetch(descriptor)) ?? []
-    }
-
-    private static func fetchCachedTranscriptLines(
-        episodeID: String,
-        in context: ModelContext
-    ) -> [CachedTranscriptLine] {
-        let descriptor = FetchDescriptor<CachedTranscriptLine>(
-            predicate: #Predicate { $0.episodeID == episodeID }
+            predicate: #Predicate {
+                $0.feedURL == feedKey && $0.episodeID == episodeID
+            }
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
     private static func fetchCachedTranscriptLines(
         feedKey: String,
+        episodeID: String,
         in context: ModelContext
     ) -> [CachedTranscriptLine] {
         let descriptor = FetchDescriptor<CachedTranscriptLine>(
-            predicate: #Predicate { $0.feedURL == feedKey }
+            predicate: #Predicate {
+                $0.feedURL == feedKey && $0.episodeID == episodeID
+            }
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
     private static func fetchCachedTranscriptionRecords(
+        feedKey: String,
         episodeID: String,
         in context: ModelContext
     ) -> [CachedTranscriptionRecord] {
         let descriptor = FetchDescriptor<CachedTranscriptionRecord>(
-            predicate: #Predicate { $0.episodeID == episodeID }
+            predicate: #Predicate {
+                $0.feedURL == feedKey && $0.episodeID == episodeID
+            }
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    private static func fetchCachedTranscriptionRecords(
+    private static func fetchCachedDownloadRecord(
         feedKey: String,
+        episodeID: String,
         in context: ModelContext
-    ) -> [CachedTranscriptionRecord] {
-        let descriptor = FetchDescriptor<CachedTranscriptionRecord>(
-            predicate: #Predicate { $0.feedURL == feedKey }
+    ) -> CachedDownloadRecord? {
+        var descriptor = FetchDescriptor<CachedDownloadRecord>(
+            predicate: #Predicate {
+                $0.feedURL == feedKey && $0.episodeID == episodeID
+            }
         )
-        return (try? context.fetch(descriptor)) ?? []
-    }
-
-    private static func fetchCachedDownloadRecords(
-        feedKey: String,
-        in context: ModelContext
-    ) -> [CachedDownloadRecord] {
-        let descriptor = FetchDescriptor<CachedDownloadRecord>(
-            predicate: #Predicate { $0.feedURL == feedKey }
-        )
-        return (try? context.fetch(descriptor)) ?? []
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 
     private static func transcriptionRecordsByEpisodeURL(
@@ -560,5 +607,14 @@ enum StoreSplitFeedCacheWriter {
             recordsByURL[episodeURL, default: []].append(record)
         }
         return recordsByURL
+    }
+
+    private static func shouldContinue(deadline: Date?) -> Bool {
+        let isCancelled = withUnsafeCurrentTask { task in
+            task?.isCancelled ?? false
+        }
+        guard isCancelled == false else { return false }
+        guard let deadline else { return true }
+        return Date() < deadline
     }
 }

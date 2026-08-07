@@ -1,9 +1,14 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import CoreImage
 
 struct AudioClipExportView: View {
     private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
+    /// Reusing one context prevents every preview frame from creating a new
+    /// Metal shader/cache pipeline. Intermediate caching is unnecessary because
+    /// each frame is immediately converted to a UIImage.
+    private static let previewCIContext = CIContext(options: [.cacheIntermediates: false])
 
     @Environment(\.dismiss) private var dismiss
     @State private var trimStart: Double = 0
@@ -27,6 +32,7 @@ struct AudioClipExportView: View {
     @State private var windowEnd: Double = 60
     @State private var isWaveformLoading = false
     @State private var waveformLoadTask: Task<Void, Never>?
+    @State private var previewUpdateTask: Task<Void, Never>?
     var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
@@ -88,11 +94,11 @@ struct AudioClipExportView: View {
                             width: previewWidth(for: geometry.size),
                             height: previewHeight(for: geometry.size)
                         )
-                        .onChange(of: coverImage) { updatePreviewImage() }
-                        .onChange(of: trimStart) { updatePreviewImage() }
-                        .onChange(of: trimEnd) { updatePreviewImage() }
-                        .onChange(of: videoSize) {  updatePreviewImage() }
-                        .onChange(of: playbackProgress) {  updatePreviewImage() }
+                        .onChange(of: coverImage) { schedulePreviewImageUpdate() }
+                        .onChange(of: trimStart) { schedulePreviewImageUpdate() }
+                        .onChange(of: trimEnd) { schedulePreviewImageUpdate() }
+                        .onChange(of: videoSize) { schedulePreviewImageUpdate() }
+                        .onChange(of: playbackProgress) { schedulePreviewImageUpdate() }
                         
                         
                         Text("Select the segment to share")
@@ -244,6 +250,7 @@ struct AudioClipExportView: View {
                 .onDisappear {
                     stopAudioPlayer()
                     waveformLoadTask?.cancel()
+                    previewUpdateTask?.cancel()
                 }
                 
                 
@@ -312,11 +319,24 @@ struct AudioClipExportView: View {
     
     private func pixelBufferToUIImage(_ buffer: CVPixelBuffer) -> UIImage? {
         let ciImage = CIImage(cvPixelBuffer: buffer)
-        let context = CIContext()
-        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+        if let cgImage = Self.previewCIContext.createCGImage(ciImage, from: ciImage.extent) {
             return UIImage(cgImage: cgImage)
         }
         return nil
+    }
+
+    /// Coalesce high-frequency trim and playback changes. Playback progress is
+    /// sampled every 50 ms, but rebuilding a 720x720 pixel buffer at that rate is
+    /// unnecessary for an editor preview and caused sustained file-backed Metal
+    /// writes. This caps preview rendering at roughly 6 frames per second.
+    private func schedulePreviewImageUpdate() {
+        guard previewUpdateTask == nil else { return }
+        previewUpdateTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(160))
+            guard Task.isCancelled == false else { return }
+            previewUpdateTask = nil
+            updatePreviewImage()
+        }
     }
     
     private func reloadWaveform(for window: ClosedRange<Double>) {
@@ -347,10 +367,12 @@ struct AudioClipExportView: View {
             previewImage = nil
             return
         }
+        let segmentDuration = max(trimEnd - trimStart, 0.001)
+        let normalizedProgress = min(max(playbackProgress / segmentDuration, 0), 1)
         if let buffer = AudioClipExporter.createPixelBuffer(
             from: coverImage,
             size: videoSize,
-            progress: playbackProgress / (trimEnd - trimStart),
+            progress: normalizedProgress,
             startTime: trimStart,
             endTime: trimEnd,
             playbackRate: exportPlaybackRate,
@@ -576,7 +598,7 @@ struct AudioClipExportView: View {
                 if videoPlayer?.rate ?? 0 > 0 {
                     videoPlayer?.rate = exportPlaybackRate
                 }
-                updatePreviewImage()
+                schedulePreviewImageUpdate()
             }
             .accessibilityValue(exportPlaybackRate.formattedPlaybackSpeed)
         }
