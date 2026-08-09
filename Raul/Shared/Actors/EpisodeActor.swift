@@ -1956,7 +1956,7 @@ actor EpisodeActor {
     }
 
     @discardableResult
-    private func finalizeTranscriptChapters(for episodeURL: URL, force: Bool = false) async -> Bool {
+    func finalizeTranscriptChapters(for episodeURL: URL, force: Bool = false) async -> Bool {
         let didGenerate = await extractTranscriptChapters(fileURL: episodeURL, force: force)
         await updateChapterDurations(episodeURL: episodeURL)
         await applyAutoSkipWords(episodeURL: episodeURL)
@@ -2166,7 +2166,6 @@ actor EpisodeActor {
         episode.transcriptLines = lines
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
-        await finalizeTranscriptChapters(for: episodeURL)
     }
 
     func transcriptLineCount() async -> Int {

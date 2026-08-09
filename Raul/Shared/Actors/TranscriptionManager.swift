@@ -155,9 +155,18 @@ actor TranscriptionManager {
                     )
                 }
 
-                // Decode inside EpisodeActor to produce model instances and save there
+                // Persist the transcript first. Chapter generation is optional enrichment
+                // and can involve several on-device language-model calls; keeping it out
+                // of this critical path makes the transcript available as soon as it is
+                // written instead of leaving the UI stuck at "Saving transcript…".
+                await MainActor.run {
+                    uiItem.setState(.saving, progress: 0.96, status: "Writing transcript…")
+                }
                 await episodeActor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
                 let finishedAt = Date()
+                await MainActor.run {
+                    uiItem.setState(.saving, progress: 0.98, status: "Saving transcription history…")
+                }
                 await episodeActor.saveTranscriptionRecord(
                     for: snapshot,
                     localeIdentifier: transcriber.language.identifier(.bcp47),
@@ -167,6 +176,12 @@ actor TranscriptionManager {
 
                 await MainActor.run {
                     uiItem.setState(.finished, progress: 1.0, status: "Finished")
+                }
+
+                // Generate chapters after the transcript has been committed. This keeps
+                // chapter enrichment from delaying the user's newly saved transcript.
+                Task(priority: .utility) {
+                    await episodeActor.finalizeTranscriptChapters(for: episodeURL)
                 }
                 await self.cleanUp(episodeURL: episodeURL)
             } catch is CancellationError {

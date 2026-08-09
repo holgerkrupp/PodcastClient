@@ -29,8 +29,10 @@ enum StoreSplitFeedCacheWriter {
     ) -> Bool {
         guard shouldContinue(deadline: deadline) else { return false }
         let legacyContext = ModelContext(legacyContainer)
+        
+        let optionalFeedURL: URL? = feedURL
         var descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate { $0.feed == feedURL }
+            predicate: #Predicate { $0.feed == optionalFeedURL }
         )
         descriptor.fetchLimit = 1
         guard let podcast = try? legacyContext.fetch(descriptor).first,
