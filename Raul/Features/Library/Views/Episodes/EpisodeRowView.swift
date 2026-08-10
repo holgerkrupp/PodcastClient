@@ -7,12 +7,12 @@
 import SwiftUI
 import SwiftData
 import Combine
-import ESADesignKit
 
 struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
@@ -141,7 +141,22 @@ struct EpisodeRowView: View {
                         .frame(minHeight: controlsHeight)
                 }
             }
-        .ESA_RowView(image: episode.imageURL ?? episode.podcast?.imageURL, minHeight: rowHeight)
+        .padding(8)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .background {
+            if colorSchemeContrast == .standard {
+                Rectangle().fill(.thinMaterial)
+            }
+        }
+        .background {
+            BlurredCoverImageView(
+                imageURL: episode.imageURL ?? episode.podcast?.imageURL,
+                radius: 8
+            )
+            .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
+            .clipped()
+            .accessibilityHidden(true)
+        }
         .overlay(alignment: .bottomLeading) {
             Rectangle()
                 .fill(Color.accent)
@@ -185,20 +200,31 @@ struct EpisodeRowView: View {
             }
                 
             }
-            .onAppear {
+            .task(id: episode.url) {
+                await Task.yield()
+                guard Task.isCancelled == false else { return }
                 refreshReferenceAvailability()
-            }
-            .onChange(of: episode.url) { _, _ in
-                refreshReferenceAvailability(invalidate: true)
             }
             .onChange(of: fileManager.downloadedFiles) { _, _ in
-                refreshReferenceAvailability()
+                Task { @MainActor in
+                    await Task.yield()
+                    guard Task.isCancelled == false else { return }
+                    refreshReferenceAvailability()
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange).receive(on: DispatchQueue.main)) { notification in
-                handleEpisodeReferencesDidChange(notification)
+                Task { @MainActor in
+                    await Task.yield()
+                    guard Task.isCancelled == false else { return }
+                    handleEpisodeReferencesDidChange(notification)
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
-                handleEpisodeDownloadFinished(notification)
+                Task { @MainActor in
+                    await Task.yield()
+                    guard Task.isCancelled == false else { return }
+                    handleEpisodeDownloadFinished(notification)
+                }
             }
 
     }

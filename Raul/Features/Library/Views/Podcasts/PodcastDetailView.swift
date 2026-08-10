@@ -438,7 +438,9 @@ struct PodcastDetailView: View {
                                              leading: 0,
                                              bottom: 0,
                                              trailing: 0))
-                        .onAppear {
+                        .task {
+                            await Task.yield()
+                            guard Task.isCancelled == false else { return }
                             loadMoreEpisodesIfNeeded(currentEpisode: episode)
                         }
                     }

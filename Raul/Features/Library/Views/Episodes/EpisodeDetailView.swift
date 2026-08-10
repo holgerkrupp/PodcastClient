@@ -21,7 +21,6 @@ struct EpisodeDetailView: View {
 
     @Bindable var episode: Episode
     @Bindable private var player = Player.shared
-    @StateObject private var backgroundImageLoader: ImageLoaderAndCache
     @State private var shareURL: IdentifiableURL?
 
     @State private var errorMessage: String? = nil
@@ -37,8 +36,6 @@ struct EpisodeDetailView: View {
     
     init(episode: Episode) {
         self._episode = Bindable(wrappedValue: episode)
-        let imageURL = episode.imageURL ?? episode.podcast?.imageURL
-        _backgroundImageLoader = StateObject(wrappedValue: ImageLoaderAndCache(imageURL: imageURL ?? URL(string: "about:blank")!))
     }
     
     var body: some View {
@@ -287,7 +284,6 @@ struct EpisodeDetailView: View {
             }
             .task(id: episode.url) {
                 SystemPressureGate.shared.noteUserInteraction()
-                episode.materializeSoundbitesIfNeeded()
                 liveTranscriptionItem = await currentTranscriptionItem()
             }
             .onChange(of: activeTranscriptionItem?.state) {

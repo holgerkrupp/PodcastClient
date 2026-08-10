@@ -8,14 +8,14 @@ final class DownloadViewModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var itemCancellable: AnyCancellable?
 
-    func observeDownload(for episode: Episode) {
+    func observeDownload(for episode: Episode) async {
         guard episode.source != .sideLoaded else { return }
-        Task {
-            if let url = episode.url, let found = await DownloadManager.shared.getItem(for: url) {
-                self.setItem(found)
-            }
+        guard let url = episode.url,
+              let found = await DownloadManager.shared.getItem(for: url),
+              Task.isCancelled == false else {
+            return
         }
-
+        setItem(found)
     }
 
     func startDownload(for episode: Episode) {

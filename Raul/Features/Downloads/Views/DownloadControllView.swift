@@ -25,18 +25,7 @@ struct DownloadControllView: View {
             } else if let item = viewModel.item {
                 DownloadProgressView(item: item, viewModel: viewModel)
                     .progressViewStyle(CircularProgressViewStyle())
-            } else if let url = episode.url, isDownloaded == false {
-                // Avoid calling actor-isolated API synchronously from the view body.
-                // Kick off a task to capture any ongoing download and bind it to the view model.
-                let _ = {
-                    let currentURL = url
-                    Task { @MainActor in
-                        if let item = await DownloadManager.shared.getItem(for: currentURL), item.isDownloading {
-                            viewModel.setItem(item)
-                        }
-                    }
-                }()
-
+            } else if episode.url != nil, isDownloaded == false {
                 if let item = viewModel.item, item.isDownloading {
                     DownloadProgressView(item: item, viewModel: viewModel)
                         .progressViewStyle(CircularProgressViewStyle())
@@ -63,23 +52,19 @@ struct DownloadControllView: View {
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.glass(.clear))
-        .onAppear {
+        .task(id: episode.url) {
             guard episode.source != .sideLoaded else { return }
-            viewModel.observeDownload(for: episode)
-            // Fallback: Check for ongoing download in DownloadManager if viewModel.item is nil
-            if let url = episode.url {
-                Task {
-                    if let item = await DownloadManager.shared.getItem(for: url), item.isDownloading {
-                        viewModel.setItem(item)
-                    }
-                }
-            }
+            await viewModel.observeDownload(for: episode)
         }
         .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
             guard let url = notificationURL(from: notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL]),
                   url == episode.url else { return }
-            viewModel.clearFinishedItem(for: url)
-            fileManager.refreshDownloadedFiles()
+            Task { @MainActor in
+                await Task.yield()
+                guard Task.isCancelled == false else { return }
+                viewModel.clearFinishedItem(for: url)
+                fileManager.refreshDownloadedFiles()
+            }
         }
     }
 
