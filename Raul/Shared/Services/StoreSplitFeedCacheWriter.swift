@@ -1,6 +1,10 @@
 import Foundation
 import SwiftData
 
+private func |= (lhs: inout Bool, rhs: Bool) {
+    lhs = lhs || rhs
+}
+
 /// Mirrors feed-derivable data from the legacy store into the local-only
 /// `PodcastCache.sqlite`. Phase 2 introduced podcast/episode metadata; Phase 3
 /// adds chapters, transcript data, transcription history and download indexing.
@@ -18,6 +22,22 @@ enum StoreSplitFeedCacheWriter {
     /// cache-local records required before repository reads can be cut over.
     static let currentCacheSchemaVersion = 2
 
+    struct FeedCacheProjectionResult: Sendable {
+        var inserted = 0
+        var updated = 0
+        var unchanged = 0
+        var deleted = 0
+        var episodesProcessed = 0
+        var episodesUnchanged = 0
+        var chaptersProcessed = 0
+        var transcriptLinesProcessed = 0
+        var transcriptionRecordsProcessed = 0
+        var downloadRowsProcessed = 0
+        var fetchCount = 0
+        var saveCount = 0
+        var completed = true
+    }
+
     /// Upserts a single feed's cache rows from the legacy store. Call after a feed
     /// refresh/create has been written to the legacy container.
     @discardableResult
@@ -27,7 +47,27 @@ enum StoreSplitFeedCacheWriter {
         cacheContainer: ModelContainer,
         deadline: Date? = nil
     ) -> Bool {
-        guard shouldContinue(deadline: deadline) else { return false }
+        projectFeed(
+            feedURL: feedURL,
+            legacyContainer: legacyContainer,
+            cacheContainer: cacheContainer,
+            deadline: deadline
+        ).completed
+    }
+
+    /// Test/diagnostic entry point. The result deliberately contains aggregate
+    /// counts only; production logging should never emit one line per row.
+    static func projectFeed(
+        feedURL: URL,
+        legacyContainer: ModelContainer,
+        cacheContainer: ModelContainer,
+        deadline: Date? = nil
+    ) -> FeedCacheProjectionResult {
+        var result = FeedCacheProjectionResult()
+        guard shouldContinue(deadline: deadline) else {
+            result.completed = false
+            return result
+        }
         let legacyContext = ModelContext(legacyContainer)
         
         let optionalFeedURL: URL? = feedURL
@@ -35,25 +75,37 @@ enum StoreSplitFeedCacheWriter {
             predicate: #Predicate { $0.feed == optionalFeedURL }
         )
         descriptor.fetchLimit = 1
+        result.fetchCount += 1
         guard let podcast = try? legacyContext.fetch(descriptor).first,
               shouldContinue(deadline: deadline) else {
-            return false
+            result.completed = false
+            return result
         }
 
         let cacheContext = ModelContext(cacheContainer)
         guard upsert(
             podcast: podcast,
-            transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(in: legacyContext),
+            transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(
+                for: podcast,
+                in: legacyContext,
+                result: &result
+            ),
             into: cacheContext,
-            deadline: deadline
+            deadline: deadline,
+            result: &result
         ) else {
-            return false
+            result.completed = false
+            return result
         }
         do {
-            try cacheContext.save()
-            return true
+            if cacheContext.hasChanges {
+                try cacheContext.save()
+                result.saveCount += 1
+            }
+            return result
         } catch {
-            return false
+            result.completed = false
+            return result
         }
     }
 
@@ -71,28 +123,37 @@ enum StoreSplitFeedCacheWriter {
         guard let podcasts = try? legacyContext.fetch(FetchDescriptor<Podcast>()) else {
             return 0
         }
-        let cacheContext = ModelContext(cacheContainer)
-        let transcriptionRecords = transcriptionRecordsByEpisodeURL(in: legacyContext)
         var processed = 0
         for podcast in podcasts {
             guard shouldContinue(deadline: nil) else { break }
             guard processed < limit else { break }
             guard let feed = podcast.feed else { continue }
             let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
-            if let cached = fetchCachedPodcast(id: feedKey, in: cacheContext),
+            let lookupContext = ModelContext(cacheContainer)
+            if let cached = fetchCachedPodcast(id: feedKey, in: lookupContext),
                cached.cacheSchemaVersion >= currentCacheSchemaVersion {
                 continue
             }
+            // Keep each feed's registered-object graph short-lived. A single
+            // context for a large library retains every projected episode and
+            // supplemental row until bootstrap finishes.
+            let cacheContext = ModelContext(cacheContainer)
+            var result = FeedCacheProjectionResult()
             guard upsert(
                 podcast: podcast,
-                transcriptionRecordsByEpisodeURL: transcriptionRecords,
+                transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(
+                    for: podcast,
+                    in: legacyContext,
+                    result: &result
+                ),
                 into: cacheContext,
-                deadline: nil
+                deadline: nil,
+                result: &result
             ) else {
                 break
             }
             do {
-                try cacheContext.save()
+                if cacheContext.hasChanges { try cacheContext.save() }
             } catch {
                 break
             }
@@ -143,7 +204,8 @@ enum StoreSplitFeedCacheWriter {
         podcast: Podcast,
         transcriptionRecordsByEpisodeURL: [URL: [TranscriptionRecord]],
         into cacheContext: ModelContext,
-        deadline: Date?
+        deadline: Date?,
+        result: inout FeedCacheProjectionResult
     ) -> Bool {
         guard let feed = podcast.feed,
               shouldContinue(deadline: deadline) else {
@@ -151,45 +213,56 @@ enum StoreSplitFeedCacheWriter {
         }
         let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
 
+        result.fetchCount += 1
         let cached = fetchCachedPodcast(id: feedKey, in: cacheContext)
             ?? {
                 let created = CachedPodcast(id: feedKey, feedURL: feedKey)
                 cacheContext.insert(created)
+                result.inserted += 1
                 return created
             }()
 
-        cached.feedURL = feedKey
-        cached.title = podcast.title
-        cached.desc = podcast.desc
-        cached.author = podcast.author
-        cached.feed = podcast.feed
-        cached.link = podcast.link
-        cached.language = podcast.language
-        cached.copyright = podcast.copyright
-        cached.imageURL = podcast.imageURL
-        cached.lastBuildDate = podcast.lastBuildDate
-        cached.funding = podcast.funding
-        cached.social = podcast.social
-        cached.people = podcast.people
-        cached.alternativeFeeds = podcast.alternativeFeeds
-        cached.optionalTags = podcast.optionalTags
+        var podcastChanged = false
+        podcastChanged |= assignIfChanged(cached, \.feedURL, feedKey)
+        podcastChanged |= assignIfChanged(cached, \.title, podcast.title)
+        podcastChanged |= assignIfChanged(cached, \.desc, podcast.desc)
+        podcastChanged |= assignIfChanged(cached, \.author, podcast.author)
+        podcastChanged |= assignIfChanged(cached, \.feed, podcast.feed)
+        podcastChanged |= assignIfChanged(cached, \.link, podcast.link)
+        podcastChanged |= assignIfChanged(cached, \.language, podcast.language)
+        podcastChanged |= assignIfChanged(cached, \.copyright, podcast.copyright)
+        podcastChanged |= assignIfChanged(cached, \.imageURL, podcast.imageURL)
+        podcastChanged |= assignIfChanged(cached, \.lastBuildDate, podcast.lastBuildDate)
+        podcastChanged |= assignIfChanged(cached, \.funding, podcast.funding)
+        podcastChanged |= assignIfChanged(cached, \.social, podcast.social)
+        podcastChanged |= assignIfChanged(cached, \.people, podcast.people)
+        podcastChanged |= assignIfChanged(cached, \.alternativeFeeds, podcast.alternativeFeeds)
+        podcastChanged |= assignIfChanged(cached, \.optionalTags, podcast.optionalTags)
 
         let meta = podcast.metaData
-        cached.lastRefresh = meta?.lastRefresh
-        cached.feedUpdated = meta?.feedUpdated
-        cached.feedUpdateCheckDate = meta?.feedUpdateCheckDate
-        cached.consecutiveFeedFailureCount = meta?.consecutiveFeedFailureCount ?? 0
-        cached.lastFeedFailureDate = meta?.lastFeedFailureDate
-        cached.lastFeedFailureStatusCode = meta?.lastFeedFailureStatusCode
-        cached.lastFeedFailureMessage = meta?.lastFeedFailureMessage
-        cached.updatedAt = .now
+        podcastChanged |= assignIfChanged(cached, \.lastRefresh, meta?.lastRefresh)
+        podcastChanged |= assignIfChanged(cached, \.feedUpdated, meta?.feedUpdated)
+        podcastChanged |= assignIfChanged(cached, \.feedUpdateCheckDate, meta?.feedUpdateCheckDate)
+        podcastChanged |= assignIfChanged(cached, \.consecutiveFeedFailureCount, meta?.consecutiveFeedFailureCount ?? 0)
+        podcastChanged |= assignIfChanged(cached, \.lastFeedFailureDate, meta?.lastFeedFailureDate)
+        podcastChanged |= assignIfChanged(cached, \.lastFeedFailureStatusCode, meta?.lastFeedFailureStatusCode)
+        podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
+        if podcastChanged { cached.updatedAt = .now; result.updated += 1 }
 
-        // CachedEpisode.feedURL is indexed, so this does not scan the complete
-        // cache store. Supplemental rows are fetched per episode below using
-        // their compound (feedURL, episodeID) indexes. Besides making each query
-        // bounded, that avoids materializing a feed's entire transcript in one
-        // synchronous fetch that cannot observe cancellation or a deadline.
+        // Fetch each related table once per feed. The old implementation fetched
+        // chapters, transcript lines, downloads, and transcription records in
+        // every episode loop (4N queries); dictionaries make the loop O(1).
+        // These feed-scoped fetches also avoid loading unrelated feeds.
         let existingEpisodes = fetchCachedEpisodes(feedKey: feedKey, in: cacheContext)
+        result.fetchCount += 1
+        let existingChapters = fetchCachedChapters(feedKey: feedKey, in: cacheContext)
+        result.fetchCount += 1
+        let existingTranscriptLines = fetchCachedTranscriptLines(feedKey: feedKey, in: cacheContext)
+        result.fetchCount += 1
+        let existingDownloads = fetchCachedDownloadRecords(feedKey: feedKey, in: cacheContext)
+        result.fetchCount += 1
+        let existingTranscriptions = fetchCachedTranscriptionRecords(feedKey: feedKey, in: cacheContext)
+        result.fetchCount += 1
         guard shouldContinue(deadline: deadline) else { return false }
 
         var existingByID = Dictionary(
@@ -197,6 +270,10 @@ enum StoreSplitFeedCacheWriter {
             uniquingKeysWith: { first, _ in first }
         )
         var seenIDs = Set<String>()
+        let chaptersByEpisodeID = Dictionary(grouping: existingChapters) { $0.episodeID }
+        let transcriptLinesByEpisodeID = Dictionary(grouping: existingTranscriptLines) { $0.episodeID }
+        let downloadsByEpisodeID = Dictionary(existingDownloads.map { ($0.episodeID, $0) }, uniquingKeysWith: { first, _ in first })
+        let transcriptionsByEpisodeID = Dictionary(grouping: existingTranscriptions) { $0.episodeID }
 
         for episode in podcast.episodes ?? [] {
             guard shouldContinue(deadline: deadline) else { return false }
@@ -209,67 +286,64 @@ enum StoreSplitFeedCacheWriter {
                     let created = CachedEpisode(id: episodeID, feedURL: feedKey)
                     cacheContext.insert(created)
                     existingByID[episodeID] = created
+                    result.inserted += 1
                     return created
                 }()
-
-            cachedEpisode.feedURL = feedKey
-            cachedEpisode.guid = episode.guid
-            cachedEpisode.title = episode.title
-            cachedEpisode.author = episode.author
-            cachedEpisode.desc = episode.desc
-            cachedEpisode.subtitle = episode.subtitle
-            cachedEpisode.content = episode.content
-            cachedEpisode.publishDate = episode.publishDate
-            cachedEpisode.url = episode.url
-            cachedEpisode.deeplinks = episode.deeplinks
-            cachedEpisode.fileSize = episode.fileSize
-            cachedEpisode.mediaType = episode.mediaType
-            cachedEpisode.link = episode.link
-            cachedEpisode.imageURL = episode.imageURL
-            cachedEpisode.duration = episode.duration
-            cachedEpisode.number = episode.number
-            cachedEpisode.typeRawValue = episode.type?.rawValue
-            cachedEpisode.sourceRawValue = episode.sourceRawValue
-            cachedEpisode.externalFiles = episode.externalFiles
-            cachedEpisode.funding = episode.funding
-            cachedEpisode.social = episode.social
-            cachedEpisode.people = episode.people
-            cachedEpisode.optionalTags = episode.optionalTags
-            cachedEpisode.updatedAt = .now
-            cachedEpisode.podcast = cached
+            var episodeChanged = false
+            episodeChanged |= assignIfChanged(cachedEpisode, \.feedURL, feedKey)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.guid, episode.guid)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.title, episode.title)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.author, episode.author)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.desc, episode.desc)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.subtitle, episode.subtitle)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.content, episode.content)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.publishDate, episode.publishDate)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.url, episode.url)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.deeplinks, episode.deeplinks)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.fileSize, episode.fileSize)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.mediaType, episode.mediaType)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.link, episode.link)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.imageURL, episode.imageURL)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.duration, episode.duration)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.number, episode.number)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.typeRawValue, episode.type?.rawValue)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.sourceRawValue, episode.sourceRawValue)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.externalFiles, episode.externalFiles)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.funding, episode.funding)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.social, episode.social)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.people, episode.people)
+            episodeChanged |= assignIfChanged(cachedEpisode, \.optionalTags, episode.optionalTags)
+            if cachedEpisode.podcast?.persistentModelID != cached.persistentModelID {
+                cachedEpisode.podcast = cached
+                episodeChanged = true
+            }
+            if episodeChanged { cachedEpisode.updatedAt = .now; result.updated += 1 }
+            else { result.unchanged += 1; result.episodesUnchanged += 1 }
+            result.episodesProcessed += 1
 
             upsertChapters(
                 episode.chapters ?? [],
                 feedKey: feedKey,
                 episodeID: episodeID,
-                existing: fetchCachedChapters(
-                    feedKey: feedKey,
-                    episodeID: episodeID,
-                    in: cacheContext
-                ),
-                into: cacheContext
+                existing: chaptersByEpisodeID[episodeID] ?? [],
+                into: cacheContext,
+                result: &result
             )
             upsertTranscriptLines(
                 episode.transcriptLines ?? [],
                 feedKey: feedKey,
                 episodeID: episodeID,
-                existing: fetchCachedTranscriptLines(
-                    feedKey: feedKey,
-                    episodeID: episodeID,
-                    in: cacheContext
-                ),
-                into: cacheContext
+                existing: transcriptLinesByEpisodeID[episodeID] ?? [],
+                into: cacheContext,
+                result: &result
             )
             upsertDownloadRecord(
                 episode: episode,
                 feedKey: feedKey,
                 episodeID: episodeID,
-                existing: fetchCachedDownloadRecord(
-                    feedKey: feedKey,
-                    episodeID: episodeID,
-                    in: cacheContext
-                ),
-                into: cacheContext
+                existing: downloadsByEpisodeID[episodeID],
+                into: cacheContext,
+                result: &result
             )
             let transcriptionRecords = episode.url.flatMap {
                 transcriptionRecordsByEpisodeURL[$0]
@@ -278,27 +352,24 @@ enum StoreSplitFeedCacheWriter {
                 transcriptionRecords,
                 feedKey: feedKey,
                 episodeID: episodeID,
-                existing: fetchCachedTranscriptionRecords(
-                    feedKey: feedKey,
-                    episodeID: episodeID,
-                    in: cacheContext
-                ),
-                into: cacheContext
+                existing: transcriptionsByEpisodeID[episodeID] ?? [],
+                into: cacheContext,
+                result: &result
             )
         }
 
         // Prune cache episodes no longer present in the legacy feed so the cache
         // stays a faithful projection.
         for (episodeID, staleEpisode) in existingByID where seenIDs.contains(episodeID) == false {
-            deleteSupplementalRows(
-                feedKey: feedKey,
-                episodeID: episodeID,
-                in: cacheContext
-            )
+            for row in chaptersByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
+            for row in transcriptLinesByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
+            for row in transcriptionsByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
+            if let row = downloadsByEpisodeID[episodeID] { cacheContext.delete(row); result.deleted += 1 }
             cacheContext.delete(staleEpisode)
+            result.deleted += 1
             guard shouldContinue(deadline: deadline) else { return false }
         }
-        cached.cacheSchemaVersion = currentCacheSchemaVersion
+        _ = assignIfChanged(cached, \.cacheSchemaVersion, currentCacheSchemaVersion)
         return shouldContinue(deadline: deadline)
     }
 
@@ -307,7 +378,8 @@ enum StoreSplitFeedCacheWriter {
         feedKey: String,
         episodeID: String,
         existing: [CachedChapter],
-        into context: ModelContext
+        into context: ModelContext,
+        result: inout FeedCacheProjectionResult
     ) {
         let chapters = legacyChapters.filter { $0.type != .bookmark }
         var existingByID = Dictionary(
@@ -335,24 +407,28 @@ enum StoreSplitFeedCacheWriter {
                     )
                     context.insert(created)
                     existingByID[id] = created
+                    result.inserted += 1
                     return created
                 }()
-            cached.feedURL = feedKey
-            cached.episodeID = episodeID
-            cached.sourceUUID = chapter.uuid?.uuidString
-            cached.title = chapter.title
-            cached.link = chapter.link
-            cached.imageURL = chapter.image
-            cached.imageData = chapter.imageData
-            cached.start = chapter.start
-            cached.endTime = chapter.endTime
-            cached.duration = chapter.duration
-            cached.creationTime = chapter.creationtime
-            cached.progress = chapter.progress
-            cached.typeRawValue = chapter.type.rawValue
-            cached.shouldPlay = chapter.shouldPlay
-            cached.ordinal = ordinal
-            cached.updatedAt = .now
+            var changed = false
+            changed |= assignIfChanged(cached, \.feedURL, feedKey)
+            changed |= assignIfChanged(cached, \.episodeID, episodeID)
+            changed |= assignIfChanged(cached, \.sourceUUID, chapter.uuid?.uuidString)
+            changed |= assignIfChanged(cached, \.title, chapter.title)
+            changed |= assignIfChanged(cached, \.link, chapter.link)
+            changed |= assignIfChanged(cached, \.imageURL, chapter.image)
+            changed |= assignIfChanged(cached, \.imageData, chapter.imageData)
+            changed |= assignIfChanged(cached, \.start, chapter.start)
+            changed |= assignIfChanged(cached, \.endTime, chapter.endTime)
+            changed |= assignIfChanged(cached, \.duration, chapter.duration)
+            changed |= assignIfChanged(cached, \.creationTime, chapter.creationtime)
+            changed |= assignIfChanged(cached, \.progress, chapter.progress)
+            changed |= assignIfChanged(cached, \.typeRawValue, chapter.type.rawValue)
+            changed |= assignIfChanged(cached, \.shouldPlay, chapter.shouldPlay)
+            changed |= assignIfChanged(cached, \.ordinal, ordinal)
+            if changed { cached.updatedAt = .now; result.updated += 1 }
+            else { result.unchanged += 1 }
+            result.chaptersProcessed += 1
         }
 
         for (id, stale) in existingByID where seenIDs.contains(id) == false {
@@ -365,7 +441,8 @@ enum StoreSplitFeedCacheWriter {
         feedKey: String,
         episodeID: String,
         existing: [CachedTranscriptLine],
-        into context: ModelContext
+        into context: ModelContext,
+        result: inout FeedCacheProjectionResult
     ) {
         var existingByID = Dictionary(
             existing.map { ($0.id, $0) },
@@ -386,17 +463,21 @@ enum StoreSplitFeedCacheWriter {
                     )
                     context.insert(created)
                     existingByID[id] = created
+                    result.inserted += 1
                     return created
                 }()
-            cached.feedURL = feedKey
-            cached.episodeID = episodeID
-            cached.sourceUUID = sourceID
-            cached.speaker = line.speaker
-            cached.text = line.text
-            cached.startTime = line.startTime
-            cached.endTime = line.endTime
-            cached.ordinal = ordinal
-            cached.updatedAt = .now
+            var changed = false
+            changed |= assignIfChanged(cached, \.feedURL, feedKey)
+            changed |= assignIfChanged(cached, \.episodeID, episodeID)
+            changed |= assignIfChanged(cached, \.sourceUUID, sourceID)
+            changed |= assignIfChanged(cached, \.speaker, line.speaker)
+            changed |= assignIfChanged(cached, \.text, line.text)
+            changed |= assignIfChanged(cached, \.startTime, line.startTime)
+            changed |= assignIfChanged(cached, \.endTime, line.endTime)
+            changed |= assignIfChanged(cached, \.ordinal, ordinal)
+            if changed { cached.updatedAt = .now; result.updated += 1 }
+            else { result.unchanged += 1 }
+            result.transcriptLinesProcessed += 1
         }
 
         for (id, stale) in existingByID where seenIDs.contains(id) == false {
@@ -409,7 +490,8 @@ enum StoreSplitFeedCacheWriter {
         feedKey: String,
         episodeID: String,
         existing: CachedDownloadRecord?,
-        into context: ModelContext
+        into context: ModelContext,
+        result: inout FeedCacheProjectionResult
     ) {
         let record = existing
             ?? {
@@ -419,6 +501,7 @@ enum StoreSplitFeedCacheWriter {
                     episodeID: episodeID
                 )
                 context.insert(created)
+                result.inserted += 1
                 return created
             }()
 
@@ -434,13 +517,16 @@ enum StoreSplitFeedCacheWriter {
             return Int64(size)
         }
 
-        record.feedURL = feedKey
-        record.episodeID = episodeID
-        record.remoteURL = episode.url
-        record.localFileURL = localFileURL
-        record.isAvailableLocally = isAvailable
-        record.fileSize = localFileSize
-        record.updatedAt = .now
+        var changed = false
+        changed |= assignIfChanged(record, \.feedURL, feedKey)
+        changed |= assignIfChanged(record, \.episodeID, episodeID)
+        changed |= assignIfChanged(record, \.remoteURL, episode.url)
+        changed |= assignIfChanged(record, \.localFileURL, localFileURL)
+        changed |= assignIfChanged(record, \.isAvailableLocally, isAvailable)
+        changed |= assignIfChanged(record, \.fileSize, localFileSize)
+        if changed { record.updatedAt = .now; result.updated += 1 }
+        else { result.unchanged += 1 }
+        result.downloadRowsProcessed += 1
     }
 
     private static func upsertTranscriptionRecords(
@@ -448,7 +534,8 @@ enum StoreSplitFeedCacheWriter {
         feedKey: String,
         episodeID: String,
         existing: [CachedTranscriptionRecord],
-        into context: ModelContext
+        into context: ModelContext,
+        result: inout FeedCacheProjectionResult
     ) {
         var existingByID = Dictionary(
             existing.map { ($0.id, $0) },
@@ -468,19 +555,23 @@ enum StoreSplitFeedCacheWriter {
                     )
                     context.insert(created)
                     existingByID[id] = created
+                    result.inserted += 1
                     return created
                 }()
-            cached.feedURL = feedKey
-            cached.episodeID = episodeID
-            cached.episodeURL = legacy.episodeURL
-            cached.episodeTitle = legacy.episodeTitle
-            cached.podcastTitle = legacy.podcastTitle
-            cached.localeIdentifier = legacy.localeIdentifier
-            cached.startedAt = legacy.startedAt
-            cached.finishedAt = legacy.finishedAt
-            cached.audioDuration = legacy.audioDuration
-            cached.transcriptionDuration = legacy.transcriptionDuration
-            cached.updatedAt = .now
+            var changed = false
+            changed |= assignIfChanged(cached, \.feedURL, feedKey)
+            changed |= assignIfChanged(cached, \.episodeID, episodeID)
+            changed |= assignIfChanged(cached, \.episodeURL, legacy.episodeURL)
+            changed |= assignIfChanged(cached, \.episodeTitle, legacy.episodeTitle)
+            changed |= assignIfChanged(cached, \.podcastTitle, legacy.podcastTitle)
+            changed |= assignIfChanged(cached, \.localeIdentifier, legacy.localeIdentifier)
+            changed |= assignIfChanged(cached, \.startedAt, legacy.startedAt)
+            changed |= assignIfChanged(cached, \.finishedAt, legacy.finishedAt)
+            changed |= assignIfChanged(cached, \.audioDuration, legacy.audioDuration)
+            changed |= assignIfChanged(cached, \.transcriptionDuration, legacy.transcriptionDuration)
+            if changed { cached.updatedAt = .now; result.updated += 1 }
+            else { result.unchanged += 1 }
+            result.transcriptionRecordsProcessed += 1
         }
 
         for (id, stale) in existingByID where seenIDs.contains(id) == false {
@@ -548,6 +639,16 @@ enum StoreSplitFeedCacheWriter {
 
     private static func fetchCachedChapters(
         feedKey: String,
+        in context: ModelContext
+    ) -> [CachedChapter] {
+        let descriptor = FetchDescriptor<CachedChapter>(
+            predicate: #Predicate { $0.feedURL == feedKey }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private static func fetchCachedChapters(
+        feedKey: String,
         episodeID: String,
         in context: ModelContext
     ) -> [CachedChapter] {
@@ -561,6 +662,16 @@ enum StoreSplitFeedCacheWriter {
 
     private static func fetchCachedTranscriptLines(
         feedKey: String,
+        in context: ModelContext
+    ) -> [CachedTranscriptLine] {
+        let descriptor = FetchDescriptor<CachedTranscriptLine>(
+            predicate: #Predicate { $0.feedURL == feedKey }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private static func fetchCachedTranscriptLines(
+        feedKey: String,
         episodeID: String,
         in context: ModelContext
     ) -> [CachedTranscriptLine] {
@@ -568,6 +679,16 @@ enum StoreSplitFeedCacheWriter {
             predicate: #Predicate {
                 $0.feedURL == feedKey && $0.episodeID == episodeID
             }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private static func fetchCachedTranscriptionRecords(
+        feedKey: String,
+        in context: ModelContext
+    ) -> [CachedTranscriptionRecord] {
+        let descriptor = FetchDescriptor<CachedTranscriptionRecord>(
+            predicate: #Predicate { $0.feedURL == feedKey }
         )
         return (try? context.fetch(descriptor)) ?? []
     }
@@ -599,16 +720,51 @@ enum StoreSplitFeedCacheWriter {
         return try? context.fetch(descriptor).first
     }
 
-    private static func transcriptionRecordsByEpisodeURL(
+    private static func fetchCachedDownloadRecords(
+        feedKey: String,
         in context: ModelContext
+    ) -> [CachedDownloadRecord] {
+        let descriptor = FetchDescriptor<CachedDownloadRecord>(
+            predicate: #Predicate { $0.feedURL == feedKey }
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private static func transcriptionRecordsByEpisodeURL(
+        for podcast: Podcast,
+        in context: ModelContext,
+        result: inout FeedCacheProjectionResult
     ) -> [URL: [TranscriptionRecord]] {
-        let records = (try? context.fetch(FetchDescriptor<TranscriptionRecord>())) ?? []
+        let episodeURLs = Set((podcast.episodes ?? []).compactMap(\.url))
+        guard episodeURLs.isEmpty == false else { return [:] }
+        // TranscriptionRecord currently has no feed/episode relationship or
+        // feed-key column. SwiftData cannot reliably compile a dynamic OR
+        // predicate over optional URLs, so keep this as one table fetch and
+        // discard unrelated records immediately. This is still bounded to one
+        // fetch per feed (never one fetch per episode); adding a feed key later
+        // can make this genuinely store-scoped without changing the projection.
+        let descriptor = FetchDescriptor<TranscriptionRecord>()
+        result.fetchCount += 1
+        let records = (try? context.fetch(descriptor))?.filter {
+            guard let episodeURL = $0.episodeURL else { return false }
+            return episodeURLs.contains(episodeURL)
+        } ?? []
         var recordsByURL: [URL: [TranscriptionRecord]] = [:]
         for record in records {
             guard let episodeURL = record.episodeURL else { continue }
             recordsByURL[episodeURL, default: []].append(record)
         }
         return recordsByURL
+    }
+
+    private static func assignIfChanged<Root, Value: Equatable>(
+        _ object: Root,
+        _ keyPath: ReferenceWritableKeyPath<Root, Value>,
+        _ value: Value
+    ) -> Bool {
+        guard object[keyPath: keyPath] != value else { return false }
+        object[keyPath: keyPath] = value
+        return true
     }
 
     private static func shouldContinue(deadline: Date?) -> Bool {

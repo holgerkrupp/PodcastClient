@@ -205,6 +205,43 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertEqual(chapters.first?.imageData ?? Data(), Data([0x01, 0x02, 0x03]))
     }
 
+    func testLargeTranscriptReplacementUsesPersistedLinesWithoutWholeArrayAssignment() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/large-transcript.mp3")!
+        _ = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+
+        func makeVTT(lineCount: Int) -> String {
+            var vtt = "WEBVTT\n\n"
+            for index in 0..<lineCount {
+                let start = String(format: "%02d:%02d:%02d.000", index / 3600, (index / 60) % 60, index % 60)
+                let end = String(format: "%02d:%02d:%02d.500", (index + 1) / 3600, ((index + 1) / 60) % 60, (index + 1) % 60)
+                vtt += "\(start) --> \(end)\nLine \(index)\n\n"
+            }
+            return vtt
+        }
+
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        try await actor.decodeAndSetTranscript(
+            for: episodeURL,
+            vtt: makeVTT(lineCount: 100)
+        )
+        try await actor.decodeAndSetTranscript(
+            for: episodeURL,
+            vtt: makeVTT(lineCount: 2_000)
+        )
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let transcript = try XCTUnwrap(reloaded.transcriptLines)
+        XCTAssertEqual(transcript.count, 2_000)
+        XCTAssertEqual(transcript.first?.text, "Line 0")
+        XCTAssertEqual(transcript.last?.text, "Line 1999")
+    }
+
     func testInvalidExtractedChaptersAreReplacedFromContentEncodedShownotes() async throws {
         let fixture = try makeFixture()
         let episodeURL = URL(string: "https://example.com/methodisch-inkorrekt.mp3")!

@@ -43,6 +43,10 @@ actor PodcastModelActor {
         subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
         category: "PodcastRefresh"
     )
+    /// Network parsing remains concurrent, but each worker also persists to
+    /// SQLite. Two writers avoid the lock/save amplification seen with the
+    /// previous six-worker refresh fan-out.
+    static let maximumConcurrentRefreshes = 2
 
     private static func logRefresh(_ message: String) {
         refreshLogger.info("\(message, privacy: .public)")
@@ -1057,13 +1061,24 @@ actor PodcastModelActor {
             ModelContainerManager.shared.preparedCacheContainer
         }) else { return }
 
-        let completed = StoreSplitFeedCacheWriter.upsertFeed(
+        let projection = StoreSplitFeedCacheWriter.projectFeed(
             feedURL: feedURL,
             legacyContainer: modelContainer,
             cacheContainer: cacheContainer,
             deadline: deadline
         )
-        if completed == false {
+        Self.logRefresh(
+            "cache_projection feed=\(feedURL.absoluteString) "
+                + "completed=\(projection.completed) "
+                + "episodes=\(projection.episodesProcessed) "
+                + "inserted=\(projection.inserted) "
+                + "updated=\(projection.updated) "
+                + "unchanged=\(projection.unchanged) "
+                + "deleted=\(projection.deleted) "
+                + "fetches=\(projection.fetchCount) "
+                + "saves=\(projection.saveCount)"
+        )
+        if projection.completed == false {
             CrashBreadcrumbs.shared.record(
                 "feed_cache_projection_deferred",
                 details: "reason=not_committed,feed=\(feedURL.absoluteString)"
@@ -1284,7 +1299,7 @@ actor PodcastModelActor {
 
         let podcasts = try modelContext.fetch(descriptor)
         let feeds = podcasts.compactMap(\.feed)
-        let maxConcurrent = 6
+        let maxConcurrent = Self.maximumConcurrentRefreshes
         let refreshStartedAt = ContinuousClock.now
         let runStartedAt = Date()
         await progress?(0, feeds.count)

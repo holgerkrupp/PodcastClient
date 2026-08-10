@@ -162,7 +162,7 @@ actor TranscriptionManager {
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.96, status: "Writing transcript…")
                 }
-                await episodeActor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
+                try await episodeActor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
                 let finishedAt = Date()
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.98, status: "Saving transcription history…")

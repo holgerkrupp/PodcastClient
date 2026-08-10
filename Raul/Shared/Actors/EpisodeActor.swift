@@ -7,6 +7,7 @@
 import SwiftData
 import Foundation
 import mp3ChapterReader
+
 import AVFoundation
 import BasicLogger
 import SwiftUI
@@ -1184,14 +1185,27 @@ actor EpisodeActor {
     
     func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
         print("decodeTranscription")
+        let snapshots = decodeTranscriptSnapshots(transcription)
+        print("created \(snapshots.count) lines")
+        return snapshots.map {
+            TranscriptLineAndTime(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+    }
+
+    private func decodeTranscriptSnapshots(_ transcription: String) -> [TranscriptLineSnapshot] {
         let decoder = TranscriptDecoder(transcription)
-        let lines = decoder.transcriptLines
-        let transcript = lines.enumerated().map { _, line in
-            let text = line.text
-            let start = line.startTime
-            let end = line.endTime
-            let speaker = line.speaker
-            return TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end)
+        return decoder.transcriptLines.map {
+            TranscriptLineSnapshot(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
         }.sorted {
             if $0.startTime != $1.startTime {
                 return $0.startTime < $1.startTime
@@ -1200,8 +1214,6 @@ actor EpisodeActor {
             let rightEnd = $1.endTime ?? .greatestFiniteMagnitude
             return leftEnd < rightEnd
         }
-        print("created \(lines.count) lines")
-        return transcript
     }
     
     func deleteMarker(markerID: UUID) async{
@@ -2090,9 +2102,9 @@ actor EpisodeActor {
             if let url = URL(string: transcriptfile.url) {
                 let transcription = await downloadAndParseStringFile(url: url)
                 if let transcription {
-                    episode.transcriptLines = decodeTranscription(transcription)
+                    let snapshots = decodeTranscriptSnapshots(transcription)
+                    try await replaceTranscriptLines(for: episode, with: snapshots)
                     episode.refresh.toggle()
-                    modelContext.saveIfNeeded()
                     if let episodeURL = episode.url {
                         await finalizeTranscriptChapters(for: episodeURL)
                     }
@@ -2111,11 +2123,18 @@ actor EpisodeActor {
     }
     
     // Inside EpisodeActor
-    func setTranscript(for episodeURL: URL, lines: [TranscriptLineAndTime]) async {
+    func setTranscript(for episodeURL: URL, lines: [TranscriptLineAndTime]) async throws {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
-        episode.transcriptLines = lines
+        let snapshots = lines.map {
+            TranscriptLineSnapshot(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+        try await replaceTranscriptLines(for: episode, with: snapshots)
         episode.refresh.toggle()
-        modelContext.saveIfNeeded()
         await finalizeTranscriptChapters(for: episodeURL)
     }
     
@@ -2159,13 +2178,64 @@ actor EpisodeActor {
     }
 
     // 3) Decode VTT and persist transcript lines inside EpisodeActor
-    func decodeAndSetTranscript(for episodeURL: URL, vtt: String) async {
+    func decodeAndSetTranscript(for episodeURL: URL, vtt: String) async throws {
         print("decoding vtt")
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
-        let lines = decodeTranscription(vtt) // existing helper returns [TranscriptLineAndTime]
-        episode.transcriptLines = lines
+        let snapshots = decodeTranscriptSnapshots(vtt)
+        try await replaceTranscriptLines(for: episode, with: snapshots)
         episode.refresh.toggle()
-        modelContext.saveIfNeeded()
+    }
+
+    private func replaceTranscriptLines(
+        for episode: Episode,
+        with snapshots: [TranscriptLineSnapshot]
+    ) async throws {
+        let batchSize = 100
+        let episodeID = episode.persistentModelID
+
+        // Do not touch episode.transcriptLines here. Reading or assigning the
+        // relationship materializes the entire old/new graph and was the direct
+        // cause of the 1.8 GB CPU-kill report. Delete through a bounded fetch.
+        while true {
+            try Task.checkCancellation()
+            var descriptor = FetchDescriptor<TranscriptLineAndTime>(
+                predicate: #Predicate { line in
+                    line.episode?.persistentModelID == episodeID
+                }
+            )
+            descriptor.fetchLimit = batchSize
+            let existing = try modelContext.fetch(descriptor)
+            guard existing.isEmpty == false else { break }
+            for line in existing {
+                modelContext.delete(line)
+            }
+            try modelContext.save()
+        }
+
+        var pending = 0
+        for snapshot in snapshots {
+            try Task.checkCancellation()
+            let line = TranscriptLineAndTime(
+                speaker: snapshot.speaker,
+                text: snapshot.text,
+                startTime: snapshot.startTime,
+                endTime: snapshot.endTime
+            )
+            line.episode = episode
+            modelContext.insert(line)
+            pending += 1
+
+            if pending >= batchSize {
+                try Task.checkCancellation()
+                try modelContext.save()
+                pending = 0
+            }
+        }
+
+        if pending > 0 {
+            try Task.checkCancellation()
+            try modelContext.save()
+        }
     }
 
     func transcriptLineCount() async -> Int {

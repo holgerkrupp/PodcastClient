@@ -72,6 +72,94 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testProjectionIsIdempotentAndFetchCountDoesNotScaleWithEpisodes() throws {
+        let (legacy, cache) = try makeContainers()
+        let feed = "https://example.com/scale"
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: feed,
+            episodeGUIDs: (0..<500).map { "episode-\($0)" }
+        )
+
+        let first = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+        XCTAssertTrue(first.completed)
+        XCTAssertEqual(first.episodesProcessed, 500)
+        XCTAssertLessThanOrEqual(first.fetchCount, 8)
+        XCTAssertEqual(first.saveCount, 1)
+
+        let second = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+        XCTAssertTrue(second.completed)
+        XCTAssertEqual(second.fetchCount, first.fetchCount)
+        XCTAssertEqual(second.inserted, 0)
+        XCTAssertEqual(second.updated, 0)
+        XCTAssertEqual(second.deleted, 0)
+        XCTAssertEqual(second.saveCount, 0)
+        XCTAssertEqual(second.episodesUnchanged, 500)
+    }
+
+    @MainActor
+    func testProjectionChangesOnlyTheModifiedEpisode() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/incremental",
+            episodeGUIDs: (0..<20).map { "episode-\($0)" }
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        _ = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+
+        let legacyContext = legacy.mainContext
+        let changedEpisode = try XCTUnwrap(podcast.episodes?.first)
+        changedEpisode.title = "Changed"
+        try legacyContext.save()
+
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.inserted, 0)
+        XCTAssertEqual(result.deleted, 0)
+        XCTAssertEqual(result.updated, 1)
+        XCTAssertEqual(result.episodesUnchanged, 19)
+        XCTAssertEqual(result.saveCount, 1)
+    }
+
+    @MainActor
+    func testLargeProjectionKeepsFetchesFeedScoped() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/large-scale",
+            episodeGUIDs: (0..<2_000).map { "episode-\($0)" }
+        )
+
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.episodesProcessed, 2_000)
+        XCTAssertLessThanOrEqual(result.fetchCount, 8)
+        XCTAssertEqual(result.saveCount, 1)
+    }
+
+    @MainActor
     func testBootstrapUpgradesAnExistingPhaseTwoCacheProjectionOnce() throws {
         let (legacy, cache) = try makeContainers()
         try makePodcast(in: legacy, feed: "https://example.com/upgrade", episodeGUIDs: ["e1"])
@@ -185,12 +273,15 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
             )
         )
         try context.save()
-
-        StoreSplitFeedCacheWriter.upsertFeed(
+        let projection = StoreSplitFeedCacheWriter.projectFeed(
             feedURL: try XCTUnwrap(podcast.feed),
             legacyContainer: legacy,
             cacheContainer: cache
         )
+        XCTAssertTrue(projection.completed)
+        XCTAssertEqual(projection.chaptersProcessed, 1, "projected chapters")
+        XCTAssertEqual(projection.transcriptLinesProcessed, 1, "projected transcript lines")
+        XCTAssertEqual(projection.transcriptionRecordsProcessed, 1, "projected transcription records")
 
         let verification = ModelContext(cache)
         let cachedPodcast = try XCTUnwrap(
