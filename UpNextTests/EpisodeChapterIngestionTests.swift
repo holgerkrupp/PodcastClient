@@ -4,6 +4,57 @@ import XCTest
 @testable import UpNext
 
 final class EpisodeChapterIngestionTests: XCTestCase {
+    func testTranscriptionQueueCanPromoteAnEpisodeToNext() async {
+        let queue = TranscriptionTurnQueue()
+        let first = URL(string: "https://example.com/first.mp3")!
+        let second = URL(string: "https://example.com/second.mp3")!
+        let promoted = URL(string: "https://example.com/promoted.mp3")!
+
+        await queue.wait(for: first)
+        let secondTask = Task {
+            await queue.wait(for: second)
+            return second
+        }
+        while await queue.snapshot().queued.contains(second) == false {
+            await Task.yield()
+        }
+
+        let promotedTask = Task {
+            await queue.wait(for: promoted)
+            return promoted
+        }
+        while await queue.snapshot().queued.contains(promoted) == false {
+            await Task.yield()
+        }
+
+        await queue.promote(promoted)
+        let promotedQueue = await queue.snapshot()
+        XCTAssertEqual(promotedQueue.queued, [promoted, second])
+
+        await queue.finish(first)
+        let firstResumedEpisode = await promotedTask.value
+        let afterFirstFinished = await queue.snapshot()
+        XCTAssertEqual(firstResumedEpisode, promoted)
+        XCTAssertEqual(afterFirstFinished.active, promoted)
+
+        await queue.finish(promoted)
+        let secondResumedEpisode = await secondTask.value
+        let afterPromotedFinished = await queue.snapshot()
+        XCTAssertEqual(secondResumedEpisode, second)
+        XCTAssertEqual(afterPromotedFinished.active, second)
+        await queue.finish(second)
+    }
+
+    func testSpeechAttributedTextPersistsOnlyVisibleCharacters() {
+        var attributedText = AttributedString("Recognized speech")
+        attributedText.inlinePresentationIntent = .stronglyEmphasized
+
+        XCTAssertEqual(
+            AITranscripts.plainTranscriptText(attributedText),
+            "Recognized speech"
+        )
+    }
+
     func testLocalMP3ChaptersAreAddedEvenWhenFeedChaptersAlreadyExist() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "mp3")
@@ -236,11 +287,50 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         )
 
         let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
-        let transcript = try XCTUnwrap(reloaded.transcriptLines)
+        let transcript = try XCTUnwrap(reloaded.transcriptLines).sorted {
+            $0.startTime < $1.startTime
+        }
         XCTAssertEqual(transcript.count, 2_000)
         XCTAssertEqual(transcript.first?.text, "Line 0")
         XCTAssertEqual(transcript.last?.text, "Line 1999")
     }
+
+#if DEBUG
+    func testDeletingEpisodeTranscriptRemovesLinesAndAllowsRegeneration() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/delete-transcript.mp3")!
+        _ = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        var vtt = "WEBVTT\n\n"
+        for index in 0..<2_000 {
+            let start = String(format: "%02d:%02d:%02d.000", index / 3600, (index / 60) % 60, index % 60)
+            let end = String(format: "%02d:%02d:%02d.500", (index + 1) / 3600, ((index + 1) / 60) % 60, (index + 1) % 60)
+            vtt += "\(start) --> \(end)\nLine \(index)\n\n"
+        }
+        try await actor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
+
+        XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count, 2_000)
+        try await actor.deleteTranscript(for: episodeURL)
+        XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count ?? 0, 0)
+
+        try await actor.decodeAndSetTranscript(
+            for: episodeURL,
+            vtt: """
+            WEBVTT
+
+            00:00:00.000 --> 00:00:01.000
+            Regenerated transcript
+            """
+        )
+        XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count, 1)
+    }
+#endif
 
     func testInvalidExtractedChaptersAreReplacedFromContentEncodedShownotes() async throws {
         let fixture = try makeFixture()

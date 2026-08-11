@@ -25,11 +25,16 @@ struct EpisodeDetailView: View {
 
     @State private var errorMessage: String? = nil
     @State private var liveTranscriptionItem: TranscriptionItem?
+    @State private var transcriptionQueueEntries: [TranscriptionQueueEntry] = []
     @State private var isLoadingTranscript: Bool = false
     @State private var isStartingTranscription: Bool = false
     @State private var isGeneratingTranscriptChapters: Bool = false
     @State private var chapterGenerationMessage: String?
     @State private var showTranscriptSheet: Bool = false
+#if DEBUG
+    @State private var isDeletingTranscript = false
+    @State private var showDeleteTranscriptConfirmation = false
+#endif
     @ScaledMetric(relativeTo: .title2) private var podcastCardWidth: CGFloat = 300
 
 
@@ -133,7 +138,17 @@ struct EpisodeDetailView: View {
                                 .accessibilityHint("Opens episode captions if available")
                                 .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
                             } else if let item = activeTranscriptionItem, item.isTranscribing || isStartingTranscription {
-                                TranscriptionProgressView(item: item)
+                                TranscriptionProgressView(
+                                    item: item,
+                                    queueEntry: transcriptionQueueEntries.first { $0.episodeURL == item.episodeURL },
+                                    activeEpisodeTitle: transcriptionQueueEntries.first {
+                                        if case .active = $0.state { return true }
+                                        return false
+                                    }?.episodeTitle,
+                                    moveToNext: {
+                                        Task { await moveTranscriptionToNext(for: item.episodeURL) }
+                                    }
+                                )
                                     .padding()
                             } else if let url = episode.url {
                                 Button(action: {
@@ -174,6 +189,22 @@ struct EpisodeDetailView: View {
                             .padding(.vertical, 8)
                             .disabled(isGeneratingTranscriptChapters || canGenerateTranscriptChapters == false)
                             
+                        }
+
+                        if hasLoadedTranscript {
+                            Button(role: .destructive) {
+                                showDeleteTranscriptConfirmation = true
+                            } label: {
+                                Label(
+                                    isDeletingTranscript ? "Deleting…" : "Delete Transcript",
+                                    systemImage: "trash"
+                                )
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .disabled(isDeletingTranscript)
+                            .accessibilityHint("Deletes this episode's transcript so it can be generated again")
                         }
 
                             Spacer()
@@ -271,6 +302,20 @@ struct EpisodeDetailView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+#if DEBUG
+            .confirmationDialog(
+                "Delete this transcript?",
+                isPresented: $showDeleteTranscriptConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Transcript", role: .destructive) {
+                    Task { await deleteTranscript() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the transcript and its transcription history so the episode can be transcribed again.")
+            }
+#endif
             .sheet(isPresented: $showTranscriptSheet) {
                 NavigationStack {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
@@ -285,6 +330,13 @@ struct EpisodeDetailView: View {
             .task(id: episode.url) {
                 SystemPressureGate.shared.noteUserInteraction()
                 liveTranscriptionItem = await currentTranscriptionItem()
+            }
+            .task(id: activeTranscriptionItem?.id) {
+                repeat {
+                    await refreshTranscriptionQueue()
+                    guard activeTranscriptionItem?.isTranscribing == true else { break }
+                    try? await Task.sleep(for: .seconds(1))
+                } while Task.isCancelled == false
             }
             .onChange(of: activeTranscriptionItem?.state) {
                 if case .finished = activeTranscriptionItem?.state {
@@ -509,6 +561,41 @@ struct EpisodeDetailView: View {
         guard let episodeURL = episode.url else { return nil }
         return await TranscriptionManager.shared.item(for: episodeURL)
     }
+
+    @MainActor
+    private func refreshTranscriptionQueue() async {
+        transcriptionQueueEntries = await TranscriptionManager.shared.queueEntries()
+    }
+
+    @MainActor
+    private func moveTranscriptionToNext(for episodeURL: URL) async {
+        await TranscriptionManager.shared.moveToFrontOfQueue(episodeURL: episodeURL)
+        await refreshTranscriptionQueue()
+    }
+
+#if DEBUG
+    @MainActor
+    private func deleteTranscript() async {
+        guard isDeletingTranscript == false, let episodeURL = episode.url else { return }
+        isDeletingTranscript = true
+        errorMessage = nil
+        defer { isDeletingTranscript = false }
+
+        do {
+            try await EpisodeActor(modelContainer: context.container)
+                .deleteTranscript(for: episodeURL)
+            // The actor deletes through its own ModelContext. Clear this view's
+            // relationship immediately instead of waiting for cross-context merging.
+            episode.transcriptLines = nil
+            episode.refresh.toggle()
+            context.saveIfNeeded()
+            liveTranscriptionItem = nil
+            showTranscriptSheet = false
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+#endif
 }
 
 // Trailing metadata block (socials, people, namespace tags, description, chapters).
@@ -564,6 +651,9 @@ private struct TranscriptionProgressView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var progressCardWidth: CGFloat = 200
     let item: TranscriptionItem
+    let queueEntry: TranscriptionQueueEntry?
+    let activeEpisodeTitle: String?
+    let moveToNext: () -> Void
     
     var body: some View {
         HStack(spacing: 10) {
@@ -605,6 +695,22 @@ private struct TranscriptionProgressView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if case let .queued(position)? = queueEntry?.state {
+                    if let activeEpisodeTitle {
+                        Text("Currently transcribing: \(activeEpisodeTitle)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    if position > 1 {
+                        Button("Move to Next", action: moveToNext)
+                            .font(.caption.weight(.semibold))
+                    } else {
+                        Text("Next in queue")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.accent)
+                    }
+                }
             }
         }
         .frame(width: progressCardWidth, alignment: .leading)

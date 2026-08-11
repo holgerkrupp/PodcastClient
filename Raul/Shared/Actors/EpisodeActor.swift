@@ -2178,12 +2178,18 @@ actor EpisodeActor {
     }
 
     // 3) Decode VTT and persist transcript lines inside EpisodeActor
-    func decodeAndSetTranscript(for episodeURL: URL, vtt: String) async throws {
+    func decodeAndSetTranscript(
+        for episodeURL: URL,
+        vtt: String
+    ) async throws -> [TranscriptLineSnapshot] {
         print("decoding vtt")
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            throw TranscriptError.episodeNotFound
+        }
         let snapshots = decodeTranscriptSnapshots(vtt)
         try await replaceTranscriptLines(for: episode, with: snapshots)
         episode.refresh.toggle()
+        return snapshots
     }
 
     private func replaceTranscriptLines(
@@ -2221,8 +2227,11 @@ actor EpisodeActor {
                 startTime: snapshot.startTime,
                 endTime: snapshot.endTime
             )
-            line.episode = episode
+            // Insert first so SwiftData uses managed backing storage for the inverse
+            // relationship update. Setting the relationship on an uninserted model
+            // repeatedly copied the growing Episode.transcriptLines graph (O(n²)).
             modelContext.insert(line)
+            line.episode = episode
             pending += 1
 
             if pending >= batchSize {
@@ -2241,6 +2250,44 @@ actor EpisodeActor {
     func transcriptLineCount() async -> Int {
         (try? modelContext.fetchCount(FetchDescriptor<TranscriptLineAndTime>())) ?? 0
     }
+
+#if DEBUG
+    func deleteTranscript(for episodeURL: URL) async throws {
+        // The singleton is initialized from the app's main-actor model container.
+        // Resolve it on the main actor before crossing to this model actor; accessing
+        // it here can be its first initialization and trips MainActor.assumeIsolated.
+        let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+        await transcriptionManager.clearTranscriptionState(for: episodeURL)
+
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            throw TranscriptError.episodeNotFound
+        }
+
+        let identity = episode.stableEpisodeIdentity
+        try Task.checkCancellation()
+
+        // Detaching the relationship is sufficient to make the episode eligible for
+        // transcription again. Deleting every line individually updates the inverse
+        // relationship once per row and becomes quadratic for long transcripts.
+        episode.transcriptLines = nil
+
+        let recordDescriptor = FetchDescriptor<TranscriptionRecord>(
+            predicate: #Predicate { record in
+                record.episodeURL == episodeURL
+            }
+        )
+        for record in try modelContext.fetch(recordDescriptor) {
+            modelContext.delete(record)
+        }
+        try modelContext.save()
+        episode.refresh.toggle()
+
+        if let userStateContainer = await preparedUserStateContainer() {
+            await StoreSplitAIContentSyncWriter(modelContainer: userStateContainer)
+                .tombstoneTranscripts(identities: [identity])
+        }
+    }
+#endif
 
     @discardableResult
     func deleteAllTranscriptLines() async -> Int {
@@ -2285,7 +2332,8 @@ actor EpisodeActor {
         for snapshot: TranscriptionEpisodeSnapshot,
         localeIdentifier: String,
         startedAt: Date,
-        finishedAt: Date
+        finishedAt: Date,
+        transcriptSnapshots: [TranscriptLineSnapshot]
     ) async {
         let record = TranscriptionRecord(
             episodeURL: snapshot.episodeURL,
@@ -2298,13 +2346,12 @@ actor EpisodeActor {
         )
         modelContext.insert(record)
         modelContext.saveIfNeeded()
-        guard let episode = await fetchEpisode(byURL: snapshot.episodeURL),
-              let transcriptLines = episode.transcriptLines else {
+        guard let episode = await fetchEpisode(byURL: snapshot.episodeURL) else {
             return
         }
         await writeAITranscriptToSplitStore(
             episode: episode,
-            lines: transcriptLines,
+            lines: transcriptSnapshots,
             localeIdentifier: localeIdentifier,
             generatedAt: finishedAt
         )
@@ -2312,7 +2359,7 @@ actor EpisodeActor {
 
     private func writeAITranscriptToSplitStore(
         episode: Episode,
-        lines: [TranscriptLineAndTime],
+        lines: [TranscriptLineSnapshot],
         localeIdentifier: String?,
         generatedAt: Date
     ) async {

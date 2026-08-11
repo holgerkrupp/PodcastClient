@@ -432,19 +432,38 @@ class AITranscripts {
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
     ) async throws -> [(range: CMTimeRange, text: String)] {
         var results: [(range: CMTimeRange, text: String)] = []
+        var lastReportedProgress = 0.0
+        var lastProgressReport = ContinuousClock.now
         for try await result in transcriber.results {
             try Task.checkCancellation()
             let splitSegments = Self.splitResult(
                 range: result.range,
-                rawText: result.text.description,
+                rawText: Self.plainTranscriptText(result.text),
                 maxSnippetDurationSeconds: maxSnippetDurationSeconds,
                 maxWordsPerSnippet: maxWordsPerSnippet
             )
             results.append(contentsOf: splitSegments)
             let update = Self.progressUpdate(resultEnd: result.range.end, audioDuration: audioDuration)
-            await progressHandler?(update.progress, update.status)
+            // Speech can emit results much faster than SwiftUI can render them. Crossing
+            // the main actor for every result caused a large observation backlog while
+            // long transcripts were being saved. A one-percent/half-second cadence is
+            // still responsive without making progress reporting part of the hot path.
+            let now = ContinuousClock.now
+            if update.progress - lastReportedProgress >= 0.01
+                || now - lastProgressReport >= .milliseconds(500) {
+                await progressHandler?(update.progress, update.status)
+                lastReportedProgress = update.progress
+                lastProgressReport = now
+            }
         }
         return results
+    }
+
+    /// Speech returns attributed text whose attributes contain timing metadata.
+    /// `description` serializes those runs (including CMTimeRange values), so only
+    /// copy the visible characters into the persisted transcript.
+    static func plainTranscriptText(_ text: AttributedString) -> String {
+        String(text.characters)
     }
 
     private static func splitResult(

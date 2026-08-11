@@ -497,13 +497,6 @@ struct PodcastDetailView: View {
                 filteredEpisodeDisplayLimit = Self.episodePageSize
                 applyEpisodeFilters()
             }
-            .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                applyEpisodeFilters()
-                Task {
-                    await updatePredictedReleaseInfo()
-                }
-            }
             .onChange(of: podcast.metaData?.feedUpdateCheckDate) { _, _ in
                 Task {
                     await updatePredictedReleaseInfo()
@@ -706,6 +699,10 @@ struct PodcastDetailView: View {
                 )
 #endif
                 podcast.message = nil
+                await MainActor.run {
+                    filteredEpisodeDisplayLimit = Self.episodePageSize
+                    applyEpisodeFilters()
+                }
                 
             } catch {
 #if DEBUG

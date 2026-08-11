@@ -415,6 +415,9 @@
         }
       }
     },
+    "Active" : {
+
+    },
     "Add" : {
       "localizations" : {
         "de" : {
@@ -1663,6 +1666,12 @@
           }
         }
       }
+    },
+    "Current Transcriptions" : {
+
+    },
+    "Currently transcribing: %@" : {
+
     },
     "Custom Settings" : {
       "localizations" : {
@@ -3960,6 +3969,9 @@
         }
       }
     },
+    "Move to Next" : {
+
+    },
     "Move to next %@" : {
       "localizations" : {
         "de" : {
@@ -4140,6 +4152,9 @@
         }
       }
     },
+    "Next" : {
+
+    },
     "Next chapter" : {
       "localizations" : {
         "de" : {
@@ -4149,6 +4164,9 @@
           }
         }
       }
+    },
+    "Next in queue" : {
+
     },
     "Next predicted release: Unavailable" : {
 
@@ -4552,6 +4570,9 @@
           }
         }
       }
+    },
+    "Nothing is currently transcribing or queued." : {
+
     },
     "Notify Me: %@" : {
       "localizations" : {

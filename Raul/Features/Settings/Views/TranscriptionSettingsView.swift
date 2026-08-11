@@ -13,6 +13,7 @@ struct TranscriptionSettingsView: View {
 
     @State private var supportedLocales: [Locale] = []
     @State private var installedLocales: [Locale] = []
+    @State private var queueEntries: [TranscriptionQueueEntry] = []
 
     private var globalSettings: PodcastSettings? {
         defaultSettings.first
@@ -111,6 +112,42 @@ struct TranscriptionSettingsView: View {
                 }
             }
 
+            Section("Current Transcriptions") {
+                if queueEntries.isEmpty {
+                    Text("Nothing is currently transcribing or queued.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(queueEntries) { entry in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(entry.episodeTitle)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                                Spacer()
+                                queueStateLabel(for: entry)
+                            }
+                            if let podcastTitle = entry.podcastTitle, podcastTitle.isEmpty == false {
+                                Text(podcastTitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if case let .queued(position) = entry.state, position > 1 {
+                                Button("Move to Next") {
+                                    Task {
+                                        await TranscriptionManager.shared.moveToFrontOfQueue(
+                                            episodeURL: entry.episodeURL
+                                        )
+                                        await refreshQueue()
+                                    }
+                                }
+                                .font(.caption.weight(.semibold))
+                            }
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+
             Section("Recent Transcriptions") {
                 if recentRecords.isEmpty {
                     ContentUnavailableView(
@@ -177,6 +214,29 @@ struct TranscriptionSettingsView: View {
                 details: "supported=\(supportedLocales.count),installed=\(installedLocales.count)"
             )
         }
+        .task {
+            repeat {
+                await refreshQueue()
+                try? await Task.sleep(for: .seconds(1))
+            } while Task.isCancelled == false
+        }
+    }
+
+    @ViewBuilder
+    private func queueStateLabel(for entry: TranscriptionQueueEntry) -> some View {
+        switch entry.state {
+        case .active:
+            Label("Active", systemImage: "waveform")
+                .foregroundStyle(.green)
+        case .queued(let position):
+            Text(position == 1 ? "Next" : "#\(position)")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @MainActor
+    private func refreshQueue() async {
+        queueEntries = await TranscriptionManager.shared.queueEntries()
     }
 }
 
