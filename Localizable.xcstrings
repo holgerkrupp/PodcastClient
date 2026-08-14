@@ -312,7 +312,9 @@
       }
     },
     "%lld rejected record(s):" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "%lld abgelehnte Datensätze:" } }
+      }
     },
     "%lld. %@: %@" : {
       "localizations" : {
@@ -342,7 +344,9 @@
       }
     },
     "+ %lld more" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "+ %lld weitere" } }
+      }
     },
     "+%lld" : {
       "localizations" : {
@@ -416,7 +420,9 @@
       }
     },
     "Active" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktiv" } }
+      }
     },
     "Add" : {
       "localizations" : {
@@ -449,7 +455,9 @@
       }
     },
     "Add Podcast" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Podcast hinzufügen" } }
+      }
     },
     "Add Rule" : {
       "localizations" : {
@@ -1216,7 +1224,9 @@
       }
     },
     "Changes archive state without changing inbox or playlist membership" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Ändert den Archivstatus, ohne den Eingang oder die Playlist-Zugehörigkeit zu ändern" } }
+      }
     },
     "Changes the current episode between the audio enclosure and alternate video stream" : {
       "localizations" : {
@@ -1379,13 +1389,19 @@
       }
     },
     "Clear inbox" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Eingang leeren" } }
+      }
     },
     "Clearing inbox" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Eingang wird geleert" } }
+      }
     },
     "Clip" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Clip" } }
+      }
     },
     "Clip Length" : {
       "localizations" : {
@@ -1681,10 +1697,14 @@
       }
     },
     "Current Transcriptions" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktuelle Transkriptionen" } }
+      }
     },
     "Currently transcribing: %@" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wird gerade transkribiert: %@" } }
+      }
     },
     "Custom Settings" : {
       "localizations" : {
@@ -2248,7 +2268,9 @@
       }
     },
     "Episode Not Found" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Episode nicht gefunden" } }
+      }
     },
     "Episode sort" : {
       "localizations" : {
@@ -2341,7 +2363,9 @@
       }
     },
     "Expected releases missed" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erwartete Veröffentlichungen verpasst" } }
+      }
     },
     "Export" : {
       "localizations" : {
@@ -2364,7 +2388,9 @@
       }
     },
     "Export speed %@" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Exportgeschwindigkeit %@" } }
+      }
     },
     "Exporting…" : {
       "localizations" : {
@@ -3179,7 +3205,9 @@
       }
     },
     "Inbox is your triage area for fresh episodes. Adding an episode to a playlist removes it from Inbox; removing it from a playlist does not return it." : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Eingang ist dein Sortierbereich für neue Episoden. Wenn du eine Episode zu einer Playlist hinzufügst, wird sie aus dem Eingang entfernt; wenn du sie aus einer Playlist entfernst, wird sie nicht zurück in den Eingang verschoben." } }
+      }
     },
     "Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible." : {
       "extractionState" : "stale",
@@ -3400,7 +3428,9 @@
       }
     },
     "Last checked" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zuletzt geprüft" } }
+      }
     },
     "Last refresh: %@" : {
       "localizations" : {
@@ -3623,7 +3653,9 @@
       }
     },
     "Load" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Laden" } }
+      }
     },
     "Loading" : {
       "localizations" : {
@@ -3777,7 +3809,9 @@
       }
     },
     "Mark Archived" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Als archiviert markieren" } }
+      }
     },
     "Marker type" : {
       "localizations" : {
@@ -3990,7 +4024,9 @@
       }
     },
     "Move to Next" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nach „Als Nächstes“ verschieben" } }
+      }
     },
     "Move to next %@" : {
       "localizations" : {
@@ -4175,7 +4211,9 @@
       }
     },
     "Next" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nächste" } }
+      }
     },
     "Next chapter" : {
       "localizations" : {
@@ -4188,10 +4226,14 @@
       }
     },
     "Next in queue" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Als Nächstes in der Warteschlange" } }
+      }
     },
     "Next predicted release: Unavailable" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nächste prognostizierte Veröffentlichung: Nicht verfügbar" } }
+      }
     },
     "Next week" : {
       "localizations" : {
@@ -4594,7 +4636,9 @@
       }
     },
     "Nothing is currently transcribing or queued." : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Derzeit wird nichts transkribiert oder wartet in der Warteschlange." } }
+      }
     },
     "Notify Me: %@" : {
       "localizations" : {
@@ -5453,7 +5497,9 @@
       }
     },
     "Playback Rate" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wiedergabegeschwindigkeit" } }
+      }
     },
     "Playback scrubbing is disabled" : {
       "localizations" : {
@@ -5873,7 +5919,9 @@
       }
     },
     "Predicted cadence" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Prognostizierter Rhythmus" } }
+      }
     },
     "Preset" : {
       "localizations" : {
@@ -6246,13 +6294,19 @@
       }
     },
     "Region" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Region" } }
+      }
     },
     "Release schedule: %@" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Veröffentlichungsplan: %@" } }
+      }
     },
     "Remove all inbox episodes" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Alle Episoden aus dem Eingang entfernen" } }
+      }
     },
     "Remove Current" : {
       "localizations" : {
@@ -6285,10 +6339,14 @@
       }
     },
     "Remove episode from Inbox" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Episode aus dem Eingang entfernen" } }
+      }
     },
     "Remove from Inbox" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aus dem Eingang entfernen" } }
+      }
     },
     "Remove from Playlist" : {
       "localizations" : {
@@ -6321,7 +6379,9 @@
       }
     },
     "Removes every episode from the inbox without changing playlists or archive state" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Entfernt alle Episoden aus dem Eingang, ohne Playlists oder den Archivstatus zu ändern" } }
+      }
     },
     "Removes the transcript panel below the artwork" : {
       "localizations" : {
@@ -6334,7 +6394,9 @@
       }
     },
     "Removes this episode from Inbox without changing archive or playlist membership" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Entfernt diese Episode aus dem Eingang, ohne den Archivstatus oder die Playlist-Zugehörigkeit zu ändern" } }
+      }
     },
     "Rescan" : {
       "localizations" : {
@@ -6467,7 +6529,9 @@
       }
     },
     "Search bookmarks" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Lesezeichen durchsuchen" } }
+      }
     },
     "Search captions…" : {
       "localizations" : {
@@ -7205,7 +7269,9 @@
       }
     },
     "Sort bookmarks" : {
-
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Lesezeichen sortieren" } }
+      }
     },
     "Sort by" : {
       "localizations" : {

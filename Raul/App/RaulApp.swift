@@ -747,7 +747,9 @@ private struct RootWindowView: View {
         if let container = modelContainerManager.preparedContainer {
             AppLaunchContainerView {
                 ContentView()
+#if DEBUG
                 .coverHeroHarnessOverride()
+#endif
                 .modelContainer(container)
                 .environment(downloadedFilesManager)
                 .accentColor(.accent)
