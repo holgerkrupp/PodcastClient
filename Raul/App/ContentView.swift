@@ -17,18 +17,18 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
-    @Query(filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false })
-    private var subscribedPodcasts: [Podcast]
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
     @SceneStorage("mainWindow.selectedSection") private var restoredSelection = AppSection.queue.rawValue
     @State private var inboxCount: Int = 0
+    @State private var subscribedPodcastCount: Int?
     @State private var navigation = AppNavigationModel()
     @State private var didRestoreSelection = false
     @State private var showOnboarding: Bool = false
     @State private var didEvaluateOnboardingLaunch = false
+    @State private var didCompleteInitialContentLoad = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
     
     @State private var search:String = ""
@@ -38,9 +38,9 @@ struct ContentView: View {
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
 
-    private var playlistTabMetadata: (title: String, symbolName: String) {
-        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
-
+    private func playlistTabMetadata(
+        from visiblePlaylists: [Playlist]
+    ) -> (title: String, symbolName: String) {
         if let selectedID = UUID(uuidString: selectedPlaylistID),
            let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
             return (selectedPlaylist.displayTitle, selectedPlaylist.displaySymbolName)
@@ -54,7 +54,11 @@ struct ContentView: View {
     }
     
     var body: some View {
-        let currentPlaylistTabMetadata = playlistTabMetadata
+        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
+        let currentPlaylistTabMetadata = playlistTabMetadata(from: visiblePlaylists)
+        let episodeControlPlaylists = visiblePlaylists.map {
+            EpisodeControlPlaylist(playlist: $0)
+        }
 
         Group {
             if usesSidebarLayout {
@@ -73,14 +77,18 @@ struct ContentView: View {
                 )
             }
         }
+        .environment(\.episodeControlPlaylists, episodeControlPlaylists)
         .hostsPlayerPresentation(navigation: navigation)
 #if os(macOS) || targetEnvironment(macCatalyst)
         .focusedSceneValue(\.appNavigationModel, navigation)
 #endif
         .task {
             CrashBreadcrumbs.shared.record("content_view_task_started")
-            await loadInboxCount()
+            await loadLaunchCounts()
             await importPendingSharedEpisodeIfNeeded()
+            didCompleteInitialContentLoad = true
+            try? await Task.sleep(for: .seconds(4))
+            guard Task.isCancelled == false else { return }
             await podcastYearShareCoordinator.evaluateAppLaunch(modelContext: modelContext)
             CrashBreadcrumbs.shared.record("content_view_task_completed")
         }
@@ -94,6 +102,7 @@ struct ContentView: View {
                    
                 case .active:
                     CrashBreadcrumbs.shared.record("scene_phase_active")
+                    guard didCompleteInitialContentLoad else { break }
                     // Refresh the badge when app becomes active
                     Task { await loadInboxCount() }
                     Task { await importPendingSharedEpisodeIfNeeded() }
@@ -190,10 +199,6 @@ struct ContentView: View {
 
     }
 
-    private var subscribedPodcastCount: Int {
-        subscribedPodcasts.count
-    }
-
     private var usesSidebarLayout: Bool {
         PlatformSupport.usesDesktopLayout || horizontalSizeClass == .regular
     }
@@ -203,6 +208,26 @@ struct ContentView: View {
     }
     
     // MARK: - Manual count loader
+    @MainActor
+    private func loadLaunchCounts() async {
+        let loader = AppLaunchCountLoader(modelContainer: modelContext.container)
+        do {
+            let counts = try await loader.counts()
+            inboxCount = counts.inbox
+            subscribedPodcastCount = counts.subscribedPodcasts
+            evaluateOnboardingLaunchIfNeeded()
+            CrashBreadcrumbs.shared.record(
+                "launch_counts_loaded",
+                details: "inbox=\(counts.inbox),subscriptions=\(counts.subscribedPodcasts)"
+            )
+        } catch {
+            BasicLogger.shared.log("Failed to load launch counts: \(error.localizedDescription)")
+            inboxCount = 0
+            subscribedPodcastCount = 0
+            evaluateOnboardingLaunchIfNeeded()
+        }
+    }
+
     @MainActor
     private func loadInboxCount() async {
         CrashBreadcrumbs.shared.record("load_inbox_count_started")
@@ -263,6 +288,7 @@ struct ContentView: View {
 
     private func evaluateOnboardingLaunchIfNeeded() {
         guard didEvaluateOnboardingLaunch == false else { return }
+        guard let subscribedPodcastCount else { return }
         didEvaluateOnboardingLaunch = true
 
         if subscribedPodcastCount > 0 {
@@ -275,6 +301,29 @@ struct ContentView: View {
         }
     }
 
+}
+
+private struct AppLaunchCounts: Sendable {
+    let inbox: Int
+    let subscribedPodcasts: Int
+}
+
+@ModelActor
+private actor AppLaunchCountLoader {
+    func counts() throws -> AppLaunchCounts {
+        let inboxPredicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
+        let subscriptionPredicate = #Predicate<Podcast> {
+            $0.metaData?.isSubscribed != false
+        }
+        return AppLaunchCounts(
+            inbox: try modelContext.fetchCount(
+                FetchDescriptor<EpisodeMetaData>(predicate: inboxPredicate)
+            ),
+            subscribedPodcasts: try modelContext.fetchCount(
+                FetchDescriptor<Podcast>(predicate: subscriptionPredicate)
+            )
+        )
+    }
 }
 
 private actor InboxCountLoader {

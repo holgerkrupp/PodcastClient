@@ -74,6 +74,61 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         XCTAssertEqual(nextURL, fixture.episodes[2].url)
     }
+
+    func testAddingToPlaylistRemovesFromInboxAndPreservesArchiveState() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let episode = fixture.episodes[0]
+        episode.metaData?.setArchived(true, at: Date(timeIntervalSince1970: 1_000))
+        episode.metaData?.systemSuppressionReason = .manualPlaylistRemoval
+        try fixture.context.save()
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        try await actor.add(
+            episodeURL: try XCTUnwrap(episode.url),
+            to: .end,
+            startDownload: false
+        )
+
+        let refreshed = try fetchEpisode(
+            url: try XCTUnwrap(episode.url),
+            container: fixture.container
+        )
+        XCTAssertEqual(refreshed.metaData?.isInbox, false)
+        XCTAssertEqual(refreshed.metaData?.isArchived, true)
+        XCTAssertEqual(refreshed.metaData?.status, .archived)
+        XCTAssertNil(refreshed.metaData?.systemSuppressionReason)
+        let isQueued = try await actor.containsEpisodeURL(try XCTUnwrap(episode.url))
+        XCTAssertTrue(isQueued)
+    }
+
+    func testUserPlaylistRemovalPreservesEpisodeStateAndPreventsAutomaticRequeue() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let episode = fixture.episodes[0]
+        try queueEpisodes([0], in: fixture.selectedPlaylist, fixture: fixture)
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        try await actor.remove(episodeURL: try XCTUnwrap(episode.url))
+
+        let refreshed = try fetchEpisode(
+            url: try XCTUnwrap(episode.url),
+            container: fixture.container
+        )
+        XCTAssertEqual(refreshed.metaData?.isInbox, true)
+        XCTAssertEqual(refreshed.metaData?.isArchived, false)
+        XCTAssertEqual(refreshed.metaData?.status, .inbox)
+        XCTAssertEqual(
+            refreshed.metaData?.systemSuppressionReason,
+            .manualPlaylistRemoval
+        )
+        let isQueued = try await actor.containsEpisodeURL(try XCTUnwrap(episode.url))
+        XCTAssertFalse(isQueued)
+    }
 }
 
 private extension PlaylistModelActorPlaybackQueueTests {
@@ -147,5 +202,13 @@ private extension PlaylistModelActorPlaybackQueueTests {
             entry.playlist = playlist
         }
         try fixture.context.save()
+    }
+
+    func fetchEpisode(url: URL, container: ModelContainer) throws -> Episode {
+        let context = ModelContext(container)
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.url == url }
+        )
+        return try XCTUnwrap(context.fetch(descriptor).first)
     }
 }

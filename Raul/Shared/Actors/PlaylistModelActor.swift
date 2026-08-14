@@ -9,6 +9,11 @@ import Foundation
 import BasicLogger
 
 actor PlaylistModelActor {
+    enum RemovalOrigin: Sendable {
+        case user
+        case policyMaintenance
+    }
+
     // Nonisolated so you can read them without await (types are value types)
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
@@ -229,15 +234,18 @@ actor PlaylistModelActor {
         episode.metaData = metadata
     }
 
-    private func updateQueuedEpisodeMetadata(_ episodes: [Episode]) {
+    private func prepareEpisodesForPlaylistInsertion(_ episodes: [Episode]) {
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isInbox = false
-            episode.metaData?.isArchived = false
-            episode.metaData?.status = nil
-            episode.metaData?.archivedAt = nil
+            episode.metaData?.setInboxMembership(false)
             episode.metaData?.systemSuppressionReason = nil
             episode.refresh.toggle()
+        }
+    }
+
+    private func notifyInboxDidChange() async {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
     }
 
@@ -287,12 +295,6 @@ actor PlaylistModelActor {
 
         sortedEntries.removeAll { $0.episode?.url == episodeURL }
         return reusableEntry
-    }
-
-    private func notifyInboxDidChange() async {
-        await MainActor.run {
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-        }
     }
 
     func orderedEpisodeSummaries(limit: Int? = nil) throws -> [EpisodeSummary] {
@@ -370,7 +372,7 @@ actor PlaylistModelActor {
             entry.order = i
         }
         
-        updateQueuedEpisodeMetadata(matchingEpisodes)
+        prepareEpisodesForPlaylistInsertion(matchingEpisodes)
         modelContext.saveIfNeeded()
         await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
@@ -428,7 +430,7 @@ actor PlaylistModelActor {
         }
 
         // Update episode metadata
-        updateQueuedEpisodeMetadata(matchingEpisodes)
+        prepareEpisodesForPlaylistInsertion(matchingEpisodes)
 
         modelContext.saveIfNeeded()
         await publishSplitStorePlaylist(playlist)
@@ -487,7 +489,7 @@ actor PlaylistModelActor {
             entry.order = i
         }
 
-        updateQueuedEpisodeMetadata(matchingEpisodes)
+        prepareEpisodesForPlaylistInsertion(matchingEpisodes)
 
         modelContext.saveIfNeeded()
         await publishSplitStorePlaylist(playlist)
@@ -502,7 +504,10 @@ actor PlaylistModelActor {
         WatchSyncCoordinator.refreshSoon(force: true)
     }
 
-    func remove(episodeURL: URL, triggerAutoDownload: Bool = true) async throws {
+    func remove(
+        episodeURL: URL,
+        origin: RemovalOrigin = .user
+    ) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
 
@@ -515,12 +520,17 @@ actor PlaylistModelActor {
                 identity: identity
             )
         }
-        let affectedPodcastFeeds = Set(matchingEntries.compactMap { $0.episode?.podcast?.feed })
         logAutoDownload(
-            "trigger/manual-remove playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) entries=\(matchingEntries.count) affectedFeeds=\(affectedPodcastFeeds.count)"
+            "trigger/manual-remove playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) entries=\(matchingEntries.count) origin=\(String(describing: origin))"
         )
 
         if matchingEntries.isEmpty == false {
+            if origin == .user {
+                for episode in matchingEntries.compactMap(\.episode) {
+                    ensureMetadata(for: episode)
+                    episode.metaData?.systemSuppressionReason = .manualPlaylistRemoval
+                }
+            }
             for entry in matchingEntries {
                 modelContext.delete(entry)
                 entry.episode?.refresh.toggle()
@@ -533,18 +543,6 @@ actor PlaylistModelActor {
                 WatchSyncCoordinator.refreshSoon(force: true)
             }
 
-            if triggerAutoDownload && affectedPodcastFeeds.isEmpty == false {
-                let container = modelContainer
-                Task {
-                    let episodeActor = EpisodeActor(modelContainer: container)
-                    for podcastFeed in affectedPodcastFeeds {
-                        await MainActor.run {
-                            BasicLogger.shared.log("[AutoDL] trigger/manual-remove applying-policy feed=\(podcastFeed.absoluteString)")
-                        }
-                        await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
-                    }
-                }
-            }
             // print("✅ PlaylistEntry deleted and context saved")
         }else{
             logAutoDownload(

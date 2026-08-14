@@ -442,23 +442,14 @@ actor EpisodeActor {
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
         await logAutoDownload("trigger/archive episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         
-        await removeFromPlaylist(episodeURL)
-
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isArchived = true
-            episode.metaData?.isInbox = false
-            episode.metaData?.status = .archived
-            episode.metaData?.archivedAt = Date()
-            episode.metaData?.systemSuppressionReason = nil
+            episode.metaData?.setArchived(true)
         }
 
         modelContext.saveIfNeeded()
         for episode in episodes {
             await publishSplitEpisodeState(episode)
-        }
-        await MainActor.run {
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
         WatchSyncCoordinator.refreshSoon(force: true)
 
@@ -476,15 +467,45 @@ actor EpisodeActor {
 
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isArchived = false
-            episode.metaData?.isInbox = true
-            episode.metaData?.status = .inbox
-            episode.metaData?.archivedAt = nil
-            episode.metaData?.systemSuppressionReason = nil
+            episode.metaData?.setArchived(false)
         }
         modelContext.saveIfNeeded()
         for episode in episodes {
             await publishSplitEpisodeState(episode)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
+    }
+
+    func removeFromInbox(_ episodeURL: URL?) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.setInboxMembership(false)
+        }
+
+        modelContext.saveIfNeeded()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
+    }
+
+    func addToInbox(_ episodeURL: URL?) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.setInboxMembership(true)
+        }
+
+        modelContext.saveIfNeeded()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
         WatchSyncCoordinator.refreshSoon(force: true)
     }
@@ -499,10 +520,7 @@ actor EpisodeActor {
 
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isArchived = false
-            episode.metaData?.isInbox = false
-            episode.metaData?.status = nil
-            episode.metaData?.archivedAt = nil
+            episode.metaData?.setInboxMembership(false)
             episode.metaData?.systemSuppressionReason = reason
         }
 
@@ -659,6 +677,7 @@ actor EpisodeActor {
         var skippedHistory = 0
         var skippedArchived = 0
         var skippedPlayed = 0
+        var skippedManualPlaylistRemoval = 0
         var skippedMissingSideload = 0
         var skippedBackCatalogToggle = 0
         var sampledDecisions: [String] = []
@@ -704,6 +723,14 @@ actor EpisodeActor {
                 return false
             }
 
+            if suppressionReason == .manualPlaylistRemoval {
+                skippedManualPlaylistRemoval += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:manualPlaylistRemoval")
+                }
+                return false
+            }
+
             if suppressionReason == .backCatalogImport && includesBackCatalogEpisodes == false {
                 skippedBackCatalogToggle += 1
                 if sampledDecisions.count < maxSampledDecisions {
@@ -719,7 +746,7 @@ actor EpisodeActor {
         }
 
         await logAutoDownload(
-            "policy/eligibility feed=\(podcastFeed.absoluteString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
+            "policy/eligibility feed=\(podcastFeed.absoluteString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedManualPlaylistRemoval=\(skippedManualPlaylistRemoval) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
         )
         if sampledDecisions.isEmpty == false {
             await logAutoDownload("policy/eligibility-sample feed=\(podcastFeed.absoluteString) \(sampledDecisions.joined(separator: " | "))")
@@ -837,7 +864,7 @@ actor EpisodeActor {
                     do {
                         try await playlistActor.remove(
                             episodeURL: episodeURL,
-                            triggerAutoDownload: false
+                            origin: .policyMaintenance
                         )
                         removedFromPlaylist += 1
                         await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")

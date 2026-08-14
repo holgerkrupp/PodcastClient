@@ -2167,7 +2167,7 @@ struct SettingsHelpView: View {
         List {
             Section("Up Next Basics") {
                 Text("Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"")
-                Text("Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible.")
+                Text("Inbox is your triage area for fresh episodes. Adding an episode to a playlist removes it from Inbox; removing it from a playlist does not return it.")
                 Text("When an episode finishes, continuous playback can automatically start the next item from Up Next.")
             }
 

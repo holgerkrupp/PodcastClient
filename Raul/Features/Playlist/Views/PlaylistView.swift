@@ -287,7 +287,7 @@ private struct ManualPlaylistPageView: View {
                                     await archiveEpisode(episode)
                                 }
                             } label: {
-                                Label("Archive Episode", systemImage: "archivebox.fill")
+                                Label("Mark Archived", systemImage: "archivebox.fill")
                             }
                             .tint(.orange)
                         }

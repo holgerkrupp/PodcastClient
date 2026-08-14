@@ -3,7 +3,7 @@ import SwiftData
 import ESADesignKit
 
 struct LibrarySearchView: View {
-    enum LibraryScope: String, CaseIterable, Identifiable {
+    enum LibraryScope: String, CaseIterable, Identifiable, Sendable {
         case subscribed
         case unsubscribed
         case all
@@ -31,8 +31,7 @@ struct LibrarySearchView: View {
     @State private var searchInDescription = true
     @State private var searchInEpisodes = true
 
-    @State private var podcastResults: [PodcastSearchResult] = []
-    @State private var episodeResults: [EpisodeSearchResult] = []
+    @State private var groupedResults: [PodcastSearchResultGroup] = []
     @State private var isSearching = false
     @State private var searchError: String?
     @State private var searchTask: Task<Void, Never>?
@@ -48,30 +47,6 @@ struct LibrarySearchView: View {
 
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var groupedResults: [PodcastSearchResultGroup] {
-        var groupedItems: [String: [GroupedSearchItem]] = [:]
-        var groupedPodcast: [String: PodcastGroupSummary] = [:]
-
-        for result in podcastResults {
-            groupedItems[result.podcastKey, default: []].append(.podcast(result))
-            groupedPodcast[result.podcastKey] = result.podcast
-        }
-
-        for result in episodeResults {
-            groupedItems[result.podcastKey, default: []].append(.episode(result))
-            groupedPodcast[result.podcastKey] = result.podcast
-        }
-
-        return groupedItems.compactMap { key, items in
-            guard let podcast = groupedPodcast[key] else { return nil }
-            let sortedItems = items.sorted(by: GroupedSearchItem.sortOrder)
-            return PodcastSearchResultGroup(podcast: podcast, items: sortedItems)
-        }
-        .sorted { lhs, rhs in
-            lhs.podcast.title.localizedCaseInsensitiveCompare(rhs.podcast.title) == .orderedAscending
-        }
     }
 
     var body: some View {
@@ -382,316 +357,53 @@ struct LibrarySearchView: View {
                 try? await Task.sleep(nanoseconds: delayNanos)
             }
             guard Task.isCancelled == false else { return }
-            runSearch(query: query, generation: generation)
+            await runSearch(query: query, generation: generation)
         }
     }
 
     @MainActor
     private func clearResults() {
-        podcastResults = []
-        episodeResults = []
+        groupedResults = []
         expandedPodcastGroupIDs = []
         isSearching = false
         searchError = nil
     }
 
     @MainActor
-    private func runSearch(query: String, generation: Int) {
+    private func runSearch(query: String, generation: Int) async {
+        let scope: LibrarySearchRequest.Scope = switch selectedScope {
+        case .subscribed: .subscribed
+        case .unsubscribed: .unsubscribed
+        case .all: .all
+        }
+        let request = LibrarySearchRequest(
+            query: query,
+            scope: scope,
+            searchInTitle: searchInTitle,
+            searchInAuthor: searchInAuthor,
+            searchInDescription: searchInDescription,
+            searchInEpisodes: searchInEpisodes,
+            minimumCharactersForTranscriptSearch: minimumCharactersForTranscriptSearch
+        )
+
         do {
-            let searchContext = ModelContext(modelContext.container)
-            let scopeFilter = try buildScopeFilter(in: searchContext)
-            let podcasts = try fetchPodcastResults(query: query, in: searchContext, scopeFilter: scopeFilter)
-            guard Task.isCancelled == false else { return }
-            let episodes = try fetchEpisodeResults(query: query, in: searchContext, scopeFilter: scopeFilter)
+            let searchActor = LibrarySearchActor(modelContainer: modelContext.container)
+            let groups = try await searchActor.search(request: request)
             guard Task.isCancelled == false else { return }
             guard generation == searchGeneration else { return }
 
-            podcastResults = podcasts
-            episodeResults = episodes
-            syncExpandedGroups(with: groupedResults)
+            groupedResults = groups
+            syncExpandedGroups(with: groups)
             isSearching = false
             searchError = nil
         } catch {
+            guard Task.isCancelled == false else { return }
             guard generation == searchGeneration else { return }
-            podcastResults = []
-            episodeResults = []
+            groupedResults = []
             expandedPodcastGroupIDs = []
             isSearching = false
             searchError = error.localizedDescription
         }
-    }
-
-    @MainActor
-    private func fetchPodcastResults(
-        query: String,
-        in context: ModelContext,
-        scopeFilter: SearchScopeFilter
-    ) throws -> [PodcastSearchResult] {
-        var matchesByID: [String: PodcastSearchResult] = [:]
-
-        func insertUnique(_ podcasts: [Podcast]) {
-            for podcast in podcasts {
-                let podcastID = podcast.persistentModelID
-                let key = "\(podcastID)"
-                guard scopeFilter.includesPodcast(id: key) else { continue }
-                if matchesByID[key] == nil {
-                    guard let podcast = scopeFilter.podcastSummary(forPodcastID: key) else { continue }
-                    matchesByID[key] = PodcastSearchResult(
-                        podcast: podcast,
-                        title: podcast.title,
-                        author: podcast.author,
-                        snippet: podcast.desc.map { snippet(from: $0, query: query) }
-                    )
-                }
-            }
-        }
-
-        if searchInTitle {
-            let titlePredicate = podcastTitlePredicate(query: query)
-            var descriptor = FetchDescriptor<Podcast>(
-                predicate: titlePredicate,
-                sortBy: [SortDescriptor(\Podcast.title)]
-            )
-            descriptor.fetchLimit = 300
-            insertUnique(try context.fetch(descriptor))
-        }
-
-        if searchInAuthor {
-            let authorPredicate = podcastAuthorPredicate(query: query)
-            var descriptor = FetchDescriptor<Podcast>(
-                predicate: authorPredicate,
-                sortBy: [SortDescriptor(\Podcast.title)]
-            )
-            descriptor.fetchLimit = 300
-            insertUnique(try context.fetch(descriptor))
-        }
-
-        if searchInDescription {
-            let descriptionPredicate = podcastDescriptionPredicate(query: query)
-            var descriptor = FetchDescriptor<Podcast>(
-                predicate: descriptionPredicate,
-                sortBy: [SortDescriptor(\Podcast.title)]
-            )
-            descriptor.fetchLimit = 300
-            insertUnique(try context.fetch(descriptor))
-        }
-
-        return matchesByID
-            .values
-            .sorted { lhs, rhs in
-                lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-            }
-    }
-
-    @MainActor
-    private func fetchEpisodeResults(
-        query: String,
-        in context: ModelContext,
-        scopeFilter: SearchScopeFilter
-    ) throws -> [EpisodeSearchResult] {
-        guard searchInEpisodes else { return [] }
-
-        var matchesByEpisodeID: [String: EpisodeSearchResult] = [:]
-
-        func insertIfNeeded(episode: Episode, kind: EpisodeSearchResult.MatchKind, snippet: String) {
-            let episodeID = episode.persistentModelID
-            let key = "\(episodeID)"
-            guard scopeFilter.includesEpisode(id: key) else { return }
-            guard matchesByEpisodeID[key] == nil else { return }
-            guard let podcastID = scopeFilter.podcastID(forEpisodeID: key) else { return }
-            guard let podcast = scopeFilter.podcastSummary(forPodcastID: podcastID) else { return }
-            matchesByEpisodeID[key] = EpisodeSearchResult(
-                podcast: podcast,
-                episodeID: episodeID,
-                episodeTitle: episode.title,
-                publishDate: episode.publishDate,
-                episodeURL: episode.url,
-                episodeImageURL: episode.imageURL,
-                kind: kind,
-                snippet: snippet
-            )
-        }
-
-        if searchInTitle {
-            let titlePredicate = episodeTitlePredicate(query: query)
-            var descriptor = FetchDescriptor<Episode>(
-                predicate: titlePredicate,
-                sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
-            )
-            descriptor.fetchLimit = 500
-            let matches = try context.fetch(descriptor)
-            for episode in matches {
-                insertIfNeeded(
-                    episode: episode,
-                    kind: .title,
-                    snippet: snippet(from: episode.title, query: query)
-                )
-            }
-        }
-
-        if searchInAuthor {
-            let authorPredicate = episodeAuthorPredicate(query: query)
-            var descriptor = FetchDescriptor<Episode>(
-                predicate: authorPredicate,
-                sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
-            )
-            descriptor.fetchLimit = 500
-            let matches = try context.fetch(descriptor)
-            for episode in matches {
-                let authorText = episode.author ?? ""
-                insertIfNeeded(
-                    episode: episode,
-                    kind: .author,
-                    snippet: snippet(from: authorText, query: query)
-                )
-            }
-        }
-
-        if searchInDescription {
-            var descriptionDescriptor = FetchDescriptor<Episode>(
-                predicate: episodeDescPredicate(query: query),
-                sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
-            )
-            descriptionDescriptor.fetchLimit = 500
-            let descriptionMatches = try context.fetch(descriptionDescriptor)
-            for episode in descriptionMatches {
-                if let desc = episode.desc, containsIgnoringCaseAndDiacritics(desc, query: query) {
-                    insertIfNeeded(
-                        episode: episode,
-                        kind: .showNotes,
-                        snippet: snippet(from: desc, query: query)
-                    )
-                }
-            }
-
-            var subtitleDescriptor = FetchDescriptor<Episode>(
-                predicate: episodeSubtitlePredicate(query: query),
-                sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
-            )
-            subtitleDescriptor.fetchLimit = 500
-            let subtitleMatches = try context.fetch(subtitleDescriptor)
-            for episode in subtitleMatches {
-                if let subtitle = episode.subtitle, containsIgnoringCaseAndDiacritics(subtitle, query: query) {
-                    insertIfNeeded(
-                        episode: episode,
-                        kind: .showNotes,
-                        snippet: snippet(from: subtitle, query: query)
-                    )
-                }
-            }
-
-            var contentDescriptor = FetchDescriptor<Episode>(
-                predicate: episodeContentPredicate(query: query),
-                sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
-            )
-            contentDescriptor.fetchLimit = 500
-            let contentMatches = try context.fetch(contentDescriptor)
-            for episode in contentMatches {
-                if let content = episode.content, containsIgnoringCaseAndDiacritics(content, query: query) {
-                    insertIfNeeded(
-                        episode: episode,
-                        kind: .showNotes,
-                        snippet: snippet(from: content, query: query)
-                    )
-                }
-            }
-        }
-
-        let chapterPredicate = chapterTitlePredicate(query: query)
-        var chapterDescriptor = FetchDescriptor<Marker>(predicate: chapterPredicate)
-        chapterDescriptor.fetchLimit = 600
-        let chapterMatches = try context.fetch(chapterDescriptor)
-
-        for chapter in chapterMatches {
-            guard let episode = chapter.episode else { continue }
-            insertIfNeeded(
-                episode: episode,
-                kind: .chapter(startTime: chapter.start ?? 0),
-                snippet: snippet(from: chapter.title, query: query)
-            )
-        }
-
-        if query.count >= minimumCharactersForTranscriptSearch {
-            let transcriptPredicate = transcriptLinePredicate(query: query)
-            var transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-                predicate: transcriptPredicate,
-                sortBy: [SortDescriptor(\TranscriptLineAndTime.startTime)]
-            )
-            transcriptDescriptor.fetchLimit = 1_500
-            let transcriptMatches = try context.fetch(transcriptDescriptor)
-
-            for line in transcriptMatches {
-                guard let episode = line.episode else { continue }
-                insertIfNeeded(
-                    episode: episode,
-                    kind: .transcript(startTime: line.startTime),
-                    snippet: snippet(from: line.text, query: query, maxLength: 180)
-                )
-            }
-        }
-
-        return matchesByEpisodeID
-            .values
-            .sorted { lhs, rhs in
-                let leftDate = lhs.publishDate ?? .distantPast
-                let rightDate = rhs.publishDate ?? .distantPast
-                if leftDate != rightDate {
-                    return leftDate > rightDate
-                }
-                return lhs.episodeTitle.localizedCaseInsensitiveCompare(rhs.episodeTitle) == .orderedAscending
-            }
-    }
-
-    private func buildScopeFilter(in context: ModelContext) throws -> SearchScopeFilter {
-        let descriptor: FetchDescriptor<Podcast>
-        switch selectedScope {
-        case .all:
-            descriptor = FetchDescriptor<Podcast>()
-        case .subscribed:
-            descriptor = FetchDescriptor<Podcast>(
-                predicate: #Predicate<Podcast> { podcast in
-                    podcast.metaData?.isSubscribed != false
-                }
-            )
-        case .unsubscribed:
-            descriptor = FetchDescriptor<Podcast>(
-                predicate: #Predicate<Podcast> { podcast in
-                    podcast.metaData?.isSubscribed == false
-                }
-            )
-        }
-
-        let scopedPodcasts = try context.fetch(descriptor)
-
-        var podcastIDs = Set<String>()
-        var episodeIDs = Set<String>()
-        var podcastSummaries: [String: PodcastGroupSummary] = [:]
-        var episodeToPodcastID: [String: String] = [:]
-
-        for podcast in scopedPodcasts {
-            let podcastID = podcast.persistentModelID
-            let podcastKey = "\(podcastID)"
-            podcastIDs.insert(podcastKey)
-            podcastSummaries[podcastKey] = PodcastGroupSummary(
-                podcastID: podcastID,
-                title: podcast.title,
-                author: podcast.author,
-                desc: podcast.desc,
-                imageURL: podcast.imageURL
-            )
-            for episode in podcast.episodes ?? [] {
-                let episodeKey = "\(episode.persistentModelID)"
-                episodeIDs.insert(episodeKey)
-                episodeToPodcastID[episodeKey] = podcastKey
-            }
-        }
-
-        return SearchScopeFilter(
-            podcastIDs: podcastIDs,
-            episodeIDs: episodeIDs,
-            podcastsByID: podcastSummaries,
-            episodeToPodcastID: episodeToPodcastID
-        )
     }
 
     private func syncExpandedGroups(with groups: [PodcastSearchResultGroup]) {
@@ -705,90 +417,9 @@ struct LibrarySearchView: View {
         expandedPodcastGroupIDs = preserved.isEmpty ? ids : preserved
     }
 
-    private func podcastTitlePredicate(query: String) -> Predicate<Podcast> {
-        #Predicate<Podcast> { podcast in
-            podcast.title.localizedStandardContains(query)
-        }
-    }
-
-    private func podcastAuthorPredicate(query: String) -> Predicate<Podcast> {
-        #Predicate<Podcast> { podcast in
-            podcast.author?.localizedStandardContains(query) == true
-        }
-    }
-
-    private func podcastDescriptionPredicate(query: String) -> Predicate<Podcast> {
-        #Predicate<Podcast> { podcast in
-            podcast.desc?.localizedStandardContains(query) == true
-        }
-    }
-
-    private func episodeTitlePredicate(query: String) -> Predicate<Episode> {
-        #Predicate<Episode> { episode in
-            episode.title.localizedStandardContains(query)
-        }
-    }
-
-    private func episodeAuthorPredicate(query: String) -> Predicate<Episode> {
-        #Predicate<Episode> { episode in
-            episode.author?.localizedStandardContains(query) == true
-        }
-    }
-
-    private func episodeDescPredicate(query: String) -> Predicate<Episode> {
-        #Predicate<Episode> { episode in
-            episode.desc?.localizedStandardContains(query) == true
-        }
-    }
-
-    private func episodeSubtitlePredicate(query: String) -> Predicate<Episode> {
-        #Predicate<Episode> { episode in
-            episode.subtitle?.localizedStandardContains(query) == true
-        }
-    }
-
-    private func episodeContentPredicate(query: String) -> Predicate<Episode> {
-        #Predicate<Episode> { episode in
-            episode.content?.localizedStandardContains(query) == true
-        }
-    }
-
-    private func chapterTitlePredicate(query: String) -> Predicate<Marker> {
-        #Predicate<Marker> { chapter in
-            chapter.title.localizedStandardContains(query)
-        }
-    }
-
-    private func transcriptLinePredicate(query: String) -> Predicate<TranscriptLineAndTime> {
-        #Predicate<TranscriptLineAndTime> { line in
-            line.text.localizedStandardContains(query)
-        }
-    }
-
-    private func containsIgnoringCaseAndDiacritics(_ text: String, query: String) -> Bool {
-        text.range(of: query, options: [.caseInsensitive, .diacriticInsensitive], range: nil, locale: .current) != nil
-    }
-
-    private func snippet(from text: String, query: String, maxLength: Int = 140) -> String {
-        let cleanedText = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard cleanedText.count > maxLength else { return cleanedText }
-
-        let lowercaseText = cleanedText.lowercased()
-        let lowercaseQuery = query.lowercased()
-        if let range = lowercaseText.range(of: lowercaseQuery) {
-            let lowerBound = cleanedText.distance(from: cleanedText.startIndex, to: range.lowerBound)
-            let startOffset = max(0, lowerBound - (maxLength / 2))
-            let startIndex = cleanedText.index(cleanedText.startIndex, offsetBy: startOffset)
-            let endIndex = cleanedText.index(startIndex, offsetBy: min(maxLength, cleanedText.distance(from: startIndex, to: cleanedText.endIndex)))
-            let clipped = String(cleanedText[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-            return startOffset == 0 ? clipped : "…\(clipped)"
-        }
-
-        return String(cleanedText.prefix(maxLength)).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
-private struct PodcastSearchResult: Identifiable {
+struct PodcastSearchResult: Identifiable, Sendable {
     let id: String
     let podcast: PodcastGroupSummary
     let title: String
@@ -805,7 +436,7 @@ private struct PodcastSearchResult: Identifiable {
     }
 }
 
-private struct SearchScopeFilter {
+struct SearchScopeFilter: Sendable {
     let podcastIDs: Set<String>
     let episodeIDs: Set<String>
     let podcastsByID: [String: PodcastGroupSummary]
@@ -828,8 +459,8 @@ private struct SearchScopeFilter {
     }
 }
 
-private struct EpisodeSearchResult: Identifiable {
-    enum MatchKind {
+struct EpisodeSearchResult: Identifiable, Sendable {
+    enum MatchKind: Sendable {
         case title
         case author
         case showNotes
@@ -909,7 +540,7 @@ private struct EpisodeSearchResult: Identifiable {
     }
 }
 
-private struct PodcastGroupSummary: Identifiable {
+struct PodcastGroupSummary: Identifiable, Sendable {
     let podcastID: PersistentIdentifier
     let title: String
     let author: String?
@@ -919,7 +550,7 @@ private struct PodcastGroupSummary: Identifiable {
     var id: String { "\(podcastID)" }
 }
 
-private struct PodcastSearchResultGroup: Identifiable {
+struct PodcastSearchResultGroup: Identifiable, Sendable {
     let podcast: PodcastGroupSummary
     let items: [GroupedSearchItem]
 
@@ -931,7 +562,7 @@ private struct PodcastSearchResultGroup: Identifiable {
     }
 }
 
-private enum GroupedSearchItem: Identifiable {
+enum GroupedSearchItem: Identifiable, Sendable {
     case podcast(PodcastSearchResult)
     case episode(EpisodeSearchResult)
 

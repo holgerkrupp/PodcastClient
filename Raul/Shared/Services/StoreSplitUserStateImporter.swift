@@ -227,13 +227,11 @@ actor StoreSplitUserStateImporter {
 
                 if state.isArchived {
                     setIfChanged(metadata, \.status, .archived)
-                    setIfChanged(metadata, \.isInbox, false)
                 } else if state.isPlayed {
                     setIfChanged(metadata, \.status, .history)
-                    setIfChanged(metadata, \.isInbox, false)
                 } else if metadata.status == .archived || metadata.status == .history {
-                    setIfChanged(metadata, \.status, .inbox)
-                    setIfChanged(metadata, \.isInbox, true)
+                    let independentStatus: EpisodeStatus? = metadata.isInbox == true ? .inbox : nil
+                    setIfChanged(metadata, \.status, independentStatus)
                 }
                 result.episodeStatesApplied += 1
             }

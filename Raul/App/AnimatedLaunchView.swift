@@ -170,8 +170,11 @@ private final class LaunchCurtainUIView: UIView, CAAnimationDelegate {
             return
         }
 
-        let duration: CFTimeInterval = 0.9
-        let stagger: CFTimeInterval = 0.055
+        // The real interface is already mounted below this non-interactive
+        // curtain. Keep the handoff brief so it does not feel like launch work
+        // is still blocking interaction.
+        let duration: CFTimeInterval = 0.42
+        let stagger: CFTimeInterval = 0.025
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)

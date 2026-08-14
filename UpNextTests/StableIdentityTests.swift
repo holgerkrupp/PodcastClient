@@ -1514,6 +1514,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertEqual(refreshedEpisode.metaData?.playPosition, 120)
         XCTAssertEqual(refreshedEpisode.metaData?.maxPlayposition, 180)
         XCTAssertEqual(refreshedEpisode.metaData?.isArchived, true)
+        XCTAssertEqual(refreshedEpisode.metaData?.isInbox, true)
         XCTAssertEqual(refreshedEpisode.metaData?.status, .archived)
     }
 

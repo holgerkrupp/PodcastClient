@@ -762,6 +762,7 @@
       }
     },
     "Archive all inbox episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -782,6 +783,7 @@
       }
     },
     "Archive Episode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -802,6 +804,7 @@
       }
     },
     "Archive inbox" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -822,6 +825,7 @@
       }
     },
     "Archiving inbox episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1211,6 +1215,9 @@
         }
       }
     },
+    "Changes archive state without changing inbox or playlist membership" : {
+
+    },
     "Changes the current episode between the audio enclosure and alternate video stream" : {
       "localizations" : {
         "de" : {
@@ -1370,6 +1377,12 @@
           }
         }
       }
+    },
+    "Clear inbox" : {
+
+    },
+    "Clearing inbox" : {
+
     },
     "Clip" : {
 
@@ -3165,7 +3178,11 @@
         }
       }
     },
+    "Inbox is your triage area for fresh episodes. Adding an episode to a playlist removes it from Inbox; removing it from a playlist does not return it." : {
+
+    },
     "Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3759,6 +3776,9 @@
         }
       }
     },
+    "Mark Archived" : {
+
+    },
     "Marker type" : {
       "localizations" : {
         "de" : {
@@ -3993,6 +4013,7 @@
       }
     },
     "Moves every inbox episode to archive" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4023,6 +4044,7 @@
       }
     },
     "Moves this episode in or out of the archive" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6229,6 +6251,9 @@
     "Release schedule: %@" : {
 
     },
+    "Remove all inbox episodes" : {
+
+    },
     "Remove Current" : {
       "localizations" : {
         "de" : {
@@ -6258,6 +6283,12 @@
           }
         }
       }
+    },
+    "Remove episode from Inbox" : {
+
+    },
+    "Remove from Inbox" : {
+
     },
     "Remove from Playlist" : {
       "localizations" : {
@@ -6289,6 +6320,9 @@
         }
       }
     },
+    "Removes every episode from the inbox without changing playlists or archive state" : {
+
+    },
     "Removes the transcript panel below the artwork" : {
       "localizations" : {
         "de" : {
@@ -6298,6 +6332,9 @@
           }
         }
       }
+    },
+    "Removes this episode from Inbox without changing archive or playlist membership" : {
+
     },
     "Rescan" : {
       "localizations" : {

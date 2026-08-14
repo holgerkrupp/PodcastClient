@@ -6,7 +6,7 @@ extension Notification.Name {
     static let podcastYearShareNotificationTapped = Notification.Name("podcastYearShareNotificationTapped")
 }
 
-struct PodcastYearShareRequest: Identifiable {
+struct PodcastYearShareRequest: Identifiable, Sendable {
     let year: Int
     let periodStart: Date
     let periodEnd: Date
@@ -19,7 +19,7 @@ struct PodcastYearShareRequest: Identifiable {
     }
 }
 
-struct PodcastYearPodcast: Identifiable {
+struct PodcastYearPodcast: Identifiable, Sendable {
     let rank: Int
     let title: String
     let totalSeconds: Double
@@ -53,19 +53,19 @@ final class PodcastYearShareCoordinator: ObservableObject {
 
     func evaluateAppLaunch(modelContext: ModelContext) async {
         await presentPendingNotificationTapIfNeeded(modelContext: modelContext)
-        presentOnNewYearsDayIfNeeded(modelContext: modelContext)
+        await presentOnNewYearsDayIfNeeded(modelContext: modelContext)
         await scheduleNextNotificationIfNeeded(modelContext: modelContext)
     }
 
     func evaluateAppBecameActive(modelContext: ModelContext) async {
         await presentPendingNotificationTapIfNeeded(modelContext: modelContext)
-        presentOnNewYearsDayIfNeeded(modelContext: modelContext)
+        await presentOnNewYearsDayIfNeeded(modelContext: modelContext)
         await scheduleNextNotificationIfNeeded(modelContext: modelContext)
     }
 
     func handleOpenURL(_ url: URL, modelContext: ModelContext) async -> Bool {
         guard Self.isPodcastYearURL(url) else { return false }
-        presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
+        await presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
         await scheduleNextNotificationIfNeeded(modelContext: modelContext)
         return true
     }
@@ -137,18 +137,24 @@ final class PodcastYearShareCoordinator: ObservableObject {
     private func presentPendingNotificationTapIfNeeded(modelContext: ModelContext) async {
         guard UserDefaults.standard.bool(forKey: pendingNotificationTapKey) else { return }
         UserDefaults.standard.set(false, forKey: pendingNotificationTapKey)
-        presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
+        await presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
     }
 
-    private func presentOnNewYearsDayIfNeeded(modelContext: ModelContext) {
+    private func presentOnNewYearsDayIfNeeded(modelContext: ModelContext) async {
         guard isNewYearsDay(Date()) else { return }
-        presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
+        await presentPastYearIfNeeded(modelContext: modelContext, markAsShown: true)
     }
 
-    private func presentPastYearIfNeeded(modelContext: ModelContext, markAsShown: Bool) {
+    private func presentPastYearIfNeeded(
+        modelContext: ModelContext,
+        markAsShown: Bool
+    ) async {
         let year = wrappedYear(for: Date())
         guard lastShownYear != year else { return }
-        guard let request = makeRequest(for: year, modelContext: modelContext) else { return }
+        guard let request = await makeRequestInBackground(
+            for: year,
+            modelContext: modelContext
+        ) else { return }
 
         sheetRequest = request
         if markAsShown {
@@ -219,7 +225,10 @@ final class PodcastYearShareCoordinator: ObservableObject {
 
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [notificationIdentifier])
         guard lastShownYear != wrappedYear else { return }
-        guard makeRequest(for: wrappedYear, modelContext: modelContext) != nil else { return }
+        guard await makeRequestInBackground(
+            for: wrappedYear,
+            modelContext: modelContext
+        ) != nil else { return }
 
         let status = await notificationAuthorizationStatus()
         switch status {
@@ -248,6 +257,29 @@ final class PodcastYearShareCoordinator: ObservableObject {
         let request = UNNotificationRequest(identifier: notificationIdentifier, content: content, trigger: trigger)
 
         try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    private func makeRequestInBackground(
+        for year: Int,
+        modelContext: ModelContext
+    ) async -> PodcastYearShareRequest? {
+        guard
+            let periodStart = calendar.date(
+                from: DateComponents(year: year, month: 1, day: 1)
+            ),
+            let periodEnd = calendar.date(
+                from: DateComponents(year: year + 1, month: 1, day: 1)
+            )
+        else { return nil }
+
+        return await PodcastYearSnapshotActor(modelContainer: modelContext.container)
+            .request(
+                year: year,
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                significantListeningThreshold: significantListeningThreshold,
+                calendar: calendar
+            )
     }
 
     private func nextNotificationDate(after now: Date) -> Date? {

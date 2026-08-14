@@ -9,21 +9,45 @@
 import SwiftUI
 import SwiftData
 
+struct EpisodeControlPlaylist: Identifiable, Equatable, Sendable {
+    let id: UUID
+    let title: String
+    let symbolName: String
+    let isDefaultQueue: Bool
+
+    init(playlist: Playlist) {
+        id = playlist.id
+        title = playlist.displayTitle
+        symbolName = playlist.displaySymbolName
+        isDefaultQueue = playlist.title == Playlist.defaultQueueTitle
+    }
+}
+
+private struct EpisodeControlPlaylistsKey: EnvironmentKey {
+    static let defaultValue: [EpisodeControlPlaylist] = []
+}
+
+extension EnvironmentValues {
+    var episodeControlPlaylists: [EpisodeControlPlaylist] {
+        get { self[EpisodeControlPlaylistsKey.self] }
+        set { self[EpisodeControlPlaylistsKey.self] = newValue }
+    }
+}
+
 struct EpisodeControlView: View {
-    @Bindable var episode: Episode
+    let episode: Episode
+    let showsRemoveFromInboxAction: Bool
 
     @Environment(\.modelContext) private var modelContext
-
-    @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
-    private var playlists: [Playlist]
+    @Environment(\.episodeControlPlaylists) private var manualPlaylists
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var preferredPlaylistID: String = ""
     @State private var isSelectingFrontPlaylist = false
     @State private var isSelectingEndPlaylist = false
 
-
-    private var manualPlaylists: [Playlist] {
-        Playlist.manualVisibleSorted(playlists)
+    init(episode: Episode, showsRemoveFromInboxAction: Bool = false) {
+        self.episode = episode
+        self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
     }
 
     private var resolvedPlaylistID: UUID? {
@@ -32,7 +56,7 @@ struct EpisodeControlView: View {
             return explicitID
         }
 
-        if let defaultPlaylist = manualPlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
+        if let defaultPlaylist = manualPlaylists.first(where: \.isDefaultQueue) {
             return defaultPlaylist.id
         }
 
@@ -45,7 +69,7 @@ struct EpisodeControlView: View {
             return Playlist.defaultQueueDisplayName
         }
 
-        return playlist.displayTitle
+        return playlist.title
     }
 
     var body: some View {
@@ -100,7 +124,7 @@ struct EpisodeControlView: View {
                         )
                         .confirmationDialog("Add to front of playlist", isPresented: $isSelectingFrontPlaylist, titleVisibility: .visible) {
                             ForEach(manualPlaylists) { playlist in
-                                Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
+                                Button(playlist.title, systemImage: playlist.symbolName) {
                                     Task {
                                         await addEpisode(to: playlist.id, position: .front)
                                     }
@@ -137,7 +161,7 @@ struct EpisodeControlView: View {
                         )
                         .confirmationDialog("Add to end of playlist", isPresented: $isSelectingEndPlaylist, titleVisibility: .visible) {
                             ForEach(manualPlaylists) { playlist in
-                                Button(playlist.displayTitle, systemImage: playlist.displaySymbolName) {
+                                Button(playlist.title, systemImage: playlist.symbolName) {
                                     Task {
                                         await addEpisode(to: playlist.id, position: .end)
                                     }
@@ -155,7 +179,9 @@ struct EpisodeControlView: View {
                 Button {
                     Task {
                         let actor = EpisodeActor(modelContainer: modelContext.container)
-                        if episode.metaData?.isArchived == true {
+                        if showsRemoveFromInboxAction {
+                            await actor.removeFromInbox(episode.url)
+                        } else if episode.metaData?.isArchived == true {
                             await actor.unarchiveEpisode(episode.url)
                         } else {
                             await actor.archiveEpisode(episode.url)
@@ -163,8 +189,12 @@ struct EpisodeControlView: View {
                     }
                 } label: {
                     Label(
-                        episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive",
-                        systemImage: episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox"
+                        showsRemoveFromInboxAction
+                            ? "Remove from Inbox"
+                            : (episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive"),
+                        systemImage: showsRemoveFromInboxAction
+                            ? "tray.and.arrow.up.fill"
+                            : (episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
                     )
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
@@ -175,8 +205,16 @@ struct EpisodeControlView: View {
                     .frame(width: 50)
                 }
                 .buttonStyle(.glass(.clear))
-                .accessibilityLabel(episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
-                .accessibilityHint("Moves this episode in or out of the archive")
+                .accessibilityLabel(
+                    showsRemoveFromInboxAction
+                        ? "Remove episode from Inbox"
+                        : (episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
+                )
+                .accessibilityHint(
+                    showsRemoveFromInboxAction
+                        ? "Removes this episode from Inbox without changing archive or playlist membership"
+                        : "Changes archive state without changing inbox or playlist membership"
+                )
             }
         }
     }

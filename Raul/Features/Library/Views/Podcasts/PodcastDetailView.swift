@@ -30,18 +30,6 @@ struct PodcastDetailView: View {
             }
         }
 
-        var comparator: (Episode, Episode) -> Bool {
-            switch self {
-            case .newestFirst:
-                return { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) }
-            case .oldestFirst:
-                return { ($0.publishDate ?? .distantFuture) < ($1.publishDate ?? .distantFuture) }
-            case .titleAZ:
-                return { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            case .titleZA:
-                return { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedDescending }
-            }
-        }
     }
 
     
@@ -77,6 +65,7 @@ struct PodcastDetailView: View {
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
     @State private var filteredEpisodeDisplayLimit = Self.episodePageSize
+    @State private var episodeFilterTask: Task<Void, Never>?
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
@@ -422,7 +411,7 @@ struct PodcastDetailView: View {
                 }
                 
                 Section{
-                    ForEach(visibleFilteredEpisodes, id: \.id) { episode in
+                    ForEach(visibleFilteredEpisodes, id: \.persistentModelID) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
@@ -501,6 +490,9 @@ struct PodcastDetailView: View {
                 Task {
                     await updatePredictedReleaseInfo()
                 }
+            }
+            .onDisappear {
+                episodeFilterTask?.cancel()
             }
       //      .navigationTitle(podcast.title)
             .navigationDestination(isPresented: $showPodroll) {
@@ -623,41 +615,41 @@ struct PodcastDetailView: View {
     }
 
     private func applyEpisodeFilters() {
-        let episodes = podcast.episodes ?? []
-
-        let visibleEpisodes: [Episode]
-        if hidePlayedAndArchived {
-            visibleEpisodes = episodes.filter { $0.maxPlayProgress < 0.95 }
-        } else {
-            visibleEpisodes = episodes
-        }
-
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else {
-            filteredEpisodes = visibleEpisodes.sorted(by: sortOption.comparator)
-            return
+        let listSort: PodcastEpisodeListSort = switch sortOption {
+        case .newestFirst: .newestFirst
+        case .oldestFirst: .oldestFirst
+        case .titleAZ: .titleAZ
+        case .titleZA: .titleZA
         }
+        let request = PodcastEpisodeFilterRequest(
+            query: query,
+            searchInTitle: searchInTitle,
+            searchInAuthor: searchInAuthor,
+            searchInDescription: searchInDescription,
+            searchInTranscript: searchInTranscript,
+            hidePlayedAndArchived: hidePlayedAndArchived,
+            sort: listSort
+        )
+        let podcastID = podcast.persistentModelID
+        let actor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
 
-        filteredEpisodes = visibleEpisodes
-            .filter { episode in
-                if searchInTitle, episode.title.localizedStandardContains(query) {
-                    return true
+        episodeFilterTask?.cancel()
+        episodeFilterTask = Task {
+            do {
+                let episodeIDs = try await actor.episodeIDs(
+                    podcastID: podcastID,
+                    request: request
+                )
+                guard Task.isCancelled == false else { return }
+                filteredEpisodes = episodeIDs.compactMap {
+                    modelContext.model(for: $0) as? Episode
                 }
-                if searchInAuthor, let author = episode.author, author.localizedStandardContains(query) {
-                    return true
-                }
-                if searchInDescription, let desc = episode.desc, desc.localizedStandardContains(query) {
-                    return true
-                }
-                if searchInTranscript,
-                   let lines = episode.transcriptLines,
-                   lines.contains(where: { $0.text.localizedStandardContains(query) }) {
-                    return true
-                }
-
-                return false
+            } catch {
+                guard Task.isCancelled == false else { return }
+                filteredEpisodes = []
             }
-            .sorted(by: sortOption.comparator)
+        }
     }
 
     private func refreshEpisodes() async {

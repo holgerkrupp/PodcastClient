@@ -870,6 +870,7 @@ enum EpisodeStatus: String, Codable{
 
 enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
     case backCatalogImport
+    case manualPlaylistRemoval
     case missingSideload
 }
 
@@ -912,6 +913,31 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
         set {
             systemSuppressionReasonRawValue = newValue?.rawValue
         }
+    }
+
+    /// Keeps the legacy mutually-exclusive status field aligned with the
+    /// independent inbox, history, and archive flags.
+    func reconcileLegacyStatus() {
+        if isArchived == true {
+            status = .archived
+        } else if isHistory == true {
+            status = .history
+        } else if isInbox == true {
+            status = .inbox
+        } else {
+            status = nil
+        }
+    }
+
+    func setInboxMembership(_ isInInbox: Bool) {
+        isInbox = isInInbox
+        reconcileLegacyStatus()
+    }
+
+    func setArchived(_ archived: Bool, at date: Date = .now) {
+        isArchived = archived
+        archivedAt = archived ? date : nil
+        reconcileLegacyStatus()
     }
    
     

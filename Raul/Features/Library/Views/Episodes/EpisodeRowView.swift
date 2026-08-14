@@ -17,6 +17,7 @@ struct EpisodeRowView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     @Bindable var episode: Episode
+    let showsRemoveFromInboxAction: Bool
     @State private var referenceAvailability = EpisodeReferenceAvailability()
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
@@ -24,11 +25,9 @@ struct EpisodeRowView: View {
     @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeWidth: CGFloat = 300
     @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeHeight: CGFloat = 120
 
-    init(episode: Episode) {
+    init(episode: Episode, showsRemoveFromInboxAction: Bool = false) {
         self._episode = Bindable(wrappedValue: episode)
-        self._referenceAvailability = State(
-            initialValue: EpisodeReferenceAvailability.seeded(from: episode)
-        )
+        self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
     }
   
     
@@ -46,7 +45,7 @@ struct EpisodeRowView: View {
             || episode.metaData?.calculatedIsAvailableLocally == true
         let hasChapters = referenceAvailability.hasChapters
         let hasTranscript = referenceAvailability.hasTranscript
-        let hasBookmarks = episode.bookmarks?.isEmpty == false
+        let hasBookmarks = referenceAvailability.hasBookmarks
         let progress = max(0.0, min(1.0, episode.displayProgress))
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
@@ -137,7 +136,10 @@ struct EpisodeRowView: View {
                     .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                 }
                 if Player.shared.currentEpisodeURL != episode.url {
-                    EpisodeControlView(episode: episode)
+                    EpisodeControlView(
+                        episode: episode,
+                        showsRemoveFromInboxAction: showsRemoveFromInboxAction
+                    )
                         .frame(minHeight: controlsHeight)
                 }
             }
@@ -203,27 +205,27 @@ struct EpisodeRowView: View {
             .task(id: episode.url) {
                 await Task.yield()
                 guard Task.isCancelled == false else { return }
-                refreshReferenceAvailability()
+                await refreshReferenceAvailability()
             }
             .onChange(of: fileManager.downloadedFiles) { _, _ in
                 Task { @MainActor in
                     await Task.yield()
                     guard Task.isCancelled == false else { return }
-                    refreshReferenceAvailability()
+                    await refreshReferenceAvailability()
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange).receive(on: DispatchQueue.main)) { notification in
                 Task { @MainActor in
                     await Task.yield()
                     guard Task.isCancelled == false else { return }
-                    handleEpisodeReferencesDidChange(notification)
+                    await handleEpisodeReferencesDidChange(notification)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
                 Task { @MainActor in
                     await Task.yield()
                     guard Task.isCancelled == false else { return }
-                    handleEpisodeDownloadFinished(notification)
+                    await handleEpisodeDownloadFinished(notification)
                 }
             }
 
@@ -246,56 +248,25 @@ struct EpisodeRowView: View {
         return downloadedFiles.contains(localFile)
     }
 
-    private func refreshReferenceAvailability(invalidate: Bool = false) {
-        var availability = EpisodeReferenceAvailability.seeded(from: episode)
-
+    private func refreshReferenceAvailability(invalidate: Bool = false) async {
         if let episodeURL = episode.url {
             if invalidate {
                 EpisodeReferenceAvailabilityCache.shared.invalidate(episodeURL)
             } else if let cachedAvailability = EpisodeReferenceAvailabilityCache.shared.availability(for: episodeURL) {
-                availability = cachedAvailability
-                updateReferenceAvailability(availability)
+                updateReferenceAvailability(cachedAvailability)
                 return
             }
 
-            let episodeDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { candidate in
-                    candidate.url == episodeURL
-                }
+            let resolver = EpisodeReferenceAvailabilityResolver(
+                modelContainer: modelContext.container
             )
-            if let matchingEpisodes = try? modelContext.fetch(episodeDescriptor),
-               matchingEpisodes.isEmpty == false {
-                availability.hasChapters = availability.hasChapters
-                    || matchingEpisodes.contains { $0.chapters?.isEmpty == false }
-                availability.hasTranscript = availability.hasTranscript
-                    || matchingEpisodes.contains {
-                        $0.hasLoadedTranscript
-                            || $0.externalFiles.contains(where: { $0.category == .transcript })
-                    }
-            }
+            let availability = await resolver.resolve(episodeURL: episodeURL)
 
-            if availability.hasChapters == false {
-                let chapterDescriptor = FetchDescriptor<Marker>(
-                    predicate: #Predicate<Marker> { marker in
-                        marker.episode?.url == episodeURL
-                    }
-                )
-                availability.hasChapters = ((try? modelContext.fetchCount(chapterDescriptor)) ?? 0) > 0
-            }
-
-            if availability.hasTranscript == false {
-                let transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-                    predicate: #Predicate<TranscriptLineAndTime> { line in
-                        line.episode?.url == episodeURL
-                    }
-                )
-                availability.hasTranscript = ((try? modelContext.fetchCount(transcriptDescriptor)) ?? 0) > 0
-            }
+            guard Task.isCancelled == false else { return }
 
             EpisodeReferenceAvailabilityCache.shared.store(availability, for: episodeURL)
+            updateReferenceAvailability(availability)
         }
-
-        updateReferenceAvailability(availability)
     }
 
     private func updateReferenceAvailability(_ availability: EpisodeReferenceAvailability) {
@@ -304,16 +275,16 @@ struct EpisodeRowView: View {
         }
     }
 
-    private func handleEpisodeReferencesDidChange(_ notification: Notification) {
+    private func handleEpisodeReferencesDidChange(_ notification: Notification) async {
         guard notificationMatchesEpisode(notification, urlKey: EpisodeReferenceNotificationKey.episodeURL) else { return }
         fileManager.refreshDownloadedFiles()
-        refreshReferenceAvailability(invalidate: true)
+        await refreshReferenceAvailability(invalidate: true)
     }
 
-    private func handleEpisodeDownloadFinished(_ notification: Notification) {
+    private func handleEpisodeDownloadFinished(_ notification: Notification) async {
         guard notificationMatchesEpisode(notification, urlKey: EpisodeDownloadNotificationKey.episodeURL) else { return }
         fileManager.refreshDownloadedFiles()
-        refreshReferenceAvailability()
+        await refreshReferenceAvailability()
     }
 
     private func notificationMatchesEpisode(_ notification: Notification, urlKey: String) -> Bool {
@@ -339,16 +310,52 @@ struct EpisodeRowView: View {
 
 }
 
-private struct EpisodeReferenceAvailability: Equatable {
+private struct EpisodeReferenceAvailability: Equatable, Sendable {
     var hasChapters = false
     var hasTranscript = false
+    var hasBookmarks = false
+}
 
-    static func seeded(from episode: Episode) -> EpisodeReferenceAvailability {
-        EpisodeReferenceAvailability(
-            hasChapters: episode.chapters?.isEmpty == false,
-            hasTranscript: episode.hasLoadedTranscript
-                || episode.externalFiles.contains(where: { $0.category == .transcript })
+@ModelActor
+private actor EpisodeReferenceAvailabilityResolver {
+    func resolve(episodeURL: URL) -> EpisodeReferenceAvailability {
+        var availability = EpisodeReferenceAvailability()
+
+        let episodeDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { candidate in
+                candidate.url == episodeURL
+            }
         )
+        if let matchingEpisodes = try? modelContext.fetch(episodeDescriptor) {
+            availability.hasTranscript = matchingEpisodes.contains {
+                $0.externalFiles.contains(where: { $0.category == .transcript })
+            }
+        }
+
+        let chapterDescriptor = FetchDescriptor<Marker>(
+            predicate: #Predicate<Marker> { marker in
+                marker.episode?.url == episodeURL
+            }
+        )
+        availability.hasChapters = ((try? modelContext.fetchCount(chapterDescriptor)) ?? 0) > 0
+
+        if availability.hasTranscript == false {
+            let transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
+                predicate: #Predicate<TranscriptLineAndTime> { line in
+                    line.episode?.url == episodeURL
+                }
+            )
+            availability.hasTranscript = ((try? modelContext.fetchCount(transcriptDescriptor)) ?? 0) > 0
+        }
+
+        let bookmarkDescriptor = FetchDescriptor<Bookmark>(
+            predicate: #Predicate<Bookmark> { bookmark in
+                bookmark.bookmarkEpisode?.url == episodeURL
+            }
+        )
+        availability.hasBookmarks = ((try? modelContext.fetchCount(bookmarkDescriptor)) ?? 0) > 0
+
+        return availability
     }
 }
 

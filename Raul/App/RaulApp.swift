@@ -141,16 +141,7 @@ struct RaulApp: App {
 
     init() {
         CrashBreadcrumbs.shared.record("raul_app_init_start")
-        SyncMonitor.default.startMonitoring()
         CrashBreadcrumbs.shared.record("raul_app_init_completed")
-        
-        // Tips.showTipsForTesting([ReorderPlaylistTip.self]) // Uncomment to force show during dev
-                
-                try? Tips.configure([
-                    .displayFrequency(.weekly), // Controls how often tips appear app-wide
-                    .datastoreLocation(.applicationDefault)
-                ])
-        
     }
 
     var body: some Scene {
@@ -217,20 +208,29 @@ struct RaulApp: App {
                 
             case .active:
                 guard modelContainerManager.preparedContainer != nil else { return }
-                cleanUp()
                 refreshOnActive()
                 scheduleStoreSplitMigration()
-                Task {
+                Task(priority: .userInitiated) {
+                    await Task.yield()
                     await Player.shared.enterForegroundPlaybackMode()
                     await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
                 }
-                Task {
+                Task(priority: .utility) {
+                    try? await Task.sleep(for: .seconds(4))
+                    guard Task.isCancelled == false, phase == .active else { return }
+                    cleanUp()
+                }
+                Task(priority: .background) {
+                    try? await Task.sleep(for: .seconds(8))
+                    guard Task.isCancelled == false, phase == .active else { return }
                     await runScheduledStorageCleanupIfNeeded(
                         minimumInterval: BackgroundTaskConfiguration.weeklyStorageCleanupFallbackInterval,
                         reason: "active fallback"
                     )
                 }
-                Task {
+                Task(priority: .background) {
+                    try? await Task.sleep(for: .seconds(10))
+                    guard Task.isCancelled == false, phase == .active else { return }
                     await RaulApp.runAutomaticTranscriptionSweep(reason: "active")
                 }
           
@@ -445,24 +445,28 @@ struct RaulApp: App {
 
     func refreshOnActive(){
         guard let container = modelContainerManager.preparedContainer else { return }
-        WatchSyncCoordinator.refreshSoon()
-        Task {
+        deferredForegroundFeedRefreshTask?.cancel()
+        deferredForegroundFeedRefreshTask = Task(priority: .utility) {
+            try? await Task.sleep(for: .seconds(2))
+            guard Task.isCancelled == false, phase == .active else { return }
+
+            WatchSyncCoordinator.refreshSoon()
             await PlayNextWidgetSync.refresh(using: container)
             await CloudSyncProgressReferenceStore.publish(modelContainer: container)
-        }
-        deferredForegroundFeedRefreshTask?.cancel()
-        deferredForegroundFeedRefreshTask = nil
-        if let lastRefresh = getLastRefreshDate(),
-           lastRefresh >= Date().addingTimeInterval(-BackgroundTaskConfiguration.feedRefreshInterval) {
-            CrashBreadcrumbs.shared.record(
-                "foreground_feed_refresh_skipped",
-                details: "reason=recent_refresh"
-            )
-            return
-        }
 
-        CrashBreadcrumbs.shared.record("foreground_feed_refresh_scheduled")
-        deferredForegroundFeedRefreshTask = Task(priority: .utility) {
+            if let lastRefresh = getLastRefreshDate(),
+               lastRefresh >= Date().addingTimeInterval(-BackgroundTaskConfiguration.feedRefreshInterval) {
+                CrashBreadcrumbs.shared.record(
+                    "foreground_feed_refresh_skipped",
+                    details: "reason=recent_refresh"
+                )
+                await MainActor.run {
+                    deferredForegroundFeedRefreshTask = nil
+                }
+                return
+            }
+
+            CrashBreadcrumbs.shared.record("foreground_feed_refresh_scheduled")
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .foregroundQuiet)
             await MainActor.run {
                 deferredForegroundFeedRefreshTask = nil
@@ -725,6 +729,7 @@ private struct RootWindowView: View {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @State private var downloadedFilesManager = DownloadedFilesManager.shared
     @State private var settingsRequest = SettingsWindowRequest.global
+    @State private var didScheduleLaunchWork = false
 
     nonisolated init() {}
 
@@ -735,6 +740,7 @@ private struct RootWindowView: View {
     @ObservedObject var modelContainerManager: ModelContainerManager
     let downloadedFilesManager: DownloadedFilesManager
     @Binding var settingsRequest: SettingsWindowRequest
+    @State private var didScheduleLaunchWork = false
 #endif
 
     var body: some View {
@@ -753,44 +759,67 @@ private struct RootWindowView: View {
 
                 .onAppear {
                     CrashBreadcrumbs.shared.record("root_view_on_appear")
-                    WatchSyncCoordinator.activate()
+                    guard didScheduleLaunchWork == false else { return }
+                    didScheduleLaunchWork = true
                     let managerReference = DownloadedFilesManagerReference(manager: downloadedFilesManager)
-                    Task {
-                        await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
+
+#if canImport(UIKit)
+                    UIDevice.current.isBatteryMonitoringEnabled = true
+#endif
+
+                    Task(priority: .userInitiated) {
+                        try? await Task.sleep(for: .milliseconds(250))
+                        await DeferredLaunchServiceBootstrap.shared.start()
+                        guard Task.isCancelled == false else { return }
+                        Player.shared.startRecoveryIfNeeded()
+                    }
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .milliseconds(500))
+                        guard Task.isCancelled == false else { return }
+                        await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
+                    }
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(1))
+                        guard Task.isCancelled == false else { return }
+                        await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
                             modelContainer: container
                         )
+                        let enabled = UserDefaults.standard.bool(
+                            forKey: SideloadingConfiguration.enabledKey
+                        )
+                        do {
+                            try await SideloadingCoordinator.shared.syncEnabledState(enabled)
+                        } catch {
+                            BasicLogger.shared.log(
+                                "Failed to restore sideloading state: \(error.localizedDescription)"
+                            )
+                        }
+                    }
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(2))
+                        guard Task.isCancelled == false else { return }
+                        WatchSyncCoordinator.activate()
                         await CloudSyncProgressReferenceStore.publish(modelContainer: container)
                         await PlayNextWidgetSync.refresh(using: container)
                         WatchSyncCoordinator.refreshSoon()
                     }
-                    Task {
-                        await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
-                    }
-                    Task {
-                        await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(3))
+                        guard Task.isCancelled == false else { return }
+                        await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                             modelContainer: container
                         )
                     }
-                    Task {
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(5))
+                        guard Task.isCancelled == false else { return }
                         let actor = EpisodeActor(modelContainer: container)
                         await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
                     }
-#if canImport(UIKit)
-                    UIDevice.current.isBatteryMonitoringEnabled = true
-#endif
-                    Task {
+                    Task(priority: .background) {
+                        try? await Task.sleep(for: .seconds(8))
+                        guard Task.isCancelled == false else { return }
                         await RaulApp.runAutomaticTranscriptionSweep(reason: "launch")
-                    }
-                    Task { @MainActor in
-                        Player.shared.startRecoveryIfNeeded()
-                    }
-                    Task {
-                        let enabled = UserDefaults.standard.bool(forKey: SideloadingConfiguration.enabledKey)
-                        do {
-                            try await SideloadingCoordinator.shared.syncEnabledState(enabled)
-                        } catch {
-                            BasicLogger.shared.log("Failed to restore sideloading state: \(error.localizedDescription)")
-                        }
                     }
                 }
                 .task {
@@ -821,6 +850,29 @@ private struct RootWindowView: View {
                 await modelContainerManager.prepareContainer()
             }
         }
+    }
+}
+
+private actor DeferredLaunchServiceBootstrap {
+    static let shared = DeferredLaunchServiceBootstrap()
+
+    private var didStart = false
+
+    func start() async {
+        guard didStart == false else { return }
+        didStart = true
+
+        async let tipConfiguration: Void = Task.detached(priority: .utility) {
+            try? Tips.configure([
+                .displayFrequency(.weekly),
+                .datastoreLocation(.applicationDefault)
+            ])
+        }.value
+
+        await MainActor.run {
+            SyncMonitor.default.startMonitoring()
+        }
+        _ = await tipConfiguration
     }
 }
 

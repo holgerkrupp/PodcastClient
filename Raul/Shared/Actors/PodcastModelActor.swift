@@ -327,10 +327,7 @@ actor PodcastModelActor {
             episode.metaData = metadata
         }
 
-        episode.metaData?.isArchived = false
-        episode.metaData?.isInbox = false
-        episode.metaData?.status = nil
-        episode.metaData?.archivedAt = nil
+        episode.metaData?.setInboxMembership(false)
         episode.metaData?.systemSuppressionReason = reason
     }
     
@@ -1201,36 +1198,17 @@ actor PodcastModelActor {
         }
     }
     
-    func archiveEpisodes(episodeURLs: [URL?]) async throws {
+    func removeEpisodesFromInbox(episodeURLs: [URL?]) async {
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
         for episodeURL in episodeURLs {
-            await episodeActor.archiveEpisode(episodeURL)
+            await episodeActor.removeFromInbox(episodeURL)
         }
-        modelContext.saveIfNeeded()
-     
-    }
-    
-    func archiveInboxEpisodes() async throws {
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.metaData?.isInbox == true  }
-        )
-        let episodes = try modelContext.fetch(descriptor)
-        let episodeActor = EpisodeActor(modelContainer: modelContainer)
-        for episode in episodes {
-            await episodeActor.archiveEpisode(episode.url)
-
-        }
-        modelContext.saveIfNeeded()
     }
     
     func unarchiveEpisode(_ episodeID: PersistentIdentifier) async throws {
         
         guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
-        episode.metaData?.isArchived = false
-        episode.metaData?.isInbox = true
-        episode.metaData?.status = .inbox
-        episode.metaData?.archivedAt = nil
-        episode.metaData?.systemSuppressionReason = nil
+        episode.metaData?.setArchived(false)
 
         modelContext.saveIfNeeded()
     }

@@ -9,7 +9,7 @@
 import SwiftUI
 import SwiftData
 
-enum EpisodeListFilterMode {
+enum EpisodeListFilterMode: Equatable, Sendable {
     case all
     case onlyPlayed
 }
@@ -25,6 +25,7 @@ struct AllEpisodesListView: View {
     @State private var allEpisodesHasMore = false
     @State private var recentlyPlayedDisplayLimit = Self.recentlyPlayedPageSize
     @State private var recentlyPlayedHasMore = false
+    @State private var fetchGeneration = 0
     let filterMode: EpisodeListFilterMode
     
     init(filterMode: EpisodeListFilterMode = .all) {
@@ -41,7 +42,7 @@ struct AllEpisodesListView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(episodes) { episode in
+                ForEach(episodes, id: \.persistentModelID) { episode in
                     ZStack{
                         EpisodeRowView(episode: episode)
 
@@ -59,8 +60,8 @@ struct AllEpisodesListView: View {
             .listStyle(.plain)
             .navigationTitle(navigationTitleText)
             .searchable(text: $searchText)
-            .onAppear {
-                Task { await fetchEpisodes() }
+            .task {
+                await fetchEpisodes()
             }
             .onChange(of: searchText) { oldValue, newValue in
                 allEpisodesDisplayLimit = Self.allEpisodesPageSize
@@ -72,7 +73,7 @@ struct AllEpisodesListView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    Task { deleteFiles() }
+                    Task { await deleteFiles() }
                 } label: {
                     Label("Delete Files", systemImage: "trash")
                    
@@ -88,51 +89,35 @@ struct AllEpisodesListView: View {
     // MARK: - Fetching Episodes
     
     private func fetchEpisodes(searchText: String = "") async {
-        var predicate: Predicate<Episode>? = nil
-        
-        switch filterMode {
-        case .onlyPlayed:
-            let metadataPredicate: Predicate<EpisodeMetaData>
-            if searchText.isEmpty {
-                metadataPredicate = #Predicate<EpisodeMetaData> {
-                    $0.lastPlayed != nil
-                }
-            } else {
-                metadataPredicate = #Predicate<EpisodeMetaData> {
-                    $0.lastPlayed != nil
-                    && $0.episode?.title.localizedStandardContains(searchText) == true
-                }
-            }
-            var descriptor = FetchDescriptor<EpisodeMetaData>(
-                predicate: metadataPredicate,
-                sortBy: [SortDescriptor(\EpisodeMetaData.lastPlayed, order: .reverse)]
-            )
-            descriptor.fetchLimit = recentlyPlayedDisplayLimit
+        fetchGeneration += 1
+        let generation = fetchGeneration
+        let recentlyPlayedOnly = filterMode == .onlyPlayed
+        let limit = recentlyPlayedOnly
+            ? recentlyPlayedDisplayLimit
+            : allEpisodesDisplayLimit
+        let actor = EpisodeListQueryActor(modelContainer: modelContext.container)
 
-            do {
-                let totalCount = try modelContext.fetchCount(FetchDescriptor<EpisodeMetaData>(predicate: metadataPredicate))
-                recentlyPlayedHasMore = totalCount > recentlyPlayedDisplayLimit
-                episodes = try modelContext.fetch(descriptor).compactMap(\.episode)
-            } catch {
-                // print("Fetch error: \(error)")
-            }
-            
-        case .all:
-            if !searchText.isEmpty {
-                predicate = #Predicate<Episode> { $0.title.localizedStandardContains(searchText) }
-            }
-            var descriptor = FetchDescriptor<Episode>(
-                predicate: predicate,
-                sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
+        do {
+            let result = try await actor.allEpisodes(
+                searchText: searchText,
+                limit: limit,
+                recentlyPlayedOnly: recentlyPlayedOnly
             )
-            descriptor.fetchLimit = allEpisodesDisplayLimit
-            do {
-                let totalCount = try modelContext.fetchCount(FetchDescriptor<Episode>(predicate: predicate))
-                allEpisodesHasMore = totalCount > allEpisodesDisplayLimit
-                episodes = try modelContext.fetch(descriptor)
-            } catch {
-                // print("Fetch error: \(error)")
+            guard Task.isCancelled == false, generation == fetchGeneration else {
+                return
             }
+
+            episodes = result.episodeIDs.compactMap {
+                modelContext.model(for: $0) as? Episode
+            }
+            if recentlyPlayedOnly {
+                recentlyPlayedHasMore = result.hasMore
+            } else {
+                allEpisodesHasMore = result.hasMore
+            }
+        } catch {
+            guard generation == fetchGeneration else { return }
+            episodes = []
         }
     }
 
@@ -160,17 +145,16 @@ struct AllEpisodesListView: View {
     }
     
     
-    private func deleteFiles() {
+    private func deleteFiles() async {
         let urls = episodes
             .filter { $0.source != .sideLoaded }
             .compactMap(\.localFile)
-        for url in urls {
-            do {
-                try FileManager.default.removeItem(at: url)
-            } catch {
-                // print("Error deleting file: \(error)")
+
+        await Task.detached(priority: .utility) {
+            for url in urls {
+                try? FileManager.default.removeItem(at: url)
             }
-        }
+        }.value
     }
     
     func onlyPlayed() -> some View {

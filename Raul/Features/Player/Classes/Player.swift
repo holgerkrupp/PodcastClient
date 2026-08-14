@@ -1254,8 +1254,6 @@ class Player {
             for: episode
         )
 
-        episode.metaData?.isInbox = false
-
         currentEpisode = episode
         currentEpisodeURL = episodeURL
         finishingEpisodeURL = nil

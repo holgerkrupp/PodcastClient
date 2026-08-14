@@ -51,8 +51,9 @@ struct InboxView: View {
 struct InboxListView: View {
 
     @State private var episodes: [Episode] = []
-    @State private var isArchiving = false
+    @State private var isClearingInbox = false
     @State private var hasLoaded = false
+    @State private var loadGeneration = 0
 
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
@@ -73,9 +74,12 @@ struct InboxListView: View {
                 InboxEmptyView()
             } else {
                 List {
-                    ForEach(episodes) { episode in
+                    ForEach(episodes, id: \.persistentModelID) { episode in
                         ZStack{
-                            EpisodeRowView(episode: episode)
+                            EpisodeRowView(
+                                episode: episode,
+                                showsRemoveFromInboxAction: true
+                            )
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
                             }.opacity(0)
@@ -86,11 +90,11 @@ struct InboxListView: View {
                         .swipeActions(edge: .trailing){
                             Button(role: .none) {
                                 Task { @MainActor in
-                                    await archiveEpisode(episode)
+                                    await removeFromInbox(episode)
                                     await loadEpisodes()
                                 }
                             } label: {
-                                Label("Archive Episode", systemImage: "archivebox.fill")
+                                Label("Remove from Inbox", systemImage: "tray.and.arrow.up.fill")
                             }
                         }
                         .listRowSeparator(.hidden)
@@ -148,20 +152,20 @@ struct InboxListView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         Task {
-                            await archiveAll()
+                            await clearInbox()
                             await loadEpisodes()
                         }
                     }) {
-                        if isArchiving {
+                        if isClearingInbox {
                             ProgressView()
                         }else{
-                            Image(systemName: "archivebox")
+                            Image(systemName: "tray.and.arrow.up")
                         }
                     }
-                    .disabled(isArchiving)
-                    .accessibilityLabel(isArchiving ? "Archiving inbox episodes" : "Archive all inbox episodes")
-                    .accessibilityHint("Moves every inbox episode to archive")
-                    .accessibilityInputLabels([Text("Archive inbox"), Text("Archive all inbox episodes")])
+                    .disabled(isClearingInbox)
+                    .accessibilityLabel(isClearingInbox ? "Clearing inbox" : "Clear inbox")
+                    .accessibilityHint("Removes every episode from the inbox without changing playlists or archive state")
+                    .accessibilityInputLabels([Text("Clear inbox"), Text("Remove all inbox episodes")])
                 }
             }
         }
@@ -184,41 +188,37 @@ struct InboxListView: View {
     // MARK: - Data Loading
 
     private func loadEpisodes() async {
-        let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
-        let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
-        let descriptor = FetchDescriptor<Episode>(predicate: predicate, sortBy: [sortDescriptor])
+        loadGeneration += 1
+        let generation = loadGeneration
+        let actor = EpisodeListQueryActor(modelContainer: modelContext.container)
+
         do {
-            let results = try modelContext.fetch(descriptor)
-            self.episodes = results
-            self.hasLoaded = true
+            let episodeIDs = try await actor.inboxEpisodeIDs()
+            guard Task.isCancelled == false, generation == loadGeneration else {
+                return
+            }
+            episodes = episodeIDs.compactMap {
+                modelContext.model(for: $0) as? Episode
+            }
+            hasLoaded = true
         } catch {
-            self.errorMessage = "Failed to load episodes: \(error.localizedDescription)"
-            self.hasLoaded = true
+            guard generation == loadGeneration else { return }
+            errorMessage = "Failed to load episodes: \(error.localizedDescription)"
+            hasLoaded = true
         }
     }
     
-    private func archiveEpisode(_ episode: Episode) async {
+    private func removeFromInbox(_ episode: Episode) async {
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.archiveEpisode(episode.url)
-        // Optional: post here if EpisodeActor doesn’t
-        // Task { @MainActor in NotificationCenter.default.post(name: .inboxDidChange, object: nil) }
+        await episodeActor.removeFromInbox(episode.url)
     }
     
-    private func unarchiveEpisode(_ episode: Episode) async {
-        let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.unarchiveEpisode(episode.url)
-        // Optional: post here if EpisodeActor doesn’t
-        // Task { @MainActor in NotificationCenter.default.post(name: .inboxDidChange, object: nil) }
-    }
-    
-    private func archiveAll() async {
-        isArchiving = true
+    private func clearInbox() async {
+        isClearingInbox = true
         let episodeURLs = episodes.map { $0.url }
         let episodeActor = PodcastModelActor(modelContainer: modelContext.container)
-        try? await episodeActor.archiveEpisodes(episodeURLs: episodeURLs)
-        isArchiving = false
-        // Optional: post here if PodcastModelActor doesn’t
-        // Task { @MainActor in NotificationCenter.default.post(name: .inboxDidChange, object: nil) }
+        await episodeActor.removeEpisodesFromInbox(episodeURLs: episodeURLs)
+        isClearingInbox = false
     }
     
     private func refreshEpisodes() async {

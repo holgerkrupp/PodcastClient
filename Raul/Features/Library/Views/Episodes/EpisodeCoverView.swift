@@ -133,18 +133,9 @@ struct CoverImageView: View {
     }
 
     private func cachedUIImage(for url: URL) -> UIImage? {
-        if let inMemory = SharedImageRepository.cachedImage(for: url) {
-            return inMemory
-        }
-
-        let request = URLRequest(url: url, cachePolicy: .returnCacheDataDontLoad)
-        if let cachedData = URLCache.shared.cachedResponse(for: request)?.data,
-           let cachedImage = ImageLoaderAndCache.makeUIImage(from: cachedData) {
-            SharedImageRepository.store(cachedImage, for: url, cost: SharedImageRepository.memoryCost(for: cachedImage))
-            return cachedImage
-        }
-
-        return nil
+        // Keep body evaluation cheap. Disk-cache access and image decoding are
+        // handled by SharedImageRepository from the asynchronous task below.
+        SharedImageRepository.cachedImage(for: url)
     }
 
     @MainActor

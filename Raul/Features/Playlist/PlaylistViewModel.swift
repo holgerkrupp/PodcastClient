@@ -62,7 +62,6 @@ class PlaylistViewModel: ObservableObject {
         do {
             let result = try context.fetch(descriptor)
             self.entries = result
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         } catch {
             // print("Failed to fetch entries: \(error)")
         }

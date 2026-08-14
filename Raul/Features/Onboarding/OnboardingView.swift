@@ -48,7 +48,7 @@ struct OnboardingView: View {
             bullets: [
                 "Review newly found episodes without cluttering your playlist.",
                 "Move episodes you want to hear into a playlist.",
-                "Archive anything you want out of sight."
+                "Adding an episode to a playlist removes it from Inbox. You can also remove it directly when you are done triaging."
             ]
         ),
         OnboardingPage(
