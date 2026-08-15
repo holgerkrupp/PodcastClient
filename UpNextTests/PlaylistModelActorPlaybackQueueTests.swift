@@ -42,6 +42,105 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         XCTAssertNil(nextURL)
     }
 
+    func testFinishingEpisodeAtomicallyDequeuesItAndReturnsSuccessor() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+        let containsFinishedEpisode = try await actor.containsEpisodeURL(
+            try XCTUnwrap(fixture.episodes[0].url)
+        )
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        XCTAssertEqual(
+            orderedURLs,
+            [fixture.episodes[1].url, fixture.episodes[2].url].compactMap { $0 }
+        )
+        XCTAssertFalse(containsFinishedEpisode)
+    }
+
+    func testFinishingLastEpisodeDequeuesItAndReturnsNil() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0], in: fixture.selectedPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+
+        XCTAssertNil(nextURL)
+        XCTAssertEqual(orderedURLs, [])
+    }
+
+    func testFinishingEpisodeRemovesDuplicateEntriesAndNormalizesOrder() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        try queueEpisodes([2, 0, 1], in: fixture.defaultPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        let context = ModelContext(fixture.container)
+        let playlistID = fixture.selectedPlaylist.id
+        let entries = try context.fetch(FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == playlistID },
+            sortBy: [SortDescriptor(\PlaylistEntry.order)]
+        ))
+        XCTAssertEqual(entries.compactMap { $0.episode?.url }, [
+            fixture.episodes[1].url,
+            fixture.episodes[2].url
+        ].compactMap { $0 })
+        XCTAssertEqual(entries.map(\.order), [0, 1])
+
+        let defaultPlaylistID = fixture.defaultPlaylist.id
+        let defaultEntries = try context.fetch(FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == defaultPlaylistID },
+            sortBy: [SortDescriptor(\PlaylistEntry.order)]
+        ))
+        XCTAssertEqual(defaultEntries.compactMap { $0.episode?.url }, [
+            fixture.episodes[2].url,
+            fixture.episodes[1].url
+        ].compactMap { $0 })
+        XCTAssertEqual(defaultEntries.map(\.order), [0, 1])
+    }
+
+    func testFinishingAlreadyDequeuedEpisodeReturnsFirstQueuedEpisode() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        XCTAssertEqual(
+            orderedURLs,
+            [fixture.episodes[1].url, fixture.episodes[2].url].compactMap { $0 }
+        )
+    }
+
     func testActivePlaybackPlaylistFallsBackToDefaultWhenStoredSelectionIsStale() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         let defaults = makeDefaults()

@@ -203,6 +203,96 @@ actor PlaylistModelActor {
         return urls[nextIndex]
     }
 
+    /// Removes a finished episode from every manual playlist and returns the playback
+    /// playlist's successor.
+    ///
+    /// Successor selection and removal deliberately happen in the same actor turn and are
+    /// committed before this method returns. This prevents playback from selecting from one
+    /// queue snapshot while completion bookkeeping removes from a newer one later on.
+    func dequeueFinishedEpisodeAndReturnNext(after episodeURL: URL) async throws -> URL? {
+        guard let playlist = try fetchPlaylist() else { return nil }
+        guard playlist.isSmartPlaylist == false else {
+            return try nextEpisodeURL(after: episodeURL)
+        }
+
+        let orderedEntries = try fetchOrderedEntries()
+        let firstFinishedIndex = orderedEntries.firstIndex {
+            $0.episode?.url == episodeURL
+        }
+        let remainingEntries = orderedEntries.filter {
+            $0.episode?.url != episodeURL
+        }
+
+        let nextEpisodeURL: URL?
+        if let firstFinishedIndex {
+            nextEpisodeURL = orderedEntries
+                .dropFirst(firstFinishedIndex + 1)
+                .first(where: { $0.episode?.url != episodeURL })?
+                .episode?.url
+        } else {
+            // Completion may be retried after another path already dequeued the episode.
+            // Continuing with the first queued item keeps the operation idempotent.
+            nextEpisodeURL = remainingEntries.first?.episode?.url
+        }
+
+        let matchingEntries = try modelContext.fetch(FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { entry in
+                entry.episode?.url == episodeURL
+            }
+        ))
+        guard matchingEntries.isEmpty == false else { return nextEpisodeURL }
+
+        let affectedPlaylistIDs = Set(matchingEntries.compactMap { $0.playlist?.id })
+
+        let removals = matchingEntries.compactMap { entry -> StoreSplitPlaylistRemoval? in
+            guard let entryPlaylist = entry.playlist,
+                  let identity = entry.episode?.stableEpisodeIdentity else { return nil }
+            return StoreSplitPlaylistRemoval(
+                playlistID: entryPlaylist.id.uuidString,
+                isDefaultQueue: entryPlaylist.title == Playlist.defaultQueueTitle,
+                identity: identity
+            )
+        }
+
+        for entry in matchingEntries {
+            entry.episode?.refresh.toggle()
+            modelContext.delete(entry)
+        }
+        for affectedPlaylistID in affectedPlaylistIDs {
+            let entries = try modelContext.fetch(FetchDescriptor<PlaylistEntry>(
+                predicate: #Predicate<PlaylistEntry> { entry in
+                    entry.playlist?.id == affectedPlaylistID
+                },
+                sortBy: [
+                    SortDescriptor(\PlaylistEntry.order, order: .forward),
+                    SortDescriptor(\PlaylistEntry.dateAdded, order: .forward)
+                ]
+            )).filter { $0.episode?.url != episodeURL }
+            for (index, entry) in entries.enumerated() {
+                entry.order = index
+            }
+        }
+
+        // Unlike saveIfNeeded(), propagate a failed commit. The player must not assume the
+        // queue advanced when the finished entry is still persisted.
+        if modelContext.hasChanges {
+            try modelContext.save()
+        }
+
+        // Cross-store propagation and presentation refreshes are not on the audio hand-off
+        // path. The local queue commit above is already durable before the successor is used.
+        Task { [modelContainer] in
+            await self.tombstoneSplitStoreEntries(removals)
+            await PlayNextWidgetSync.refresh(
+                using: modelContainer,
+                playlistIDs: affectedPlaylistIDs
+            )
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+
+        return nextEpisodeURL
+    }
+
     func nextEpisode() throws -> URL? {
         try nextEpisodeURL()
     }

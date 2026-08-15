@@ -1989,16 +1989,21 @@ class Player {
         Task {
             let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
             let sleepTimerContinuePlaying = !stopAfterEpisode
-            let nextEpisodeURL: URL?
-            if sleepTimerContinuePlaying == true && continuePlaying == true {
-                if let activePlaylistActor = activePlaybackPlaylistActor() {
-                    nextEpisodeURL = try? await activePlaylistActor.nextEpisodeURL(after: finishedEpisodeURL)
-                } else {
-                    nextEpisodeURL = nil
-                }
-            } else {
-                nextEpisodeURL = nil
+            let activePlaylistActor = activePlaybackPlaylistActor()
+            let queuedSuccessor: URL?
+            do {
+                queuedSuccessor = try await activePlaylistActor?
+                    .dequeueFinishedEpisodeAndReturnNext(after: finishedEpisodeURL)
+            } catch {
+                BasicLogger.shared.log(
+                    "Failed to dequeue finished episode \(finishedEpisodeURL.absoluteString): \(error.localizedDescription)"
+                )
+                queuedSuccessor = try? await activePlaylistActor?
+                    .nextEpisodeURL(after: finishedEpisodeURL)
             }
+            let nextEpisodeURL = sleepTimerContinuePlaying && continuePlaying
+                ? queuedSuccessor
+                : nil
 
             // Clear the in-memory playback state of the finished episode so the next episode
             // can load cleanly (and isn't mistaken for a fast-switch and re-queued). This is
