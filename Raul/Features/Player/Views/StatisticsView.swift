@@ -36,6 +36,14 @@ private struct RecentListeningSession: Identifiable {
     let endedCleanly: Bool
     let startPosition: Double?
     let endPosition: Double?
+    let sourceDeviceName: String
+    let deviceModel: String?
+}
+
+private struct DeviceListeningRollup: Identifiable {
+    let id: String
+    let name: String
+    let totalSeconds: Double
 }
 
 private struct ListeningHeatMapSnapshot {
@@ -78,6 +86,7 @@ private struct ListeningHistorySnapshot {
         selectedPeriodSessionCount: 0,
         weekdayTotals: [],
         heatMap: .empty,
+        deviceBreakdown: [],
         isUsingSummaryTotals: false
     )
 
@@ -101,6 +110,7 @@ private struct ListeningHistorySnapshot {
     let selectedPeriodSessionCount: Int
     let weekdayTotals: [WeekdayListeningTotal]
     let heatMap: ListeningHeatMapSnapshot
+    let deviceBreakdown: [DeviceListeningRollup]
     let isUsingSummaryTotals: Bool
 }
 
@@ -348,6 +358,25 @@ struct StatisticsView: View {
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 .listRowBackground(Color.clear)
+            }
+
+            if isShowingCurrentSnapshot && !snapshot.deviceBreakdown.isEmpty {
+                Section("Listening by Device") {
+                    ForEach(snapshot.deviceBreakdown) { device in
+                        HStack {
+                            Label(
+                                device.name,
+                                systemImage: device.id == ListeningDeviceIdentity.legacySharedID
+                                    ? "clock.arrow.trianglehead.counterclockwise.rotate.90"
+                                    : "iphone.and.arrow.forward"
+                            )
+                            Spacer()
+                            Text(formatDuration(device.totalSeconds))
+                                .font(.headline)
+                                .monospacedDigit()
+                        }
+                    }
+                }
             }
 
             if isShowingCurrentSnapshot && !snapshot.chartPoints.isEmpty {
@@ -764,7 +793,11 @@ struct StatisticsView: View {
                     startTime: session.startTime ?? Date(),
                     endedCleanly: session.endedCleanly ?? false,
                     startPosition: session.startPosition,
-                    endPosition: session.endPosition
+                    endPosition: session.endPosition,
+                    sourceDeviceName: session.sourceDeviceName
+                        ?? session.deviceModel
+                        ?? "Unknown device",
+                    deviceModel: session.deviceModel
                 )
             }
 
@@ -964,6 +997,11 @@ struct StatisticsView: View {
             secondsByWeekday: secondsByWeekday,
             maxSeconds: max(secondsByWeekday.values.compactMap { $0.max() }.max() ?? 0, 1)
         )
+        let deviceBreakdown = syncedDeviceBreakdown(
+            period: selectedPeriod,
+            periodStart: selectedPeriodStart,
+            selectedPodcastFeedString: selectedPodcastFeedString
+        )
 
         guard !Task.isCancelled, expectedSignature == refreshSignature else { return }
         snapshot = ListeningHistorySnapshot(
@@ -987,6 +1025,7 @@ struct StatisticsView: View {
             selectedPeriodSessionCount: selectedPeriodRawSessions.count,
             weekdayTotals: weekdayTotals,
             heatMap: heatMap,
+            deviceBreakdown: deviceBreakdown,
             isUsingSummaryTotals: !summaryTotals.isEmpty
         )
     }
@@ -1805,9 +1844,19 @@ struct StatisticsView: View {
         for kind in [PlaySessionSummaryPeriod.forever, .year] {
             let scoped = summariesForSelectedFeed(kind: kind)
             if scoped.isEmpty == false {
-                return ListeningSummaryAggregation.globalStatistics(
+                let summaryTotal = ListeningSummaryAggregation.globalStatistics(
                     from: scoped
                 ).totalSeconds
+                if kind == .forever,
+                   scoped.contains(where: {
+                       $0.sourceDeviceID == ListeningDeviceIdentity.legacySharedID
+                   }) == false {
+                    return summaryTotal + syncedHistoryListeningSeconds(
+                        selectedPodcastFeedString: selectedPodcastFeedString,
+                        migratedOnly: true
+                    )
+                }
+                return summaryTotal
             }
         }
 
@@ -1865,6 +1914,126 @@ struct StatisticsView: View {
         return newestByIdentity.values.reduce(0) { partial, record in
             partial + max(0, record.listenedSeconds)
         }
+    }
+
+    private func syncedHistoryListeningSeconds(
+        selectedPodcastFeedString: String?,
+        migratedOnly: Bool
+    ) -> Double {
+        guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
+            return 0
+        }
+        let context = ModelContext(container)
+        let selectedKeys = selectedPodcastFeedString
+            .flatMap(URL.init(string:))?
+            .podcastFeedComparisonKeys
+        var newestByIdentity: [String: ListeningHistorySync] = [:]
+        var offset = 0
+        let pageSize = 250
+        while true {
+            var descriptor = FetchDescriptor<ListeningHistorySync>()
+            descriptor.fetchOffset = offset
+            descriptor.fetchLimit = pageSize
+            let page = (try? context.fetch(descriptor)) ?? []
+            guard page.isEmpty == false else { break }
+            for record in page {
+                guard migratedOnly == false || record.isLegacyMigrated else { continue }
+                if let selectedKeys {
+                    guard let feed = URL(string: record.feedURL),
+                          feed.podcastFeedComparisonKeys
+                            .isDisjoint(with: selectedKeys) == false else { continue }
+                }
+                let key = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
+                if let existing = newestByIdentity[key] {
+                    if record.updatedAt > existing.updatedAt {
+                        newestByIdentity[key] = record
+                    }
+                } else {
+                    newestByIdentity[key] = record
+                }
+            }
+            offset += page.count
+            if page.count < pageSize { break }
+        }
+        return newestByIdentity.values.reduce(0) {
+            $0 + max(0, $1.listenedSeconds)
+        }
+    }
+
+    private func syncedDeviceBreakdown(
+        period: PlaySessionSummaryPeriod,
+        periodStart: Date,
+        selectedPodcastFeedString: String?
+    ) -> [DeviceListeningRollup] {
+        guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
+            return []
+        }
+        let context = ModelContext(container)
+        let periodKind = period.rawValue
+        let selectedKeys = selectedPodcastFeedString
+            .flatMap(URL.init(string:))?
+            .podcastFeedComparisonKeys
+        let records = ((try? context.fetch(FetchDescriptor<ListeningSummarySync>())) ?? [])
+            .filter { record in
+                guard record.periodKind == periodKind else { return false }
+                if period != .forever,
+                   !isSamePeriodStart(record.periodStart, as: periodStart, period: period) {
+                    return false
+                }
+                guard let selectedKeys else { return true }
+                guard let feed = URL(string: record.feedURL) else { return false }
+                return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
+            }
+
+        // Prefer per-feed rows. A historical all-podcasts row is only a fallback;
+        // combining both would count the same listening twice.
+        let perFeed = records.filter { $0.feedURL != "__all_podcasts__" }
+        let scoped = perFeed.isEmpty ? records : perFeed
+        struct Contribution {
+            var deviceID: String
+            var name: String
+            var seconds: Double
+            var updatedAt: Date
+        }
+        var newestByID: [String: Contribution] = [:]
+        for record in scoped {
+            let deviceID = record.sourceDeviceID ?? "__unknown_device__"
+            let contribution = Contribution(
+                deviceID: deviceID,
+                name: record.sourceDeviceName
+                    .flatMap { $0 == "This device" ? nil : $0 }
+                    ?? record.sourceDeviceModel
+                    ?? (deviceID == ListeningDeviceIdentity.legacySharedID
+                        ? "Migrated history"
+                        : "Unknown device"),
+                seconds: max(0, record.totalSeconds),
+                updatedAt: record.updatedAt
+            )
+            if let existing = newestByID[record.id] {
+                if contribution.updatedAt > existing.updatedAt
+                    || contribution.seconds > existing.seconds {
+                    newestByID[record.id] = contribution
+                }
+            } else {
+                newestByID[record.id] = contribution
+            }
+        }
+        return Dictionary(grouping: newestByID.values, by: \.deviceID)
+            .map { deviceID, values in
+                DeviceListeningRollup(
+                    id: deviceID,
+                    name: values.max(by: { $0.updatedAt < $1.updatedAt })?.name
+                        ?? "Unknown device",
+                    totalSeconds: values.reduce(0) { $0 + $1.seconds }
+                )
+            }
+            .filter { $0.totalSeconds > 0 }
+            .sorted {
+                if $0.totalSeconds != $1.totalSeconds {
+                    return $0.totalSeconds > $1.totalSeconds
+                }
+                return $0.name < $1.name
+            }
     }
 
     private func hasAnySummary() -> Bool {
@@ -2079,6 +2248,14 @@ private struct RecentListeningSessionRow: View {
                 Spacer()
                 Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            Label(
+                session.deviceModel.map { "\(session.sourceDeviceName) · \($0)" }
+                    ?? session.sourceDeviceName,
+                systemImage: "iphone.and.arrow.forward"
+            )
             .font(.caption)
             .foregroundStyle(.secondary)
 

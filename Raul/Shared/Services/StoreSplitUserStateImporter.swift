@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import CryptoKit
 
 struct StoreSplitUserStateImportResult: Sendable {
     var subscriptionsApplied = 0
@@ -8,9 +7,12 @@ struct StoreSplitUserStateImportResult: Sendable {
     var playlistsApplied = 0
     var playlistEntriesApplied = 0
     var bookmarksApplied = 0
+    var preferencesApplied = 0
     var listeningHistoryApplied = 0
+    var listeningSummariesApplied = 0
     var duplicatePodcastsHidden = 0
     var feedsToBootstrap: [URL] = []
+    var playlistFeedsToBootstrap: [URL] = []
     var failed = 0
     var interruptedByPlayback = false
 }
@@ -133,6 +135,15 @@ actor StoreSplitUserStateImporter {
         }
 
         await awaitIdleWindow()
+        await applyPreferences(result: &result)
+        saveLegacyChanges(phase: "preferences", result: &result)
+        refreshContexts()
+        if await shouldStop() {
+            result.interruptedByPlayback = true
+            return result
+        }
+
+        await awaitIdleWindow()
         await applyEpisodeStates(
             recencyCutoff: episodeStateProjectionRecencyCutoff,
             result: &result
@@ -153,6 +164,8 @@ actor StoreSplitUserStateImporter {
         }
         if projectListeningHistoryToLegacy {
             await awaitIdleWindow()
+            applyListeningSummaries(result: &result)
+            saveLegacyChanges(phase: "listening_summaries", result: &result)
             await applyListeningHistory(
                 result: &result
             )
@@ -164,14 +177,101 @@ actor StoreSplitUserStateImporter {
         result.feedsToBootstrap = Array(Set(result.feedsToBootstrap)).sorted {
             $0.absoluteString < $1.absoluteString
         }
+        result.playlistFeedsToBootstrap = Array(Set(result.playlistFeedsToBootstrap)).sorted {
+            $0.absoluteString < $1.absoluteString
+        }
         CrashBreadcrumbs.shared.record(
             "store_split_user_state_import_completed",
-            details: "subscriptions=\(result.subscriptionsApplied),episodes=\(result.episodeStatesApplied),playlists=\(result.playlistsApplied),entries=\(result.playlistEntriesApplied),bookmarks=\(result.bookmarksApplied),history=\(result.listeningHistoryApplied),duplicates=\(result.duplicatePodcastsHidden),feeds=\(result.feedsToBootstrap.count),failed=\(result.failed)"
+            details: "subscriptions=\(result.subscriptionsApplied),preferences=\(result.preferencesApplied),episodes=\(result.episodeStatesApplied),playlists=\(result.playlistsApplied),entries=\(result.playlistEntriesApplied),bookmarks=\(result.bookmarksApplied),history=\(result.listeningHistoryApplied),duplicates=\(result.duplicatePodcastsHidden),feeds=\(result.feedsToBootstrap.count),failed=\(result.failed)"
         )
 #if DEBUG
         logProjectionAudit(result: result)
 #endif
         return result
+    }
+
+    private func applyPreferences(
+        result: inout StoreSplitUserStateImportResult
+    ) async {
+        var offset = 0
+        var seenIDs = Set<String>()
+        let decoder = JSONDecoder()
+
+        while true {
+            let page = fetchPage(
+                PodcastPreferenceSync.self,
+                offset: offset,
+                limit: sourcePageSize,
+                sortBy: [SortDescriptor(\PodcastPreferenceSync.updatedAt, order: .reverse)]
+            )
+            guard page.isEmpty == false else { break }
+
+            for record in page where seenIDs.insert(record.id).inserted {
+                let settings: PodcastSettings
+                if let feedKey = record.feedURL,
+                   let feedURL = URL(string: feedKey) {
+                    guard let podcast = feedURL.podcastFeedComparisonKeys.compactMap({
+                        podcastsByComparisonKey[$0]
+                            .flatMap { legacyContext.model(for: $0) as? Podcast }
+                    }).first else {
+                        appendMissingFeed(feedKey, to: &result)
+                        continue
+                    }
+                    settings = ensureSettings(for: podcast)
+                } else {
+                    let globalTitle = "de.holgerkrupp.podbay.queue"
+                    var descriptor = FetchDescriptor<PodcastSettings>(
+                        predicate: #Predicate { $0.title == globalTitle }
+                    )
+                    descriptor.fetchLimit = 1
+                    settings = (try? legacyContext.fetch(descriptor).first) ?? {
+                        let created = PodcastSettings(defaultSettings: true)
+                        legacyContext.insert(created)
+                        return created
+                    }()
+                }
+
+                settings.isEnabled = record.isEnabled
+                if let data = record.playNextPositionRawValue.data(using: .utf8),
+                   let position = try? decoder.decode(Playlist.Position.self, from: data) {
+                    settings.playnextPosition = position
+                }
+                settings.defaultPlaylistID = record.defaultPlaylistID.flatMap(UUID.init(uuidString:))
+                settings.playbackSpeed = record.playbackSpeed.map(Float.init)
+                settings.reduceSilenceGapsEnabled = record.reduceSilenceGapsEnabled
+                settings.silenceGapReductionLevelRawValue = record.silenceGapReductionLevelRawValue
+                settings.voiceEnhancementEnabled = record.voiceEnhancementEnabled
+                if let data = record.autoSkipKeywordsJSON.data(using: .utf8),
+                   let keywords = try? decoder.decode([skipKey].self, from: data) {
+                    settings.autoSkipKeywords = keywords
+                }
+                settings.cutFront = record.cutFront.map(Float.init)
+                settings.cutEnd = record.cutEnd.map(Float.init)
+                settings.skipForward = SkipSteps(rawValue: record.skipForwardSeconds) ?? .thirty
+                settings.skipBack = SkipSteps(rawValue: record.skipBackSeconds) ?? .fifteen
+                settings.skipForwardBehaviorRawValue = record.skipForwardBehaviorRawValue
+                settings.skipBackBehaviorRawValue = record.skipBackBehaviorRawValue
+                settings.markAsPlayedAfterSubscribe = record.markAsPlayedAfterSubscribe
+                settings.playSumAdjustedbyPlayspeed = record.playSumAdjustedByPlaySpeed
+                settings.enableLockscreenSlider = record.enableLockscreenSlider
+                settings.enableInAppSlider = record.enableInAppSlider
+                settings.getContinuousPlay = record.continuousPlayEnabled
+                settings.enableLiveItemNotifications = record.liveItemNotificationsEnabled
+                settings.sleepTimerAddMinutes = record.sleepTimerAddMinutes
+                settings.sleepTimerDurationToReactivate = record.sleepTimerDurationToReactivate
+                settings.sleepTimerVoiceFeedbackEnabled = record.sleepTimerVoiceFeedbackEnabled
+                settings.sleepTimerText = record.sleepTimerText
+                result.preferencesApplied += 1
+            }
+
+            saveLegacyChanges(phase: "preferences_batch_\(offset)", result: &result)
+            refreshContexts()
+            if await shouldStop() {
+                result.interruptedByPlayback = true
+                return
+            }
+            offset += page.count
+        }
     }
 
     private func applyEpisodeStates(
@@ -211,12 +311,31 @@ actor StoreSplitUserStateImporter {
                     continue
                 }
                 let metadata = ensureMetadata(for: episode)
-                setIfChanged(metadata, \.playPosition, max(0, state.playPosition))
+
+                // Monotonic fields always merge upwards: the furthest point a
+                // user ever reached is not something a second device can undo.
                 setIfChanged(
                     metadata,
                     \.maxPlayposition,
-                    max(0, state.maxPlayPosition, state.playPosition)
+                    max(
+                        0,
+                        state.maxPlayPosition,
+                        state.playPosition,
+                        metadata.maxPlayposition ?? 0
+                    )
                 )
+
+                // Everything else is last-writer-wins. A local row that changed
+                // after this record was published is newer than the record, so
+                // applying it would roll the user back. Skip it and let the
+                // dual-write publish the local value instead.
+                guard isRemoteStateNewer(state, than: metadata) else {
+                    result.episodeStatesApplied += 1
+                    continue
+                }
+
+                setIfChanged(metadata, \.playPosition, max(0, state.playPosition))
+                setIfChanged(metadata, \.stateUpdatedAt, state.updatedAt)
                 setIfChanged(metadata, \.lastPlayed, state.lastPlayedAt)
                 setIfChanged(metadata, \.firstListenDate, state.firstPlayedAt)
                 setIfChanged(metadata, \.completionDate, state.completedAt)
@@ -224,6 +343,9 @@ actor StoreSplitUserStateImporter {
                 setIfChanged(metadata, \.wasSkipped, state.wasSkipped)
                 setIfChanged(metadata, \.isArchived, state.isArchived)
                 setIfChanged(metadata, \.isHistory, state.isPlayed)
+                if state.isArchived || state.isPlayed {
+                    setIfChanged(metadata, \.isInbox, false)
+                }
 
                 if state.isArchived {
                     setIfChanged(metadata, \.status, .archived)
@@ -257,7 +379,7 @@ actor StoreSplitUserStateImporter {
         var localPlaylists = ((try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? [])
             .reduce(into: [String: Playlist]()) { $0[$1.id.uuidString] = $1 }
         var localPlaylistBySyncedID: [String: Playlist] = [:]
-        var seenLogicalPlaylists = Set<String>()
+        var localPlaylistByLogicalKey: [String: Playlist] = [:]
         var playlistOffset = 0
 
         while true {
@@ -275,7 +397,11 @@ actor StoreSplitUserStateImporter {
                         .lowercased(),
                     record.kindRawValue
                 )
-                guard seenLogicalPlaylists.insert(logicalKey).inserted else {
+                // Older builds could upload the same logical playlist under a
+                // different local UUID. The newest record owns the metadata, but
+                // every older ID remains an import alias for its entries.
+                if let playlist = localPlaylistByLogicalKey[logicalKey] {
+                    localPlaylistBySyncedID[record.id] = playlist
                     continue
                 }
 
@@ -296,6 +422,10 @@ actor StoreSplitUserStateImporter {
                         return playlist
                     }()
                 localPlaylistBySyncedID[record.id] = playlist
+                localPlaylistByLogicalKey[logicalKey] = playlist
+                playlist.syncID = record.title == Playlist.defaultQueueTitle
+                    ? Playlist.defaultQueueSyncID
+                    : record.id
 
                 if record.isDeleted || record.deletedAt != nil {
                     guard playlist.title != Playlist.defaultQueueTitle else { continue }
@@ -335,6 +465,9 @@ actor StoreSplitUserStateImporter {
 
         var activeRemoteIdentitiesByPlaylistID: [String: Set<String>] = [:]
         var seenEntryIDs = Set<String>()
+        var seenLogicalEntries = Set<String>()
+        var localEntriesByPlaylistID: [String: [String: PlaylistEntry]] = [:]
+        var defaultQueuePlaylistEntryDates: [String: Date] = [:]
         var entryOffset = 0
 
         while true {
@@ -352,69 +485,86 @@ actor StoreSplitUserStateImporter {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
             )
-            let groupedEntries = Dictionary(grouping: freshEntries, by: \.playlistID)
-
-            for (playlistID, records) in groupedEntries {
-                guard let playlist = localPlaylistBySyncedID[playlistID],
+            // Pages are newest-first. Deduplicate by the local logical playlist
+            // and episode, rather than by the old remote record ID, so a recent
+            // tombstone or reorder wins over stale aliases from another device.
+            for record in freshEntries {
+                guard let playlist = localPlaylistBySyncedID[record.playlistID],
                       playlist.isSmartPlaylist == false else {
                     continue
                 }
-
-                var entriesByIdentity: [String: PlaylistEntry] = [:]
-                for entry in playlist.ordered {
-                    guard let episode = entry.episode else {
-                        legacyContext.delete(entry)
-                        continue
-                    }
-                    let identity = stableIdentityKey(
-                        feedURL: episode.stableEpisodeIdentity.feedURL,
-                        episodeID: episode.stableEpisodeIdentity.episodeID
-                    )
-                    if entriesByIdentity[identity] == nil {
-                        entriesByIdentity[identity] = entry
-                    } else {
-                        legacyContext.delete(entry)
-                        result.playlistEntriesApplied += 1
-                    }
+                let localPlaylistID = playlist.id.uuidString
+                let identityKey = stableIdentityKey(
+                    feedURL: record.feedURL,
+                    episodeID: record.episodeID
+                )
+                let logicalEntryKey = StableIdentityKey.make(
+                    localPlaylistID,
+                    identityKey
+                )
+                guard seenLogicalEntries.insert(logicalEntryKey).inserted else {
+                    continue
+                }
+                if activeRemoteIdentitiesByPlaylistID[localPlaylistID] == nil {
+                    activeRemoteIdentitiesByPlaylistID[localPlaylistID] = []
+                }
+                if playlist.title == Playlist.defaultQueueTitle {
+                    defaultQueuePlaylistEntryDates[identityKey] = record.updatedAt
                 }
 
-                for record in records {
-                    let identityKey = stableIdentityKey(
-                        feedURL: record.feedURL,
-                        episodeID: record.episodeID
-                    )
-                    if record.isDeleted || record.deletedAt != nil {
-                        if let existing = entriesByIdentity.removeValue(forKey: identityKey) {
-                            legacyContext.delete(existing)
+                if localEntriesByPlaylistID[localPlaylistID] == nil {
+                    var entriesByIdentity: [String: PlaylistEntry] = [:]
+                    for entry in playlist.ordered {
+                        guard let episode = entry.episode else {
+                            legacyContext.delete(entry)
+                            continue
+                        }
+                        let identity = stableIdentityKey(
+                            feedURL: episode.stableEpisodeIdentity.feedURL,
+                            episodeID: episode.stableEpisodeIdentity.episodeID
+                        )
+                        if entriesByIdentity[identity] == nil {
+                            entriesByIdentity[identity] = entry
+                        } else {
+                            legacyContext.delete(entry)
                             result.playlistEntriesApplied += 1
                         }
-                        continue
                     }
-                    activeRemoteIdentitiesByPlaylistID[playlistID, default: []]
-                        .insert(identityKey)
-                    guard let episode = episodesByIdentity[identityKey] else {
-                        appendMissingFeed(record.feedURL, to: &result)
-                        continue
-                    }
-                    let entry: PlaylistEntry
-                    if let existing = entriesByIdentity[identityKey] {
-                        entry = existing
-                    } else {
-                        let newEntry = PlaylistEntry(
-                            episode: episode,
-                            order: record.sortIndex
-                        )
-                        legacyContext.insert(newEntry)
-                        newEntry.playlist = playlist
-                        entriesByIdentity[identityKey] = newEntry
-                        entry = newEntry
-                    }
-                    entry.episode = episode
-                    entry.playlist = playlist
-                    entry.order = record.sortIndex
-                    entry.dateAdded = record.addedAt
-                    result.playlistEntriesApplied += 1
+                    localEntriesByPlaylistID[localPlaylistID] = entriesByIdentity
                 }
+
+                if record.isDeleted || record.deletedAt != nil {
+                    if let existing = localEntriesByPlaylistID[localPlaylistID]?
+                        .removeValue(forKey: identityKey) {
+                        legacyContext.delete(existing)
+                        result.playlistEntriesApplied += 1
+                    }
+                    continue
+                }
+                activeRemoteIdentitiesByPlaylistID[localPlaylistID, default: []]
+                    .insert(identityKey)
+                guard let episode = episodesByIdentity[identityKey] else {
+                    appendMissingPlaylistFeed(record.feedURL, to: &result)
+                    continue
+                }
+                let entry: PlaylistEntry
+                if let existing = localEntriesByPlaylistID[localPlaylistID]?[identityKey] {
+                    entry = existing
+                } else {
+                    let newEntry = PlaylistEntry(
+                        episode: episode,
+                        order: record.sortIndex
+                    )
+                    legacyContext.insert(newEntry)
+                    newEntry.playlist = playlist
+                    localEntriesByPlaylistID[localPlaylistID]?[identityKey] = newEntry
+                    entry = newEntry
+                }
+                entry.episode = episode
+                entry.playlist = playlist
+                entry.order = record.sortIndex
+                entry.dateAdded = record.addedAt
+                result.playlistEntriesApplied += 1
             }
 
             saveLegacyChanges(
@@ -429,9 +579,26 @@ actor StoreSplitUserStateImporter {
             entryOffset += page.count
         }
 
+        // QueueEntrySync has a device-independent per-episode identity and is
+        // therefore the migration tie-breaker for Up Next. Apply it after old
+        // PlaylistEntrySync aliases, unless a playlist record is strictly newer.
+        if let defaultQueue = localPlaylists.values.first(where: {
+               $0.title == Playlist.defaultQueueTitle
+           }) {
+            await applyQueueEntryFallback(
+                to: defaultQueue,
+                playlistEntryDates: defaultQueuePlaylistEntryDates,
+                activeRemoteIdentitiesByPlaylistID: &activeRemoteIdentitiesByPlaylistID,
+                result: &result
+            )
+            if result.interruptedByPlayback {
+                return
+            }
+        }
+
         if authoritative {
             for (playlistID, activeRemoteIdentities) in activeRemoteIdentitiesByPlaylistID {
-                guard let playlist = localPlaylistBySyncedID[playlistID] else { continue }
+                guard let playlist = localPlaylists[playlistID] else { continue }
                 for entry in playlist.ordered {
                     guard let episode = entry.episode else {
                         legacyContext.delete(entry)
@@ -447,6 +614,108 @@ actor StoreSplitUserStateImporter {
                     }
                 }
             }
+        }
+    }
+
+    private func applyQueueEntryFallback(
+        to playlist: Playlist,
+        playlistEntryDates: [String: Date],
+        activeRemoteIdentitiesByPlaylistID: inout [String: Set<String>],
+        result: inout StoreSplitUserStateImportResult
+    ) async {
+        let localPlaylistID = playlist.id.uuidString
+        var entriesByIdentity: [String: PlaylistEntry] = [:]
+        for entry in playlist.ordered {
+            guard let episode = entry.episode else {
+                legacyContext.delete(entry)
+                continue
+            }
+            let identity = stableIdentityKey(
+                feedURL: episode.stableEpisodeIdentity.feedURL,
+                episodeID: episode.stableEpisodeIdentity.episodeID
+            )
+            if entriesByIdentity[identity] == nil {
+                entriesByIdentity[identity] = entry
+            } else {
+                legacyContext.delete(entry)
+                result.playlistEntriesApplied += 1
+            }
+        }
+
+        var seenEntryIDs = Set<String>()
+        var offset = 0
+        while true {
+            let page = fetchPage(
+                QueueEntrySync.self,
+                offset: offset,
+                limit: sourcePageSize,
+                sortBy: [SortDescriptor(\QueueEntrySync.updatedAt, order: .reverse)]
+            )
+            guard page.isEmpty == false else { break }
+            if activeRemoteIdentitiesByPlaylistID[localPlaylistID] == nil {
+                activeRemoteIdentitiesByPlaylistID[localPlaylistID] = []
+            }
+
+            let freshEntries = page.filter { seenEntryIDs.insert($0.id).inserted }
+            let episodesByIdentity = await resolveEpisodesByIdentity(
+                identityKeys: freshEntries.map {
+                    stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
+                }
+            )
+            for record in freshEntries {
+                let identityKey = stableIdentityKey(
+                    feedURL: record.feedURL,
+                    episodeID: record.episodeID
+                )
+                if let playlistEntryDate = playlistEntryDates[identityKey],
+                   playlistEntryDate > record.updatedAt {
+                    continue
+                }
+                if record.isDeleted || record.deletedAt != nil {
+                    activeRemoteIdentitiesByPlaylistID[localPlaylistID]?
+                        .remove(identityKey)
+                    if let existing = entriesByIdentity.removeValue(forKey: identityKey) {
+                        legacyContext.delete(existing)
+                        result.playlistEntriesApplied += 1
+                    }
+                    continue
+                }
+
+                activeRemoteIdentitiesByPlaylistID[localPlaylistID, default: []]
+                    .insert(identityKey)
+                guard let episode = episodesByIdentity[identityKey] else {
+                    appendMissingPlaylistFeed(record.feedURL, to: &result)
+                    continue
+                }
+                let entry: PlaylistEntry
+                if let existing = entriesByIdentity[identityKey] {
+                    entry = existing
+                } else {
+                    let newEntry = PlaylistEntry(
+                        episode: episode,
+                        order: record.sortIndex
+                    )
+                    legacyContext.insert(newEntry)
+                    newEntry.playlist = playlist
+                    entriesByIdentity[identityKey] = newEntry
+                    entry = newEntry
+                }
+                entry.episode = episode
+                entry.playlist = playlist
+                entry.order = record.sortIndex
+                entry.dateAdded = record.addedAt
+                result.playlistEntriesApplied += 1
+            }
+
+            saveLegacyChanges(
+                phase: "queue_entries_batch_\(offset)",
+                result: &result
+            )
+            if await shouldStop() {
+                result.interruptedByPlayback = true
+                return
+            }
+            offset += page.count
         }
     }
 
@@ -601,12 +870,15 @@ actor StoreSplitUserStateImporter {
                     appendMissingFeed(record.feedURL, to: &result)
                 }
 
-                let session = sessionsByUUID[deterministicID] ?? {
+                let session = sessionsByUUID[deterministicID]
+                    ?? equivalentLocalSession(for: record, episode: episode)
+                    ?? {
                     let session = PlaySession(id: deterministicID)
                     legacyContext.insert(session)
                     sessionsByUUID[deterministicID] = session
                     return session
                 }()
+                sessionsByUUID[deterministicID] = session
                 setIfChanged(session, \.id, deterministicID)
                 if session.episode?.persistentModelID != episode?.persistentModelID {
                     session.episode = episode
@@ -656,6 +928,119 @@ actor StoreSplitUserStateImporter {
         )
     }
 
+    private func applyListeningSummaries(
+        result: inout StoreSplitUserStateImportResult
+    ) {
+        struct Key: Hashable {
+            let feedURL: String
+            let periodKind: String
+            let periodStart: Date
+        }
+        struct Value {
+            var podcastName: String?
+            var total = 0.0
+            var silence = 0.0
+            var rate = 0.0
+            var activeHours = 0
+        }
+        struct Contribution {
+            var key: Key
+            var podcastName: String?
+            var total = 0.0
+            var silence = 0.0
+            var rate = 0.0
+            var activeHours = 0
+            var updatedAt = Date.distantPast
+        }
+
+        var contributionsByID: [String: Contribution] = [:]
+        var offset = 0
+        while true {
+            let page = fetchPage(
+                ListeningSummarySync.self,
+                offset: offset,
+                limit: sourcePageSize,
+                sortBy: [SortDescriptor(\ListeningSummarySync.updatedAt, order: .reverse)]
+            )
+            guard page.isEmpty == false else { break }
+            for record in page {
+                let key = Key(
+                    feedURL: record.feedURL,
+                    periodKind: record.periodKind,
+                    periodStart: record.periodStart
+                )
+                if var existing = contributionsByID[record.id] {
+                    existing.total = max(existing.total, record.totalSeconds)
+                    existing.silence = max(
+                        existing.silence,
+                        record.silenceGapTimeSavedSeconds
+                    )
+                    existing.rate = max(
+                        existing.rate,
+                        record.playbackRateTimeSavedSeconds
+                    )
+                    existing.activeHours = max(existing.activeHours, record.activeHourCount)
+                    if record.updatedAt > existing.updatedAt {
+                        existing.podcastName = record.podcastName ?? existing.podcastName
+                        existing.updatedAt = record.updatedAt
+                    }
+                    contributionsByID[record.id] = existing
+                } else {
+                    contributionsByID[record.id] = Contribution(
+                        key: key,
+                        podcastName: record.podcastName,
+                        total: max(0, record.totalSeconds),
+                        silence: max(0, record.silenceGapTimeSavedSeconds),
+                        rate: max(0, record.playbackRateTimeSavedSeconds),
+                        activeHours: max(0, record.activeHourCount),
+                        updatedAt: record.updatedAt
+                    )
+                }
+            }
+            offset += page.count
+            if page.count < sourcePageSize { break }
+        }
+
+        var totals: [Key: Value] = [:]
+        for contribution in contributionsByID.values {
+            var value = totals[contribution.key] ?? Value()
+            value.podcastName = contribution.podcastName ?? value.podcastName
+            value.total += contribution.total
+            value.silence += contribution.silence
+            value.rate += contribution.rate
+            value.activeHours += contribution.activeHours
+            totals[contribution.key] = value
+        }
+
+        do {
+            try legacyContext.delete(model: PlaySessionSummary.self)
+        } catch {
+            result.failed += 1
+            return
+        }
+        for (key, value) in totals where value.total > 0 {
+            let feed = key.feedURL == "__all_podcasts__"
+                ? nil
+                : URL(string: key.feedURL)
+            legacyContext.insert(PlaySessionSummary(
+                id: StableIdentityKey.uuid(for: StableIdentityKey.make(
+                    key.feedURL,
+                    key.periodKind,
+                    String(Int(key.periodStart.timeIntervalSince1970))
+                )),
+                periodKind: key.periodKind,
+                periodStart: key.periodStart,
+                podcastFeed: feed,
+                podcastName: value.podcastName,
+                totalSeconds: value.total,
+                silenceGapTimeSavedSeconds: value.silence,
+                playbackRateTimeSavedSeconds: value.rate,
+                activeHourCount: value.activeHours
+            ))
+            result.listeningSummariesApplied += 1
+        }
+    }
+
     private func clearProjectedListeningHistory(
         result: inout StoreSplitUserStateImportResult
     ) {
@@ -683,6 +1068,31 @@ actor StoreSplitUserStateImporter {
                 result: &result
             )
             refreshContexts()
+        }
+    }
+
+    private func equivalentLocalSession(
+        for record: ListeningHistorySync,
+        episode: Episode?
+    ) -> PlaySession? {
+        let startedAt = record.startedAt
+        let endedAt = record.endedAt
+        let descriptor = FetchDescriptor<PlaySession>(
+            predicate: #Predicate {
+                $0.startTime == startedAt && $0.endTime == endedAt
+            }
+        )
+        return ((try? legacyContext.fetch(descriptor)) ?? []).first { candidate in
+            guard candidate.appVersion
+                    != ListeningDeviceIdentity.splitStoreProjectionAppVersion else {
+                return false
+            }
+            if let episode {
+                guard candidate.episode?.stableEpisodeIdentityKey
+                        == episode.stableEpisodeIdentityKey else { return false }
+            }
+            return abs((candidate.startPosition ?? 0) - record.startPosition) < 2
+                && abs((candidate.endPosition ?? 0) - record.endPosition) < 2
         }
     }
 
@@ -772,16 +1182,17 @@ actor StoreSplitUserStateImporter {
         result.feedsToBootstrap.append(feed)
     }
 
+    private func appendMissingPlaylistFeed(
+        _ feedURL: String,
+        to result: inout StoreSplitUserStateImportResult
+    ) {
+        appendMissingFeed(feedURL, to: &result)
+        guard let feed = URL(string: feedURL) else { return }
+        result.playlistFeedsToBootstrap.append(feed)
+    }
+
     private func stableUUID(_ value: String) -> UUID {
-        var bytes = Array(SHA256.hash(data: Data(value.utf8)).prefix(16))
-        bytes[6] = (bytes[6] & 0x0F) | 0x50
-        bytes[8] = (bytes[8] & 0x3F) | 0x80
-        return UUID(uuid: (
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15]
-        ))
+        StableIdentityKey.uuid(for: value)
     }
 
     private func setIfChanged<Root: AnyObject, Value: Equatable>(
@@ -861,6 +1272,16 @@ actor StoreSplitUserStateImporter {
         return metadata
     }
 
+    private func ensureSettings(for podcast: Podcast) -> PodcastSettings {
+        if let settings = podcast.settings {
+            return settings
+        }
+        let settings = PodcastSettings(podcast: podcast)
+        legacyContext.insert(settings)
+        podcast.settings = settings
+        return settings
+    }
+
     private func ensureMetadata(for episode: Episode) -> EpisodeMetaData {
         if let metadata = episode.metaData {
             return metadata
@@ -900,6 +1321,24 @@ actor StoreSplitUserStateImporter {
     /// when the task is cancelled.
     private func awaitIdleWindow() async {
         await SystemPressureGate.shared.waitUntilIdle()
+    }
+
+    /// Whether an incoming UserState record may overwrite the durable local
+    /// episode state.
+    ///
+    /// The runtime graph is a real store that the app writes to directly, so an
+    /// older CloudKit record must not be projected over newer local truth. Rows
+    /// written before `stateUpdatedAt` existed fall back to the newest playback
+    /// timestamp. The one-second tolerance keeps a record from losing to the very
+    /// local change that produced it.
+    private func isRemoteStateNewer(
+        _ state: EpisodeStateSync,
+        than metadata: EpisodeMetaData
+    ) -> Bool {
+        guard let localUpdatedAt = metadata.effectiveStateUpdatedAt else {
+            return true
+        }
+        return state.updatedAt >= localUpdatedAt.addingTimeInterval(-1)
     }
 
     private func shouldProjectEpisodeState(
@@ -1141,12 +1580,20 @@ actor StoreSplitUserStateImporter {
 
     private func fetchPlaySessions(ids: [UUID]) -> [PlaySession] {
         guard ids.isEmpty == false else { return [] }
-        let descriptor = FetchDescriptor<PlaySession>(
-            predicate: #Predicate<PlaySession> { session in
-                session.id != nil && ids.contains(session.id!)
+        var sessions: [PlaySession] = []
+        for id in ids {
+            let optionalID: UUID? = id
+            var descriptor = FetchDescriptor<PlaySession>(
+                predicate: #Predicate<PlaySession> { session in
+                    session.id == optionalID
+                }
+            )
+            descriptor.fetchLimit = 1
+            if let session = try? legacyContext.fetch(descriptor).first {
+                sessions.append(session)
             }
-        )
-        return (try? legacyContext.fetch(descriptor)) ?? []
+        }
+        return sessions
     }
 
     private func pruneStaleProjectedSessions(

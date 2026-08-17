@@ -15,16 +15,17 @@ import Foundation
 struct StoreSplitRemoteConfig: Sendable, Equatable {
     /// When `false`, all split-store heavy work (slice migration, reconcile, AI
     /// import, background scheduling) is paused **live** on the next gated check.
-    /// The legacy store keeps reading and syncing, so this is a safe hard stop.
+    /// Existing cache/UserState-derived reads continue while work is paused.
     var migrationEnabled: Bool
 
-    /// When `true`, launches resolve to legacy reads regardless of the stored
-    /// rollout state. Because the read source is fixed when the containers are
-    /// created, this takes effect on the **next launch**, not mid-session.
+    /// Historical rollback flag. The store split no longer permits disk-legacy
+    /// reads in release builds, so this now pauses migration work without changing
+    /// the read source. Keep decoding the field for compatibility with deployed
+    /// CloudKit rollout records.
     var forceLegacyReads: Bool
 
-    /// Builds whose `CFBundleVersion` is below this are forced to the safe state
-    /// (migration paused + legacy reads). `0` disables the check.
+    /// Builds whose `CFBundleVersion` is below this pause migration work. `0`
+    /// disables the check; reads remain on the split-store projection.
     var minSupportedBuild: Int
 
     /// Fail-safe default used before the first successful fetch and whenever no
@@ -78,10 +79,13 @@ enum StoreSplitRemoteConfigStore {
 
     /// `true` when split-store heavy work should be paused per remote config.
     static var migrationPausedRemotely: Bool {
-        current.migrationEnabled == false || isBuildUnsupported
+        current.migrationEnabled == false
+            || current.forceLegacyReads
+            || isBuildUnsupported
     }
 
-    /// `true` when reads should be forced back to legacy per remote config.
+    /// Kept for diagnostics and compatibility with existing tests/configuration.
+    /// Release mode resolution deliberately does not use it as a read selector.
     static var forcesLegacyReads: Bool {
         current.forceLegacyReads || isBuildUnsupported
     }
@@ -106,7 +110,7 @@ enum StoreSplitRemoteConfigStore {
             cache(config)
             CrashBreadcrumbs.shared.record(
                 "store_split_remote_config_fetched",
-                details: "migration=\(config.migrationEnabled),legacyReads=\(config.forceLegacyReads),minBuild=\(config.minSupportedBuild)"
+                details: "migration=\(config.migrationEnabled),legacyPause=\(config.forceLegacyReads),minBuild=\(config.minSupportedBuild)"
             )
             return config
         } catch let error as CKError where error.code == .unknownItem {

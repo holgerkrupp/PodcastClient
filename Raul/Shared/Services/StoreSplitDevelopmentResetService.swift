@@ -69,21 +69,20 @@ actor StoreSplitDevelopmentResetService {
             ListeningSummarySync.self,
             from: userStateContext
         )
-        result.userStateRecordsDeleted += try deleteAll(
-            AITranscriptChunkSync.self,
-            from: userStateContext
-        )
-        result.userStateRecordsDeleted += try deleteAll(
-            AITranscriptSync.self,
-            from: userStateContext
-        )
-        result.userStateRecordsDeleted += try deleteAll(
-            AIChapterSetSync.self,
-            from: userStateContext
-        )
-
         result.cacheRecordsDeleted += try deleteAll(
             StoreSplitMigrationCheckpoint.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            AITranscriptChunkSync.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            AITranscriptSync.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            AIChapterSetSync.self,
             from: cacheContext
         )
         result.cacheRecordsDeleted += try deleteAll(
@@ -108,6 +107,18 @@ actor StoreSplitDevelopmentResetService {
         )
         result.cacheRecordsDeleted += try deleteAll(
             CachedDownloadRecord.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedRateSegment.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedHourlyListeningStat.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedPlaySession.self,
             from: cacheContext
         )
         result.cacheRecordsDeleted += try deleteAll(

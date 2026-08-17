@@ -72,6 +72,120 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/inbox-state",
+            episodeGUIDs: ["kept-out-of-inbox"]
+        )
+        let episode = try XCTUnwrap(podcast.episodes?.first)
+        episode.metaData?.setInboxMembership(false)
+        try legacy.mainContext.save()
+
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+        let cached = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedEpisode>()).first
+        )
+        XCTAssertFalse(cached.localIsInbox)
+
+        let runtime = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let result = StoreSplitCompatibilityProjectionService.rebuild(
+            cacheContainer: cache,
+            runtimeContainer: runtime
+        )
+        XCTAssertEqual(result.failed, 0)
+        let projected = try XCTUnwrap(
+            ModelContext(runtime).fetch(FetchDescriptor<Episode>()).first
+        )
+        XCTAssertFalse(projected.metaData?.isInbox == true)
+    }
+
+    @MainActor
+    func testLocalInboxMutationWritesDirectlyToCache() async throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/local-inbox-mutation",
+            episodeGUIDs: ["episode"]
+        )
+        let episode = try XCTUnwrap(podcast.episodes?.first)
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+
+        await StoreSplitLocalEpisodeClassificationWriter(
+            modelContainer: cache
+        ).upsert([
+            StoreSplitLocalEpisodeClassificationSnapshot(
+                identity: episode.stableEpisodeIdentity,
+                isInbox: false,
+                statusRawValue: nil,
+                systemSuppressionReasonRawValue:
+                    EpisodeSystemSuppressionReason.backCatalogImport.rawValue
+            )
+        ])
+
+        let cached = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedEpisode>()).first
+        )
+        XCTAssertFalse(cached.localIsInbox)
+        XCTAssertEqual(
+            cached.localSystemSuppressionReasonRawValue,
+            EpisodeSystemSuppressionReason.backCatalogImport.rawValue
+        )
+    }
+
+    @MainActor
+    func testPriorityPlaylistBootstrapRestoresEpisodeFromVersionedFeed() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/playlist-priority",
+            episodeGUIDs: ["older-queued-episode"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+
+        let cacheContext = cache.mainContext
+        for episode in try cacheContext.fetch(FetchDescriptor<CachedEpisode>()) {
+            cacheContext.delete(episode)
+        }
+        try cacheContext.save()
+        XCTAssertEqual(
+            StoreSplitFeedCacheWriter.bootstrapMissingFeeds(
+                legacyContainer: legacy,
+                cacheContainer: cache,
+                limit: 10
+            ),
+            0,
+            "A version checkpoint alone cannot detect a previously pruned queue episode"
+        )
+
+        XCTAssertEqual(
+            StoreSplitFeedCacheWriter.bootstrapPriorityFeeds(
+                [URL(string: "http://example.com/playlist-priority")!],
+                legacyContainer: legacy,
+                cacheContainer: cache
+            ),
+            1
+        )
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+    }
+
+    @MainActor
     func testProjectionIsIdempotentAndFetchCountDoesNotScaleWithEpisodes() throws {
         let (legacy, cache) = try makeContainers()
         let feed = "https://example.com/scale"

@@ -18,9 +18,9 @@ struct StoreSplitMigrationDiagnosticsSnapshot: Sendable {
     var syncedBookmarkCount: Int
     var syncedListeningHistoryCount: Int
     var syncedListeningSummaryCount: Int
-    var syncedAITranscriptCount: Int
-    var syncedAITranscriptChunkCount: Int
-    var syncedAIChapterSetCount: Int
+    var cachedAITranscriptCount: Int
+    var cachedAITranscriptChunkCount: Int
+    var cachedAIChapterSetCount: Int
     var failedCheckpointCount: Int
     var lastMigrationAt: Date?
     var failedItemCount: Int
@@ -115,9 +115,9 @@ enum StoreSplitMigrationDiagnostics {
             syncedBookmarkCount: (try? userStateContext.fetchCount(FetchDescriptor<BookmarkSync>())) ?? 0,
             syncedListeningHistoryCount: (try? userStateContext.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0,
             syncedListeningSummaryCount: (try? userStateContext.fetchCount(FetchDescriptor<ListeningSummarySync>())) ?? 0,
-            syncedAITranscriptCount: (try? userStateContext.fetchCount(FetchDescriptor<AITranscriptSync>())) ?? 0,
-            syncedAITranscriptChunkCount: (try? userStateContext.fetchCount(FetchDescriptor<AITranscriptChunkSync>())) ?? 0,
-            syncedAIChapterSetCount: (try? userStateContext.fetchCount(FetchDescriptor<AIChapterSetSync>())) ?? 0,
+            cachedAITranscriptCount: (try? cacheContext.fetchCount(FetchDescriptor<AITranscriptSync>())) ?? 0,
+            cachedAITranscriptChunkCount: (try? cacheContext.fetchCount(FetchDescriptor<AITranscriptChunkSync>())) ?? 0,
+            cachedAIChapterSetCount: (try? cacheContext.fetchCount(FetchDescriptor<AIChapterSetSync>())) ?? 0,
             failedCheckpointCount: (try? cacheContext.fetchCount(failedCheckpointDescriptor)) ?? 0,
             lastMigrationAt: UserDefaults.standard.object(forKey: lastMigrationKey) as? Date,
             failedItemCount: failedItems().count
@@ -164,7 +164,9 @@ enum StoreSplitMigrationDiagnostics {
                 scannedCount: checkpoint?.scannedCount ?? 0,
                 activeDestinationCount: activeDestinationCount(
                     for: phase.id,
-                    context: userStateContext
+                    context: phase.id.hasPrefix("ai_")
+                        ? cacheContext
+                        : userStateContext
                 ),
                 failedCount: checkpoint?.failedCount ?? 0,
                 cursor: checkpoint?.cursor,

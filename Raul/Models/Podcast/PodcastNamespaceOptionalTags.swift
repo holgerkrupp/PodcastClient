@@ -1,6 +1,6 @@
 import Foundation
 
-struct NamespaceNode: Codable, Hashable {
+struct NamespaceNode: Codable, Hashable, Sendable {
     var name: String
     var value: String?
     var attributes: [String: String]
@@ -197,6 +197,16 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable {
         value == nil &&
         valueRecipient == nil &&
         valueTimeSplit == nil
+    }
+
+    var allNodes: [NamespaceNode] {
+        [
+            alternateEnclosure, block, chat, contentLink, episode, image,
+            images, integrity, license, liveItem, location, locked, medium,
+            podping, podroll, publisher, remoteItem, season, soundbite,
+            source, trailer, txt, updateFrequency, value, valueRecipient,
+            valueTimeSplit
+        ].compactMap { $0 }.flatMap { $0 }
     }
 
     mutating func append(_ node: NamespaceNode) {

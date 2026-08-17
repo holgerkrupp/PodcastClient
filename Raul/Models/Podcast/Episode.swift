@@ -973,6 +973,22 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
     /// Whether the user skipped the episode
     var wasSkipped: Bool = false
 
+    /// When this device last changed the synchronized part of the episode state.
+    ///
+    /// Stamped by the UserState dual-write. It lets the importer tell a genuinely
+    /// newer remote record from a stale one, so a device that was offline — or
+    /// that ran for a while without publishing — cannot have its local playback
+    /// position, history, or archive state rolled back by an older CloudKit row.
+    var stateUpdatedAt: Date?
+
+    /// Best estimate of when the user state last changed, for devices whose rows
+    /// predate `stateUpdatedAt`.
+    var effectiveStateUpdatedAt: Date? {
+        [stateUpdatedAt, lastPlayed, completionDate, archivedAt, firstListenDate]
+            .compactMap { $0 }
+            .max()
+    }
+
     
     init() {
         self.playbackStartTimes = CodableArray([])

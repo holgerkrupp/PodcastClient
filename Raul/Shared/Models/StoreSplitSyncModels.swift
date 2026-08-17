@@ -244,6 +244,102 @@ final class BookmarkSync: Identifiable {
     }
 }
 
+/// Portable playback and presentation preferences. Device policy such as
+/// downloads, network selection, transcription capability, voices, diagnostics,
+/// and the currently selected playlist deliberately stay out of this record.
+/// A row is either global (`feedURL == nil`) or scoped to one normalized feed.
+@Model
+final class PodcastPreferenceSync: Identifiable {
+    var id: String = ""
+    var feedURL: String?
+    var isEnabled: Bool = true
+    var playNextPositionRawValue: String = ""
+    var defaultPlaylistID: String?
+    var playbackSpeed: Double?
+    var reduceSilenceGapsEnabled: Bool = false
+    var silenceGapReductionLevelRawValue: String?
+    var voiceEnhancementEnabled: Bool = false
+    var autoSkipKeywordsJSON: String = "[]"
+    var cutFront: Double?
+    var cutEnd: Double?
+    var skipForwardSeconds: Int = 30
+    var skipBackSeconds: Int = 15
+    var skipForwardBehaviorRawValue: String?
+    var skipBackBehaviorRawValue: String?
+    var markAsPlayedAfterSubscribe: Bool = true
+    var playSumAdjustedByPlaySpeed: Bool = false
+    var enableLockscreenSlider: Bool = true
+    var enableInAppSlider: Bool = true
+    var continuousPlayEnabled: Bool = true
+    var liveItemNotificationsEnabled: Bool = true
+    var sleepTimerAddMinutes: Double = 10
+    var sleepTimerDurationToReactivate: Double = 300
+    var sleepTimerVoiceFeedbackEnabled: Bool = true
+    var sleepTimerText: String = "Sleep Timer extended"
+    var updatedAt: Date = Date.distantPast
+    var sourceDeviceID: String?
+
+    init(
+        feedURL: String?,
+        isEnabled: Bool = true,
+        playNextPositionRawValue: String = "",
+        defaultPlaylistID: String? = nil,
+        playbackSpeed: Double? = nil,
+        reduceSilenceGapsEnabled: Bool = false,
+        silenceGapReductionLevelRawValue: String? = nil,
+        voiceEnhancementEnabled: Bool = false,
+        autoSkipKeywordsJSON: String = "[]",
+        cutFront: Double? = nil,
+        cutEnd: Double? = nil,
+        skipForwardSeconds: Int = 30,
+        skipBackSeconds: Int = 15,
+        skipForwardBehaviorRawValue: String? = nil,
+        skipBackBehaviorRawValue: String? = nil,
+        markAsPlayedAfterSubscribe: Bool = true,
+        playSumAdjustedByPlaySpeed: Bool = false,
+        enableLockscreenSlider: Bool = true,
+        enableInAppSlider: Bool = true,
+        continuousPlayEnabled: Bool = true,
+        liveItemNotificationsEnabled: Bool = true,
+        sleepTimerAddMinutes: Double = 10,
+        sleepTimerDurationToReactivate: Double = 300,
+        sleepTimerVoiceFeedbackEnabled: Bool = true,
+        sleepTimerText: String = "Sleep Timer extended",
+        updatedAt: Date = .now,
+        sourceDeviceID: String? = nil
+    ) {
+        self.id = feedURL.map { StableIdentityKey.make("feed", $0) }
+            ?? StableIdentityKey.make("global")
+        self.feedURL = feedURL
+        self.isEnabled = isEnabled
+        self.playNextPositionRawValue = playNextPositionRawValue
+        self.defaultPlaylistID = defaultPlaylistID
+        self.playbackSpeed = playbackSpeed
+        self.reduceSilenceGapsEnabled = reduceSilenceGapsEnabled
+        self.silenceGapReductionLevelRawValue = silenceGapReductionLevelRawValue
+        self.voiceEnhancementEnabled = voiceEnhancementEnabled
+        self.autoSkipKeywordsJSON = autoSkipKeywordsJSON
+        self.cutFront = cutFront
+        self.cutEnd = cutEnd
+        self.skipForwardSeconds = skipForwardSeconds
+        self.skipBackSeconds = skipBackSeconds
+        self.skipForwardBehaviorRawValue = skipForwardBehaviorRawValue
+        self.skipBackBehaviorRawValue = skipBackBehaviorRawValue
+        self.markAsPlayedAfterSubscribe = markAsPlayedAfterSubscribe
+        self.playSumAdjustedByPlaySpeed = playSumAdjustedByPlaySpeed
+        self.enableLockscreenSlider = enableLockscreenSlider
+        self.enableInAppSlider = enableInAppSlider
+        self.continuousPlayEnabled = continuousPlayEnabled
+        self.liveItemNotificationsEnabled = liveItemNotificationsEnabled
+        self.sleepTimerAddMinutes = sleepTimerAddMinutes
+        self.sleepTimerDurationToReactivate = sleepTimerDurationToReactivate
+        self.sleepTimerVoiceFeedbackEnabled = sleepTimerVoiceFeedbackEnabled
+        self.sleepTimerText = sleepTimerText
+        self.updatedAt = updatedAt
+        self.sourceDeviceID = sourceDeviceID
+    }
+}
+
 @Model
 final class ListeningSummarySync: Identifiable {
     var id: String = ""
@@ -252,6 +348,7 @@ final class ListeningSummarySync: Identifiable {
     var periodStart: Date = Date.distantPast
     var sourceDeviceID: String?
     var sourceDeviceName: String?
+    var sourceDeviceModel: String?
     var podcastName: String?
     var totalSeconds: Double = 0
     var silenceGapTimeSavedSeconds: Double = 0
@@ -265,6 +362,7 @@ final class ListeningSummarySync: Identifiable {
         periodStart: Date,
         sourceDeviceID: String? = nil,
         sourceDeviceName: String? = nil,
+        sourceDeviceModel: String? = nil,
         podcastName: String? = nil,
         totalSeconds: Double = 0,
         silenceGapTimeSavedSeconds: Double = 0,
@@ -283,6 +381,7 @@ final class ListeningSummarySync: Identifiable {
         self.periodStart = periodStart
         self.sourceDeviceID = sourceDeviceID
         self.sourceDeviceName = sourceDeviceName
+        self.sourceDeviceModel = sourceDeviceModel
         self.podcastName = podcastName
         self.totalSeconds = totalSeconds
         self.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
@@ -318,6 +417,10 @@ final class ListeningHistorySync: Identifiable {
     var silenceGapTimeSavedSeconds: Double = 0
     var playbackRateTimeSavedSeconds: Double = 0
     var endedCleanly: Bool = false
+    /// True only for rows copied from SharedDatabase during the store split.
+    /// Live per-device summaries exclude these rows because the migrated
+    /// `__legacy_shared__` summary already accounts for their contribution.
+    var isLegacyMigrated: Bool = false
     var updatedAt: Date = Date.distantPast
 
     init(
@@ -337,6 +440,7 @@ final class ListeningHistorySync: Identifiable {
         silenceGapTimeSavedSeconds: Double = 0,
         playbackRateTimeSavedSeconds: Double = 0,
         endedCleanly: Bool = false,
+        isLegacyMigrated: Bool = false,
         updatedAt: Date = .now
     ) {
         self.id = id
@@ -355,6 +459,7 @@ final class ListeningHistorySync: Identifiable {
         self.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
         self.playbackRateTimeSavedSeconds = playbackRateTimeSavedSeconds
         self.endedCleanly = endedCleanly
+        self.isLegacyMigrated = isLegacyMigrated
         self.updatedAt = updatedAt
     }
 }

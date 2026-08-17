@@ -2,6 +2,8 @@ import SwiftData
 import XCTest
 @testable import UpNext
 
+#if os(iOS)
+
 final class WatchSyncRemoteControlModelTests: XCTestCase {
     func testLegacyStorageSettingsDefaultToLocalPlayback() throws {
         let data = Data(#"{"maxStorageBytes":1048576,"allowCellularDownloads":true}"#.utf8)
@@ -105,3 +107,4 @@ final class WatchSyncRemoteControlModelTests: XCTestCase {
         XCTAssertTrue(entries.allSatisfy { $0.playlist?.id == selectedPlaylist.id })
     }
 }
+#endif

@@ -3,6 +3,11 @@ import XCTest
 @testable import UpNext
 
 final class StableIdentityTests: XCTestCase {
+    func testReleaseCloudSyncPolicyUsesOnlyTheUserStateStore() {
+        XCTAssertFalse(StoreDevelopmentConfiguration.releaseLegacyCloudSyncEnabled)
+        XCTAssertTrue(StoreDevelopmentConfiguration.releaseUserStateCloudSyncEnabled)
+    }
+
     func testSplitStoreReadModeSupportsCloudBackedDualWriteMigration() {
         let configuration = StoreDevelopmentConfiguration(
             mode: .splitStoreReads,
@@ -14,7 +19,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertTrue(configuration.splitStoresEnabled)
         XCTAssertTrue(configuration.newStoreReadsEnabled)
         XCTAssertTrue(configuration.legacyMigrationEnabled)
-        XCTAssertTrue(configuration.effectiveLegacyCloudSyncEnabled)
+        XCTAssertFalse(configuration.effectiveLegacyCloudSyncEnabled)
         XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
     }
 
@@ -29,7 +34,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertFalse(configuration.splitStoresEnabled)
         XCTAssertFalse(configuration.newStoreReadsEnabled)
         XCTAssertFalse(configuration.legacyMigrationEnabled)
-        XCTAssertTrue(configuration.effectiveLegacyCloudSyncEnabled)
+        XCTAssertFalse(configuration.effectiveLegacyCloudSyncEnabled)
         XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
     }
 
@@ -1062,7 +1067,7 @@ final class StableIdentityTests: XCTestCase {
         ]
         let encodedTranscript = try AIContentSyncCodec.encodeTranscript(transcriptLines)
         let identity = episode.stableEpisodeIdentity
-        userStateContainer.mainContext.insert(
+        cacheContainer.mainContext.insert(
             AITranscriptSync(
                 feedURL: identity.feedURL,
                 episodeID: identity.episodeID,
@@ -1075,7 +1080,7 @@ final class StableIdentityTests: XCTestCase {
             )
         )
         for (index, payload) in encodedTranscript.chunks.enumerated() {
-            userStateContainer.mainContext.insert(
+            cacheContainer.mainContext.insert(
                 AITranscriptChunkSync(
                     transcriptID: identity.key,
                     revisionID: encodedTranscript.revisionID,
@@ -1089,7 +1094,7 @@ final class StableIdentityTests: XCTestCase {
             AIChapterValue(title: "New AI chapter", startTime: 45, duration: 30)
         ]
         let encodedChapters = try AIContentSyncCodec.encodeChapters(chapterValues)
-        userStateContainer.mainContext.insert(
+        cacheContainer.mainContext.insert(
             AIChapterSetSync(
                 feedURL: identity.feedURL,
                 episodeID: identity.episodeID,
@@ -1100,11 +1105,10 @@ final class StableIdentityTests: XCTestCase {
                 generatedAt: Date(timeIntervalSince1970: 2_000)
             )
         )
-        try userStateContainer.mainContext.save()
+        try cacheContainer.mainContext.save()
 
         let result = await StoreSplitAIContentImporter.apply(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
             cacheContainer: cacheContainer
         )
 
@@ -1166,7 +1170,7 @@ final class StableIdentityTests: XCTestCase {
         }
         let encodedTranscript = try AIContentSyncCodec.encodeTranscript(transcriptLines)
         let identity = episode.stableEpisodeIdentity
-        userStateContainer.mainContext.insert(
+        cacheContainer.mainContext.insert(
             AITranscriptSync(
                 feedURL: identity.feedURL,
                 episodeID: identity.episodeID,
@@ -1179,7 +1183,7 @@ final class StableIdentityTests: XCTestCase {
             )
         )
         for (index, payload) in encodedTranscript.chunks.enumerated() {
-            userStateContainer.mainContext.insert(
+            cacheContainer.mainContext.insert(
                 AITranscriptChunkSync(
                     transcriptID: identity.key,
                     revisionID: encodedTranscript.revisionID,
@@ -1189,11 +1193,10 @@ final class StableIdentityTests: XCTestCase {
                 )
             )
         }
-        try userStateContainer.mainContext.save()
+        try cacheContainer.mainContext.save()
 
         let result = await StoreSplitAIContentImporter.apply(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
             cacheContainer: cacheContainer
         )
 
@@ -1241,7 +1244,7 @@ final class StableIdentityTests: XCTestCase {
         )]
         let encoded = try AIContentSyncCodec.encodeTranscript(values)
         let identity = episode.stableEpisodeIdentity
-        userStateContainer.mainContext.insert(
+        cacheContainer.mainContext.insert(
             AITranscriptSync(
                 feedURL: identity.feedURL,
                 episodeID: identity.episodeID,
@@ -1253,7 +1256,7 @@ final class StableIdentityTests: XCTestCase {
             )
         )
         for (index, payload) in encoded.chunks.enumerated() {
-            userStateContainer.mainContext.insert(
+            cacheContainer.mainContext.insert(
                 AITranscriptChunkSync(
                     transcriptID: identity.key,
                     revisionID: encoded.revisionID,
@@ -1263,11 +1266,10 @@ final class StableIdentityTests: XCTestCase {
                 )
             )
         }
-        try userStateContainer.mainContext.save()
+        try cacheContainer.mainContext.save()
 
         let result = await StoreSplitAIContentImporter.apply(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
             cacheContainer: cacheContainer
         )
 
@@ -1309,7 +1311,7 @@ final class StableIdentityTests: XCTestCase {
         ]
         let encoded = try AIContentSyncCodec.encodeTranscript(values)
         let identity = episode.stableEpisodeIdentity
-        userStateContainer.mainContext.insert(
+        cacheContainer.mainContext.insert(
             AITranscriptSync(
                 feedURL: identity.feedURL,
                 episodeID: identity.episodeID,
@@ -1321,7 +1323,7 @@ final class StableIdentityTests: XCTestCase {
             )
         )
         for (index, payload) in encoded.chunks.enumerated() {
-            userStateContainer.mainContext.insert(
+            cacheContainer.mainContext.insert(
                 AITranscriptChunkSync(
                     transcriptID: identity.key,
                     revisionID: encoded.revisionID,
@@ -1331,11 +1333,10 @@ final class StableIdentityTests: XCTestCase {
                 )
             )
         }
-        try userStateContainer.mainContext.save()
+        try cacheContainer.mainContext.save()
 
         let result = await StoreSplitAIContentImporter.apply(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
             cacheContainer: cacheContainer
         )
 
@@ -1397,7 +1398,7 @@ final class StableIdentityTests: XCTestCase {
         let deletionDate = Date(timeIntervalSince1970: 3_000)
         for episode in [generatedEpisode, publisherEpisode] {
             let identity = episode.stableEpisodeIdentity
-            userStateContainer.mainContext.insert(
+            cacheContainer.mainContext.insert(
                 AITranscriptSync(
                     feedURL: identity.feedURL,
                     episodeID: identity.episodeID,
@@ -1415,11 +1416,10 @@ final class StableIdentityTests: XCTestCase {
             )
         }
         try legacyContainer.mainContext.save()
-        try userStateContainer.mainContext.save()
+        try cacheContainer.mainContext.save()
 
         let result = await StoreSplitAIContentImporter.apply(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
             cacheContainer: cacheContainer
         )
 
@@ -1514,7 +1514,9 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertEqual(refreshedEpisode.metaData?.playPosition, 120)
         XCTAssertEqual(refreshedEpisode.metaData?.maxPlayposition, 180)
         XCTAssertEqual(refreshedEpisode.metaData?.isArchived, true)
-        XCTAssertEqual(refreshedEpisode.metaData?.isInbox, true)
+        // Archiving on another device also takes the episode out of this
+        // device's Inbox; inbox membership itself stays local.
+        XCTAssertEqual(refreshedEpisode.metaData?.isInbox, false)
         XCTAssertEqual(refreshedEpisode.metaData?.status, .archived)
     }
 
@@ -2021,19 +2023,19 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            try userStateContainer.mainContext.fetchCount(
+            try cacheContainer.mainContext.fetchCount(
                 FetchDescriptor<AITranscriptSync>()
             ),
             1
         )
         XCTAssertEqual(
-            try userStateContainer.mainContext.fetchCount(
+            try cacheContainer.mainContext.fetchCount(
                 FetchDescriptor<AITranscriptChunkSync>()
             ),
             1
         )
         XCTAssertEqual(
-            try userStateContainer.mainContext.fetchCount(
+            try cacheContainer.mainContext.fetchCount(
                 FetchDescriptor<AIChapterSetSync>()
             ),
             1

@@ -2,6 +2,8 @@ import Foundation
 import SwiftData
 
 @ModelActor
+/// Despite the historical type name, this writer is constructed only with the
+/// local `PodcastCache` container; AI payloads are never part of UserState.
 actor StoreSplitAIContentSyncWriter {
     func writeTranscript(
         identity: EpisodeStableIdentity,

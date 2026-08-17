@@ -8,6 +8,7 @@ struct StoreSplitMigrationResult: Sendable {
     var playlistEntries = StoreSplitMigrationPhaseResult()
     var queueEntries = StoreSplitMigrationPhaseResult()
     var bookmarks = StoreSplitMigrationPhaseResult()
+    var preferences = StoreSplitMigrationPhaseResult()
     var listeningHistory = StoreSplitMigrationPhaseResult()
     var listeningSummaries = StoreSplitMigrationPhaseResult()
     var aiTranscripts = StoreSplitMigrationPhaseResult()
@@ -20,6 +21,7 @@ struct StoreSplitMigrationResult: Sendable {
             + playlistEntries.failed
             + queueEntries.failed
             + bookmarks.failed
+            + preferences.failed
             + listeningHistory.failed
             + listeningSummaries.failed
             + aiTranscripts.failed
@@ -80,12 +82,17 @@ struct StoreSplitSliceReport: Sendable {
 }
 
 actor StoreSplitMigrationService {
-    // v4: the listening-summary phase now synthesizes per-feed `.forever`
-    // rollups, so the split-store lifetime total reflects the full migrated
-    // history instead of only the retained raw sessions. Bumping the version
-    // invalidates the v3 checkpoints and re-runs migration once on each device;
-    // every phase is an idempotent upsert, so the re-run never double-counts.
-    nonisolated static let migrationVersion = 4
+    // v6 marks migrated compact history and backfills raw analytics into the
+    // local cache. This separates the shared historical baseline from later
+    // live per-device summaries and prevents double counting after cutover.
+    //
+    // v8 re-publishes local user state after the runtime graph returned to the
+    // durable on-disk library store. A device that spent time reading the
+    // in-memory projection — or that was rolled back to local-only reads — can
+    // hold user state that never reached UserState.sqlite. Every phase merges by
+    // `updatedAt`, so the re-run only fills gaps and never overwrites a newer
+    // record from another device.
+    nonisolated static let migrationVersion = 8
 
     /// Per-slice record budget for the light phases. Heavier phases override this
     /// with smaller pages because each record faults a larger object graph.
@@ -104,6 +111,7 @@ actor StoreSplitMigrationService {
         Phase.playlists,
         Phase.playlistEntries,
         Phase.bookmarks,
+        Phase.preferences,
         Phase.episodeStates,
         Phase.listeningSummaries,
         Phase.listeningHistory
@@ -115,6 +123,7 @@ actor StoreSplitMigrationService {
         static let playlistEntries = "playlist_entries"
         static let queueEntries = "queue_entries"
         static let bookmarks = "bookmarks"
+        static let preferences = "preferences"
         static let episodeStates = "episode_states"
         static let listeningSummaries = "listening_summaries"
         static let listeningHistory = "listening_history"
@@ -269,6 +278,14 @@ actor StoreSplitMigrationService {
             status = .advanced
         }
 
+        if status == .completed {
+            _ = StoreSplitMigrationVerifier.verify(
+                legacyContainer: legacyContainer,
+                userStateContainer: userStateContainer,
+                cacheContainer: cacheContainer
+            )
+        }
+
         return StoreSplitSliceReport(
             status: status,
             phase: phase,
@@ -298,6 +315,7 @@ actor StoreSplitMigrationService {
                 result.playlistEntries = phaseResult.primary
                 result.queueEntries = phaseResult.queue
             case Phase.bookmarks: result.bookmarks = phaseResult.primary
+            case Phase.preferences: result.preferences = phaseResult.primary
             case Phase.episodeStates: result.episodeStates = phaseResult.primary
             case Phase.listeningSummaries: result.listeningSummaries = phaseResult.primary
             case Phase.listeningHistory: result.listeningHistory = phaseResult.primary
@@ -308,11 +326,10 @@ actor StoreSplitMigrationService {
 
         if includeAIContent {
             guard Task.isCancelled == false else { return result }
-            let userStateContext = Self.makeContext(for: userStateContainer)
             let cacheContext = Self.makeContext(for: cacheContainer)
             let aiContentResults = Self.migrateAIContent(
                 legacyContainer: legacyContainer,
-                destinationContext: userStateContext
+                destinationContext: cacheContext
             )
             result.aiTranscripts = aiContentResults.transcripts
             result.aiChapters = aiContentResults.chapters
@@ -333,6 +350,11 @@ actor StoreSplitMigrationService {
         CrashBreadcrumbs.shared.record(
             "store_split_migration_completed",
             details: "failed=\(result.failedCount),subscriptions=\(result.subscriptions.scanned),episodes=\(result.episodeStates.scanned),playlists=\(result.playlists.scanned),bookmarks=\(result.bookmarks.scanned),history=\(result.listeningHistory.scanned),summaries=\(result.listeningSummaries.scanned),ai_transcripts=\(result.aiTranscripts.scanned),ai_chapters=\(result.aiChapters.scanned)"
+        )
+        _ = StoreSplitMigrationVerifier.verify(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer
         )
         return result
     }
@@ -444,6 +466,13 @@ actor StoreSplitMigrationService {
                 destinationContext: userStateContext,
                 shouldContinue: shouldContinue
             )
+        case Phase.preferences:
+            return Self.processPreferencesPage(
+                offset: offset,
+                legacyContext: legacyContext,
+                destinationContext: userStateContext,
+                shouldContinue: shouldContinue
+            )
         case Phase.episodeStates:
             return Self.processEpisodeStatesPage(
                 offset: offset,
@@ -462,6 +491,7 @@ actor StoreSplitMigrationService {
                 offset: offset,
                 legacyContext: legacyContext,
                 destinationContext: userStateContext,
+                cacheContext: cacheContext,
                 shouldContinue: shouldContinue
             )
         default:
@@ -542,7 +572,12 @@ actor StoreSplitMigrationService {
             }
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         if outcome.reachedEnd {
             outcome.reachedEnd = podcasts.count < defaultPageSize
         }
@@ -581,7 +616,7 @@ actor StoreSplitMigrationService {
             outcome.processed += 1
             outcome.delta.scanned += 1
 
-            let playlistID = playlist.id.uuidString
+            let playlistID = playlist.storeSplitSyncID
             let entryDates = playlist.ordered.compactMap(\.dateAdded)
             let createdAt = entryDates.min() ?? .distantPast
             let updatedAt = entryDates.max() ?? createdAt
@@ -627,7 +662,12 @@ actor StoreSplitMigrationService {
             }
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         if outcome.reachedEnd {
             outcome.reachedEnd = playlists.count < defaultPageSize
         }
@@ -675,7 +715,7 @@ actor StoreSplitMigrationService {
                 outcome.delta.skipped += 1
                 continue
             }
-            let playlistID = playlist.id.uuidString
+            let playlistID = playlist.storeSplitSyncID
             let isDefaultQueue = playlist.title == Playlist.defaultQueueTitle
 
             guard let episode = entry.episode,
@@ -719,7 +759,12 @@ actor StoreSplitMigrationService {
             }
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         if outcome.reachedEnd {
             outcome.reachedEnd = entries.count < defaultPageSize
         }
@@ -811,45 +856,31 @@ actor StoreSplitMigrationService {
     ) -> PageOutcome {
         var outcome = PageOutcome()
 
-        // `Bookmark` is an @Model subclass of `Marker`, and every stored
-        // property — including `creationtime` — is declared on the `Marker`
-        // superclass. SwiftData's SortDescriptor keypath resolution
-        // (`PersistentModel.graph_keyPathToString`) hits an assertion failure
-        // and crashes when a subclass keypath points at an inherited property,
-        // so we must NOT pass `sortBy:` for `Bookmark` here. Instead fetch the
-        // rows unsorted and order them in memory, which keeps the offset-based
-        // paging below stable. Bookmark counts are small (user-created), so
-        // materializing them in one fetch during this one-time migration is
-        // cheap, and the sort only touches faulted scalar properties.
-        let allBookmarks: [Bookmark]
+        // Bookmark inherits every scalar from Marker. Sorting Bookmark directly
+        // by an inherited key path crashes SwiftData on supported OS versions,
+        // so page the base table and retain Bookmark subclasses. This keeps the
+        // legacy read bounded without relying on the broken subclass key path.
+        var descriptor = FetchDescriptor<Marker>(
+            sortBy: [SortDescriptor(\Marker.creationtime)]
+        )
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = defaultPageSize
+        let markerPage: [Marker]
         do {
-            allBookmarks = try legacyContext.fetch(FetchDescriptor<Bookmark>())
+            markerPage = try legacyContext.fetch(descriptor)
         } catch {
             outcome.error = error.localizedDescription
             outcome.reachedEnd = false
             return outcome
         }
 
-        let sortedBookmarks = allBookmarks.sorted { lhs, rhs in
-            let lhsTime = lhs.creationtime ?? .distantPast
-            let rhsTime = rhs.creationtime ?? .distantPast
-            if lhsTime != rhsTime {
-                return lhsTime < rhsTime
-            }
-            // Stable tiebreaker so paged windows never overlap or skip rows.
-            return (lhs.uuid?.uuidString ?? "") < (rhs.uuid?.uuidString ?? "")
-        }
-
-        let bookmarks: [Bookmark] = offset < sortedBookmarks.count
-            ? Array(sortedBookmarks[offset..<min(offset + defaultPageSize, sortedBookmarks.count)])
-            : []
-
-        for bookmark in bookmarks {
+        for marker in markerPage {
             guard shouldContinue() else {
                 outcome.reachedEnd = false
                 break
             }
             outcome.processed += 1
+            guard let bookmark = marker as? Bookmark else { continue }
             outcome.delta.scanned += 1
 
             guard let episode = bookmark.bookmarkEpisode,
@@ -901,14 +932,145 @@ actor StoreSplitMigrationService {
             }
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         if outcome.reachedEnd {
-            outcome.reachedEnd = bookmarks.count < defaultPageSize
+            outcome.reachedEnd = markerPage.count < defaultPageSize
         }
         return outcome
     }
 
     // MARK: - Episode playback state (recent first)
+
+    // MARK: - Portable preferences
+
+    private static func processPreferencesPage(
+        offset: Int,
+        legacyContext: ModelContext,
+        destinationContext: ModelContext,
+        shouldContinue: @Sendable () -> Bool
+    ) -> PageOutcome {
+        var outcome = PageOutcome()
+        var descriptor = FetchDescriptor<PodcastSettings>(
+            sortBy: [SortDescriptor(\PodcastSettings.title)]
+        )
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = defaultPageSize
+        let settings: [PodcastSettings]
+        do {
+            settings = try legacyContext.fetch(descriptor)
+        } catch {
+            outcome.error = error.localizedDescription
+            outcome.reachedEnd = false
+            return outcome
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        for setting in settings {
+            guard shouldContinue() else {
+                outcome.reachedEnd = false
+                break
+            }
+            outcome.processed += 1
+            outcome.delta.scanned += 1
+            let feedURL = setting.podcast?.feed.map(
+                PodcastFeedIdentity.normalizedFeedURLString
+            )
+            let candidate = PodcastPreferenceSync(
+                feedURL: feedURL,
+                isEnabled: setting.isEnabled,
+                playNextPositionRawValue: (try? encoder.encode(setting.playnextPosition))
+                    .map { String(decoding: $0, as: UTF8.self) } ?? "",
+                defaultPlaylistID: setting.defaultPlaylistID?.uuidString,
+                playbackSpeed: setting.playbackSpeed.map(Double.init),
+                reduceSilenceGapsEnabled: setting.reduceSilenceGapsEnabled,
+                silenceGapReductionLevelRawValue: setting.silenceGapReductionLevelRawValue,
+                voiceEnhancementEnabled: setting.voiceEnhancementEnabled,
+                autoSkipKeywordsJSON: (try? encoder.encode(setting.autoSkipKeywords))
+                    .map { String(decoding: $0, as: UTF8.self) } ?? "[]",
+                cutFront: setting.cutFront.map(Double.init),
+                cutEnd: setting.cutEnd.map(Double.init),
+                skipForwardSeconds: setting.skipForward.rawValue,
+                skipBackSeconds: setting.skipBack.rawValue,
+                skipForwardBehaviorRawValue: setting.skipForwardBehaviorRawValue,
+                skipBackBehaviorRawValue: setting.skipBackBehaviorRawValue,
+                markAsPlayedAfterSubscribe: setting.markAsPlayedAfterSubscribe,
+                playSumAdjustedByPlaySpeed: setting.playSumAdjustedbyPlayspeed,
+                enableLockscreenSlider: setting.enableLockscreenSlider,
+                enableInAppSlider: setting.enableInAppSlider,
+                continuousPlayEnabled: setting.getContinuousPlay,
+                liveItemNotificationsEnabled: setting.enableLiveItemNotifications,
+                sleepTimerAddMinutes: setting.sleepTimerAddMinutes,
+                sleepTimerDurationToReactivate: setting.sleepTimerDurationToReactivate,
+                sleepTimerVoiceFeedbackEnabled: setting.sleepTimerVoiceFeedbackEnabled,
+                sleepTimerText: setting.sleepTimerText,
+                updatedAt: .distantPast,
+                sourceDeviceID: ListeningDeviceIdentity.current().id
+            )
+            if let existing = fetchPreference(id: candidate.id, in: destinationContext) {
+                guard StoreSplitMergePolicy.prefersIncoming(
+                    existingUpdatedAt: existing.updatedAt,
+                    incomingUpdatedAt: candidate.updatedAt
+                ) else {
+                    outcome.delta.skipped += 1
+                    continue
+                }
+                applyPreference(candidate, to: existing)
+                outcome.delta.updated += 1
+            } else {
+                destinationContext.insert(candidate)
+                outcome.delta.inserted += 1
+            }
+        }
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
+        if outcome.reachedEnd {
+            outcome.reachedEnd = settings.count < defaultPageSize
+        }
+        return outcome
+    }
+
+    private static func applyPreference(
+        _ source: PodcastPreferenceSync,
+        to destination: PodcastPreferenceSync
+    ) {
+        destination.feedURL = source.feedURL
+        destination.isEnabled = source.isEnabled
+        destination.playNextPositionRawValue = source.playNextPositionRawValue
+        destination.defaultPlaylistID = source.defaultPlaylistID
+        destination.playbackSpeed = source.playbackSpeed
+        destination.reduceSilenceGapsEnabled = source.reduceSilenceGapsEnabled
+        destination.silenceGapReductionLevelRawValue = source.silenceGapReductionLevelRawValue
+        destination.voiceEnhancementEnabled = source.voiceEnhancementEnabled
+        destination.autoSkipKeywordsJSON = source.autoSkipKeywordsJSON
+        destination.cutFront = source.cutFront
+        destination.cutEnd = source.cutEnd
+        destination.skipForwardSeconds = source.skipForwardSeconds
+        destination.skipBackSeconds = source.skipBackSeconds
+        destination.skipForwardBehaviorRawValue = source.skipForwardBehaviorRawValue
+        destination.skipBackBehaviorRawValue = source.skipBackBehaviorRawValue
+        destination.markAsPlayedAfterSubscribe = source.markAsPlayedAfterSubscribe
+        destination.playSumAdjustedByPlaySpeed = source.playSumAdjustedByPlaySpeed
+        destination.enableLockscreenSlider = source.enableLockscreenSlider
+        destination.enableInAppSlider = source.enableInAppSlider
+        destination.continuousPlayEnabled = source.continuousPlayEnabled
+        destination.liveItemNotificationsEnabled = source.liveItemNotificationsEnabled
+        destination.sleepTimerAddMinutes = source.sleepTimerAddMinutes
+        destination.sleepTimerDurationToReactivate = source.sleepTimerDurationToReactivate
+        destination.sleepTimerVoiceFeedbackEnabled = source.sleepTimerVoiceFeedbackEnabled
+        destination.sleepTimerText = source.sleepTimerText
+        destination.updatedAt = source.updatedAt
+        destination.sourceDeviceID = source.sourceDeviceID
+    }
 
     private static func processEpisodeStatesPage(
         offset: Int,
@@ -964,12 +1126,10 @@ actor StoreSplitMigrationService {
             }
 
             let identity = episode.stableEpisodeIdentity
-            let updatedAt = latestDate(
-                metadata.lastPlayed,
-                metadata.completionDate,
-                metadata.archivedAt,
-                metadata.firstListenDate
-            ) ?? .distantPast
+            // `stateUpdatedAt` is the explicit generation stamp written by the
+            // dual-write; the playback timestamps are the fallback for rows that
+            // predate it.
+            let updatedAt = metadata.effectiveStateUpdatedAt ?? .distantPast
 
             let stateID = identity.key
             if let destination = fetchEpisodeState(
@@ -1014,7 +1174,12 @@ actor StoreSplitMigrationService {
             }
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         if outcome.reachedEnd {
             outcome.reachedEnd = episodes.count < episodePageSize
         }
@@ -1054,6 +1219,7 @@ actor StoreSplitMigrationService {
         offset: Int,
         legacyContext: ModelContext,
         destinationContext: ModelContext,
+        cacheContext: ModelContext,
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
@@ -1082,9 +1248,7 @@ actor StoreSplitMigrationService {
 
             guard let episode = session.episode,
                   episode.podcast?.feed != nil,
-                  let startedAt = session.startTime,
-                  let endedAt = session.endTime,
-                  endedAt > startedAt else {
+                  let startedAt = session.startTime else {
                 outcome.delta.skipped += 1
                 continue
             }
@@ -1097,6 +1261,21 @@ actor StoreSplitMigrationService {
             let sourceDeviceName = session.sourceDeviceName
                 ?? session.deviceModel
                 ?? "Legacy device"
+            guard let endedAt = session.endTime, endedAt > startedAt else {
+                cacheLegacySession(
+                    session,
+                    episode: episode,
+                    identity: identity,
+                    sourceDeviceID: sourceDeviceID,
+                    sourceDeviceName: sourceDeviceName,
+                    startedAt: startedAt,
+                    endedAt: nil,
+                    listenedSeconds: 0,
+                    in: cacheContext
+                )
+                outcome.delta.skipped += 1
+                continue
+            }
             let recordID = ListeningHistoryIdentity.make(
                 feedURL: identity.feedURL,
                 episodeID: identity.episodeID,
@@ -1107,6 +1286,18 @@ actor StoreSplitMigrationService {
             )
             let listenedSeconds = endedAt.timeIntervalSince(startedAt)
             let updatedAt = endedAt
+
+            cacheLegacySession(
+                session,
+                episode: episode,
+                identity: identity,
+                sourceDeviceID: sourceDeviceID,
+                sourceDeviceName: sourceDeviceName,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                listenedSeconds: listenedSeconds,
+                in: cacheContext
+            )
 
             if let destination = fetchListeningHistory(
                 id: recordID,
@@ -1153,6 +1344,7 @@ actor StoreSplitMigrationService {
                         playbackRateTimeSavedSeconds:
                             PlaybackRateSavingsCalculator.secondsSaved(in: session),
                         endedCleanly: session.endedCleanly == true,
+                        isLegacyMigrated: true,
                         updatedAt: updatedAt
                     )
                 )
@@ -1160,11 +1352,130 @@ actor StoreSplitMigrationService {
             }
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
+        do {
+            if cacheContext.hasChanges { try cacheContext.save() }
+        } catch {
+            cacheContext.rollback()
+            outcome.error = "cache_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         if outcome.reachedEnd {
             outcome.reachedEnd = sessions.count < listeningHistoryPageSize
         }
         return outcome
+    }
+
+    private static func cacheLegacySession(
+        _ session: PlaySession,
+        episode: Episode,
+        identity: EpisodeStableIdentity,
+        sourceDeviceID: String,
+        sourceDeviceName: String,
+        startedAt: Date,
+        endedAt: Date?,
+        listenedSeconds: Double,
+        in context: ModelContext
+    ) {
+        let sessionID = session.id?.uuidString ?? StableIdentityKey.uuid(for:
+            StableIdentityKey.make(
+                identity.key,
+                String(Int(startedAt.timeIntervalSince1970))
+            )
+        ).uuidString
+        var descriptor = FetchDescriptor<CachedPlaySession>(
+            predicate: #Predicate { $0.id == sessionID }
+        )
+        descriptor.fetchLimit = 1
+        let cached = (try? context.fetch(descriptor).first)
+            ?? CachedPlaySession(
+                id: sessionID,
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                sourceDeviceID: sourceDeviceID,
+                startedAt: startedAt
+            )
+        if cached.modelContext == nil { context.insert(cached) }
+        cached.feedURL = identity.feedURL
+        cached.episodeID = identity.episodeID
+        cached.podcastName = session.podcastName ?? episode.displayPodcastTitle
+        cached.episodeTitle = episode.title
+        cached.sourceDeviceID = sourceDeviceID
+        cached.sourceDeviceName = sourceDeviceName
+        cached.deviceModel = session.deviceModel
+        cached.osVersion = session.osVersion
+        cached.appVersion = session.appVersion
+        cached.startedAt = startedAt
+        cached.endedAt = endedAt
+        cached.startPosition = session.startPosition ?? 0
+        cached.endPosition = session.endPosition
+        cached.silenceGapTimeSavedSeconds = max(
+            0,
+            session.silenceGapTimeSavedSeconds ?? 0
+        )
+        let rateSaved = max(0, PlaybackRateSavingsCalculator.secondsSaved(in: session))
+        cached.playbackRateTimeSavedSeconds = rateSaved
+        cached.endedCleanly = session.endedCleanly == true
+        cached.updatedAt = endedAt ?? startedAt
+
+        let rateDescriptor = FetchDescriptor<CachedRateSegment>(
+            predicate: #Predicate { $0.sessionID == sessionID }
+        )
+        for old in (try? context.fetch(rateDescriptor)) ?? [] { context.delete(old) }
+        for (ordinal, segment) in (session.segments ?? []).sorted(by: {
+            ($0.startTime ?? .distantPast) < ($1.startTime ?? .distantPast)
+        }).enumerated() {
+            context.insert(CachedRateSegment(
+                id: StableIdentityKey.make(sessionID, "rate", String(ordinal)),
+                sessionID: sessionID,
+                ordinal: ordinal,
+                rate: segment.rate ?? 1,
+                startTime: segment.startTime,
+                startPosition: segment.startPosition,
+                endTime: segment.endTime,
+                endPosition: segment.endPosition
+            ))
+        }
+
+        let hourDescriptor = FetchDescriptor<CachedHourlyListeningStat>(
+            predicate: #Predicate { $0.sessionID == sessionID }
+        )
+        for old in (try? context.fetch(hourDescriptor)) ?? [] { context.delete(old) }
+        let silenceSaved = max(0, session.silenceGapTimeSavedSeconds ?? 0)
+        guard let endedAt, endedAt > startedAt else { return }
+        let calendar = Calendar.current
+        var cursor = startedAt
+        while cursor < endedAt {
+            let hourStart = calendar.dateInterval(of: .hour, for: cursor)?.start ?? cursor
+            let nextHour = calendar.date(byAdding: .hour, value: 1, to: hourStart)
+                ?? endedAt
+            let blockEnd = min(nextHour, endedAt)
+            let seconds = blockEnd.timeIntervalSince(cursor)
+            let fraction = listenedSeconds > 0 ? seconds / listenedSeconds : 0
+            context.insert(CachedHourlyListeningStat(
+                id: StableIdentityKey.make(
+                    sessionID,
+                    "hour",
+                    String(Int(hourStart.timeIntervalSince1970))
+                ),
+                sessionID: sessionID,
+                feedURL: identity.feedURL,
+                podcastName: cached.podcastName,
+                sourceDeviceID: sourceDeviceID,
+                startOfHour: hourStart,
+                totalSeconds: seconds,
+                silenceGapTimeSavedSeconds: silenceSaved * fraction,
+                playbackRateTimeSavedSeconds: rateSaved * fraction
+            ))
+            cursor = blockEnd
+        }
     }
 
     private static func applyListeningHistory(
@@ -1194,6 +1505,7 @@ actor StoreSplitMigrationService {
         destination.silenceGapTimeSavedSeconds = session.silenceGapTimeSavedSeconds ?? 0
         destination.playbackRateTimeSavedSeconds = PlaybackRateSavingsCalculator.secondsSaved(in: session)
         destination.endedCleanly = session.endedCleanly == true
+        destination.isLegacyMigrated = true
         destination.updatedAt = updatedAt
     }
 
@@ -1369,7 +1681,12 @@ actor StoreSplitMigrationService {
             )
         }
 
-        save(destinationContext, result: &outcome.delta)
+        guard save(destinationContext, result: &outcome.delta) else {
+            outcome.error = "destination_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         outcome.processed = legacySummaries.count
         outcome.reachedEnd = true
         return outcome
@@ -1592,6 +1909,18 @@ actor StoreSplitMigrationService {
         return currentPhase(cache: context) == nil
     }
 
+    nonisolated static func isMigrationVerified(
+        cacheContainer: ModelContainer
+    ) -> Bool {
+        guard let record = StoreSplitMigrationVerifier.latestVerification(
+            cacheContainer: cacheContainer
+        ) else { return false }
+        return record.migrationVersion == migrationVersion
+            && record.verifiedAt != nil
+            && record.issues.isEmpty
+            && record.cacheMissingCount == 0
+    }
+
     /// The first non-AI phase whose checkpoint has not completed, or `nil` when
     /// the whole slice migration is finished.
     private static func currentPhase(cache: ModelContext) -> String? {
@@ -1645,6 +1974,17 @@ actor StoreSplitMigrationService {
         in context: ModelContext
     ) -> EpisodeStateSync? {
         var descriptor = FetchDescriptor<EpisodeStateSync>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private static func fetchPreference(
+        id: String,
+        in context: ModelContext
+    ) -> PodcastPreferenceSync? {
+        var descriptor = FetchDescriptor<PodcastPreferenceSync>(
             predicate: #Predicate { $0.id == id }
         )
         descriptor.fetchLimit = 1
@@ -1750,19 +2090,23 @@ actor StoreSplitMigrationService {
         )
     }
 
+    @discardableResult
     private static func save(
         _ context: ModelContext,
         result: inout StoreSplitMigrationPhaseResult
-    ) {
-        guard context.hasChanges else { return }
+    ) -> Bool {
+        guard context.hasChanges else { return true }
         do {
             try context.save()
+            return true
         } catch {
             result.failed += 1
+            context.rollback()
             CrashBreadcrumbs.shared.record(
                 "store_split_migration_save_failed",
                 details: error.localizedDescription
             )
+            return false
         }
     }
 

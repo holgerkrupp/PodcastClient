@@ -283,7 +283,9 @@ private struct LibraryPlaylistsView: View {
             for entry in playlist.items ?? [] {
                 modelContext.delete(entry)
             }
-            StoreSplitPlaylistSyncCoordinator.tombstone(playlistID: playlist.id)
+            StoreSplitPlaylistSyncCoordinator.tombstone(
+                playlistID: playlist.storeSplitSyncID
+            )
             modelContext.delete(playlist)
         }
 

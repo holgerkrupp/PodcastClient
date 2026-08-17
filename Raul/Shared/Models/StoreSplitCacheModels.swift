@@ -51,6 +51,30 @@ final class StoreSplitMigrationCheckpoint: Identifiable {
     }
 }
 
+/// Durable proof from the latest full verification pass. This record is local
+/// only. A successful row is necessary but not sufficient for cleanup: the
+/// supported-version grace period and convergence telemetry must also pass.
+@Model
+final class StoreSplitMigrationVerification: Identifiable {
+    var id: String = ""
+    var migrationVersion: Int = 0
+    var sourceCountsJSON: String = "{}"
+    var destinationCountsJSON: String = "{}"
+    var sourceDigest: String = ""
+    var destinationDigest: String = ""
+    var cacheRecoverableCount: Int = 0
+    var cacheMissingCount: Int = 0
+    var issues: [String] = []
+    var verifiedAt: Date?
+    var updatedAt: Date = Date.distantPast
+
+    init(id: String, migrationVersion: Int) {
+        self.id = id
+        self.migrationVersion = migrationVersion
+        self.updatedAt = .now
+    }
+}
+
 @Model
 final class CachedFeedExtensionElement: Identifiable {
     var id: String = ""
@@ -78,11 +102,13 @@ final class CachedFeedExtensionElement: Identifiable {
         updatedAt: Date = .now
     ) {
         self.id = StableIdentityKey.make(
+            scope,
             feedURL,
             episodeID ?? "__feed__",
             namespaceURI,
             qualifiedName,
-            String(ordinal)
+            String(ordinal),
+            contentHash
         )
         self.feedURL = feedURL
         self.episodeID = episodeID
@@ -194,6 +220,9 @@ final class CachedEpisode: Identifiable {
 
     /// Stable episode identity (GUID/enclosure/link/hash precedence).
     var id: String = ""
+    /// Uncomposed stable episode component (`guid:`, `enclosure:`, `link:`, or
+    /// `hash:`). `id` remains the collision-safe feed+episode composite key.
+    var episodeID: String = ""
     /// Owner feed key — scalar cross-store reference to subscription/user state.
     var feedURL: String = ""
     var guid: String?
@@ -219,6 +248,13 @@ final class CachedEpisode: Identifiable {
     var people: [PersonInfo] = []
     var optionalTags: PodcastNamespaceOptionalTags?
 
+    /// Device-local episode classification. Inbox membership is deliberately
+    /// not synchronized, but it must survive rebuilding the temporary runtime
+    /// graph from PodcastCache.
+    var localIsInbox: Bool = false
+    var localStatusRawValue: String?
+    var localSystemSuppressionReasonRawValue: String?
+
     var updatedAt: Date = Date.distantPast
 
     var podcast: CachedPodcast?
@@ -226,6 +262,7 @@ final class CachedEpisode: Identifiable {
     init(
         id: String,
         feedURL: String,
+        episodeID: String = "",
         guid: String? = nil,
         title: String = "",
         author: String? = nil,
@@ -248,10 +285,14 @@ final class CachedEpisode: Identifiable {
         social: [SocialInfo] = [],
         people: [PersonInfo] = [],
         optionalTags: PodcastNamespaceOptionalTags? = nil,
+        localIsInbox: Bool = false,
+        localStatusRawValue: String? = nil,
+        localSystemSuppressionReasonRawValue: String? = nil,
         updatedAt: Date = .now
     ) {
         self.id = id
         self.feedURL = feedURL
+        self.episodeID = episodeID
         self.guid = guid
         self.title = title
         self.author = author
@@ -274,6 +315,9 @@ final class CachedEpisode: Identifiable {
         self.social = social
         self.people = people
         self.optionalTags = optionalTags
+        self.localIsInbox = localIsInbox
+        self.localStatusRawValue = localStatusRawValue
+        self.localSystemSuppressionReasonRawValue = localSystemSuppressionReasonRawValue
         self.updatedAt = updatedAt
     }
 }
@@ -357,6 +401,10 @@ final class CachedTranscriptLine: Identifiable {
     var startTime: Double = 0
     var endTime: Double?
     var ordinal: Int = 0
+    /// `publisher`, `ai`, or `localAI`. Older rows default to publisher so an
+    /// incoming AI revision can never erase unclassified publisher material.
+    var sourceRawValue: String = CachedTranscriptSource.publisher.rawValue
+    var revisionID: String?
     var updatedAt: Date = Date.distantPast
 
     init(
@@ -369,6 +417,8 @@ final class CachedTranscriptLine: Identifiable {
         startTime: Double = 0,
         endTime: Double? = nil,
         ordinal: Int = 0,
+        sourceRawValue: String = CachedTranscriptSource.publisher.rawValue,
+        revisionID: String? = nil,
         updatedAt: Date = .now
     ) {
         self.id = id
@@ -380,8 +430,16 @@ final class CachedTranscriptLine: Identifiable {
         self.startTime = startTime
         self.endTime = endTime
         self.ordinal = ordinal
+        self.sourceRawValue = sourceRawValue
+        self.revisionID = revisionID
         self.updatedAt = updatedAt
     }
+}
+
+enum CachedTranscriptSource: String, Codable, Sendable {
+    case publisher
+    case ai
+    case localAI
 }
 
 /// Device-local transcription job history. This is diagnostics/history rather
@@ -465,6 +523,139 @@ final class CachedDownloadRecord: Identifiable {
         self.isAvailableLocally = isAvailableLocally
         self.fileSize = fileSize
         self.updatedAt = updatedAt
+    }
+}
+
+/// Device-local raw playback session. Cross-store references are logical keys;
+/// the cache never stores a SwiftData relationship to CachedEpisode/UserState.
+@Model
+final class CachedPlaySession: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var podcastName: String?
+    var episodeTitle: String?
+    var sourceDeviceID: String = ""
+    var sourceDeviceName: String?
+    var deviceModel: String?
+    var osVersion: String?
+    var appVersion: String?
+    var startedAt: Date = Date.distantPast
+    var endedAt: Date?
+    var startPosition: Double = 0
+    var endPosition: Double?
+    var silenceGapTimeSavedSeconds: Double = 0
+    var playbackRateTimeSavedSeconds: Double = 0
+    var endedCleanly: Bool = false
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        feedURL: String,
+        episodeID: String,
+        podcastName: String? = nil,
+        episodeTitle: String? = nil,
+        sourceDeviceID: String,
+        sourceDeviceName: String? = nil,
+        deviceModel: String? = nil,
+        osVersion: String? = nil,
+        appVersion: String? = nil,
+        startedAt: Date,
+        endedAt: Date? = nil,
+        startPosition: Double = 0,
+        endPosition: Double? = nil,
+        silenceGapTimeSavedSeconds: Double = 0,
+        playbackRateTimeSavedSeconds: Double = 0,
+        endedCleanly: Bool = false,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.episodeID = episodeID
+        self.podcastName = podcastName
+        self.episodeTitle = episodeTitle
+        self.sourceDeviceID = sourceDeviceID
+        self.sourceDeviceName = sourceDeviceName
+        self.deviceModel = deviceModel
+        self.osVersion = osVersion
+        self.appVersion = appVersion
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.startPosition = startPosition
+        self.endPosition = endPosition
+        self.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
+        self.playbackRateTimeSavedSeconds = playbackRateTimeSavedSeconds
+        self.endedCleanly = endedCleanly
+        self.updatedAt = updatedAt
+    }
+}
+
+@Model
+final class CachedRateSegment: Identifiable {
+    var id: String = ""
+    var sessionID: String = ""
+    var ordinal: Int = 0
+    var rate: Float = 1
+    var startTime: Date?
+    var startPosition: Double?
+    var endTime: Date?
+    var endPosition: Double?
+
+    init(
+        id: String,
+        sessionID: String,
+        ordinal: Int,
+        rate: Float,
+        startTime: Date?,
+        startPosition: Double?,
+        endTime: Date?,
+        endPosition: Double?
+    ) {
+        self.id = id
+        self.sessionID = sessionID
+        self.ordinal = ordinal
+        self.rate = rate
+        self.startTime = startTime
+        self.startPosition = startPosition
+        self.endTime = endTime
+        self.endPosition = endPosition
+    }
+}
+
+/// One idempotent per-session/per-hour contribution. Aggregated hourly rows are
+/// rebuilt from these records, so a retry can replace rather than increment.
+@Model
+final class CachedHourlyListeningStat: Identifiable {
+    var id: String = ""
+    var sessionID: String = ""
+    var feedURL: String = ""
+    var podcastName: String?
+    var sourceDeviceID: String = ""
+    var startOfHour: Date = Date.distantPast
+    var totalSeconds: Double = 0
+    var silenceGapTimeSavedSeconds: Double = 0
+    var playbackRateTimeSavedSeconds: Double = 0
+
+    init(
+        id: String,
+        sessionID: String,
+        feedURL: String,
+        podcastName: String?,
+        sourceDeviceID: String,
+        startOfHour: Date,
+        totalSeconds: Double,
+        silenceGapTimeSavedSeconds: Double,
+        playbackRateTimeSavedSeconds: Double
+    ) {
+        self.id = id
+        self.sessionID = sessionID
+        self.feedURL = feedURL
+        self.podcastName = podcastName
+        self.sourceDeviceID = sourceDeviceID
+        self.startOfHour = startOfHour
+        self.totalSeconds = totalSeconds
+        self.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
+        self.playbackRateTimeSavedSeconds = playbackRateTimeSavedSeconds
     }
 }
 

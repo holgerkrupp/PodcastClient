@@ -7,8 +7,57 @@ enum AppWindowID {
 }
 
 #if os(macOS) || targetEnvironment(macCatalyst)
+#if os(macOS)
+import AppKit
+
+/// Removes windows restored by older builds before SwiftUI starts updating
+/// their view graphs. Auxiliary windows remain available through app commands,
+/// but every fresh launch starts with only the primary app window.
+@MainActor
+final class MacAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidFinishRestoringWindows(_:)),
+            name: NSApplication.didFinishRestoringWindowsNotification,
+            object: nil
+        )
+    }
+
+    @objc
+    private func applicationDidFinishRestoringWindows(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSApplication.didFinishRestoringWindowsNotification,
+            object: nil
+        )
+
+        let application = notification.object as? NSApplication ?? NSApplication.shared
+        let auxiliaryWindowTitles = Set([
+            String(localized: "Now Playing"),
+            String(localized: "Settings")
+        ])
+        for window in application.windows where
+            window.isVisible &&
+            window.level == .normal &&
+            auxiliaryWindowTitles.contains(window.title) {
+            window.isRestorable = false
+            window.close()
+        }
+    }
+}
+#endif
+
 enum MacMenuBarPlayerPreferenceKeys {
     static let isEnabled = "MacMenuBarPlayer.isEnabled"
+}
+
+enum MacMenuBarPlayerSupport {
+    /// SwiftUI's status-item scene enters an update loop on macOS 27 or later.
+    /// Keep the feature on macOS 26 while allowing the main app to launch.
+    static var isAvailable: Bool {
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27
+    }
 }
 
 struct MacPlayerWindowContent: View {

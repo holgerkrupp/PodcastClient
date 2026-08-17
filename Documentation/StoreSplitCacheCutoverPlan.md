@@ -10,64 +10,148 @@ This document covers the remaining work. It complements
 `Documentation/StoreSplitMigrationPlan.md` (the original architecture) and the
 root `StoreSplitMigrationPlan.md` (the condensed version).
 
-## Current state (as of this branch)
+## Architecture correction (2026-08-16)
+
+An earlier iteration of this track made the app's runtime SwiftData graph an
+**in-memory** rebuild of `PodcastCache.sqlite`, produced fresh on every launch
+by `StoreSplitCompatibilityProjectionService.rebuild`. That is what made the
+migration visible to users: the container published to the UI was empty, so the
+Library and the playlists appeared blank and then filled in gradually as the
+projection paged through the cache — and any feed the bounded bootstrap had not
+copied yet (15 feeds per launch, 200 overnight) simply did not exist for that
+launch, which also silently dropped queue entries pointing at those episodes.
+
+**The runtime store is on disk again.** The split that matters is the *sync*
+boundary, not the file boundary:
+
+- the existing App Group SQLite file stays the durable library store, opened
+  `cloudKitDatabase: .none` — nothing is copied, nothing is rebuilt, and the
+  first frame after an update shows the user's real library;
+- `UserState.sqlite` is the only CloudKit-backed store and carries only compact
+  user-owned state;
+- `PodcastCache.sqlite` stays local-only and now holds what the model graph
+  cannot express: migration checkpoints and verification, namespaced feed
+  extension elements, AI revision staging, feed aliases, device-local episode
+  classification, download index, and prunable raw analytics.
+
+This delivers the product goal directly. Feed-derived data never enters iCloud,
+so a new iPad or Mac downloads only the small user-state payload and rebuilds
+its library from RSS, while the existing iPhone install keeps working untouched.
+
+`DevelopmentStoreMode.newStoresOnly` still selects the in-memory projection; it
+is the experimental endgame track, not a shipping mode. While it is off, the
+per-refresh feed mirror and the feed-cache bootstrap are skipped, so switching
+into it needs a cache reset first.
+
+## Current implementation status (2026-08-16)
 
 Three SwiftData stores exist:
 
-- `SharedDatabase.sqlite` (legacy) — full object graph, CloudKit `.automatic`.
-  **Still the UI read surface, and still syncs the bulky feed data to iCloud.**
+- `SharedDatabase.sqlite` — the durable, local-only library store and the
+  migration source. Never CloudKit-backed.
 - `UserState.sqlite` — user-owned state, CloudKit `.automatic`.
 - `PodcastCache.sqlite` — local-only (`cloudKitDatabase: .none`).
 
-Key facts that shape everything below:
+Key facts that shape the shipped cutover:
 
-- The UI reads the **legacy graph** (`Podcast`/`Episode`/`Playlist`/`Bookmark`).
-  No view reads the `*Sync` models directly; `StoreSplitUserStateImporter`
-  projects synced user state *onto* the legacy graph.
-- `resolvedMode` is frozen at launch, so any rollout/mode change applies on the
-  **next launch**.
-- `newStoreReads` mode does the user-state projection but does **NOT** run the
-  legacy→split backfill — only `migrating` does. Never switch a device to split
-  reads before its legacy data is backfilled (or is empty).
+- Model-bound surfaces read the durable library store directly. `Podcast`,
+  `Episode`, `Playlist`, and `Bookmark` rows are never recreated at launch.
+- `PodcastCacheRepository` returns Sendable snapshots for code that wants to
+  resolve by logical key; it batches UserState overlays and follows `FeedAlias`.
+- `splitStoresEnabled` is frozen at launch. `newStoreReadsEnabled` is evaluated
+  live in release builds, so a device that classifies itself during a launch
+  starts applying synchronized user state in that same launch instead of the
+  next one — this is what lets a fresh iPad populate on first run.
+- The read cutover requires **slice-migration completion**. Lossless
+  verification is a separate, stricter gate that only controls physically
+  retiring the legacy file; making reads wait for it stranded devices behind a
+  single unmigratable row.
+- The backfill is fully automatic and needs no user interaction. It is queued at
+  launch, on every foreground, and by a `BGProcessingTask` that requires external
+  power so it can finish overnight while charging. It keeps running during
+  playback at a slower slice cadence, and continues while the app is backgrounded
+  for as long as audio keeps the process alive — stopping at the next committed
+  checkpoint once playback ends, so it never holds the shared-container SQLite
+  lock across a suspension. Scheduling is gated on the completed migration
+  version, not on the rollout marker, because a device can sit at
+  `newStoreReads` from an older version and still owe the current one every phase.
+- DEBUG builds keep a `StoreSplitMigrationDebugLog` in App Group defaults and
+  post a passive local notification per finished phase, so an overnight
+  background pass leaves evidence either way: an empty log after a night on the
+  charger means iOS never ran the task, not that the migration found no work.
+- Devices returning from the in-memory phase run a one-time additive recovery
+  (`StoreSplitCompatibilityProjectionService.recoverMissingLibraryData`) that
+  copies cache-only podcasts and episodes back into the durable store. It never
+  deletes or overwrites a durable row and is safe to repeat.
+- The UserState importer refuses to project a record older than the local row
+  (`EpisodeMetaData.stateUpdatedAt`, with playback timestamps as the fallback),
+  so a stale CloudKit delivery cannot rewind playback, history, or archive
+  state. `maxPlayposition` still merges upwards.
 - Remote **kill switch** (`RolloutConfig` record in the CloudKit *public* DB):
-  `migrationEnabled=0` pauses all split-store heavy work live; `forceLegacyReads=1`
-  reverts reads to legacy on next launch. See `Raul/App/StoreSplitRemoteConfig.swift`.
+  `migrationEnabled=0` pauses all split-store heavy work live. The historical
+  `forceLegacyReads=1` flag is also treated as a pause. See
+  `Raul/App/StoreSplitRemoteConfig.swift`.
 
 ### Done
 
 - **Phase 1 — cache models.** `CachedPodcast` / `CachedEpisode` added to
   `Raul/Shared/Models/StoreSplitCacheModels.swift` (feed-derivable fields only; no
   user state) and registered in `ModelContainerManager.makeCacheContainer`.
-- **Phase 2 — dual-write + bootstrap.** `Raul/Shared/Services/StoreSplitFeedCacheWriter.swift`
-  mirrors feed/episode data into the cache: per-feed on refresh via
+- **Phase 2 — cache authority + bootstrap.** `Raul/Shared/Services/StoreSplitFeedCacheWriter.swift`
+  writes feed/episode data into the cache: per-feed on refresh via
   `PodcastModelActor.updateDetails` → `updateFeedCache`, plus a bounded
   `bootstrapMissingFeeds` from launch maintenance (15 feeds) and the overnight
-  background pass (200). Prunes cache episodes no longer in the feed. **Nothing
-  reads the cache yet.** Tests in `UpNextTests/StoreSplitFeedCacheWriterTests.swift`.
+  background pass (200). Prunes cache episodes no longer in the feed. Normal
+  runtime reads now originate in this cache, either as snapshots or through the
+  in-memory compatibility projection. Tests are in
+  `UpNextTests/StoreSplitFeedCacheWriterTests.swift`.
 - **Split-first classification.** `ModelContainerManager.classifyStoreSplitRollout`
   now defaults to reading the split store, falling back to legacy only while the
   split store is empty/partial and legacy has data.
-- **Phase 3.0 started — supplemental cache schema.** Cache-local chapter,
+- **Phase 3 complete — supplemental cache and read boundary.** Cache-local chapter,
   transcript-line, transcription-history, download-index, and feed-alias models
   are registered. The feed writer projects and prunes the episode-owned rows,
   accepted redirects/switches record aliases, and a per-feed schema version
-  revisits existing Phase 2 cache rows exactly once. No UI read has cut over yet.
+  revisits existing Phase 2 cache rows exactly once. The parser now preserves
+  every namespaced root subtree, and validated incoming AI content materializes
+  directly into cache rows while publisher transcript/chapter rows are retained.
+  AI revision manifests and payload chunks are registered only in PodcastCache,
+  never in the CloudKit-backed UserState schema.
+- **Analytics cutover complete.** Raw sessions, rate segments, and hourly
+  contributions persist only in PodcastCache. Completed compact history and
+  absolute per-device summaries persist in UserState. Runtime statistics and
+  Share Pictures rebuild from deduplicated cross-device history with summary
+  fallback for pruned legacy periods, apportion sessions across calendar
+  boundaries, and expose a listening-by-device section.
+- **Playlist upgrade recovery.** The one-time additive legacy playlist/queue
+  repair publishes into UserState and is force-projected into the in-memory
+  runtime graph during the same launch. Playlist feeds are force-projected
+  before generic cache work even if an older version checkpoint exists, and the
+  empty state performs one silent reconciliation instead of exposing migration
+  status to the user.
+- **Inbox preservation.** Cache schema v4 stores device-local inbox and
+  suppression classification. Compatibility projection restores it before
+  applying synchronized played/archive overlays, so rebuilding the cache graph
+  cannot put every RSS episode into Inbox.
 
-## Phase 3 — Read cutover (the large one)
+## Phase 3 — Read cutover
 
 Move feed/episode **reads** off the legacy graph and onto the cache, overlaying
 synced user state and falling back to legacy when the cache is absent. This is
 where the payload actually stops depending on the legacy store for reads.
 
-Scope reality: ~17 files use `@Query` on `Podcast`/`Episode`, ~59 files reference
-`Episode`. This cannot be one PR — do it screen by screen, each shippable.
+The direct repository surface is implemented. Model-bound screens remain
+source-compatible through a temporary in-memory adapter, so their `@Query`
+calls query cache/UserState-derived memory rather than `SharedDatabase.sqlite`.
+This adapter is removed together with obsolete models only after the grace
+period; it is not permission to reopen the disk legacy store.
 
 ### 3.0 Additional cache models (prerequisite)
 
-Status: **in progress.** The models, versioned backfill, feed-refresh dual-write,
-pruning, and feed-alias capture are implemented. Remaining work before 3.1 is to
-materialize incoming validated AI content directly into these cache models and
-verify the persistent-store lightweight migration on upgrade test devices.
+Status: **implemented.** Models, versioned backfill, pruning, feed aliases,
+unknown namespace capture, and validated direct AI materialization are covered
+by upgrade/cache tests. Signed-device production CloudKit inspection remains a
+release verification gate.
 
 Add the remaining local-only models before cutting screens that need them:
 
@@ -83,7 +167,7 @@ schema). The cache projection version supplies the matching bounded bootstrap.
 
 ### 3.1 Repository layer
 
-Introduce read repositories that return **Sendable value snapshots**, not model
+Implemented read repositories return **Sendable value snapshots**, not model
 instances, so views never bind to a specific store:
 
 - `PodcastCacheRepository` — feed/episode/chapter/transcript reads from cache.
@@ -93,10 +177,12 @@ instances, so views never bind to a specific store:
 Resolve by stable keys (`PodcastFeedIdentity`, `EpisodeStableIdentity`). Load
 state in batches keyed by `EpisodeStableIdentity.key`; avoid an `@Query` per row.
 
-### 3.2 Screen-by-screen cutover (gated by mode)
+### 3.2 Runtime integration cutover (gated by mode)
 
-Gate each screen on the resolved mode (`splitStoreReads`/`newStoresOnly` → cache;
-otherwise legacy) so it's reversible via the kill switch. Suggested order:
+Every supported split-store surface receives the cache-derived runtime
+container or repository/App Group snapshots. Feed refresh persists only to
+PodcastCache, and user mutation writers persist only to UserState after the
+cutover. The disk source is opened separately only for an incomplete migration.
 
 1. Podcast list / Library.
 2. Podcast detail + episode list.
@@ -119,40 +205,48 @@ Verify both on a clean install signed into an account with existing iCloud data.
 
 ### 3.4 Exit criteria for Phase 3
 
-- All read paths above resolve from cache + overlay, with legacy only as fallback.
+- All normal read paths resolve from cache + overlay; legacy fallback is opt-in
+  migration safety only and is never the injected runtime store.
 - Fresh-device bootstrap proven on iPhone and Mac.
-- No `@Query`/`PersistentIdentifier` reads of feed data remain on the hot paths.
+- No disk-legacy `@Query`/`PersistentIdentifier` reads remain on hot paths.
+  Cross-store resolution uses only feed/episode logical keys.
 
-## Phase 4 — Stop legacy feed writes, then disable legacy CloudKit sync
+## Phase 4 — iCloud payload retirement
 
-This is the step that **actually shrinks the iCloud payload**.
+The iCloud payload shrank the moment the library store stopped being
+CloudKit-backed, which the current configuration already enforces
+(`releaseLegacyCloudSyncEnabled = false`, and the legacy `ModelConfiguration`
+hard-codes `cloudKitDatabase: .none`). A device installed today downloads only
+`UserState.sqlite` records.
 
-1. Stop writing feed/episode data to the legacy store (feed refresh writes only to
-   the cache). Keep user-state dual-writes for one adoption window if rollback is
-   still desired.
-2. Flip the legacy container to `cloudKitDatabase: .none`. Today
-   `legacyCloudSyncEnabled` is hardcoded `true` in release and only toggleable in
-   DEBUG — wire it to a **new `RolloutConfig` field** (e.g. `legacyCloudSyncEnabled`)
-   so it can be rolled out gradually and rolled back from the CloudKit Dashboard
-   without a release, alongside the existing kill switch.
-3. Keep the legacy `.sqlite` file intact for a documented grace period. Do not
-   delete it or remove legacy model definitions until no supported app version
-   needs to open it; deletion is a separate, explicit, user-visible decision.
+What is **not** done, and is the last real task on this track:
+
+1. The user's old CloudKit private-database zone still holds the full legacy
+   object graph from the pre-split versions. Nothing downloads it any more, but
+   it still consumes iCloud storage. Reclaiming it means deleting the legacy
+   Core Data zone — irreversible, so it must stay an explicit, user-initiated
+   action behind the verification gate, never automatic migration logic.
+2. The local `SharedDatabase.sqlite` file itself is now permanent, not a
+   migration artifact. `StoreSplitLegacyCleanupService` and
+   `LegacyStoreCleanupGate` therefore only apply if the experimental
+   `newStoresOnly` track is ever finished and shipped.
 
 ### Sequencing / safety
 
-- Each phase is a separate release; the sync-size win lands only at Phase 4.
-- Kill switch remains the rollback throughout (`forceLegacyReads`,
-  `migrationEnabled`, and the new `legacyCloudSyncEnabled`).
-- Watch out for: large chapter/transcript payloads must stay cache-local; stable
-  episode identity must survive feed re-parse; extensions/widgets must be repointed
-  before they can be trusted to read the cache.
+- Rollback during migration uses the `migrationEnabled` remote switch; the
+  library store is untouched by it, so a pause can never empty the UI.
+- Watch out for: large chapter/transcript payloads must stay out of the synced
+  schema (`UserStateCloudSchemaAudit` asserts the allow-list); stable episode
+  identity must survive feed re-parse; extensions/widgets read the same durable
+  container as the app.
 
 ## Risk register (delta from the original plan)
 
 | Risk | Detection | Mitigation |
 | --- | --- | --- |
-| Cache read before backfill complete | empty/partial UI on a device | gate reads on migration-complete; Phase 2 bootstrap + RSS bootstrap |
+| Runtime graph rebuilt before backfill completes | empty/partial Library and playlists after an update | keep the durable on-disk library store as the runtime container; only `newStoresOnly` rebuilds |
+| Stale CloudKit record rewinds local playback | position/history/archive regress after a reconcile | `EpisodeMetaData.stateUpdatedAt` guard in the importer; monotonic fields still merge upwards |
+| Verification blocked by one unmigratable row | rollout never reaches `newStoreReads` | read cutover gated on slice completion; verification gates cleanup only |
 | Large transcript/chapter data leaks into a synced store | CloudKit payload does not shrink | keep chapters/transcripts in cache schema only; audit synced schema |
 | Feed redirect breaks identity after cutover | state/feed missing after redirect | `FeedAlias` + explicit feed-switch handling |
 | Extensions read stale/legacy data | widget/watch/intents wrong after Phase 4 | repoint to cache/App-Group snapshots in 3.2 before Phase 4 |

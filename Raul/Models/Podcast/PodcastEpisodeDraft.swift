@@ -1,5 +1,15 @@
 import Foundation
 
+/// Canonical parser output for one namespaced XML subtree. The cache writer
+/// persists this value directly so unknown namespaces survive a refresh even
+/// when the typed Podcasting 2.0 projection does not understand them yet.
+struct ParsedFeedExtensionElement: Codable, Hashable, Sendable {
+    let namespaceURI: String
+    let qualifiedName: String
+    let localName: String
+    let node: NamespaceNode
+}
+
 struct PodcastEpisodeDraft: Identifiable, Hashable, @unchecked Sendable {
     let rawEpisodeData: [String: Any]
 
@@ -18,6 +28,7 @@ struct PodcastEpisodeDraft: Identifiable, Hashable, @unchecked Sendable {
     let number: String?
     let type: EpisodeType?
     let deeplinks: [URL]
+    let extensionElements: [ParsedFeedExtensionElement]
 
     init?(episodeData: [String: Any]) {
         guard let title = episodeData["itunes:title"] as? String ?? episodeData["title"] as? String,
@@ -49,6 +60,8 @@ struct PodcastEpisodeDraft: Identifiable, Hashable, @unchecked Sendable {
         self.number = episodeData["itunes:episode"] as? String
         self.type = EpisodeType(rawValue: episodeData["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
         self.deeplinks = (episodeData["deepLinks"] as? [String] ?? []).compactMap(URL.init(string:))
+        self.extensionElements = episodeData["rawExtensionElements"]
+            as? [ParsedFeedExtensionElement] ?? []
     }
 
     func hash(into hasher: inout Hasher) {
@@ -64,6 +77,7 @@ struct PodcastFeedPage: @unchecked Sendable {
     let parsedFeed: [String: Any]
     let feed: PodcastFeed
     let episodes: [PodcastEpisodeDraft]
+    let extensionElements: [ParsedFeedExtensionElement]
     let nextPageURL: URL?
     let isPartial: Bool
     let didStopAtKnownEpisode: Bool

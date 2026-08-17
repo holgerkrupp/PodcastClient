@@ -248,7 +248,7 @@ actor PlaylistModelActor {
             guard let entryPlaylist = entry.playlist,
                   let identity = entry.episode?.stableEpisodeIdentity else { return nil }
             return StoreSplitPlaylistRemoval(
-                playlistID: entryPlaylist.id.uuidString,
+                playlistID: entryPlaylist.storeSplitSyncID,
                 isDefaultQueue: entryPlaylist.title == Playlist.defaultQueueTitle,
                 identity: identity
             )
@@ -337,6 +337,30 @@ actor PlaylistModelActor {
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
+    }
+
+    private func persistLocalEpisodeClassification(
+        _ episodes: [Episode]
+    ) async {
+        let snapshots = episodes.compactMap {
+            episode -> StoreSplitLocalEpisodeClassificationSnapshot? in
+            guard let metadata = episode.metaData else { return nil }
+            return StoreSplitLocalEpisodeClassificationSnapshot(
+                identity: episode.stableEpisodeIdentity,
+                isInbox: metadata.isInbox == true,
+                statusRawValue: metadata.status?.rawValue,
+                systemSuppressionReasonRawValue:
+                    metadata.systemSuppressionReasonRawValue
+            )
+        }
+        guard snapshots.isEmpty == false else { return }
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let cacheContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedCacheContainer
+        }) else { return }
+        await StoreSplitLocalEpisodeClassificationWriter(
+            modelContainer: cacheContainer
+        ).upsert(snapshots)
     }
 
     private func startDownloadIfNeeded(for episode: Episode, episodeURL: URL) async {
@@ -464,6 +488,7 @@ actor PlaylistModelActor {
         
         prepareEpisodesForPlaylistInsertion(matchingEpisodes)
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(matchingEpisodes)
         await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
         if startDownload {
@@ -523,6 +548,7 @@ actor PlaylistModelActor {
         prepareEpisodesForPlaylistInsertion(matchingEpisodes)
 
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(matchingEpisodes)
         await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
 
@@ -582,6 +608,7 @@ actor PlaylistModelActor {
         prepareEpisodesForPlaylistInsertion(matchingEpisodes)
 
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(matchingEpisodes)
         await publishSplitStorePlaylist(playlist)
         await notifyInboxDidChange()
 
@@ -605,7 +632,7 @@ actor PlaylistModelActor {
         let removals = matchingEntries.compactMap { entry -> StoreSplitPlaylistRemoval? in
             guard let identity = entry.episode?.stableEpisodeIdentity else { return nil }
             return StoreSplitPlaylistRemoval(
-                playlistID: playlist.id.uuidString,
+                playlistID: playlist.storeSplitSyncID,
                 isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
                 identity: identity
             )
@@ -699,7 +726,7 @@ actor PlaylistModelActor {
                 return nil
             }
             return StoreSplitPlaylistRemoval(
-                playlistID: playlist.id.uuidString,
+                playlistID: playlist.storeSplitSyncID,
                 isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
                 identity: identity
             )

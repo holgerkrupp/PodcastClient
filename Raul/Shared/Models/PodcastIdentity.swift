@@ -109,6 +109,38 @@ enum StableIdentityKey {
     static func make(_ components: String...) -> String {
         components.map { "\($0.utf8.count):\($0)" }.joined()
     }
+
+    static func components(from key: String) -> [String]? {
+        var result: [String] = []
+        var cursor = key.startIndex
+        while cursor < key.endIndex {
+            guard let colon = key[cursor...].firstIndex(of: ":"),
+                  let byteCount = Int(key[cursor..<colon]) else { return nil }
+            let valueStart = key.index(after: colon)
+            var valueEnd = valueStart
+            var consumed = 0
+            while valueEnd < key.endIndex, consumed < byteCount {
+                consumed += String(key[valueEnd]).utf8.count
+                valueEnd = key.index(after: valueEnd)
+            }
+            guard consumed == byteCount else { return nil }
+            result.append(String(key[valueStart..<valueEnd]))
+            cursor = valueEnd
+        }
+        return result
+    }
+
+    static func uuid(for value: String) -> UUID {
+        var bytes = Array(SHA256.hash(data: Data(value.utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    }
 }
 
 extension Episode {

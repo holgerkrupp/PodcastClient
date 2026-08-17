@@ -42,7 +42,11 @@ struct PlaylistView: View {
                 ManualPlaylistPageView(playlist: selectedPlaylist)
                     .id(selectedPlaylist.id)
             } else {
-                PlaylistEmptyView(title: Playlist.defaultQueueDisplayName, isSmartPlaylist: false)
+                PlaylistEmptyView(
+                    title: Playlist.defaultQueueDisplayName,
+                    isSmartPlaylist: false,
+                    isDefaultQueue: true
+                )
             }
         }
         .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
@@ -254,7 +258,12 @@ private struct ManualPlaylistPageView: View {
 
     var body: some View {
         if episodes.isEmpty {
-            PlaylistEmptyView(title: playlist.displayTitle, isSmartPlaylist: false)
+            PlaylistEmptyView(
+                title: playlist.displayTitle,
+                isSmartPlaylist: false,
+                isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
+                playlistID: playlist.id
+            )
         } else {
             List {
                 

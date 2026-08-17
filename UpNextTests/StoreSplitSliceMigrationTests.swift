@@ -334,6 +334,14 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
                 )
             )
         }
+        let verification = StoreSplitMigrationVerification(
+            id: StoreSplitMigrationVerifier.verificationID,
+            migrationVersion: StoreSplitMigrationService.migrationVersion
+        )
+        verification.verifiedAt = Date(timeIntervalSince1970: 1_001)
+        verification.cacheMissingCount = 0
+        verification.issues = []
+        context.insert(verification)
         try context.save()
 
         XCTAssertTrue(

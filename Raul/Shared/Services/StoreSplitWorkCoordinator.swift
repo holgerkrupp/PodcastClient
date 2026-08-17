@@ -44,7 +44,7 @@ actor StoreSplitWorkCoordinator {
             await clearAllPendingWork(reason: "paused for stability")
             return
         }
-        if StoreDevelopmentConfiguration.newStoreReadsEnabled {
+        if StoreDevelopmentConfiguration.userStateImportEnabled {
             // Not forced: respect the recency debounce so a quick relaunch doesn't
             // re-run a full heavy reconcile (which holds the shared-container DB
             // lock). The projection from the previous run is already persisted.
@@ -55,18 +55,27 @@ actor StoreSplitWorkCoordinator {
                 reason: "launch"
             )
         }
+        if StoreDevelopmentConfiguration.legacyMigrationEnabled,
+           ModelContainerManager.hasPendingMigrationWork {
+            pendingMigration = true
+        }
         await publishPendingState()
         startRunnerIfNeeded()
     }
 
-    func pauseForBackground() async {
-        runnerTask?.cancel()
-        runnerTask = nil
+    /// Drops queued work when the app is suspended. With `keepMigrationRunning`
+    /// the backfill survives — background audio keeps the process alive, and the
+    /// slice loop halts itself at a checkpoint once playback ends.
+    func pauseForBackground(keepMigrationRunning: Bool = false) async {
+        if keepMigrationRunning == false {
+            runnerTask?.cancel()
+            runnerTask = nil
+            pendingMigration = false
+            currentJob = nil
+        }
         pendingReconcile = nil
         pendingAIImport = false
-        pendingMigration = false
         pendingPlaybackIdleReconcile = false
-        currentJob = nil
         await publishPendingState()
     }
 
@@ -215,9 +224,16 @@ actor StoreSplitWorkCoordinator {
     }
 
     private func nextRunnableJob() async -> Job? {
-        if await MainActor.run(body: { Player.shared.isPlaying }) {
+        let isPlaying = await MainActor.run(body: { Player.shared.isPlaying })
+
+        // Migration keeps running during playback. It reads the library store in
+        // bounded pages and writes to UserState, so it does not touch the rows
+        // the player is updating, and the slice loop paces itself while audio is
+        // active. Waiting for silence made the backfill take days on devices that
+        // are almost always playing something.
+        if isPlaying {
             await publishPendingState()
-            return nil
+            return pendingMigration ? .migration : nil
         }
 
         if pendingReconcile != nil {

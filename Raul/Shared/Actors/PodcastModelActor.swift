@@ -1034,7 +1034,11 @@ actor PodcastModelActor {
         if let podcastFeed = podcast.feed {
             // The cache writer reads a fresh legacy context, so flush first.
             modelContext.saveIfNeeded()
-            await updateFeedCache(feedURL: podcastFeed, deadline: deadline)
+            await updateFeedCache(
+                feedURL: podcastFeed,
+                parsedFeed: fullPodcast,
+                deadline: deadline
+            )
         }
 
         return newEpisodeCount
@@ -1043,7 +1047,11 @@ actor PodcastModelActor {
     /// Mirror this feed's feed-derivable data into the local-only cache store
     /// after it has been written to legacy. Phase 3 extends the projection with
     /// chapters, transcripts and device-local download metadata.
-    private func updateFeedCache(feedURL: URL, deadline: Date?) async {
+    private func updateFeedCache(
+        feedURL: URL,
+        parsedFeed: [String: Any],
+        deadline: Date?
+    ) async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             return
@@ -1058,11 +1066,24 @@ actor PodcastModelActor {
             ModelContainerManager.shared.preparedCacheContainer
         }) else { return }
 
-        let projection = StoreSplitFeedCacheWriter.projectFeed(
+        // Mirroring the whole feed graph into PodcastCache is only worth its disk
+        // writes when the cache is the durable source for the runtime graph. With
+        // the on-disk library store authoritative, the mirror would duplicate
+        // every episode on every refresh for nothing.
+        let projection = StoreDevelopmentConfiguration.runtimeStoreIsInMemoryProjection
+            ? StoreSplitFeedCacheWriter.projectFeed(
+                feedURL: feedURL,
+                legacyContainer: modelContainer,
+                cacheContainer: cacheContainer,
+                deadline: deadline
+            )
+            : StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
+        // Namespaced extension subtrees have no equivalent in the model graph, so
+        // they are captured in every mode.
+        let extensionCount = StoreSplitFeedCacheWriter.replaceParsedExtensionElements(
             feedURL: feedURL,
-            legacyContainer: modelContainer,
-            cacheContainer: cacheContainer,
-            deadline: deadline
+            parsedFeed: parsedFeed,
+            cacheContainer: cacheContainer
         )
         Self.logRefresh(
             "cache_projection feed=\(feedURL.absoluteString) "
@@ -1074,6 +1095,7 @@ actor PodcastModelActor {
                 + "deleted=\(projection.deleted) "
                 + "fetches=\(projection.fetchCount) "
                 + "saves=\(projection.saveCount)"
+                + " extensions=\(extensionCount)"
         )
         if projection.completed == false {
             CrashBreadcrumbs.shared.record(

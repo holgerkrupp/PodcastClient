@@ -18,27 +18,23 @@ actor StoreSplitAIContentImporter {
 
     private let legacyContainer: ModelContainer
     private var legacyContext: ModelContext
-    private let userStateContext: ModelContext
     private let cacheContext: ModelContext
 
     private init(
         legacyContainer: ModelContainer,
-        userStateContainer: ModelContainer,
         cacheContainer: ModelContainer
     ) {
         self.legacyContainer = legacyContainer
         legacyContext = ModelContext(legacyContainer)
-        userStateContext = ModelContext(userStateContainer)
         cacheContext = ModelContext(cacheContainer)
         legacyContext.autosaveEnabled = false
-        userStateContext.autosaveEnabled = false
         cacheContext.autosaveEnabled = false
     }
 
     /// Persists pending work and replaces the legacy context with a fresh one so
     /// the faulted `Episode` graph from the processed batch can be released.
-    /// `userStateContext`/`cacheContext` are kept so cached `*Sync` lookups and
-    /// inserted receipts retain their identity across batches.
+    /// `cacheContext` is kept so local revision lookups and inserted receipts
+    /// retain their identity across batches.
     private func recycleLegacyContextIfNeeded(
         processedSinceRecycle: inout Int,
         result: inout StoreSplitAIContentImportResult
@@ -52,13 +48,11 @@ actor StoreSplitAIContentImporter {
 
     nonisolated static func apply(
         legacyContainer: ModelContainer,
-        userStateContainer: ModelContainer,
         cacheContainer: ModelContainer
     ) async -> StoreSplitAIContentImportResult {
         await Task.detached(priority: .utility) {
             let importer = StoreSplitAIContentImporter(
                 legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
                 cacheContainer: cacheContainer
             )
             return await importer.run()
@@ -77,7 +71,7 @@ actor StoreSplitAIContentImporter {
             dates[episodeURL] = max(dates[episodeURL] ?? .distantPast, record.finishedAt)
         }
 
-        let transcripts = ((try? userStateContext.fetch(FetchDescriptor<AITranscriptSync>())) ?? [])
+        let transcripts = ((try? cacheContext.fetch(FetchDescriptor<AITranscriptSync>())) ?? [])
             .reduce(into: [String: AITranscriptSync]()) { result, transcript in
                 guard let existing = result[transcript.id],
                       existing.updatedAt >= transcript.updatedAt else {
@@ -85,7 +79,7 @@ actor StoreSplitAIContentImporter {
                     return
                 }
             }
-        let chapterSets = ((try? userStateContext.fetch(FetchDescriptor<AIChapterSetSync>())) ?? [])
+        let chapterSets = ((try? cacheContext.fetch(FetchDescriptor<AIChapterSetSync>())) ?? [])
             .reduce(into: [String: AIChapterSetSync]()) { result, chapterSet in
                 guard let existing = result[chapterSet.id],
                       existing.updatedAt >= chapterSet.updatedAt else {
@@ -97,6 +91,13 @@ actor StoreSplitAIContentImporter {
         var processedSinceRecycle = 0
         for transcript in transcripts.values {
             autoreleasepool {
+                if applyTranscriptDirectlyToCache(
+                    transcript,
+                    receiptsByID: &receiptsByID,
+                    result: &result
+                ) {
+                    return
+                }
                 guard let episode = episode(
                     feedURL: transcript.feedURL,
                     episodeID: transcript.episodeID
@@ -125,6 +126,13 @@ actor StoreSplitAIContentImporter {
         processedSinceRecycle = 0
         for chapterSet in chapterSets.values {
             autoreleasepool {
+                if applyChapterSetDirectlyToCache(
+                    chapterSet,
+                    receiptsByID: &receiptsByID,
+                    result: &result
+                ) {
+                    return
+                }
                 guard let episode = episode(
                     feedURL: chapterSet.feedURL,
                     episodeID: chapterSet.episodeID
@@ -152,6 +160,202 @@ actor StoreSplitAIContentImporter {
             details: "transcripts=\(result.transcriptsApplied),chapters=\(result.chaptersApplied),skipped=\(result.skipped),failed=\(result.failed)"
         )
         return result
+    }
+
+    /// Cache-first final path. Legacy materialization below is retained only for
+    /// a migration fallback when the feed has not reached PodcastCache yet.
+    private func applyTranscriptDirectlyToCache(
+        _ transcript: AITranscriptSync,
+        receiptsByID: inout [String: AppliedAIContentRevision],
+        result: inout StoreSplitAIContentImportResult
+    ) -> Bool {
+        let cacheEpisodeID = transcript.id
+        var episodeDescriptor = FetchDescriptor<CachedEpisode>(
+            predicate: #Predicate { $0.id == cacheEpisodeID }
+        )
+        episodeDescriptor.fetchLimit = 1
+        guard (try? cacheContext.fetch(episodeDescriptor).first) != nil else {
+            return false
+        }
+
+        let receipt = receipt(for: transcript.id, receiptsByID: &receiptsByID)
+        let feedURL = transcript.feedURL
+        let episodeID = transcript.id
+        let linesDescriptor = FetchDescriptor<CachedTranscriptLine>(
+            predicate: #Predicate {
+                $0.feedURL == feedURL && $0.episodeID == episodeID
+            }
+        )
+        let existingLines = (try? cacheContext.fetch(linesDescriptor)) ?? []
+        let generatedLines = existingLines.filter {
+            $0.sourceRawValue == CachedTranscriptSource.ai.rawValue
+                || $0.sourceRawValue == CachedTranscriptSource.localAI.rawValue
+        }
+
+        if transcript.deletedAt != nil {
+            guard receipt.transcriptRevisionID != nil || generatedLines.isEmpty == false else {
+                result.skipped += 1
+                return true
+            }
+            generatedLines.forEach(cacheContext.delete)
+            receipt.transcriptRevisionID = transcript.revisionID
+            receipt.updatedAt = .now
+            result.transcriptsApplied += 1
+            return true
+        }
+        guard receipt.transcriptRevisionID != transcript.revisionID else {
+            result.skipped += 1
+            return true
+        }
+
+        let transcriptID = transcript.id
+        let revisionID = transcript.revisionID
+        let chunkDescriptor = FetchDescriptor<AITranscriptChunkSync>(
+            predicate: #Predicate {
+                $0.transcriptID == transcriptID && $0.revisionID == revisionID
+            },
+            sortBy: [SortDescriptor(\AITranscriptChunkSync.chunkIndex)]
+        )
+        let chunks = (try? cacheContext.fetch(chunkDescriptor)) ?? []
+        guard chunks.count == transcript.chunkCount,
+              chunks.indices.allSatisfy({ index in
+                  chunks[index].chunkIndex == index
+                      && chunks[index].contentHash
+                      == AIContentSyncCodec.sha256Hex(Data(chunks[index].payloadJSON.utf8))
+              }) else {
+            result.skipped += 1
+            return true
+        }
+
+        let publisherLines = existingLines.filter {
+            $0.sourceRawValue == CachedTranscriptSource.publisher.rawValue
+        }
+        if publisherLines.isEmpty == false,
+           receipt.transcriptRevisionID == nil,
+           generatedLines.isEmpty {
+            result.skipped += 1
+            return true
+        }
+
+        let transcriptionDescriptor = FetchDescriptor<CachedTranscriptionRecord>(
+            predicate: #Predicate { $0.episodeID == episodeID },
+            sortBy: [SortDescriptor(\CachedTranscriptionRecord.finishedAt, order: .reverse)]
+        )
+        if let localGeneratedAt = try? cacheContext.fetch(transcriptionDescriptor).first?.finishedAt,
+           localGeneratedAt > transcript.generatedAt {
+            result.skipped += 1
+            return true
+        }
+
+        do {
+            let values = try AIContentSyncCodec.decodeTranscript(
+                chunks: chunks.map(\.payloadJSON),
+                expectedLineCount: transcript.lineCount,
+                expectedContentHash: transcript.contentHash
+            )
+            generatedLines.forEach(cacheContext.delete)
+            for (ordinal, value) in values.enumerated() {
+                cacheContext.insert(
+                    CachedTranscriptLine(
+                        id: StableIdentityKey.make(
+                            transcript.id,
+                            transcript.revisionID,
+                            String(ordinal)
+                        ),
+                        feedURL: transcript.feedURL,
+                        episodeID: transcript.id,
+                        speaker: value.speaker,
+                        text: value.text,
+                        startTime: value.startTime,
+                        endTime: value.endTime,
+                        ordinal: ordinal,
+                        sourceRawValue: CachedTranscriptSource.ai.rawValue,
+                        revisionID: transcript.revisionID,
+                        updatedAt: transcript.updatedAt
+                    )
+                )
+            }
+            receipt.transcriptRevisionID = transcript.revisionID
+            receipt.updatedAt = .now
+            result.transcriptsApplied += 1
+        } catch {
+            result.failed += 1
+        }
+        return true
+    }
+
+    private func applyChapterSetDirectlyToCache(
+        _ chapterSet: AIChapterSetSync,
+        receiptsByID: inout [String: AppliedAIContentRevision],
+        result: inout StoreSplitAIContentImportResult
+    ) -> Bool {
+        let cacheEpisodeID = chapterSet.id
+        var episodeDescriptor = FetchDescriptor<CachedEpisode>(
+            predicate: #Predicate { $0.id == cacheEpisodeID }
+        )
+        episodeDescriptor.fetchLimit = 1
+        guard (try? cacheContext.fetch(episodeDescriptor).first) != nil else {
+            return false
+        }
+
+        let receipt = receipt(for: chapterSet.id, receiptsByID: &receiptsByID)
+        guard receipt.chapterRevisionID != chapterSet.revisionID else {
+            result.skipped += 1
+            return true
+        }
+        do {
+            let values = try AIContentSyncCodec.decodeChapters(
+                payloadJSON: chapterSet.payloadJSON,
+                expectedContentHash: chapterSet.contentHash
+            )
+            guard values.count == chapterSet.chapterCount else {
+                result.failed += 1
+                return true
+            }
+            let episodeID = chapterSet.id
+            let descriptor = FetchDescriptor<CachedChapter>(
+                predicate: #Predicate { $0.episodeID == episodeID }
+            )
+            let current = (try? cacheContext.fetch(descriptor)) ?? []
+            let currentAI = current.filter { $0.typeRawValue == MarkerType.ai.rawValue }
+            let previousByKey = Dictionary(
+                currentAI.map {
+                    (chapterKey(title: $0.title, start: $0.start ?? 0), $0)
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
+            currentAI.forEach(cacheContext.delete)
+            for (ordinal, value) in values.enumerated() {
+                let previous = previousByKey[
+                    chapterKey(title: value.title, start: value.startTime)
+                ]
+                cacheContext.insert(
+                    CachedChapter(
+                        id: StableIdentityKey.make(
+                            chapterSet.id,
+                            chapterSet.revisionID,
+                            String(ordinal)
+                        ),
+                        feedURL: chapterSet.feedURL,
+                        episodeID: chapterSet.id,
+                        title: value.title,
+                        start: value.startTime,
+                        duration: value.duration,
+                        progress: previous?.progress,
+                        typeRawValue: MarkerType.ai.rawValue,
+                        shouldPlay: previous?.shouldPlay ?? true,
+                        ordinal: ordinal,
+                        updatedAt: chapterSet.updatedAt
+                    )
+                )
+            }
+            receipt.chapterRevisionID = chapterSet.revisionID
+            receipt.updatedAt = .now
+            result.chaptersApplied += 1
+        } catch {
+            result.failed += 1
+        }
+        return true
     }
 
     private func episode(feedURL: String, episodeID: String) -> Episode? {
@@ -241,7 +445,7 @@ actor StoreSplitAIContentImporter {
             },
             sortBy: [SortDescriptor(\AITranscriptChunkSync.chunkIndex)]
         )
-        let revisionChunks = (try? userStateContext.fetch(descriptor)) ?? []
+        let revisionChunks = (try? cacheContext.fetch(descriptor)) ?? []
         guard revisionChunks.count == transcript.chunkCount,
               revisionChunks.indices.allSatisfy({
                   revisionChunks[$0].chunkIndex == $0

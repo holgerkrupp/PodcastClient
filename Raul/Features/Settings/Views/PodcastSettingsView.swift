@@ -636,19 +636,28 @@ struct PodcastSettingsView: View {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
         }
 #elseif os(macOS)
-        return Section("Menu Bar Player") {
-            Toggle(
-                isOn: $isMacMenuBarPlayerEnabled
-            ) {
+        return Group {
+            if MacMenuBarPlayerSupport.isAvailable {
+                Section("Menu Bar Player") {
+                    Toggle(
+                        isOn: $isMacMenuBarPlayerEnabled
+                    ) {
+                        SettingsControlLabel(
+                            title: "Show menu bar player",
+                            detail: "Keep playback controls and the selected playlist available from the macOS menu bar."
+                        )
+                    }
+
+                    Text("The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
                 SettingsControlLabel(
-                    title: "Show menu bar player",
-                    detail: "Keep playback controls and the selected playlist available from the macOS menu bar."
+                    title: "Menu bar player unavailable",
+                    detail: "The menu bar player is temporarily disabled on this macOS version to prevent a launch loop."
                 )
             }
-
-            Text("The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
 #elseif targetEnvironment(macCatalyst)
         return Section("Desktop Controls") {
@@ -1654,6 +1663,7 @@ struct PodcastSettingsView: View {
         } else {
             disableCustomSettings(for: podcast, in: context)
         }
+        publishPortableSettings()
         markAutoDownloadPolicyReconciliationPending(trigger: "scope-toggle")
     }
 
@@ -1663,6 +1673,7 @@ struct PodcastSettingsView: View {
 
     private func saveAndNotify(autoDownloadPolicyChanged: Bool) {
         context.saveIfNeeded()
+        publishPortableSettings()
         if let podcastFeed = podcast?.feed {
             BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=podcast feed=\(podcastFeed.absoluteString)")
         } else {
@@ -1671,6 +1682,22 @@ struct PodcastSettingsView: View {
         postSettingsDidChange()
         if autoDownloadPolicyChanged {
             markAutoDownloadPolicyReconciliationPending(trigger: "settings-change")
+        }
+    }
+
+    private func publishPortableSettings() {
+        let settings = podcast?.settings ?? globalSettings
+        guard let settings,
+              let userStateContainer = ModelContainerManager.shared
+                  .preparedUserStateContainer else { return }
+        let snapshot = PortablePodcastPreferenceSnapshot.make(
+            settings: settings,
+            feedURL: podcast?.feed
+        )
+        Task {
+            await StoreSplitPreferenceSyncWriter(
+                modelContainer: userStateContainer
+            ).upsert(snapshot)
         }
     }
 

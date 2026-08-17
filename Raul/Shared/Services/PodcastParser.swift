@@ -108,6 +108,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
     var podcastOptionalTags = PodcastNamespaceOptionalTags()
     var episodeOptionalTags = PodcastNamespaceOptionalTags()
     private var optionalNamespaceNodeStack: [NamespaceNodeBuilder] = []
+    private(set) var podcastExtensionElements: [ParsedFeedExtensionElement] = []
+    private var episodeExtensionElements: [ParsedFeedExtensionElement] = []
+    private var rawNamespaceNodeStack: [RawNamespaceNodeBuilder] = []
 
     private let optionalNamespaceRootTags: Set<String> = [
         "podcast:alternateEnclosure",
@@ -206,6 +209,9 @@ class PodcastParser:NSObject, XMLParserDelegate{
         podcastOptionalTags = PodcastNamespaceOptionalTags()
         episodeOptionalTags = PodcastNamespaceOptionalTags()
         optionalNamespaceNodeStack.removeAll()
+        podcastExtensionElements.removeAll()
+        episodeExtensionElements.removeAll()
+        rawNamespaceNodeStack.removeAll()
     }
     
     
@@ -213,6 +219,20 @@ class PodcastParser:NSObject, XMLParserDelegate{
        // // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
         currentValue = ""
         currentElement = qName ?? elementName
+
+        let qualifiedElementName = qName ?? elementName
+        let hasNamespace = namespaceURI?.isEmpty == false
+            || qualifiedElementName.contains(":")
+        if rawNamespaceNodeStack.isEmpty == false || hasNamespace {
+            rawNamespaceNodeStack.append(
+                RawNamespaceNodeBuilder(
+                    namespaceURI: namespaceURI ?? "",
+                    qualifiedName: qualifiedElementName,
+                    localName: elementName,
+                    attributes: attributeDict
+                )
+            )
+        }
         
         // RFC 5005 paged feed support handling of atom:link rels
         if currentElement == "atom:link" || currentElement == "link" {
@@ -303,6 +323,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
             episodeSocialArray.removeAll()
             episodePeopleArray.removeAll()
             episodeOptionalTags = PodcastNamespaceOptionalTags()
+            episodeExtensionElements.removeAll()
         }
         
         if currentElement == "psc:chapters"{
@@ -382,6 +403,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
         if let topNode = optionalNamespaceNodeStack.last {
             topNode.value += string
         }
+        rawNamespaceNodeStack.last?.value += string
     }
     
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?)  {
@@ -433,6 +455,12 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     if episodeOptionalTags.isEmpty == false {
                         episodeDict.updateValue(episodeOptionalTags, forKey: "optionalTags")
                         episodeOptionalTags = PodcastNamespaceOptionalTags()
+                    }
+                    if episodeExtensionElements.isEmpty == false {
+                        episodeDict.updateValue(
+                            episodeExtensionElements,
+                            forKey: "rawExtensionElements"
+                        )
                     }
                     episodeDeepLinks.removeAll()
                     if knownEpisodeIdentifiers.isEmpty == false,
@@ -522,6 +550,27 @@ class PodcastParser:NSObject, XMLParserDelegate{
             }
         }
 
+        if let topNode = rawNamespaceNodeStack.last,
+           topNode.qualifiedName == closedElementName {
+            let completedBuilder = rawNamespaceNodeStack.removeLast()
+            let completedNode = completedBuilder.buildNode()
+            if let parent = rawNamespaceNodeStack.last {
+                parent.children.append(completedNode)
+            } else {
+                let element = ParsedFeedExtensionElement(
+                    namespaceURI: completedBuilder.namespaceURI,
+                    qualifiedName: completedBuilder.qualifiedName,
+                    localName: completedBuilder.localName,
+                    node: completedNode
+                )
+                if isHeader {
+                    podcastExtensionElements.append(element)
+                } else {
+                    episodeExtensionElements.append(element)
+                }
+            }
+        }
+
         if currentElements.count > 0{
             currentElements.removeLast()
 
@@ -583,6 +632,37 @@ private final class NamespaceNodeBuilder {
     }
 }
 
+private final class RawNamespaceNodeBuilder {
+    let namespaceURI: String
+    let qualifiedName: String
+    let localName: String
+    var value = ""
+    var attributes: [String: String]
+    var children: [NamespaceNode] = []
+
+    init(
+        namespaceURI: String,
+        qualifiedName: String,
+        localName: String,
+        attributes: [String: String]
+    ) {
+        self.namespaceURI = namespaceURI
+        self.qualifiedName = qualifiedName
+        self.localName = localName
+        self.attributes = attributes
+    }
+
+    func buildNode() -> NamespaceNode {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return NamespaceNode(
+            name: qualifiedName,
+            value: trimmed.isEmpty ? nil : trimmed,
+            attributes: attributes,
+            children: children
+        )
+    }
+}
+
 
 // MARK: - RFC 5005 Paged Feed Aggregation
 
@@ -620,6 +700,7 @@ extension PodcastParser {
             parser.knownEpisodeIdentifiers = knownEpisodeIdentifiers
 
             let xmlParser = XMLParser(data: document.data)
+            xmlParser.shouldProcessNamespaces = true
             xmlParser.delegate = parser
 
             let parsedSuccessfully = xmlParser.parse()
@@ -670,6 +751,7 @@ extension PodcastParser {
             if parser.podcastOptionalTags.isEmpty == false {
                 parsedFeed["optionalTags"] = parser.podcastOptionalTags
             }
+            parsedFeed["rawExtensionElements"] = parser.podcastExtensionElements
             let podcastFeed = PodcastFeed(url: document.sourceURL, fetchMetadataIfNeeded: false)
             podcastFeed.apply(parsedFeed: parsedFeed, fallbackURL: document.sourceURL)
 
@@ -682,6 +764,7 @@ extension PodcastParser {
                 parsedFeed: parsedFeed,
                 feed: podcastFeed,
                 episodes: episodes,
+                extensionElements: parser.podcastExtensionElements,
                 nextPageURL: nextPageURL,
                 isPartial: parser.didHitEpisodeLimit || parser.didStopAtKnownEpisode,
                 didStopAtKnownEpisode: parser.didStopAtKnownEpisode

@@ -25,6 +25,17 @@ struct StoreSplitPlaylistSnapshot: Sendable {
 }
 
 extension Playlist {
+    var storeSplitSyncID: String {
+        if title == Self.defaultQueueTitle {
+            return Self.defaultQueueSyncID
+        }
+        if let syncID = syncID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           syncID.isEmpty == false {
+            return syncID
+        }
+        return id.uuidString
+    }
+
     var storeSplitSnapshot: StoreSplitPlaylistSnapshot {
         let smartFilterRawValue = smartFilter
             .flatMap { try? JSONEncoder().encode($0) }
@@ -43,7 +54,7 @@ extension Playlist {
             )
         }
         return StoreSplitPlaylistSnapshot(
-            id: id.uuidString,
+            id: storeSplitSyncID,
             title: title,
             symbolName: symbolName,
             sortIndex: sortIndex,
@@ -68,14 +79,14 @@ enum StoreSplitPlaylistSyncCoordinator {
         }
     }
 
-    static func tombstone(playlistID: UUID) {
+    static func tombstone(playlistID: String) {
         Task {
             await ModelContainerManager.shared.prepareSplitStores()
             guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
                 return
             }
             await StoreSplitPlaylistSyncWriter(modelContainer: container)
-                .tombstonePlaylist(id: playlistID.uuidString)
+                .tombstonePlaylist(id: playlistID)
         }
     }
 }
@@ -326,5 +337,100 @@ actor StoreSplitPlaylistSyncWriter {
             entry.isDeleted = true
             modelContext.insert(entry)
         }
+    }
+}
+
+struct StoreSplitPlaylistRepairResult: Sendable, Equatable {
+    let playlistCount: Int
+    let playlistEntryCount: Int
+    let queueEntryCount: Int
+    let missingRecordCount: Int
+
+    var isComplete: Bool { missingRecordCount == 0 }
+}
+
+/// Repairs installs that were promoted to split-store reads before all of their
+/// legacy playlists had been copied to UserState.sqlite. The rollout state is
+/// intentionally not consulted: once an install is marked `newStoreReads`, the
+/// normal migration no longer runs, which is exactly when this repair is needed.
+///
+/// Writes are additive/non-authoritative so a stale or empty legacy projection
+/// on one device can never delete newer playlist records received from another.
+actor StoreSplitPlaylistRepairService {
+    private let legacyContainer: ModelContainer
+    private let userStateContainer: ModelContainer
+
+    private init(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) {
+        self.legacyContainer = legacyContainer
+        self.userStateContainer = userStateContainer
+    }
+
+    nonisolated static func repair(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) async -> StoreSplitPlaylistRepairResult {
+        let service = StoreSplitPlaylistRepairService(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+        return await service.run()
+    }
+
+    private func run() async -> StoreSplitPlaylistRepairResult {
+        let legacyContext = ModelContext(legacyContainer)
+        let snapshots = ((try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? [])
+            .filter { $0.isSmartPlaylist == false }
+            .map(\.storeSplitSnapshot)
+
+        let expectedPlaylistIDs = Set(snapshots.map(\.id))
+        let expectedPlaylistEntryIDs = Set(snapshots.flatMap { snapshot in
+            snapshot.entries.map { entry in
+                StableIdentityKey.make(
+                    snapshot.id,
+                    entry.identity.feedURL,
+                    entry.identity.episodeID
+                )
+            }
+        })
+        let expectedQueueEntryIDs = Set(snapshots
+            .filter { $0.title == Playlist.defaultQueueTitle }
+            .flatMap { $0.entries.map(\.identity.key) })
+
+        let writer = StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
+        for snapshot in snapshots {
+            await writer.upsert(snapshot, authoritative: false)
+        }
+
+        // Verify the persisted result rather than trusting `saveIfNeeded`, which
+        // deliberately swallows SwiftData save errors in older call sites.
+        let verificationContext = ModelContext(userStateContainer)
+        let storedPlaylistIDs = Set(
+            ((try? verificationContext.fetch(FetchDescriptor<PlaylistSync>())) ?? [])
+                .filter { $0.isDeleted == false }
+                .map(\.id)
+        )
+        let storedPlaylistEntryIDs = Set(
+            ((try? verificationContext.fetch(FetchDescriptor<PlaylistEntrySync>())) ?? [])
+                .filter { $0.isDeleted == false }
+                .map(\.id)
+        )
+        let storedQueueEntryIDs = Set(
+            ((try? verificationContext.fetch(FetchDescriptor<QueueEntrySync>())) ?? [])
+                .filter { $0.isDeleted == false }
+                .map(\.id)
+        )
+        let missingRecordCount = expectedPlaylistIDs.subtracting(storedPlaylistIDs).count
+            + expectedPlaylistEntryIDs.subtracting(storedPlaylistEntryIDs).count
+            + expectedQueueEntryIDs.subtracting(storedQueueEntryIDs).count
+
+        return StoreSplitPlaylistRepairResult(
+            playlistCount: expectedPlaylistIDs.count,
+            playlistEntryCount: expectedPlaylistEntryIDs.count,
+            queueEntryCount: expectedQueueEntryIDs.count,
+            missingRecordCount: missingRecordCount
+        )
     }
 }

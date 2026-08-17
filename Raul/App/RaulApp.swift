@@ -18,7 +18,11 @@ enum BackgroundTaskConfiguration {
     static let predictedReleaseRefreshMinimumScheduleDelay: TimeInterval = 60
     static let predictedReleaseRefreshRetryDelay: TimeInterval = 30 * 60
     static let predictedReleaseRefreshPodcastLimit = 5
-    static let storeSplitMigrationInterval: TimeInterval = 60 * 60 * 4
+    /// Floor for the overnight migration pass. `requiresExternalPower` already
+    /// restricts it to charging, so a short floor just makes the request eligible
+    /// sooner and lets iOS pick the moment. A multi-hour floor only delayed the
+    /// first opportunity without buying anything.
+    static let storeSplitMigrationInterval: TimeInterval = 60 * 15
     static let feedProcessingInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
@@ -132,8 +136,23 @@ struct RaulApp: App {
     @State private var cloudImportReconciliationTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
 #if os(macOS)
+    @NSApplicationDelegateAdaptor(MacAppDelegate.self)
+    private var macAppDelegate
+
     @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
     private var isMacMenuBarPlayerEnabled = true
+
+    private var isMacMenuBarPlayerInserted: Binding<Bool> {
+        Binding(
+            get: {
+                MacMenuBarPlayerSupport.isAvailable && isMacMenuBarPlayerEnabled
+            },
+            set: { newValue in
+                guard MacMenuBarPlayerSupport.isAvailable else { return }
+                isMacMenuBarPlayerEnabled = newValue
+            }
+        )
+    }
 #endif
 #if canImport(UIKit)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -147,7 +166,18 @@ struct RaulApp: App {
     var body: some Scene {
 
         
-#if os(iOS) && !targetEnvironment(macCatalyst)
+#if os(macOS)
+        // The Mac app has one primary window. Using `Window` instead of a
+        // `WindowGroup` prevents multiple restored copies of the main window
+        // from starting competing launch views.
+        let mainWindow = Window("Up Next", id: AppWindowID.main) {
+            RootWindowView(
+                modelContainerManager: modelContainerManager,
+                downloadedFilesManager: downloadedFilesManager,
+                settingsRequest: $settingsRequest
+            )
+        }
+#elseif os(iOS) && !targetEnvironment(macCatalyst)
         // SwiftUI may evaluate a WindowGroup's static content callback on its
         // async-renderer thread. Pass a genuinely nonisolated function value:
         // writing an equivalent trailing closure here makes Swift emit a main-
@@ -167,6 +197,9 @@ struct RaulApp: App {
         }
 #endif
         mainWindow
+#if os(macOS)
+        .defaultLaunchBehavior(.presented)
+#endif
 #if os(macOS) || targetEnvironment(macCatalyst)
         .commands {
             AppCommands(
@@ -241,6 +274,21 @@ struct RaulApp: App {
         .onChange(of: syncMonitor.importState) { _, state in
             guard case .succeeded = state else { return }
             scheduleCloudImportReconciliation()
+        }
+        .onChange(of: syncMonitor.exportState) { _, state in
+            switch state {
+            case .notStarted:
+                break
+            case .inProgress:
+                CrashBreadcrumbs.shared.record("cloudkit_export_started")
+            case .succeeded:
+                CrashBreadcrumbs.shared.record("cloudkit_export_succeeded")
+            case .failed(_, _, let error):
+                CrashBreadcrumbs.shared.record(
+                    "cloudkit_export_failed",
+                    details: error?.localizedDescription ?? "unknown error"
+                )
+            }
         }
 
 #if os(iOS)
@@ -320,8 +368,10 @@ struct RaulApp: App {
             }
         }
         .defaultSize(width: 760, height: 820)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
 
-        MenuBarExtra(isInserted: $isMacMenuBarPlayerEnabled) {
+        MenuBarExtra(isInserted: isMacMenuBarPlayerInserted) {
             if let container = modelContainerManager.preparedContainer {
                 MacMenuBarPlayerView()
                     .modelContainer(container)
@@ -352,6 +402,8 @@ struct RaulApp: App {
             settingsSceneContent
         }
         .defaultSize(width: 820, height: 680)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
 #elseif targetEnvironment(macCatalyst)
         WindowGroup("Now Playing", id: AppWindowID.player) {
             if let container = modelContainerManager.preparedContainer {
@@ -488,9 +540,13 @@ struct RaulApp: App {
                 return
             }
             guard Task.isCancelled == false else { return }
-            if StoreDevelopmentConfiguration.newStoreReadsEnabled {
+            if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
             }
+            // Picks the backfill back up on every foreground, so a session that
+            // never relaunches still converges. The coordinator coalesces this
+            // with any queued work and the slice engine resumes from its cursor.
+            await ModelContainerManager.shared.scheduleStoreSplitMigrationIfNeeded()
             await MainActor.run {
                 deferredStoreSplitTask = nil
             }
@@ -499,7 +555,7 @@ struct RaulApp: App {
 
     func scheduleCloudImportReconciliation() {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              StoreDevelopmentConfiguration.newStoreReadsEnabled else { return }
+              StoreDevelopmentConfiguration.userStateImportEnabled else { return }
         cloudImportReconciliationTask?.cancel()
         cloudImportReconciliationTask = Task {
             do {
@@ -530,21 +586,6 @@ struct RaulApp: App {
         }
     }
 
-    func debugActions() {
-        let sharedContainerURL :URL? = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.de.holgerkrupp.PodcastClient")
-        // replace "group.etc.etc" above with your App Group's identifier
-        NSLog("sharedContainerURL = \(String(describing: sharedContainerURL))")
-        if let sourceURL :URL = sharedContainerURL?.appendingPathComponent("SharedDatabase.sqlite") {
-            if let destinationURL :URL = FileManager().urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("copyOfStore.sqlite") {
-                try? FileManager().removeItem(at: destinationURL)
-                try? FileManager().copyItem(at: sourceURL, to: destinationURL)
-             //   try? FileManager().replaceItemAt(destinationURL, withItemAt: sourceURL)
-            }
-        }
-    }
- 
-
-    
     func setLastRefreshDate(){
         UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
     }

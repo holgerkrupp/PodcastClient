@@ -271,6 +271,9 @@ actor PodcastSettingsModelActor {
             podcast.settings = newSettings
         }
         modelContext.saveIfNeeded()
+        if let settings = podcast.settings {
+            await publishPortablePreferences(settings, feedURL: podcastFeed)
+        }
     }
 
     /// Disable custom settings for a podcast
@@ -278,6 +281,9 @@ actor PodcastSettingsModelActor {
         guard let podcast = fetchPodcast(podcastFeed) else { return }
         if let settings = podcast.settings {
             settings.isEnabled = false
+            modelContext.saveIfNeeded()
+            await publishPortablePreferences(settings, feedURL: podcastFeed)
+            return
         }
         modelContext.saveIfNeeded()
     }
@@ -301,6 +307,8 @@ actor PodcastSettingsModelActor {
         }
         
         settings.autoSkipKeywords = value
+        modelContext.saveIfNeeded()
+        await publishPortablePreferences(settings, feedURL: podcastFeed)
     }
     
     
@@ -387,13 +395,15 @@ actor PodcastSettingsModelActor {
     }
     
     func setPlaybackSpeed(for podcastFeed: URL?, to value: Float) async{
-        
+        let settings: PodcastSettings
         if let podcastFeed, let setting = await fetchPodcastSettings(for: podcastFeed) {
-             setting.playbackSpeed  = value// is no podcastID is found, the global Settings are returned
+            settings = setting
         } else {
-            await standardSettings().playbackSpeed = value
+            settings = await standardSettings()
         }
+        settings.playbackSpeed = value
         modelContext.saveIfNeeded()
+        await publishPortablePreferences(settings, feedURL: podcastFeed)
     }
     
     func getPlaynextposition(for podcastFeed: URL?) async -> Playlist.Position{
@@ -555,6 +565,22 @@ actor PodcastSettingsModelActor {
         }
 
         return feed
+    }
+
+    private func publishPortablePreferences(
+        _ settings: PodcastSettings,
+        feedURL: URL?
+    ) async {
+        let snapshot = PortablePodcastPreferenceSnapshot.make(
+            settings: settings,
+            feedURL: feedURL
+        )
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else { return }
+        await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
+            .upsert(snapshot)
     }
 
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {

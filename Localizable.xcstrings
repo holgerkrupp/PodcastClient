@@ -21,6 +21,9 @@
         }
       }
     },
+    "-%@" : {
+
+    },
     "#%lld" : {
       "localizations" : {
         "de" : {
@@ -311,6 +314,9 @@
         }
       }
     },
+    "%lld next" : {
+
+    },
     "%lld rejected record(s):" : {
       "localizations" : {
         "de" : {
@@ -468,6 +474,9 @@
           }
         }
       }
+    },
+    "Add Bookmark" : {
+
     },
     "Add Podcast" : {
       "localizations" : {
@@ -1382,6 +1391,9 @@
           }
         }
       }
+    },
+    "Choose an episode from the playlist below." : {
+
     },
     "Choose episode sort order and hide played episodes" : {
       "localizations" : {
@@ -3017,6 +3029,9 @@
         }
       }
     },
+    "Hide Menu Bar Player" : {
+
+    },
     "Hide played Episodes" : {
       "localizations" : {
         "de" : {
@@ -3426,6 +3441,9 @@
         }
       }
     },
+    "Keep playback controls and the selected playlist available from the macOS menu bar." : {
+
+    },
     "Keep the current transcript line centered" : {
       "localizations" : {
         "de" : {
@@ -3616,6 +3634,9 @@
           }
         }
       }
+    },
+    "Listening by Device" : {
+
     },
     "Listening Habits" : {
       "localizations" : {
@@ -3978,6 +3999,12 @@
         }
       }
     },
+    "Menu Bar Player" : {
+
+    },
+    "Menu bar player unavailable" : {
+
+    },
     "Metadata Details" : {
       "localizations" : {
         "de" : {
@@ -4067,6 +4094,9 @@
           }
         }
       }
+    },
+    "More playback actions" : {
+
     },
     "Move Current To End" : {
       "localizations" : {
@@ -4200,6 +4230,9 @@
         }
       }
     },
+    "Navigate" : {
+
+    },
     "Needs keyword" : {
       "localizations" : {
         "de" : {
@@ -4320,6 +4353,9 @@
         }
       }
     },
+    "Next Chapter" : {
+
+    },
     "Next in queue" : {
       "localizations" : {
         "de" : {
@@ -4331,7 +4367,6 @@
       }
     },
     "Next predicted release: Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4751,6 +4786,12 @@
         }
       }
     },
+    "Nothing Playing" : {
+
+    },
+    "Nothing Up Next" : {
+
+    },
     "Notify Me: %@" : {
       "localizations" : {
         "de" : {
@@ -5001,6 +5042,9 @@
         }
       }
     },
+    "Open Player" : {
+
+    },
     "Open podcast %@" : {
       "localizations" : {
         "de" : {
@@ -5110,6 +5154,9 @@
           }
         }
       }
+    },
+    "Open Up Next" : {
+
     },
     "Opens a file picker and copies the selected audio file into the sideloading folder" : {
       "localizations" : {
@@ -5576,6 +5623,9 @@
           }
         }
       }
+    },
+    "Play/Pause" : {
+
     },
     "Playback" : {
       "localizations" : {
@@ -6094,6 +6144,9 @@
         }
       }
     },
+    "Previous Chapter" : {
+
+    },
     "Previous Period" : {
       "localizations" : {
         "de" : {
@@ -6574,6 +6627,9 @@
         }
       }
     },
+    "Restart Current Chapter" : {
+
+    },
     "Resume" : {
       "localizations" : {
         "de" : {
@@ -6856,7 +6912,6 @@
       }
     },
     "Settings…" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6927,7 +6982,6 @@
       }
     },
     "Share Export" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6988,7 +7042,6 @@
       }
     },
     "Sharing Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7067,6 +7120,9 @@
           }
         }
       }
+    },
+    "Show menu bar player" : {
+
     },
     "Show Recent Play Sessions" : {
       "localizations" : {
@@ -7931,6 +7987,12 @@
         }
       }
     },
+    "The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows." : {
+
+    },
+    "The menu bar player is temporarily disabled on this macOS version to prevent a launch loop." : {
+
+    },
     "The podcast library is unavailable." : {
       "localizations" : {
         "de" : {
@@ -8042,7 +8104,6 @@
       }
     },
     "This item cannot be shared on macOS yet." : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8051,6 +8112,9 @@
           }
         }
       }
+    },
+    "This playlist has no later episodes." : {
+
     },
     "This podcast could not be loaded." : {
       "localizations" : {
@@ -8567,6 +8631,9 @@
           }
         }
       }
+    },
+    "Up Next is starting" : {
+
     },
     "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"" : {
       "localizations" : {
