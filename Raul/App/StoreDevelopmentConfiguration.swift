@@ -40,11 +40,39 @@ enum DevelopmentStoreMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Which step of the store split a shipped build performs.
+///
+/// The split is delivered in two releases rather than one. Cutting straight to
+/// `userStateAuthority` means the update simultaneously stops syncing the legacy
+/// graph and starts trusting a store that has never been exercised in
+/// production — and it opens a divergence window for anyone whose second device
+/// has not updated yet. `dualSyncBackfill` ships the risky half first, with
+/// nothing user-visible riding on it.
+enum StoreSplitReleasePhase {
+    /// Ship #1. The legacy library graph stays exactly as it shipped before:
+    /// primary source of truth, CloudKit-backed, unchanged cross-device
+    /// behaviour. `UserState.sqlite` is populated in the background and synced,
+    /// but nothing reads it. This proves the schema, the CloudKit payload, and
+    /// the migration itself against real libraries with no way to lose data.
+    case dualSyncBackfill
+
+    /// Ship #2. Legacy CloudKit sync is turned off and `UserState.sqlite`
+    /// becomes the authority for user-owned state — the payload win. Safe only
+    /// once phase one has converged across the population.
+    case userStateAuthority
+
+    /// The phase this build ships. Changing this constant is the cutover.
+    static let current: StoreSplitReleasePhase = .dualSyncBackfill
+}
+
 struct StoreDevelopmentConfiguration: Equatable {
-    /// App Store cloud-sync policy for the current migration phase. The legacy
-    /// database is a local migration/recovery source only; all cross-device user
-    /// state flows through UserState.sqlite.
-    static let releaseLegacyCloudSyncEnabled = false
+    /// App Store cloud-sync policy, derived from the release phase.
+    ///
+    /// During `dualSyncBackfill` the legacy store keeps its CloudKit mirror, so
+    /// existing users see no change in sync behaviour and a household with one
+    /// updated and one not-yet-updated device cannot diverge.
+    static let releaseLegacyCloudSyncEnabled =
+        StoreSplitReleasePhase.current == .dualSyncBackfill
     static let releaseUserStateCloudSyncEnabled = true
 
     static let modeKey = "development.database.storeMode"
@@ -77,14 +105,16 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     /// Whether `UserState.sqlite` is the authority for user-owned state.
     ///
-    /// Unlike `splitStoresEnabled` this is deliberately **not** frozen at launch
-    /// in release builds: the runtime store no longer depends on the mode, so a
-    /// device that classifies itself mid-launch can start applying synchronized
-    /// user state immediately instead of on the next launch. A brand-new iPad or
-    /// Mac therefore fills its queue and playback state on first launch.
+    /// Always false during `dualSyncBackfill`: that release deliberately reads
+    /// nothing from the new store. Outside DEBUG this is not frozen at launch, so
+    /// a device that classifies itself mid-launch starts applying synchronized
+    /// state in the same launch rather than the next one.
     static var newStoreReadsEnabled: Bool {
+        guard StoreSplitReleasePhase.current == .userStateAuthority else {
+            return false
+        }
 #if DEBUG
-        launch.newStoreReadsEnabled
+        return launch.newStoreReadsEnabled
 #else
         guard splitStoresEnabled else { return false }
         return launch.newStoreReadsEnabled || StoreSplitRollout.state == .newStoreReads
@@ -97,16 +127,17 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     /// Whether synchronized user state is projected back onto the library graph.
     ///
-    /// This is on for every split mode, not just once UserState becomes the read
-    /// authority. Importing is additive and merge-guarded, and a device still
-    /// backfilling needs it: anything it changed on another device — or during a
-    /// spell reading the in-memory projection — exists only in UserState.
+    /// Off during `dualSyncBackfill`. In that phase the legacy graph carries its
+    /// own CloudKit mirror, so cross-device state already arrives through Core
+    /// Data — projecting UserState on top would duplicate that work, fight its
+    /// merge, and re-introduce the full-projection write volume for no benefit.
+    /// The backfill is strictly one-way: legacy → UserState.
     static var userStateImportEnabled: Bool {
-        splitStoresEnabled
+        StoreSplitReleasePhase.current == .userStateAuthority && splitStoresEnabled
     }
 
     static var legacyCloudSyncEnabled: Bool {
-        false
+        launch.effectiveLegacyCloudSyncEnabled
     }
 
     static var userStateCloudSyncEnabled: Bool {
@@ -170,9 +201,11 @@ struct StoreDevelopmentConfiguration: Equatable {
         let mode = defaults.string(forKey: modeKey)
             .flatMap(DevelopmentStoreMode.init(rawValue:))
             ?? .splitStoreReads
-        // Ignore the historical debug preference. Re-enabling CloudKit for the
-        // legacy graph would violate the split-store architecture.
-        let legacyCloudSyncEnabled = false
+        // Debug builds can exercise either release phase; the default follows
+        // whatever `StoreSplitReleasePhase.current` ships.
+        let legacyCloudSyncEnabled = defaults.object(
+            forKey: legacyCloudSyncEnabledKey
+        ) as? Bool ?? releaseLegacyCloudSyncEnabled
         let userStateCloudSyncEnabled = defaults.object(
             forKey: userStateCloudSyncEnabledKey
         ) as? Bool ?? true
@@ -224,7 +257,7 @@ extension StoreDevelopmentConfiguration {
     }
 
     var effectiveLegacyCloudSyncEnabled: Bool {
-        false
+        legacyCloudSyncEnabled
     }
 
     var effectiveUserStateCloudSyncEnabled: Bool {

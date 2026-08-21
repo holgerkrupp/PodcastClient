@@ -64,6 +64,53 @@ actor StoreSplitUserStateImporter {
         )
     }
 
+#if DEBUG
+    /// Projects **only** the synchronized listening history and summaries back
+    /// onto the library graph.
+    ///
+    /// Sessions recorded while the runtime container was the in-memory cache
+    /// projection never reached `SharedDatabase.sqlite` — they survive only in
+    /// `ListeningHistorySync`. The `dualSyncBackfill` release leaves the importer
+    /// off, so nothing brings them back on its own; this is the one-off recovery
+    /// for a development device that spent time on those builds.
+    ///
+    /// Deliberately not wired into launch: it is the same projection pass that
+    /// dominated the disk-write storm, so it stays an explicit, observable action.
+    nonisolated static func applyListeningHistoryOnly(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) async -> StoreSplitUserStateImportResult {
+        let importer = StoreSplitUserStateImporter(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+        return await importer.runListeningHistoryOnly()
+    }
+
+    private func runListeningHistoryOnly() async -> StoreSplitUserStateImportResult {
+        var result = StoreSplitUserStateImportResult()
+        guard Task.isCancelled == false else {
+            result.interruptedByPlayback = true
+            return result
+        }
+        await awaitIdleWindow()
+        // Episode resolution's last-resort feed scan needs this index; without it
+        // history for episodes whose GUID/URL lookup misses would be dropped.
+        buildPodcastIndex()
+
+        applyListeningSummaries(result: &result)
+        saveLegacyChanges(phase: "recovery_listening_summaries", result: &result)
+        await applyListeningHistory(result: &result)
+        saveLegacyChanges(phase: "recovery_listening_history", result: &result)
+
+        CrashBreadcrumbs.shared.record(
+            "store_split_listening_history_recovery_completed",
+            details: "history=\(result.listeningHistoryApplied),summaries=\(result.listeningSummariesApplied),failed=\(result.failed)"
+        )
+        return result
+    }
+#endif
+
     private func run(
         authoritativePlaylists: Bool,
         projectListeningHistoryToLegacy: Bool,
@@ -75,21 +122,7 @@ actor StoreSplitUserStateImporter {
             return result
         }
         await awaitIdleWindow()
-        let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
-        podcastsByComparisonKey = podcasts.reduce(into: [String: PersistentIdentifier]()) { values, podcast in
-            guard let feed = podcast.feed else { return }
-            for key in feed.podcastFeedComparisonKeys {
-                if let existing = values[key] {
-                    guard let existingPodcast = legacyContext.model(for: existing) as? Podcast else {
-                        values[key] = podcast.persistentModelID
-                        continue
-                    }
-                    values[key] = preferredPodcast(existingPodcast, podcast).persistentModelID
-                } else {
-                    values[key] = podcast.persistentModelID
-                }
-            }
-        }
+        let podcasts = buildPodcastIndex()
 
         let subscriptions = deduplicatedSubscriptions(
             (try? userStateContext.fetch(FetchDescriptor<SubscriptionSync>())) ?? [],
@@ -188,6 +221,29 @@ actor StoreSplitUserStateImporter {
         logProjectionAudit(result: result)
 #endif
         return result
+    }
+
+    /// Indexes the library's podcasts by feed comparison key and returns them.
+    /// Episode resolution's last-resort feed scan depends on this map, so any
+    /// entry point that projects episode-keyed rows has to build it first.
+    @discardableResult
+    private func buildPodcastIndex() -> [Podcast] {
+        let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
+        podcastsByComparisonKey = podcasts.reduce(into: [String: PersistentIdentifier]()) { values, podcast in
+            guard let feed = podcast.feed else { return }
+            for key in feed.podcastFeedComparisonKeys {
+                if let existing = values[key] {
+                    guard let existingPodcast = legacyContext.model(for: existing) as? Podcast else {
+                        values[key] = podcast.persistentModelID
+                        continue
+                    }
+                    values[key] = preferredPodcast(existingPodcast, podcast).persistentModelID
+                } else {
+                    values[key] = podcast.persistentModelID
+                }
+            }
+        }
+        return podcasts
     }
 
     private func applyPreferences(

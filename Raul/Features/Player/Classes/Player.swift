@@ -31,6 +31,21 @@ private enum PlaybackProgressDefaultsStore {
         return (try? JSONDecoder().decode([String: CachedPlaybackProgress].self, from: data)) ?? [:]
     }
 
+    /// Most recently updated cached entry, if any.
+    ///
+    /// An entry only survives here when its write to the store did not land, so
+    /// after a crash this is the episode that was actually playing even though
+    /// nothing in the store records it yet.
+    static func newestCachedProgress() -> (episodeURL: URL, updatedAt: Date)? {
+        allCachedProgress()
+            .lazy
+            .compactMap { key, cached -> (episodeURL: URL, updatedAt: Date)? in
+                guard let url = URL(string: key) else { return nil }
+                return (url, cached.updatedAt)
+            }
+            .max { $0.updatedAt < $1.updatedAt }
+    }
+
     static func update(
         episodeURL: URL,
         playPosition: Double,
@@ -283,10 +298,16 @@ class Player {
         
       //  super.init()
         Task {
+            // Restoring the episode is what makes the player usable, so nothing
+            // else may sit in front of it. The cache reconciliation below used
+            // to run first and walked every leftover entry with a store write
+            // each; `restoreLastPlayedFromPlaylist` reads the same cache
+            // directly, so it no longer needs that pass to have finished.
+            await restoreLastPlayedFromPlaylist()
+
             // Remove legacy UUID-based last-played storage from older builds.
             await migrateLastPlayedFromUserDefaultsIfNeeded()
             await reconcileCachedPlaybackProgress()
-            await restoreLastPlayedFromPlaylist()
         }
         loadPlayBackSpeed()
         listenToEvent()
@@ -341,18 +362,28 @@ class Player {
     }
     
     func restoreLastPlayedFromPlaylist() async {
-        let activePlaylistActor = activePlaybackPlaylistActor()
-        let episodeURLs = (try? await activePlaylistActor?.orderedEpisodeURLs()) ?? []
+        guard let activePlaylistActor = activePlaybackPlaylistActor() else { return }
+        let candidateURL = await launchResumeCandidateURL()
+        guard let resumeURL = try? await activePlaylistActor.launchEpisodeURL(
+            preferring: candidateURL
+        ) else { return }
 
-        if let lastPlayedURL = await episodeActor?.getLastPlayedEpisodeURL(),
-           episodeURLs.contains(lastPlayedURL) {
-            await playEpisode(lastPlayedURL, playDirectly: false)
-            return
-        }
+        await playEpisode(resumeURL, playDirectly: false)
+    }
 
-        if let firstURL = episodeURLs.first {
-            await playEpisode(firstURL, playDirectly: false)
+    /// The episode this device was last playing, according to whichever record
+    /// is newer: the persisted `lastPlayed` stamp or an unreconciled progress
+    /// entry left in the defaults cache by a session that ended before its
+    /// write landed.
+    private func launchResumeCandidateURL() async -> URL? {
+        let persisted = await episodeActor?.lastPlayedEpisodeReference()
+        guard let newestCached = PlaybackProgressDefaultsStore.newestCachedProgress() else {
+            return persisted?.url
         }
+        guard let persisted else { return newestCached.episodeURL }
+        return newestCached.updatedAt > persisted.lastPlayed
+            ? newestCached.episodeURL
+            : persisted.url
     }
     
     func setSleepTimer(minutes: Int) {
@@ -932,6 +963,9 @@ class Player {
 
         for (episodeURLString, cached) in cachedProgress {
             guard let episodeURL = URL(string: episodeURLString) else { continue }
+            // The loaded episode's state belongs to the live player now; its
+            // entry is persisted and cleared by the normal save path instead.
+            guard episodeURL != currentEpisodeURL else { continue }
             let didPersist = await episodeActor?.applyCachedPlaybackProgress(
                 episodeURL: episodeURL,
                 playPosition: sanitizedPosition(cached.playPosition),

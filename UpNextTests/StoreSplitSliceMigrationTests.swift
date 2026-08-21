@@ -313,7 +313,14 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
 
         StoreSplitRollout.set(.newStoreReads)
-        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStoreReads)
+        // The backfill release records migration completion but must not change
+        // how the app reads; only the authority release maps it to split reads.
+        XCTAssertEqual(
+            StoreSplitRollout.resolvedMode,
+            StoreSplitReleasePhase.current == .userStateAuthority
+                ? .splitStoreReads
+                : .splitStores
+        )
     }
 
     @MainActor
@@ -350,7 +357,12 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             )
         )
         XCTAssertEqual(StoreSplitRollout.state, .newStoreReads)
-        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStoreReads)
+        XCTAssertEqual(
+            StoreSplitRollout.resolvedMode,
+            StoreSplitReleasePhase.current == .userStateAuthority
+                ? .splitStoreReads
+                : .splitStores
+        )
     }
 
     @MainActor

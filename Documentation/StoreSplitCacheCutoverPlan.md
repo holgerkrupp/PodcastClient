@@ -43,12 +43,31 @@ is the experimental endgame track, not a shipping mode. While it is off, the
 per-refresh feed mirror and the feed-cache bootstrap are skipped, so switching
 into it needs a cache reset first.
 
+## Shipping in two phases (2026-08-17)
+
+`StoreSplitReleasePhase.current` selects what a build does:
+
+| | `dualSyncBackfill` (shipping now) | `userStateAuthority` |
+| --- | --- | --- |
+| Library store | primary, CloudKit `.automatic` | primary, CloudKit `.none` |
+| UserState | written one-way, synced, never read | read authority |
+| Importer (UserState → library) | **off** | on |
+| `resolvedMode` | always `.splitStores` | follows the rollout |
+| iCloud payload | unchanged from today | shrinks |
+
+Phase one exists because cutting straight to phase two would simultaneously stop
+syncing the legacy graph and start trusting a store never exercised in
+production. Keeping the importer off in phase one also removes the full
+projection pass, which was the dominant source of the write volume that got the
+app killed for CPU on 2026-08-17.
+
 ## Current implementation status (2026-08-16)
 
 Three SwiftData stores exist:
 
-- `SharedDatabase.sqlite` — the durable, local-only library store and the
-  migration source. Never CloudKit-backed.
+- `SharedDatabase.sqlite` — the durable library store and the migration source.
+  CloudKit-backed during `dualSyncBackfill`, local-only from
+  `userStateAuthority` onwards.
 - `UserState.sqlite` — user-owned state, CloudKit `.automatic`.
 - `PodcastCache.sqlite` — local-only (`cloudKitDatabase: .none`).
 
@@ -66,19 +85,41 @@ Key facts that shape the shipped cutover:
   verification is a separate, stricter gate that only controls physically
   retiring the legacy file; making reads wait for it stranded devices behind a
   single unmigratable row.
-- The backfill is fully automatic and needs no user interaction. It is queued at
+- The backfill is automatic and needs no user interaction. It is queued at
   launch, on every foreground, and by a `BGProcessingTask` that requires external
-  power so it can finish overnight while charging. It keeps running during
-  playback at a slower slice cadence, and continues while the app is backgrounded
-  for as long as audio keeps the process alive — stopping at the next committed
-  checkpoint once playback ends, so it never holds the shared-container SQLite
-  lock across a suspension. Scheduling is gated on the completed migration
-  version, not on the rollout marker, because a device can sit at
-  `newStoreReads` from an older version and still owe the current one every phase.
+  power so it can finish overnight while charging. Scheduling is gated on the
+  completed migration version, not on the rollout marker, because a device can
+  sit at `newStoreReads` from an older version and still owe the current one
+  every phase.
+- **Every run is budgeted.** 25s of wall clock in the foreground, 120s inside the
+  background task, with 0.75s of idle between slices. It stops on playback and on
+  backgrounding. An earlier attempt to keep migrating during playback and on the
+  audio session's background time produced ~98% CPU for hours and the process was
+  killed by the 80%-over-60s limit; background progress belongs to the metered
+  `BGProcessingTask`, which has both a budget and an expiration handler.
+- **Reconciles are watermarked.** A full projection pass walks every synchronized
+  row and is hundreds of megabytes of SQLite writes on a large library, while
+  reconciles are triggered by launch, foreground, and every CloudKit import
+  event. The importer now compares the newest `updatedAt` across the synced
+  models against the last completed import and skips the pass entirely when
+  nothing arrived. Hourly statistics are rebuilt only when history actually
+  moved, not after every reconcile.
+- **Episode-state republishing is change-gated.** `setPlayPosition` publishes
+  every ten seconds during playback; the writer now compares against the stored
+  record and returns without writing when nothing material changed, so playback
+  no longer produces a synced write and a CloudKit export every tick.
 - DEBUG builds keep a `StoreSplitMigrationDebugLog` in App Group defaults and
   post a passive local notification per finished phase, so an overnight
   background pass leaves evidence either way: an empty log after a night on the
   charger means iOS never ran the task, not that the migration found no work.
+- Sessions recorded while the runtime graph lived in memory never reached the
+  library store and survive only in `ListeningHistorySync`. Because the
+  `dualSyncBackfill` importer is off, nothing projects them back on its own — a
+  DEBUG "Recover Listening History from Split Stores" action runs that one
+  projection on demand (`StoreSplitUserStateImporter.applyListeningHistoryOnly`).
+  It deduplicates by canonical aggregation key and by matching equivalent local
+  sessions, so repeating it cannot inflate the statistics. Deliberately not wired
+  into launch: it is the same projection pass that dominated the write storm.
 - Devices returning from the in-memory phase run a one-time additive recovery
   (`StoreSplitCompatibilityProjectionService.recoverMissingLibraryData`) that
   copies cache-only podcasts and episodes back into the durable store. It never

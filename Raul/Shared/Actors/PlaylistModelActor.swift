@@ -183,7 +183,48 @@ actor PlaylistModelActor {
     }
 
     public func firstEpisodeURL() throws -> URL? {
-        try orderedEpisodes().compactMap(\.url).first
+        guard let playlist = try fetchPlaylist() else { return nil }
+        return try firstEpisodeURL(in: playlist)
+    }
+
+    private func firstEpisodeURL(in playlist: Playlist) throws -> URL? {
+        if playlist.isSmartPlaylist {
+            return try orderedEpisodes(for: playlist).lazy.compactMap(\.url).first
+        }
+        // Lazily, so only the first entry's episode is faulted in instead of
+        // the whole queue.
+        return try fetchOrderedEntries().lazy.compactMap { $0.episode?.url }.first
+    }
+
+    /// Episode playback should resume with at launch, resolved in one actor turn.
+    ///
+    /// `preferredURL` (the last played episode) wins when it is still queued.
+    /// For a manual playlist that membership test is a bounded entry fetch, so
+    /// the launch path never has to materialize the full queue just to decide.
+    func launchEpisodeURL(preferring preferredURL: URL?) throws -> URL? {
+        guard let playlist = try fetchPlaylist() else { return nil }
+
+        if playlist.isSmartPlaylist {
+            let urls = try orderedEpisodes(for: playlist).compactMap(\.url)
+            if let preferredURL, urls.contains(preferredURL) { return preferredURL }
+            return urls.first
+        }
+
+        if let preferredURL, try containsEntry(for: preferredURL) {
+            return preferredURL
+        }
+        return try firstEpisodeURL(in: playlist)
+    }
+
+    private func containsEntry(for episodeURL: URL) throws -> Bool {
+        let playlistID = playlistID
+        var descriptor = FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { entry in
+                entry.playlist?.id == playlistID && entry.episode?.url == episodeURL
+            }
+        )
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).isEmpty == false
     }
 
     func nextEpisodeURL() throws -> URL? {

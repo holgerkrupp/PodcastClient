@@ -63,19 +63,14 @@ actor StoreSplitWorkCoordinator {
         startRunnerIfNeeded()
     }
 
-    /// Drops queued work when the app is suspended. With `keepMigrationRunning`
-    /// the backfill survives — background audio keeps the process alive, and the
-    /// slice loop halts itself at a checkpoint once playback ends.
-    func pauseForBackground(keepMigrationRunning: Bool = false) async {
-        if keepMigrationRunning == false {
-            runnerTask?.cancel()
-            runnerTask = nil
-            pendingMigration = false
-            currentJob = nil
-        }
+    func pauseForBackground() async {
+        runnerTask?.cancel()
+        runnerTask = nil
         pendingReconcile = nil
         pendingAIImport = false
+        pendingMigration = false
         pendingPlaybackIdleReconcile = false
+        currentJob = nil
         await publishPendingState()
     }
 
@@ -224,16 +219,9 @@ actor StoreSplitWorkCoordinator {
     }
 
     private func nextRunnableJob() async -> Job? {
-        let isPlaying = await MainActor.run(body: { Player.shared.isPlaying })
-
-        // Migration keeps running during playback. It reads the library store in
-        // bounded pages and writes to UserState, so it does not touch the rows
-        // the player is updating, and the slice loop paces itself while audio is
-        // active. Waiting for silence made the backfill take days on devices that
-        // are almost always playing something.
-        if isPlaying {
+        if await MainActor.run(body: { Player.shared.isPlaying }) {
             await publishPendingState()
-            return pendingMigration ? .migration : nil
+            return nil
         }
 
         if pendingReconcile != nil {

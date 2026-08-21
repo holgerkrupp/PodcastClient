@@ -23,6 +23,11 @@ struct EpisodePlaybackStateSnapshot: Sendable {
     let maxPlayPosition: Double?
 }
 
+struct LastPlayedEpisodeReference: Sendable {
+    let url: URL
+    let lastPlayed: Date
+}
+
 
 @ModelActor
 actor EpisodeActor {
@@ -313,15 +318,30 @@ actor EpisodeActor {
     }
     
     func getLastPlayedEpisodeURL() async -> URL? {
+        await lastPlayedEpisodeReference()?.url
+    }
+
+    /// Newest played episode, resolved with a sorted single-row fetch.
+    ///
+    /// This runs on the launch path before playback can be restored, so it must
+    /// not materialize every episode that was ever played just to take the
+    /// maximum in memory.
+    func lastPlayedEpisodeReference() async -> LastPlayedEpisodeReference? {
         let predicate = #Predicate<EpisodeMetaData> { metadata in
             metadata.isHistory != true && metadata.lastPlayed != nil
         }
+        var descriptor = FetchDescriptor<EpisodeMetaData>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\EpisodeMetaData.lastPlayed, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
         do {
-            let results = try modelContext.fetch(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
-            let mostRecentlyPlayed = results.max {
-                ($0.lastPlayed ?? .distantPast) < ($1.lastPlayed ?? .distantPast)
+            guard let metadata = try modelContext.fetch(descriptor).first,
+                  let url = metadata.episode?.url,
+                  let lastPlayed = metadata.lastPlayed else {
+                return nil
             }
-            return mostRecentlyPlayed?.episode?.url
+            return LastPlayedEpisodeReference(url: url, lastPlayed: lastPlayed)
         } catch {
             // print("❌ Error fetching or saving metadata: \(error)")
         }
@@ -546,8 +566,12 @@ actor EpisodeActor {
         // Stamp before publishing so the local row and the UserState record carry
         // the same generation. The importer compares the two and refuses to
         // replace local state with an older remote record.
+        //
+        // `setPlayPosition` calls this every 10 seconds during playback, so the
+        // stamp is only advanced when the published state actually differs from
+        // what this device last published. Writing it unconditionally dirtied the
+        // row on every tick and forced a save each time.
         let publishedAt = Date()
-        metadata.stateUpdatedAt = publishedAt
         let snapshot = StoreSplitEpisodeStateSnapshot(
             identity: episode.stableEpisodeIdentity,
             playPosition: max(0, metadata.playPosition ?? 0),
@@ -566,8 +590,11 @@ actor EpisodeActor {
             lastPlayedAt: metadata.lastPlayed
         )
         guard let writer = await episodeStateWriter() else { return }
-        await writer.upsert(snapshot, at: publishedAt)
-        modelContext.saveIfNeeded()
+        let didChange = await writer.upsert(snapshot, at: publishedAt)
+        if didChange {
+            metadata.stateUpdatedAt = publishedAt
+            modelContext.saveIfNeeded()
+        }
     }
 
     private func episodeStateWriter() async -> StoreSplitEpisodeStateSyncWriter? {

@@ -13,19 +13,24 @@ final class StoreSplitDurableStoreTests: XCTestCase {
         XCTAssertTrue(DevelopmentStoreMode.newStoresOnly.usesInMemoryLibraryProjection)
     }
 
-    func testShippingModesKeepUserStateAsTheOnlyCloudBackedStore() {
+    /// UserState always syncs in the shipping modes. Whether the *library* store
+    /// also syncs is the release phase's decision: it does during the backfill
+    /// ship, and dropping it in the authority ship is the payload win.
+    func testShippingModesAlwaysSyncUserState() {
         for mode in [DevelopmentStoreMode.splitStores, .splitStoreReads] {
             let configuration = StoreDevelopmentConfiguration(
                 mode: mode,
-                legacyCloudSyncEnabled: true,
+                legacyCloudSyncEnabled: StoreDevelopmentConfiguration
+                    .releaseLegacyCloudSyncEnabled,
                 userStateCloudSyncEnabled: true,
                 splitStoreWorkEnabled: true
             )
-            XCTAssertFalse(
-                configuration.effectiveLegacyCloudSyncEnabled,
-                "\(mode) must never sync the library store"
-            )
             XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
+            XCTAssertEqual(
+                configuration.effectiveLegacyCloudSyncEnabled,
+                StoreSplitReleasePhase.current == .dualSyncBackfill,
+                "\(mode) library sync must follow the release phase"
+            )
         }
     }
 
@@ -301,6 +306,78 @@ final class StoreSplitDurableStoreTests: XCTestCase {
                 cacheContainer: cache
             ))
         }
+    }
+}
+
+/// Playback republishes episode state every ten seconds. Each republish that
+/// reaches SwiftData is a write to the synced store and a CloudKit export, so a
+/// no-op republish has to be recognised as one.
+final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
+    @MainActor
+    func testRepublishingUnchangedStateDoesNotRewriteTheRecord() async throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let writer = StoreSplitEpisodeStateSyncWriter(modelContainer: userState)
+        let identity = EpisodeStableIdentity(
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "guid:episode"
+        )
+        func snapshot(playPosition: Double) -> StoreSplitEpisodeStateSnapshot {
+            StoreSplitEpisodeStateSnapshot(
+                identity: identity,
+                playPosition: playPosition,
+                maxPlayPosition: playPosition,
+                duration: 3_600,
+                isPlayed: false,
+                isArchived: false,
+                wasSkipped: false,
+                completedAt: nil,
+                archivedAt: nil,
+                firstPlayedAt: nil,
+                lastPlayedAt: nil
+            )
+        }
+
+        let first = Date()
+        let firstWrite = await writer.upsert(snapshot(playPosition: 100), at: first)
+        XCTAssertTrue(firstWrite)
+
+        let context = ModelContext(userState)
+        let stored = try XCTUnwrap(
+            context.fetch(FetchDescriptor<EpisodeStateSync>()).first
+        )
+        XCTAssertEqual(stored.updatedAt, first)
+
+        // Identical state, and a sub-threshold nudge: neither is worth a write.
+        let identicalWrite = await writer.upsert(
+            snapshot(playPosition: 100),
+            at: first.addingTimeInterval(10)
+        )
+        XCTAssertFalse(identicalWrite)
+        let nudgeWrite = await writer.upsert(
+            snapshot(playPosition: 101),
+            at: first.addingTimeInterval(20)
+        )
+        XCTAssertFalse(nudgeWrite)
+
+        let unchangedContext = ModelContext(userState)
+        let unchanged = try XCTUnwrap(
+            unchangedContext.fetch(FetchDescriptor<EpisodeStateSync>()).first
+        )
+        XCTAssertEqual(unchanged.updatedAt, first, "no-op republish must not touch updatedAt")
+        XCTAssertEqual(unchanged.playPosition, 100)
+
+        // Real progress still gets through.
+        let later = first.addingTimeInterval(30)
+        let progressWrite = await writer.upsert(snapshot(playPosition: 160), at: later)
+        XCTAssertTrue(progressWrite)
+        let movedContext = ModelContext(userState)
+        let moved = try XCTUnwrap(
+            movedContext.fetch(FetchDescriptor<EpisodeStateSync>()).first
+        )
+        XCTAssertEqual(moved.playPosition, 160)
+        XCTAssertEqual(moved.updatedAt, later)
     }
 }
 

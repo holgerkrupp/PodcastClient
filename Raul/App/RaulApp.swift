@@ -810,11 +810,13 @@ private struct RootWindowView: View {
                     UIDevice.current.isBatteryMonitoringEnabled = true
 #endif
 
+                    // Play-session recovery is self-throttling and schedules
+                    // its own startup delay, so it must not queue behind the
+                    // deferred service bootstrap (TipKit + CloudKit monitor).
+                    Player.shared.startRecoveryIfNeeded()
                     Task(priority: .userInitiated) {
                         try? await Task.sleep(for: .milliseconds(250))
                         await DeferredLaunchServiceBootstrap.shared.start()
-                        guard Task.isCancelled == false else { return }
-                        Player.shared.startRecoveryIfNeeded()
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .milliseconds(500))

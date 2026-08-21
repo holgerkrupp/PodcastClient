@@ -5,6 +5,9 @@ struct DevelopmentSettingsView: View {
     @ObservedObject private var modelContainerManager = ModelContainerManager.shared
     @AppStorage(StoreDevelopmentConfiguration.modeKey)
     private var storeMode = DevelopmentStoreMode.splitStores
+    @AppStorage(StoreDevelopmentConfiguration.legacyCloudSyncEnabledKey)
+    private var legacyCloudSyncEnabled = StoreDevelopmentConfiguration
+        .releaseLegacyCloudSyncEnabled
     @AppStorage(StoreDevelopmentConfiguration.userStateCloudSyncEnabledKey)
     private var userStateCloudSyncEnabled = false
     @AppStorage(StoreDevelopmentConfiguration.splitStoreWorkEnabledKey)
@@ -20,7 +23,6 @@ struct DevelopmentSettingsView: View {
     @State private var isRunningSyncAction = false
     @State private var resetMessage: String?
     @State private var remoteConfigRefreshToken = 0
-    @State private var migrationLog: [StoreSplitMigrationLogEntry] = []
 
     private var remoteConfig: StoreSplitRemoteConfig {
         _ = remoteConfigRefreshToken
@@ -30,7 +32,7 @@ struct DevelopmentSettingsView: View {
     private var selectedConfiguration: StoreDevelopmentConfiguration {
         StoreDevelopmentConfiguration(
             mode: storeMode,
-            legacyCloudSyncEnabled: false,
+            legacyCloudSyncEnabled: legacyCloudSyncEnabled,
             userStateCloudSyncEnabled: userStateCloudSyncEnabled,
             splitStoreWorkEnabled: splitStoreWorkEnabled
         )
@@ -57,7 +59,7 @@ struct DevelopmentSettingsView: View {
             Section {
                 Toggle("Enable migration and reconciliation", isOn: $splitStoreWorkEnabled)
                     .disabled(storeMode == .legacyOnly)
-                LabeledContent("Legacy store CloudKit", value: "Always disabled")
+                Toggle("CloudKit for legacy library store", isOn: $legacyCloudSyncEnabled)
                 Toggle("CloudKit for user-state store", isOn: $userStateCloudSyncEnabled)
                     .disabled(
                         storeMode != .splitStores && storeMode != .splitStoreReads
@@ -65,7 +67,7 @@ struct DevelopmentSettingsView: View {
             } header: {
                 Text("Cloud Synchronization")
             } footer: {
-                Text("The legacy and podcast-cache stores are always local-only. UserState.sqlite is the only CloudKit-backed store. Disable migration and reconciliation if you need to inspect the stores without background projection work.")
+                Text("This build ships the \(StoreSplitReleasePhase.current == .dualSyncBackfill ? "dual-sync backfill" : "user-state authority") phase. In the backfill phase the legacy library store keeps its CloudKit mirror and stays the source of truth, while UserState.sqlite is populated one-way in the background and never read. PodcastCache.sqlite is always local-only.")
             }
 
             Section("Active Since Launch") {
@@ -149,44 +151,20 @@ struct DevelopmentSettingsView: View {
                 } header: {
                     Text("Slice Migration")
                 } footer: {
-                    Text("Migration runs automatically: at launch, on returning to the foreground, and overnight while charging. Each slice migrates one bounded page with fresh model contexts. Slices keep running during playback at a slower pace, and wait while CloudKit is still exporting. SharedDatabase.sqlite is only ever read by the migrator.")
+                    Text("Migration runs automatically: at launch, on returning to the foreground, and overnight while charging. Each run is budgeted (25s foreground, 120s in the background task) with idle time between slices, and stops on playback or backgrounding, so it can never saturate the CPU. SharedDatabase.sqlite is only ever read by the migrator.")
                 }
 
                 Section {
-                    if migrationLog.isEmpty {
-                        Text("No migration activity recorded yet.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(migrationLog) { entry in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.event)
-                                    .font(.callout)
-                                Text(entry.date.formatted(
-                                    date: .abbreviated,
-                                    time: .standard
-                                ))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                if let details = entry.details {
-                                    Text(details)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
+                    NavigationLink {
+                        StoreSplitMigrationLogView()
+                    } label: {
+                        LabeledContent(
+                            "Migration Log",
+                            value: modelContainerManager.migrationCurrentPhase ?? "Idle"
+                        )
                     }
-                    Button("Refresh Log") {
-                        migrationLog = StoreSplitMigrationDebugLog.entries
-                    }
-                    Button("Clear Log", role: .destructive) {
-                        StoreSplitMigrationDebugLog.clear()
-                        migrationLog = []
-                    }
-                    .disabled(migrationLog.isEmpty)
-                } header: {
-                    Text("Migration Log")
                 } footer: {
-                    Text("Newest first. Recorded in the App Group so the overnight background pass leaves a trace even though it runs in its own launch of the app — an empty log after a night on the charger means iOS never ran the task. Each finished phase also posts a local notification. DEBUG builds only.")
+                    Text("When each run started and ended, which phases finished, and why a run stopped. Each finished phase also posts a local notification. DEBUG builds only.")
                 }
 
                 Section {
@@ -273,6 +251,11 @@ struct DevelopmentSettingsView: View {
                 }
                 .disabled(splitStoreActionDisabled)
 
+                Button("Recover Listening History from Split Stores") {
+                    recoverListeningHistory()
+                }
+                .disabled(splitStoreActionDisabled)
+
                 Button("Republish Playlists") {
                     republishLegacyState(.playlists)
                 }
@@ -356,12 +339,6 @@ struct DevelopmentSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle("Development")
         .platformInlineNavigationTitle()
-        .task {
-            migrationLog = StoreSplitMigrationDebugLog.entries
-        }
-        .onChange(of: modelContainerManager.migrationProgressSummary) { _, _ in
-            migrationLog = StoreSplitMigrationDebugLog.entries
-        }
         .onChange(of: storeMode) { _, mode in
             if mode == .legacyOnly || mode == .newStoresOnly {
                 userStateCloudSyncEnabled = false
@@ -417,7 +394,9 @@ struct DevelopmentSettingsView: View {
         case .legacyOnly:
             "Only the local library store is opened. Split-store migration, imports, and dual writes are disabled."
         case .splitStores:
-            "The app reads the durable local library store and dual-writes user state into UserState.sqlite. Migration publishes the remaining local state; UserState is not yet the read authority."
+            StoreSplitReleasePhase.current == .dualSyncBackfill
+                ? "Shipping backfill mode. The legacy library store is the source of truth and keeps syncing through CloudKit exactly as before. UserState.sqlite is filled one-way in the background and is never read."
+                : "The app reads the durable local library store and dual-writes user state into UserState.sqlite. Migration publishes the remaining local state; UserState is not yet the read authority."
         case .splitStoreReads:
             "Recommended cross-device test mode. The durable local library store serves the UI, and UserState.sqlite is the authority for subscriptions, playback state, playlists, and bookmarks. CloudKit follows the two toggles above."
         case .newStoresOnly:
@@ -487,8 +466,27 @@ struct DevelopmentSettingsView: View {
         Task {
             StoreSplitMigrationDebugLog.record("background pass simulated from settings")
             await modelContainerManager.runStoreSplitMigrationBackgroundPass()
-            migrationLog = StoreSplitMigrationDebugLog.entries
             resetMessage = "Background pass finished. Check the migration log."
+            isRunningSyncAction = false
+        }
+    }
+
+    /// Projects `ListeningHistorySync` back into legacy play sessions. Needed on
+    /// a device that recorded sessions while the runtime graph lived in memory —
+    /// those never reached SharedDatabase.sqlite. Deduplicates against existing
+    /// sessions, so running it twice does not inflate the statistics.
+    private func recoverListeningHistory() {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            do {
+                let result = try await modelContainerManager
+                    .recoverListeningHistoryForDevelopment()
+                resetMessage = "Recovered \(result.listeningHistoryApplied) sessions and \(result.listeningSummariesApplied) summaries."
+                    + (result.failed > 0 ? " \(result.failed) failures." : "")
+            } catch {
+                resetMessage = error.localizedDescription
+            }
             isRunningSyncAction = false
         }
     }

@@ -66,6 +66,12 @@ enum StoreSplitRollout {
     /// durable local library store — so a remote pause or a rollback between
     /// them can never empty the Library or the playlists.
     static var resolvedMode: DevelopmentStoreMode {
+        // During the backfill release the rollout state records migration
+        // progress but must not change how the app reads: the legacy graph stays
+        // the authority for everything.
+        guard StoreSplitReleasePhase.current == .userStateAuthority else {
+            return .splitStores
+        }
         switch state {
         case .newStoreReads:
             return .splitStoreReads

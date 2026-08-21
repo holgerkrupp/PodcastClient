@@ -104,6 +104,43 @@ enum StoreSplitMigrationDebugLog {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Records one slice. Slices are frequent, so these are collapsed into a
+    /// single rolling entry per phase rather than appended, keeping the log
+    /// readable while still showing that work is progressing.
+    static func recordSlice(
+        phase: String,
+        processed: Int,
+        status: String,
+        footprint: String?
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        var stored = decodedEntries()
+        let event = "slice: \(phase)"
+        let details = "processed \(processed), \(status)"
+            + (footprint.map { ", \($0)" } ?? "")
+        if let index = stored.lastIndex(where: { $0.event == event }),
+           index == stored.count - 1 {
+            stored[index] = StoreSplitMigrationLogEntry(
+                id: stored[index].id,
+                date: Date(),
+                event: event,
+                details: details
+            )
+        } else {
+            stored.append(StoreSplitMigrationLogEntry(
+                date: Date(),
+                event: event,
+                details: details
+            ))
+        }
+        if stored.count > maximumEntryCount {
+            stored.removeFirst(stored.count - maximumEntryCount)
+        }
+        guard let data = try? JSONEncoder().encode(stored) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+
     /// Records a finished phase and surfaces it as a passive banner.
     static func recordPhaseFinished(_ phase: String, progress: String?) {
         let details = progress ?? "no progress summary"

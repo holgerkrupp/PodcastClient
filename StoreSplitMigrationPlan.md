@@ -5,6 +5,24 @@ implementation checklist is in `Documentation/StoreSplitMigrationPlan.md`,
 and the cache read-cutover checklist is in
 `Documentation/StoreSplitCacheCutoverPlan.md`.
 
+## Shipping sequence (revised 2026-08-17)
+
+The split ships in **two releases**, selected by `StoreSplitReleasePhase.current`.
+
+**Ship #1 — `dualSyncBackfill` (current).** Nothing user-visible changes. The
+legacy library graph stays the source of truth *and* keeps its CloudKit mirror,
+so cross-device behaviour is exactly what shipped before and a household running
+mixed versions cannot diverge. `UserState.sqlite` is populated one-way in the
+background and synced, but **nothing reads it** — the importer is off entirely.
+This proves the schema, the CloudKit payload, and the migration against real
+libraries with no way to lose data, and it takes all time pressure off the
+backfill: it can trickle for weeks.
+
+**Ship #2 — `userStateAuthority`.** Flip the constant. Legacy CloudKit sync goes
+off and `UserState.sqlite` becomes the read authority. This is the release that
+shrinks the iCloud payload. Safe only once ship #1 has converged across the
+population.
+
 ## Final architecture (revised 2026-08-16)
 
 The split is a **synchronization** boundary, not a file migration. The app must
@@ -13,9 +31,11 @@ have exactly one CloudKit-backed SwiftData store:
 - `UserState.sqlite` — compact, relationship-free, user-owned state only.
   CloudKit `.automatic`. This is the only store that leaves the device.
 - `SharedDatabase.sqlite` — the durable local library graph the UI binds to.
-  Read-write, always `cloudKitDatabase: .none`. It is not a temporary migration
-  artifact: keeping it in place is what makes the upgrade invisible, because no
-  user data has to be copied or rebuilt before the first frame.
+  Read-write. It keeps its CloudKit mirror through the `dualSyncBackfill` ship
+  and becomes `cloudKitDatabase: .none` in `userStateAuthority`. It is not a
+  temporary migration artifact: keeping it in place is what makes the upgrade
+  invisible, because no user data has to be copied or rebuilt before the first
+  frame.
 - `PodcastCache.sqlite` — local-only, for data the model graph cannot express:
   migration checkpoints/verification, namespaced feed extension elements, AI
   revision staging, feed aliases, device-local episode classification, download

@@ -3,9 +3,19 @@ import XCTest
 @testable import UpNext
 
 final class StableIdentityTests: XCTestCase {
-    func testReleaseCloudSyncPolicyUsesOnlyTheUserStateStore() {
-        XCTAssertFalse(StoreDevelopmentConfiguration.releaseLegacyCloudSyncEnabled)
+    /// Ship #1 keeps the legacy CloudKit mirror so existing users' sync is
+    /// untouched; ship #2 is the one that drops it and shrinks the payload.
+    func testReleaseCloudSyncPolicyMatchesTheShippedPhase() {
         XCTAssertTrue(StoreDevelopmentConfiguration.releaseUserStateCloudSyncEnabled)
+        switch StoreSplitReleasePhase.current {
+        case .dualSyncBackfill:
+            XCTAssertTrue(StoreDevelopmentConfiguration.releaseLegacyCloudSyncEnabled)
+            XCTAssertFalse(StoreDevelopmentConfiguration.userStateImportEnabled)
+            XCTAssertFalse(StoreDevelopmentConfiguration.newStoreReadsEnabled)
+            XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
+        case .userStateAuthority:
+            XCTAssertFalse(StoreDevelopmentConfiguration.releaseLegacyCloudSyncEnabled)
+        }
     }
 
     func testSplitStoreReadModeSupportsCloudBackedDualWriteMigration() {
@@ -19,7 +29,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertTrue(configuration.splitStoresEnabled)
         XCTAssertTrue(configuration.newStoreReadsEnabled)
         XCTAssertTrue(configuration.legacyMigrationEnabled)
-        XCTAssertFalse(configuration.effectiveLegacyCloudSyncEnabled)
+        XCTAssertTrue(configuration.effectiveLegacyCloudSyncEnabled)
         XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
     }
 
@@ -34,7 +44,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertFalse(configuration.splitStoresEnabled)
         XCTAssertFalse(configuration.newStoreReadsEnabled)
         XCTAssertFalse(configuration.legacyMigrationEnabled)
-        XCTAssertFalse(configuration.effectiveLegacyCloudSyncEnabled)
+        XCTAssertTrue(configuration.effectiveLegacyCloudSyncEnabled)
         XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
     }
 

@@ -64,6 +64,8 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static let cacheRecoveryVersion = 1
     nonisolated private static let cacheRecoveryVersionKey =
         "storeSplit.cacheOnlyLibraryRecoveryVersion"
+    nonisolated private static let lastImportedUserStateStampKey =
+        "storeSplit.lastImportedUserStateStamp"
     nonisolated private static let usedInMemoryProjectionKey =
         "storeSplit.usedInMemoryLibraryProjection"
     /// Migration version whose phases have all completed on this device.
@@ -71,7 +73,15 @@ class ModelContainerManager: ObservableObject {
         "storeSplit.completedMigrationVersion"
     /// Spacing between migration slices while audio is playing. Long enough that
     /// the backfill stays a background trickle rather than a sustained load.
-    nonisolated private static let playbackSliceSpacingSeconds = 3.0
+    /// Idle time between slices, so a long backfill stays a background trickle
+    /// instead of a sustained CPU/disk load.
+    nonisolated private static let sliceSpacingSeconds = 0.75
+    /// Wall-clock budget for one foreground migration run.
+    nonisolated private static let foregroundRunBudgetSeconds: TimeInterval = 25
+    /// Wall-clock budget inside a `BGProcessingTask`.
+    nonisolated private static let backgroundRunBudgetSeconds: TimeInterval = 120
+    /// How long to wait before picking the backfill up after a budget stop.
+    nonisolated private static let budgetExhaustedRetryDelay: TimeInterval = 180
     /// How long to wait before retrying after yielding to a CloudKit export.
     nonisolated private static let exportBackpressureRetryDelay: TimeInterval = 120
 
@@ -972,30 +982,19 @@ class ModelContainerManager: ObservableObject {
 #endif
 
     func pauseSplitStoreWorkForBackground() {
-        // While audio is playing the process keeps running on its audio session
-        // rather than being suspended, so the backfill may continue — that is the
-        // window in which most listeners' devices are awake. The slice loop stops
-        // itself at the next page boundary if playback ends while backgrounded,
-        // which keeps the app from holding the shared-container SQLite lock
-        // across a suspension (0xdead10cc).
-        let keepMigrating = Player.shared.isPlaying
-        if keepMigrating == false {
-            migrationTask?.cancel()
-        }
+        // Everything stops on backgrounding. Letting the backfill continue on the
+        // audio session's process time looked attractive, but the loop it kept
+        // alive ran at ~98% CPU for hours and the process was killed by the CPU
+        // limit. Background progress belongs to the metered `BGProcessingTask`,
+        // which has a budget and an expiration handler.
+        migrationTask?.cancel()
         userStateImportTask?.cancel()
         aiContentImportTask?.cancel()
-        Task { [keepMigrating] in
-            await splitStoreCoordinator.pauseForBackground(
-                keepMigrationRunning: keepMigrating
-            )
+        Task {
+            await splitStoreCoordinator.pauseForBackground()
         }
-        pendingSplitStoreWorkReason = keepMigrating
-            ? "migrating during background playback"
-            : "paused while app is in background"
-        CrashBreadcrumbs.shared.record(
-            "store_split_work_background_cancel_requested",
-            details: "keep_migrating=\(keepMigrating)"
-        )
+        pendingSplitStoreWorkReason = "paused while app is in background"
+        CrashBreadcrumbs.shared.record("store_split_work_background_cancel_requested")
     }
 
     /// Whether the slice loop may keep going given where the app currently is.
@@ -1044,6 +1043,37 @@ class ModelContainerManager: ObservableObject {
         -> StoreSplitCompatibilityProjectionResult {
         await prepareSplitStores()
         return await recoverCacheOnlyLibraryDataIfNeeded(force: true)
+    }
+
+    /// One-off recovery of listening history that exists only in the split
+    /// stores. Rebuilds the hourly statistics afterwards so the Statistics screen
+    /// reflects the restored sessions immediately.
+    func recoverListeningHistoryForDevelopment() async throws
+        -> StoreSplitUserStateImportResult {
+        await prepareSplitStores()
+        guard let legacyContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        guard isMigratingSplitStores == false, userStateImportTask == nil else {
+            throw StoreSplitDevelopmentResetError.workInProgress
+        }
+
+        StoreSplitMigrationDebugLog.record("listening history recovery started")
+        let result = await StoreSplitUserStateImporter.applyListeningHistoryOnly(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+        if result.listeningHistoryApplied > 0 || result.listeningSummariesApplied > 0 {
+            await PlaySessionTrackerActor(
+                modelContainer: legacyContainer
+            ).rebuildListeningStats()
+        }
+        StoreSplitMigrationDebugLog.record(
+            "listening history recovery finished",
+            details: "history=\(result.listeningHistoryApplied), summaries=\(result.listeningSummariesApplied), failed=\(result.failed)"
+        )
+        return result
     }
 
     func importAvailableSplitStoreStateNow() async throws {
@@ -1289,6 +1319,12 @@ class ModelContainerManager: ObservableObject {
 #endif
             }
             var exportWaitCount = 0
+            var sliceCount = 0
+            let deadline = Date().addingTimeInterval(
+                self.isRunningBackgroundProcessingTask
+                    ? Self.backgroundRunBudgetSeconds
+                    : Self.foregroundRunBudgetSeconds
+            )
             sliceLoop: while true {
                 if Task.isCancelled {
                     CrashBreadcrumbs.shared.record("store_split_migration_cancelled")
@@ -1304,22 +1340,30 @@ class ModelContainerManager: ObservableObject {
 #endif
                     break
                 }
-                // Playback no longer stops the backfill — it only slows it down.
-                // Each slice is bounded, reads the library store and writes
-                // UserState, so it does not contend with the player's own writes;
-                // the extra spacing keeps sustained CPU and disk pressure off the
-                // audio path. Stopping outright meant a device that is usually
-                // playing something never finished migrating.
-                let isPlaying = Player.shared.isPlaying
-                if migrationMayContinueInCurrentAppState() == false {
-                    pendingSplitStoreWorkReason = "paused while app is in background"
+                // Hard wall-clock budget. A slice is bounded in rows, but the
+                // number of slices is not, and an unbudgeted loop saturated a
+                // CPU for hours and was killed by the 80%-over-60s limit.
+                if Date() >= deadline {
+                    pendingSplitStoreWorkReason = "budget reached, continuing later"
+                    scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
 #if DEBUG
-                    stopReason = "app backgrounded without playback"
+                    stopReason = "run budget reached after \(sliceCount) slices"
 #endif
                     break
                 }
-                if isPlaying {
-                    pendingSplitStoreWorkReason = "migrating slowly during playback"
+                if Player.shared.isPlaying {
+                    pendingSplitStoreWorkReason = "waiting for playback to stop"
+#if DEBUG
+                    stopReason = "playback started"
+#endif
+                    break
+                }
+                if migrationMayContinueInCurrentAppState() == false {
+                    pendingSplitStoreWorkReason = "paused while app is in background"
+#if DEBUG
+                    stopReason = "app backgrounded"
+#endif
+                    break
                 }
                 if cloudKitExportInProgress() {
                     exportWaitCount += 1
@@ -1370,12 +1414,12 @@ class ModelContainerManager: ObservableObject {
 #endif
                     break sliceLoop
                 case .advanced, .phaseCompleted:
+                    sliceCount += 1
                     await Task.yield()
-                    try? await Task.sleep(
-                        for: isPlaying
-                            ? .seconds(Self.playbackSliceSpacingSeconds)
-                            : .milliseconds(50)
-                    )
+                    // Deliberate idle time between slices. Without it the loop
+                    // ran back-to-back SwiftData saves at ~98% CPU until iOS
+                    // killed the process.
+                    try? await Task.sleep(for: .seconds(Self.sliceSpacingSeconds))
                 }
             }
         }
@@ -1421,6 +1465,16 @@ class ModelContainerManager: ObservableObject {
             }
         }
 #if DEBUG
+        // Per-slice timing and footprint, so an expensive phase is identifiable
+        // from the log instead of from a resource-exhaustion report.
+        if let phase = report.phase {
+            StoreSplitMigrationDebugLog.recordSlice(
+                phase: phase,
+                processed: report.processed,
+                status: "\(report.status)",
+                footprint: migrationFootprintSummary
+            )
+        }
         // Central hook: every path that runs a slice — the loop, the overnight
         // pass, and the single-slice development button — reports through here.
         if report.status == .phaseCompleted, let phase = report.phase {
@@ -1486,6 +1540,30 @@ class ModelContainerManager: ObservableObject {
         }
         guard let legacyContainer = preparedContainer,
               let userStateContainer = preparedUserStateContainer else {
+            return emptyResult
+        }
+
+        // A full projection pass walks every synchronized row and rebuilds the
+        // listening stats. That is hundreds of megabytes of SQLite writes on a
+        // large library, and reconciles are triggered by launch, foreground, and
+        // every CloudKit import event — so repeating it when nothing arrived
+        // dirtied ~17 GB overnight. Skip the pass unless UserState actually
+        // changed since the last complete import.
+        let watermark = latestUserStateChangeStamp(userStateContainer)
+        if authoritativePlaylists == false,
+           let watermark,
+           let lastImported = Self.lastImportedUserStateStamp,
+           watermark <= lastImported {
+            CrashBreadcrumbs.shared.record(
+                "store_split_user_state_import_skipped",
+                details: "no_user_state_changes"
+            )
+#if DEBUG
+            StoreSplitMigrationDebugLog.record(
+                "reconcile skipped",
+                details: "no UserState changes since the last import"
+            )
+#endif
             return emptyResult
         }
 
@@ -1571,13 +1649,64 @@ class ModelContainerManager: ObservableObject {
         userStateImportTask = task
         let result = await task.value
         userStateImportTask = nil
-        await PlaySessionTrackerActor(
-            modelContainer: legacyContainer
-        ).rebuildListeningStats()
+        // Only rebuild the hourly statistics when history actually moved.
+        // Rebuilding after every reconcile rewrote the whole stats table for no
+        // reason and was a large part of the write volume.
+        if result.listeningHistoryApplied > 0 || result.listeningSummariesApplied > 0 {
+            await PlaySessionTrackerActor(
+                modelContainer: legacyContainer
+            ).rebuildListeningStats()
+        }
         await StoreSplitPlaylistPresenceStore.publish(
             modelContainer: userStateContainer
         )
+        if result.failed == 0, result.interruptedByPlayback == false {
+            Self.lastImportedUserStateStamp = watermark
+        }
+#if DEBUG
+        StoreSplitMigrationDebugLog.record(
+            "reconcile finished",
+            details: "subscriptions=\(result.subscriptionsApplied), states=\(result.episodeStatesApplied), playlists=\(result.playlistsApplied), history=\(result.listeningHistoryApplied), failed=\(result.failed)"
+        )
+#endif
         return result
+    }
+
+    /// Newest `updatedAt` across the synchronized models — a cheap change token
+    /// for "has anything arrived since the last import?".
+    private func latestUserStateChangeStamp(_ container: ModelContainer) -> Date? {
+        let context = ModelContext(container)
+        func newest<Model: PersistentModel>(
+            _ keyPath: KeyPath<Model, Date> & Sendable
+        ) -> Date? {
+            var descriptor = FetchDescriptor<Model>(
+                sortBy: [SortDescriptor(keyPath, order: .reverse)]
+            )
+            descriptor.fetchLimit = 1
+            return (try? context.fetch(descriptor))?.first?[keyPath: keyPath]
+        }
+        return [
+            newest(\SubscriptionSync.updatedAt),
+            newest(\EpisodeStateSync.updatedAt),
+            newest(\PlaylistSync.updatedAt),
+            newest(\PlaylistEntrySync.updatedAt),
+            newest(\QueueEntrySync.updatedAt),
+            newest(\BookmarkSync.updatedAt),
+            newest(\PodcastPreferenceSync.updatedAt),
+            newest(\ListeningHistorySync.updatedAt),
+            newest(\ListeningSummarySync.updatedAt)
+        ].compactMap { $0 }.max()
+    }
+
+    nonisolated private static var lastImportedUserStateStamp: Date? {
+        get {
+            (UserDefaults(suiteName: appGroupID) ?? .standard)
+                .object(forKey: lastImportedUserStateStampKey) as? Date
+        }
+        set {
+            (UserDefaults(suiteName: appGroupID) ?? .standard)
+                .set(newValue, forKey: lastImportedUserStateStampKey)
+        }
     }
 
     /// Runs `body` while holding a UIKit background-task assertion named
@@ -1713,11 +1842,18 @@ class ModelContainerManager: ObservableObject {
                 cloudKitDatabase: .none
             )
         } else if let sharedContainerURL = sharedContainerURL {
+            // The library graph keeps its CloudKit mirror through the
+            // `dualSyncBackfill` release, so existing users' cross-device
+            // behaviour is untouched while UserState is being built up. Ship #2
+            // flips `StoreSplitReleasePhase.current` and this becomes `.none`,
+            // which is the change that actually shrinks the iCloud payload.
             configuration = ModelConfiguration(
                 "Legacy",
                 url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
                 allowsSave: allowsSave,
-                cloudKitDatabase: .none
+                cloudKitDatabase: StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                    ? .automatic
+                    : .none
             )
         } else {
             configuration = ModelConfiguration(
