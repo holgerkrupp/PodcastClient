@@ -73,6 +73,19 @@ actor PlayedEpisodePlaylistPruner {
         UserDefaults.standard.bool(forKey: isEnabledKey)
     }
 
+    /// Whether to do the full scan purely to log what *would* be removed.
+    ///
+    /// That report is the evidence the membership rule still needs, but it is
+    /// only worth collecting where someone can read it. Release builds skip the
+    /// scan entirely while the pruner is disabled.
+    static var isDryRunLoggingEnabled: Bool {
+#if DEBUG
+        true
+#else
+        false
+#endif
+    }
+
     private let legacyContainer: ModelContainer
 
     init(legacyContainer: ModelContainer) {
@@ -81,6 +94,15 @@ actor PlayedEpisodePlaylistPruner {
 
     @discardableResult
     func prune() async -> PlayedEpisodePruneResult {
+        // Disabled is the shipping state, and it runs at every launch and after
+        // every import. Leave before touching the store: the dry run below fetches
+        // every playlist entry and hops to the main actor for the now-playing URL,
+        // which is real launch-time work to produce a log line nobody reads on a
+        // device that is not being debugged.
+        guard Self.isEnabled || Self.isDryRunLoggingEnabled else {
+            return PlayedEpisodePruneResult()
+        }
+
         let context = ModelContext(legacyContainer)
         let entries = (try? context.fetch(FetchDescriptor<PlaylistEntry>())) ?? []
         guard entries.isEmpty == false else { return PlayedEpisodePruneResult() }
