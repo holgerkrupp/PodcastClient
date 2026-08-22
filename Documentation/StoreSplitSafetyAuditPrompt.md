@@ -112,6 +112,60 @@ other instance of the same class, and assess App Store impact.
     Assess what a support engineer or a user can actually observe and extract
     on an App Store build.
 
+11. Contradictory standing instructions in the documentation.
+    `FinishStoreSplitMigrationCodexPrompt.md` states that
+    `SharedDatabase.sqlite` "is a temporary migration/recovery source only",
+    "must not use CloudKit", and "must be removed after lossless migration
+    verification". `StoreSplitCacheCutoverPlan.md` line 270 states the opposite:
+    the file "is now permanent, not a migration artifact". The second matches
+    the confirmed product strategy. The first is a standing instruction to
+    delete the durable library store. Reconcile the documents and make the
+    surviving statement unambiguous; treat this as a correctness issue, because
+    an agent acting on the stale instruction destroys the library.
+
+## Workstream: synced-schema classification
+
+The confirmed product strategy is: everything reconstructible from podcast
+feeds lives in local-only stores (`SharedDatabase.sqlite` as the durable
+library store, `PodcastCache.sqlite` as the feed/device cache), and only
+user-owned state lives in `UserState.sqlite`. The purpose of the split is a
+*small* synchronized store that syncs quickly between devices. Audit the
+current classification against that purpose, not merely against the allow-list.
+
+The synced schema is nine entities: SubscriptionSync, EpisodeStateSync,
+QueueEntrySync, PlaylistSync, PlaylistEntrySync, BookmarkSync,
+PodcastPreferenceSync, ListeningSummarySync, ListeningHistorySync.
+
+Answer these:
+
+- `ListeningSummarySync` is derived data. It is computed from
+  `ListeningHistorySync`, which is itself synced, and its identity is
+  (feedURL, periodKind, periodStart, sourceDeviceID). `PlaySessionSummaryPeriod`
+  has five cases, so each feed listened to on a given day produces day, week,
+  month, year and forever rows — per device. Estimate its real cardinality for
+  a multi-year, multi-device library and compare it against the other eight
+  entities. Determine whether it is the largest table in the store the split
+  exists to keep small.
+- Establish the general rule: should derived aggregates sync at all, when every
+  device already holds the history needed to recompute them locally? Note that
+  the cross-device summing of these aggregates is the defect that produced the
+  incorrect lifetime total in the incident, so removing them from the synced
+  schema would eliminate a bug class rather than fix one instance.
+- Decide what listening history requires: full session records, compact
+  records, or nothing synced at all. This is a product question about whether
+  statistics are per-account or per-device. Surface the trade-off and its
+  payload consequences; do not silently pick one.
+- Check for feed-derivable fields that leaked into synced entities.
+  `EpisodeStateSync.duration` is one known instance. Find the rest.
+- `UserStateCloudSchemaAudit` asserts an allow-list of synced types. Determine
+  whether it constrains payload *size and cardinality* or only type membership,
+  and extend it to whichever it does not cover.
+
+Note for context: during `dualSyncBackfill` both `SharedDatabase.sqlite` and
+`UserState.sqlite` are CloudKit-backed, so the current iCloud payload is larger
+than before the split. The intended reduction only materialises at the
+cutover. Do not read present-day sync behaviour as evidence the design works.
+
 ## The question that matters most
 
 `StoreSplitReleasePhase.current` is the cutover constant. Moving it from
