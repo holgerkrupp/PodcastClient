@@ -195,74 +195,82 @@ install detached before the bookkeeping existed — but per F2 there are none.
 
 ---
 
-## F4 — Derived listening data is an input to the record it is derived from
+## F4 — Derived listening data was an input to the record it is derived from
 
-**Mechanism.** A closed loop across two services:
+**Now structurally impossible.** The cycle needed a synced aggregate to exist.
+None does.
 
-1. `StoreSplitUserStateImporter.applyListeningSummaries`
-   (`StoreSplitUserStateImporter.swift:1013`) deletes the whole legacy
-   `PlaySessionSummary` table (`:1098`) and rewrites it from the synced
+**Mechanism, as it was.** A closed loop across two services:
+
+1. `StoreSplitUserStateImporter.applyListeningSummaries` deleted the whole legacy
+   `PlaySessionSummary` table and rewrote it from the synced
    `ListeningSummarySync` rows.
-2. `StoreSplitMigrationService.processListeningSummaries` reads that same legacy
-   table and republishes it as the authoritative `__legacy_shared__`
-   `ListeningSummarySync` record (`:1642`, `:1679`).
-3. The republish **max-merges** (`:1590-1620`). A total that has been through the
-   loop once can never come back down, on any device on the account.
+2. `StoreSplitMigrationService.processListeningSummaries` read that same legacy
+   table and republished it as the authoritative `__legacy_shared__`
+   `ListeningSummarySync` record.
+3. The republish **max-merged**. A total that went through the loop once could
+   never come back down, on any device on the account.
 
-So a local total that is wrong for any reason — including F5 below — is promoted
-to authoritative and pushed to every device, permanently.
+So a local total that was wrong for any reason — including F5 — was promoted to
+authoritative and pushed to every device, permanently.
 
-**Exposed.** Dev today; every install once `.userStateAuthority` ships, because
-that is what enables `userStateImportEnabled`
-(`StoreDevelopmentConfiguration.swift:135`).
-**Live or dormant.** Dormant. The DEBUG "Rebuild Listening Summaries" action can
-drive step 2 today.
+**Exposed.** Dev only; the import leg required `.userStateAuthority`.
+**Live or dormant.** Never live outside development.
 **Presents as.** Lifetime listening time that grows on its own and cannot be
 corrected — the 1069h-instead-of-350h symptom, made permanent.
-**Status. Fixed** — `ca00c783`. The importer stamps a deterministic,
-recognisable id on rows it projects (`PlaySessionSummary.splitStoreProjectionID`)
-and the migration skips them (`StoreSplitMigrationService.swift:1558`). The
-cycle is broken at the point where derived data would re-enter as evidence.
 
-The remaining half of the mitigation was already in place and is preserved:
-"Rebuild Analytics from Raw Sessions" recomputes from `PlaySession` rows and is
-the correct action after a bad merge, as its comment says
-(`ModelContainerManager.swift:1195-1205`).
+**Status. Removed, in two steps.** First fixed in `ca00c783` by tagging the
+projected rows with a recognisable deterministic id so the migration could skip
+them — a valid cut of the loop, but still a loop with a guard on it. Then
+eliminated in `ff4d22cb`: the importer no longer writes the legacy summary table
+at all, because nothing synced is left to write it from. Summaries are a purely
+local derivation from `PlaySession` rows via `rebuildListeningStats`. The
+projection-id machinery was deleted with the cycle, because a guard on an
+impossible path is just code that has to keep being understood.
+
+The general rule this leaves behind, now enforced by
+`UserStateCloudSchemaAudit.permitsAggregateGrowth`: **nothing derived from synced
+rows may itself sync.** Derived data that travels becomes evidence, and evidence
+that was derived from evidence cannot be corrected — only ratcheted.
 
 ---
 
 ## F5 — `__legacy_shared__` and the live per-device summaries could overlap
 
-**Mechanism.** Lifetime totals are computed by summing `ListeningSummarySync`
-rows that share (feedURL, periodKind, periodStart) and differ only by
-`sourceDeviceID` — including the `__legacy_shared__` migration record. Both the
-importer (`StoreSplitUserStateImporter.swift:1090`) and the reader
-(`StatisticsView.swift:1847`) do this.
+**Now structurally impossible.** There are no per-device summaries to overlap
+with.
 
-That is only correct if the two sets are disjoint, and the design says they are:
-`rebuildLiveSummaries` deliberately excludes migrated rows
-(`StoreSplitListeningHistorySyncWriter.swift:130`) because `__legacy_shared__`
-already carries them.
+**Mechanism, as it was.** Lifetime totals were computed by summing
+`ListeningSummarySync` rows that shared (feedURL, periodKind, periodStart) and
+differed only by `sourceDeviceID` — including the `__legacy_shared__` migration
+record. Both the importer and `StatisticsView` did this.
 
-`apply(_:to:)` broke the disjointness by setting `record.isLegacyMigrated = false`
-on **every** update. A migrated row touched by a live upsert joined this device's
-per-device rollup while `__legacy_shared__` still accounted for it — and nothing
-ever subtracts from `__legacy_shared__`.
+That is only correct if the two sets are disjoint, and the design intended them
+to be: `rebuildLiveSummaries` excluded migrated rows because `__legacy_shared__`
+already carried them. `apply(_:to:)` broke the disjointness by setting
+`record.isLegacyMigrated = false` on **every** update, so a migrated row touched
+by a live upsert joined the per-device rollup while `__legacy_shared__` still
+accounted for it — and nothing ever subtracts from `__legacy_shared__`.
 
-`StatisticsView` has a partial mitigation: when a `.forever` set contains no
-`__legacy_shared__` row it adds the migrated history separately
-(`:1850-1858`). That handles the *absent* case. It does not help when both are
-present, which is the case this defect creates.
-
-**Exposed.** Any install that has run the migration and then re-recorded a
-session with identical (feed, episode, start, end, positions) — plausible after
-an analytics rebuild.
-**Live or dormant.** The writer path is live; the double-counted *read* is behind
-`newStoreReadsEnabled`, so the visible symptom is dormant.
+**Exposed.** Any install that had run the migration and then re-recorded a
+session with identical (feed, episode, start, end, positions).
+**Live or dormant.** The writer path was live; the double-counted read was behind
+`newStoreReadsEnabled`.
 **Presents as.** Lifetime listening time roughly doubled for the affected feeds.
-**Status. Fixed** — `ca00c783`. `isLegacyMigrated` is preserved on update.
-Regression tests: `UpNextTests/StoreSplitListeningTotalsTests.swift`, including
-the contrast case that a never-migrated row still counts.
+
+**Status. Removed, in two steps.** First fixed in `ca00c783` by preserving
+`isLegacyMigrated`. Then, in `ff4d22cb`, the per-device rollups were deleted
+outright: the account total is the frozen baseline plus the live sessions, and
+the per-device shares are the same sessions grouped by device. One set of rows,
+two readings, nothing to reconcile.
+
+**What survives, and why it still matters.** `isLegacyMigrated` is still the rule
+that keeps migrated sessions out of a total the baseline already contains — it
+went from patching a rollup to being the single documented exclusion, asserted in
+`StoreSplitListeningTotalsTests` and expressed in
+`AccountListeningTotals.lifetimeSeconds`. The fallback there is deliberate: on a
+device with no baseline the migrated rows are the only record of the pre-split
+era, so they are counted exactly then and never otherwise.
 
 ---
 
@@ -358,36 +366,107 @@ dry-run plan/apply split remain the mitigation.
 
 ## F8 — The synced schema was constrained by membership, not by size
 
-**Mechanism.** `UserStateCloudSchemaAudit` (`StoreSplitMigrationVerifier.swift:465`)
-asserted a nine-name allow-list and a forbidden list, and nothing else. Two gaps:
+**Resolved.** The aggregate is gone from the synced schema and the constraint
+that would have caught it is now enforced.
+
+**Mechanism.** `UserStateCloudSchemaAudit` asserted a nine-name allow-list and a
+forbidden list, and nothing else. Two gaps:
 
 *The allow-list was not compared to anything.* It is written by hand; the
-`Schema` in `makeUserStateContainer` (`ModelContainerManager.swift:1974`) is
-written by hand. They agreed only until one of them was edited.
+`Schema` in `makeUserStateContainer` is written by hand. They agreed only until
+one of them was edited.
 
 *Membership is the wrong property.* The split exists to produce a **small** store
-that syncs quickly. `ListeningSummarySync` passes the allow-list and is
-structurally the largest table in it: its identity is (feedURL, periodKind,
-periodStart, sourceDeviceID) and `PlaySessionSummaryPeriod` has five cases, so
-one feed listened to on one day on one device materialises a day, week, month,
-year and forever row. For 40 feeds, five years of listening and two devices the
-estimate is ≈ 40 × (1825 + 261 + 61 + 5 + 1) × 2 ≈ **170,000 rows** — more than
-every other synced entity combined, for data every device can already recompute
-from `ListeningHistorySync`, which is itself synced.
+that syncs quickly. `ListeningSummarySync` passed the allow-list and was
+structurally the largest table in it: its identity was (feedURL, periodKind,
+periodStart, sourceDeviceID), and `PlaySessionSummaryPeriod` has five cases, so
+one feed listened to on one day on one device materialised a day, week, month,
+year and forever row — all of it recomputable from `ListeningHistorySync`, which
+is itself synced.
 
-**Exposed.** All installs once UserState carries a full history.
-**Live or dormant.** Live — `UserState.sqlite` syncs today.
+**Exposed.** All installs once UserState carried a full history.
+**Live or dormant.** Was live — `UserState.sqlite` syncs today.
 **Presents as.** Slow first sync on a new device; iCloud storage consumed by
-numbers that could have been computed locally.
-**Status. Partly fixed** — `89c33947` adds the schema-vs-allow-list comparison, a
-declared row-growth class per entity, an inventory of feed-derived fields that
-leaked into synced records, and the cardinality arithmetic as a test. Removing
-the aggregates from the synced schema is a product decision; see
-[Unresolved](#unresolved--needs-a-decision).
+numbers every device could compute for itself.
 
-Known feed-derived leaks, now inventoried in
+**Status. Resolved** — `89c33947` and `ff4d22cb`.
+
+`89c33947` added the schema-vs-allow-list comparison, a declared row-growth class
+per entity, an inventory of feed-derived fields, and the cardinality arithmetic
+as a test. `ff4d22cb` acted on what that measured: `ListeningSummarySync` is out
+of the synced schema, replaced by `ListeningBaselineSync` — one frozen row per
+feed. `RowGrowth.perFeedPerPeriodPerDevice` is now a *rejected* shape rather than
+a described one, `permitsAggregateGrowth` says so, and
+`reintroducedRetiredModelNames` fails the audit if the retired entity comes back.
+
+### Payload, before and after
+
+Same library throughout: 40 feeds, five years of listening, 2 devices, ~3
+sessions per listening day per device.
+
+| | Before | After |
+| --- | ---: | ---: |
+| `ListeningSummarySync` | ~170,000 | — |
+| `ListeningHistorySync` | ~11,000 | ~11,000 |
+| `EpisodeStateSync` | ~10,400 | ~10,400 |
+| Subscriptions, preferences, queue, playlists, bookmarks | ~400 | ~400 |
+| `ListeningBaselineSync` | — | 41 |
+| **Total** | **~192,000** | **~22,000** |
+
+Roughly a **9× reduction**, and the removed table was ~89% of the rows. The
+arithmetic is `UserStateCloudSchemaAudit.estimatedAggregateRowCount` and
+`estimatedSyncedRowCount`, asserted in `StoreSplitSyncedSchemaAuditTests` so the
+next proposal for a synced aggregate has to argue against a number.
+
+### What happens to existing installs
+
+Removing an entity from a store that already has it is a schema change, and the
+failure mode is not a wrong number — it is `ModelContainer.init` throwing at
+launch, leaving the app with no UserState store at all. This was tested rather
+than reasoned about, in `StoreSplitUserStateSchemaUpgradeTests`, against a real
+on-disk store in a temporary directory:
+
+* A store written with the retired entity **opens** with the shipping schema.
+  Core Data's lightweight migration drops the table.
+* Every other entity's rows survive intact — subscriptions, episode state,
+  playlists, playlist and queue entries, bookmarks, preferences, and crucially
+  the session rows that all listening totals now come from.
+* The upgraded store accepts `ListeningBaselineSync` and persists it.
+* Reopening is repeatable, not a one-shot migration that works once.
+
+The retired model is redeclared in the test target so this stays under test
+without the app shipping a model it no longer uses. SwiftData names the entity
+after the type, so the store those tests write is the store an older build wrote.
+
+### What happens to the CloudKit zone
+
+Less tidy, and worth being explicit about.
+
+`CD_ListeningSummarySync` records already in a user's private zone are **not**
+deleted by this change. A client can only delete records for entities it still
+models, and this one no longer models them. What the change does is stop the
+mirroring engine importing them: the records become inert, and a new install
+never materialises them locally.
+
+So the local store shrinks immediately and completely; the *iCloud* footprint
+does not shrink for anyone whose zone already holds those records. Reclaiming it
+needs one of:
+
+* the user-initiated legacy-zone deletion already planned as Phase 4 of
+  `StoreSplitCacheCutoverPlan.md`, or
+* a drain-then-remove sequence across two releases — release N keeps the entity
+  and deletes every row locally, so the deletions export to CloudKit; release N+1
+  removes the entity. This is the only in-app way to reclaim the space, and it is
+  no longer available for the current zone contents once this change ships.
+
+That ordering constraint is the real cost of the one-release removal and it is a
+deliberate trade: correctness and payload for *new* syncs now, versus reclaiming
+storage that is already spent. Recorded here because it is the kind of thing that
+is obvious in the moment and invisible six months later.
+
+Known feed-derived leaks, inventoried in
 `UserStateCloudSchemaAudit.feedDerivedFieldsBySyncedModel`:
-`EpisodeStateSync.duration`, `ListeningSummarySync.podcastName`,
+`EpisodeStateSync.duration`, `ListeningBaselineSync.podcastName`,
 `ListeningHistorySync.podcastName` and `.episodeTitle`. Each has a current
 reader; the point of the inventory is that the next one has to be deliberate.
 
@@ -540,9 +619,10 @@ and `PodcastSettings.podcast` (`Settings.swift:73`).
 
 ## Synced-schema classification
 
-The nine synced entities, classified against the purpose (a small store that
-syncs quickly), not merely against the allow-list. The growth classes are now
-declared in `UserStateCloudSchemaAudit.rowGrowthBySyncedModel`.
+The synced entities as they now stand, classified against the purpose (a small
+store that syncs quickly) rather than against the allow-list. Growth classes are
+declared in `UserStateCloudSchemaAudit.rowGrowthBySyncedModel` and asserted in
+`StoreSplitSyncedSchemaAuditTests`.
 
 | Entity | Growth | Verdict |
 | --- | --- | --- |
@@ -552,34 +632,65 @@ declared in `UserStateCloudSchemaAudit.rowGrowthBySyncedModel`.
 | `QueueEntrySync` | per membership incl. tombstones | correct |
 | `PlaylistSync` / `PlaylistEntrySync` | per membership incl. tombstones | correct |
 | `BookmarkSync` | per user action | correct |
-| `ListeningHistorySync` | per session per device, forever | **product question** |
-| `ListeningSummarySync` | feeds × periods × 5 kinds × devices | **should not sync** |
+| `ListeningBaselineSync` | one frozen row per feed | correct — the one thing sessions cannot reconstruct |
+| `ListeningHistorySync` | per session per device, forever | now the largest table; **open** |
+| ~~`ListeningSummarySync`~~ | ~~feeds × periods × 5 kinds × devices~~ | **retired** — `ff4d22cb` |
 
-**Should derived aggregates sync at all?** No. Every device already holds the
-history the aggregates are computed from, and the aggregates are recomputable
-locally at any time. Syncing them buys nothing and costs the largest table in the
-store, the reconciliation problem in F5, and the feedback loop in F4. Removing
-them from the synced schema deletes a bug *class* rather than fixing an instance.
-The one thing they currently provide is a lifetime total for periods whose raw
-sessions were pruned — the `__legacy_shared__` row. That is a single row per
-feed, not five per period per device, and it can be kept as an explicit
-"pre-split baseline" record without syncing the rest.
+**Should derived aggregates sync at all? No — settled and implemented.** Every
+device holds the sessions the aggregates were computed from, and can recompute
+them at any time. Syncing them bought nothing and cost the largest table in the
+store, the reconciliation problem in F5 and the feedback loop in F4. Removing
+them deleted a bug *class* rather than an instance, which is why both findings
+are now "structurally impossible" rather than "fixed".
 
-**What does listening history require?** This is the per-account versus
-per-device statistics question and it is not the audit's to settle. The trade:
+**Did the pre-split history need a frozen record? Yes — checked, not assumed.**
+Raw `PlaySession` rows are pruned after 30 days
+(`PlaySessionTrackerActor.rawSessionRetentionDays`), so sessions demonstrably do
+*not* cover the full history and dropping the aggregates outright would have
+silently truncated every long-standing account's lifetime total. Hence
+`ListeningBaselineSync`: one frozen row per feed, `feeds + 1` rows rather than
+`feeds × periods × 5 × devices`, written once at migration and never
+republished, merged or recomputed.
 
-* *Full session records* (today): every device can recompute any statistic and
-  any period; payload grows without bound with listening time, across devices.
-* *Compact records* — one row per (episode, day, device) instead of per session:
-  roughly an order of magnitude fewer rows, keeps per-podcast and per-day
-  statistics, loses session-level detail (start/end positions, clean-end).
-* *Nothing synced*: statistics become per-device. Smallest possible store. The
-  user sees different numbers on iPhone and iPad, which for a "lifetime
-  listening" figure is likely to read as a bug.
+Two properties make it safe, and both are tested:
 
-**Does `UserStateCloudSchemaAudit` constrain size or only membership?** Only
-membership, and it did not even constrain that against the real container. Both
-gaps are closed in `89c33947`.
+* **Write-once.** A baseline that already exists is left alone, including one
+  that arrived from another device. Re-deriving or max-merging is what let a
+  wrong total become permanent; a constant cannot ratchet.
+* **Single-tier.** It sums the coarsest legacy period tier present — `.year`
+  normally, falling back through `.month`/`.week`/`.day`. Each tier partitions
+  all time, so summing *within* one never double-counts; summing *across* them
+  would, because a month sits inside a year.
+
+**Statistics are per-account — decided.** Totals aggregate every device, and each
+device's share is shown as a percentage. Both readings come out of
+`ListeningHistorySync`, which already carries `sourceDeviceID`,
+`sourceDeviceName` and `deviceModel`, so the total and the shares are two views
+of one set of rows and cannot disagree. The arithmetic lives in
+`AccountListeningTotals` rather than in the view, so it is directly testable.
+
+**What does listening history require? Still open.** It is now the largest synced
+table and grows without bound with listening time, across devices. The options,
+unchanged:
+
+* *Full session records* (today): any statistic, any period, recomputable
+  anywhere; payload grows forever.
+* *Compact records* — one row per (episode, day, device): roughly an order of
+  magnitude fewer rows, keeps per-podcast, per-day and per-device statistics —
+  which is everything the confirmed product decision needs — and loses only
+  session-level detail (start/end positions, clean-end).
+* *Nothing synced*: smallest possible store, but statistics become per-device,
+  which the per-account decision rules out.
+
+Given that decision, *compact records* is the only option that reduces the
+remaining payload without contradicting it. That is a follow-up, not part of this
+change.
+
+**Does `UserStateCloudSchemaAudit` constrain size or only membership?** It now
+constrains both, and one more thing besides: `permitsAggregateGrowth` rejects the
+multiplicative shape outright, and `reintroducedRetiredModelNames` fails the
+audit if `ListeningSummarySync` returns. Membership alone would not have caught
+it going in — it passed the allow-list on the way in the first time.
 
 ---
 
@@ -637,9 +748,10 @@ first time it happens — to everyone at once.
 2. **Bring the legacy CloudKit flag under the kill switch** (F6), or accept in
    writing that rollback means "sync stops" and put that in the release notes and
    the runbook.
-3. **Decide the `ListeningSummarySync` question** (F8). Cutting the derived
-   aggregates from the synced schema before the payload becomes a user-visible
-   sync time is much cheaper than cutting them after.
+3. ~~**Decide the `ListeningSummarySync` question** (F8).~~ **Done** — the
+   aggregates are out of the synced schema (`ff4d22cb`), for a ~9× reduction in
+   synced rows. Note the CloudKit-zone caveat in F8: existing zone records are
+   inert but not reclaimed.
 4. **Stage the cutover.** The phase constant flips for everyone at once. A
    percentage rollout driven from the existing `RolloutConfig` record, or a
    TestFlight-only phase gate, converts a population-scale one-way door into a
@@ -656,7 +768,9 @@ first time it happens — to everyone at once.
 8. Give `modeAllowsDuplicateCleanupDuringProjection` a reason or delete it (F7),
    and move `hideDuplicatePodcasts` after the subscription loop so duplicates
    created in the same pass are seen.
-9. Decide the listening-history payload shape (F8).
+9. Decide the listening-history payload shape (F8). It is now the largest
+   synced table, and compact per-(episode, day, device) records would cut it by
+   roughly an order of magnitude while still satisfying the per-account decision.
 10. Consider declaring the inverses on the four inferred relationship pairs
     explicitly. The tests added here catch a regression; a declaration would
     prevent one. It is a schema edit against a CloudKit-mirrored store and needs
@@ -668,13 +782,25 @@ first time it happens — to everyone at once.
 
 Stated as open questions, not as conclusions.
 
-**Are per-device summaries and `__legacy_shared__` provably disjoint now?** They
-are disjoint *by construction* given F5's fix, because the only mechanism that
-moved a row between the sets is gone. That is an argument, not a proof: it
-assumes no other writer clears `isLegacyMigrated` and that the migration never
-emits a live-device summary. Both hold in the current code. *Settled by:* a
-device-level audit that sums `ListeningHistorySync` grouped by
-`isLegacyMigrated` and compares it against the summaries, on a real store.
+**Is any real account's baseline actually right?** The capture sums the coarsest
+legacy period tier present, which is correct arithmetic on a store whose
+`PlaySessionSummary` rows are themselves correct. On the development device they
+were not — that is the whole incident — so the first baseline captured there will
+freeze whatever that table currently says, permanently and for every device on
+the account. *Settled by:* running "Rebuild Analytics from Raw Sessions" and
+comparing the legacy `.year` totals against expectation **before** the first
+baseline capture on any account whose totals are suspect. Once captured, it is
+write-once by design; correcting it means deleting the row, which nothing in the
+app does.
+
+**How much of the iCloud footprint is actually reclaimed?** The synced *schema*
+shrank ~9×, but `CD_ListeningSummarySync` records already in a user's private
+zone are inert rather than deleted (F8). For a user whose zone already holds
+them, storage is unchanged; only new syncs and new devices see the benefit.
+*Settled by:* the iCloud storage figure for the app before and after, on an
+account that had a populated zone. If reclaiming it matters, it needs the
+drain-then-remove sequence described in F8, and that opportunity is gone for the
+current contents once this ships.
 
 **Would declaring the relationship inverses require a store migration?** Core
 Data's relationship version hash may or may not include the delete rule and the
