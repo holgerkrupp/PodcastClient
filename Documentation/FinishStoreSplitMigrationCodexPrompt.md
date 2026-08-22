@@ -10,10 +10,16 @@ Target architecture:
 - `UserState.sqlite` is the only CloudKit-backed SwiftData store.
 - `PodcastCache.sqlite` is local-only and contains all feed-recoverable and
   device-local data.
-- `SharedDatabase.sqlite` is a temporary migration/recovery source only. It is
-  not part of the final architecture, must not use CloudKit, and must be
-  removed after lossless migration verification and the supported-version
-  grace period.
+- `SharedDatabase.sqlite` is the permanent, local-only durable library store:
+  podcasts, episodes and feed metadata, plus the playlist graph the UI renders
+  from. It is **not** a migration artifact and is never deleted. Its CloudKit
+  mirror is what the cutover removes, not the file.
+
+  (Superseded, kept only because agents have acted on it: earlier revisions of
+  this brief called the file "a temporary migration/recovery source" that
+  "must be removed after lossless migration verification". Acting on that
+  sentence destroys the library. `StoreSplitCacheCutoverPlan.md` §Phase 4 is
+  the surviving statement.)
 
 Data that must remain local-only includes podcast and episode RSS metadata,
 show notes, chapters, publisher and AI transcript materialization, artwork
@@ -74,11 +80,10 @@ Required implementation:
    - Remove legacy container/model registration from normal runtime paths.
    - Remove legacy fallback only after migration verification and convergence
      telemetry pass.
-   - Do not delete `SharedDatabase.sqlite` or its `-wal`/`-shm` files until a
-     final verification proves that all required user state exists in
-     UserState and all feed data is available through cache/RSS recovery.
-   - Then remove the legacy file and obsolete model definitions in a deliberate
-     cleanup step. Never use deletion as migration logic.
+   - Never delete `SharedDatabase.sqlite` or its `-wal`/`-shm` files. It is the
+     durable library store, not a staging file; `StoreSplitLegacyCleanupService`
+     and `LegacyStoreCleanupGate` apply only to the experimental `newStoresOnly`
+     track, which is not shipping.
 
 Verification requirements:
 
@@ -99,8 +104,9 @@ Safety rules:
   first proving the exact target and completing migration verification.
 - Do not silently drop fields, rewrite logical IDs, or replace publisher
   transcripts/chapters with AI content.
-- Do not claim completion while any supported runtime path still depends on
-  SharedDatabase.sqlite.
+- Runtime paths are expected to depend on `SharedDatabase.sqlite`; it is the
+  library store. What must not remain is a runtime path that depends on its
+  *CloudKit mirror*.
 - Update `StoreSplitMigrationPlan.md`,
   `Documentation/StoreSplitMigrationPlan.md`, and
   `Documentation/StoreSplitCacheCutoverPlan.md` if implementation status or

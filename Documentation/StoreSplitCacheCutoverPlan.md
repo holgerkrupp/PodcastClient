@@ -254,11 +254,13 @@ Verify both on a clean install signed into an account with existing iCloud data.
 
 ## Phase 4 — iCloud payload retirement
 
-The iCloud payload shrank the moment the library store stopped being
-CloudKit-backed, which the current configuration already enforces
-(`releaseLegacyCloudSyncEnabled = false`, and the legacy `ModelConfiguration`
-hard-codes `cloudKitDatabase: .none`). A device installed today downloads only
-`UserState.sqlite` records.
+**Not done.** `StoreSplitReleasePhase.current` is `.dualSyncBackfill`, so
+`releaseLegacyCloudSyncEnabled` is `true` and `makeLegacyContainer` opens
+`SharedDatabase.sqlite` with `cloudKitDatabase: .automatic`. Both stores are
+CloudKit-backed today, which makes the current iCloud payload *larger* than
+before the split, not smaller. The reduction arrives only when the phase
+constant moves to `.userStateAuthority`; present-day sync behaviour is not
+evidence that the payload work is finished.
 
 What is **not** done, and is the last real task on this track:
 
@@ -291,4 +293,4 @@ What is **not** done, and is the last real task on this track:
 | Large transcript/chapter data leaks into a synced store | CloudKit payload does not shrink | keep chapters/transcripts in cache schema only; audit synced schema |
 | Feed redirect breaks identity after cutover | state/feed missing after redirect | `FeedAlias` + explicit feed-switch handling |
 | Extensions read stale/legacy data | widget/watch/intents wrong after Phase 4 | repoint to cache/App-Group snapshots in 3.2 before Phase 4 |
-| Legacy sync disabled too early | second device missing data | disable only after convergence telemetry; gate via `RolloutConfig`, reversible |
+| Legacy sync disabled too early | second device missing data | disable only after convergence telemetry. **Not reversible via `RolloutConfig`:** the kill switch drives `splitStoreHeavyWorkPaused` only, while the legacy store's `cloudKitDatabase` comes from the compile-time `StoreSplitReleasePhase.current`. Undoing it needs a release, and that release re-attaches every detached store — the operation that duplicated the development device. |
