@@ -25,11 +25,14 @@ store split lives on `codex/database-split`, 60 commits ahead of `main`.
 `Config/Version.xcconfig` reads `2026.14` / build `56` on `main` and `2026.15` /
 build `219` on the branch.
 
-So: **no App Store build contains any of this**, assuming releases are cut from
-`main`. The 163-build gap is consistent with TestFlight distribution from the
-branch, which the repository cannot confirm either way — see
-[Unresolved](#unresolved--needs-a-decision). Read "App Store: not exposed" below
-as "not exposed *while releases are cut from `main`*".
+So the split code is not on `main`. It does **not** follow that it never
+shipped: `codex/database-split` contains `ad639fdd` "appstore release"
+(2026-06-29) and `5bd57f5a` "2026.16", both carrying
+`StoreDevelopmentConfiguration.swift` and the split containers, and both at build
+219 — the branch's current build number. Release builds have plainly been cut
+from this branch. Whether they reached the App Store or only TestFlight is not
+answerable from the repository; see [Unresolved](#unresolved--needs-a-decision).
+Every exposure statement below is qualified by that.
 
 `StoreSplitReleasePhase.current` is `.dualSyncBackfill`
 (`StoreDevelopmentConfiguration.swift:65`). Everything gated on
@@ -68,7 +71,55 @@ receiving library changes and nothing in the UI says so.
 
 ---
 
-## F2 — The re-attach guard fired at most once per install
+## F2 — A shipped build could be detached from CloudKit by the remote kill switch
+
+**Mechanism.** The exact incident mechanism, remotely triggerable, in a build
+labelled "appstore release".
+
+At `ad639fdd` ("appstore release", 2026-06-29, build 219) a Release build
+resolved its store mode from `StoreSplitRollout.resolvedMode`, which returned
+`.legacyOnly` whenever `StoreSplitRemoteConfigStore.forcesLegacyReads` was true —
+that is, whenever the CloudKit `RolloutConfig` record carried
+`forceLegacyReads = true` or a `minSupportedBuild` above the installed build.
+`effectiveLegacyCloudSyncEnabled` was then `cloudSyncSettingsAvailable &&
+legacyCloudSyncEnabled`, and `cloudSyncSettingsAvailable` is false for
+`.legacyOnly`. So the legacy store opened `cloudKitDatabase: .none`.
+
+Publishing the kill switch detached every affected device's library store.
+Clearing it, or shipping a build above `minSupportedBuild`, re-attached it — and
+re-attaching after a detach is what merges identity-less local rows alongside the
+re-imported zone. The remote lever documented as the safe rollback control was
+also a remote lever for the duplication.
+
+The window is `989ac881` (2026-06-24) to `9c7ddeae` (2026-08-17), and it
+contains the "appstore release" commit. The current code closes it on both
+sides: `resolvedMode` no longer returns `.legacyOnly` and
+`effectiveLegacyCloudSyncEnabled` is no longer gated on the mode.
+
+**Residual exposure, and it is not covered by F3's fix.** A device that ran a
+build from that window and was detached has *no recorded previous state* —
+`recordLegacyCloudSyncDecision` did not exist yet. `legacyCloudReattachBlocked`
+therefore returns false for it, and updating to a current build re-attaches it
+unguarded. The guard cannot detect a detach that predates its own bookkeeping.
+
+**Exposed.** Any install of a build from 2026-06-24 to 2026-08-17 — which,
+per the [Exposure model](#exposure-model), is a TestFlight question the
+repository cannot answer — **and only if the `RolloutConfig` record was ever set
+to a killing value**.
+**Live or dormant.** The code path is gone. The consequence is live for any
+device that was caught by it.
+**Presents as.** Duplicated podcasts, an inflated queue and inflated totals, on
+the next launch after the kill switch is lifted or a newer build is installed.
+**Status.** Code path closed before this audit. Regression tests added
+(`UpNextTests/StoreSplitCloudReattachGuardTests.swift`) pinning that no store
+mode can change the legacy store's CloudKit attachment and that the rollout never
+resolves to `.legacyOnly`. Whether any device was actually caught is a question
+about CloudKit Dashboard history, not about this repository — see
+[Unresolved](#unresolved--needs-a-decision).
+
+---
+
+## F3 — The re-attach guard fired at most once per install
 
 **Mechanism.** `legacyCloudReattachBlocked`
 (`StoreDevelopmentConfiguration.swift:162`) blocks turning the legacy store's
@@ -97,11 +148,12 @@ inflated lifetime totals. Nothing is deleted; everything is doubled.
 **Status. Fixed** — `4cabf2eb`. A recorded detach now clears the approval, so an
 approval covers only the divergence window it was granted for, and the decision
 is recorded after the container actually opens. Regression tests:
-`UpNextTests/StoreSplitCloudReattachGuardTests.swift`.
+`UpNextTests/StoreSplitCloudReattachGuardTests.swift`. The fix does not reach
+installs detached before the bookkeeping existed; see F2.
 
 ---
 
-## F3 — Derived listening data is an input to the record it is derived from
+## F4 — Derived listening data is an input to the record it is derived from
 
 **Mechanism.** A closed loop across two services:
 
@@ -115,7 +167,7 @@ is recorded after the container actually opens. Regression tests:
 3. The republish **max-merges** (`:1590-1620`). A total that has been through the
    loop once can never come back down, on any device on the account.
 
-So a local total that is wrong for any reason — including F4 below — is promoted
+So a local total that is wrong for any reason — including F5 below — is promoted
 to authoritative and pushed to every device, permanently.
 
 **Exposed.** Dev today; every install once `.userStateAuthority` ships, because
@@ -137,7 +189,7 @@ the correct action after a bad merge, as its comment says
 
 ---
 
-## F4 — `__legacy_shared__` and the live per-device summaries could overlap
+## F5 — `__legacy_shared__` and the live per-device summaries could overlap
 
 **Mechanism.** Lifetime totals are computed by summing `ListeningSummarySync`
 rows that share (feedURL, periodKind, periodStart) and differ only by
@@ -172,7 +224,7 @@ the contrast case that a never-migrated row still counts.
 
 ---
 
-## F5 — Rollback from the cutover is not a rollback
+## F6 — Rollback from the cutover is not a rollback
 
 **Mechanism.** Three things move together when `StoreSplitReleasePhase.current`
 flips, for the entire installed base at once and with no per-install staging:
@@ -183,7 +235,7 @@ flips, for the entire installed base at once and with no per-install staging:
 | `userStateImportEnabled` | false | true |
 | read authority | legacy graph | UserState, once the rollout says `.newStoreReads` |
 
-Reverting the constant does **not** restore the first row. With F2 fixed, the
+Reverting the constant does **not** restore the first row. With F3 fixed, the
 re-attach guard blocks it: every install that took the cutover build recorded a
 detach, so the rolled-back build leaves their legacy store detached — and on a
 release build there is no UI to approve otherwise (F1). The rolled-back build
@@ -214,7 +266,7 @@ Analysed here, not performed. See [Hardening plan](#hardening-plan).
 
 ---
 
-## F6 — Uniqueness cannot be enforced, and the replacement invariant is uneven
+## F7 — Uniqueness cannot be enforced, and the replacement invariant is uneven
 
 **Mechanism.** Confirmed: no `@Attribute(.unique)` anywhere in the schema. This
 is not an oversight that can be corrected — `NSPersistentCloudKitContainer` does
@@ -252,7 +304,7 @@ dry-run plan/apply split remain the mitigation.
 
 ---
 
-## F7 — The synced schema was constrained by membership, not by size
+## F8 — The synced schema was constrained by membership, not by size
 
 **Mechanism.** `UserStateCloudSchemaAudit` (`StoreSplitMigrationVerifier.swift:465`)
 asserted a nine-name allow-list and a forbidden list, and nothing else. Two gaps:
@@ -289,7 +341,7 @@ reader; the point of the inventory is that the next one has to be deliberate.
 
 ---
 
-## F8 — Orphaned playlist entries accumulate and nothing removes them
+## F9 — Orphaned playlist entries accumulate and nothing removes them
 
 **Mechanism.** Established empirically (`StoreSplitSchemaInvariantTests`):
 
@@ -324,7 +376,7 @@ pinned. A bounded, reviewable sweeper belongs in
 
 ---
 
-## F9 — Playlist tombstones are irreversible by design, with one escape hatch
+## F10 — Playlist tombstones are irreversible by design, with one escape hatch
 
 **Mechanism.** `shouldPreserveTombstone`
 (`StoreSplitPlaylistSyncWriter.swift:244-256`) refuses to let a local snapshot
@@ -353,7 +405,7 @@ back.
 
 ---
 
-## F10 — `dequeueFinishedEpisodeAndReturnNext` was checked and is not a skip path
+## F11 — `dequeueFinishedEpisodeAndReturnNext` was checked and is not a skip path
 
 The brief asked whether skip-to-next stamps `completionDate` on an unplayed
 episode. It does not. `dequeueFinishedEpisodeAndReturnNext`
@@ -372,7 +424,7 @@ scratch.
 
 ---
 
-## F11 — The plan documents contradicted each other and the code
+## F12 — The plan documents contradicted each other and the code
 
 **Mechanism.** `FinishStoreSplitMigrationCodexPrompt.md` stated that
 `SharedDatabase.sqlite` "is a temporary migration/recovery source only" that
@@ -386,7 +438,7 @@ shrunk because "the legacy `ModelConfiguration` hard-codes `cloudKitDatabase:
 .none`". It does not: the phase constant is `.dualSyncBackfill`, so the legacy
 store opens `.automatic` and **both** stores sync today, making the current
 iCloud payload larger than before the split. The risk register additionally
-claimed the legacy-sync switch is "gate via `RolloutConfig`, reversible"; per F5
+claimed the legacy-sync switch is "gate via `RolloutConfig`, reversible"; per F6
 the kill switch does not reach that flag.
 
 **Status. Fixed** — `7a8250ff`. The surviving statement is made unambiguous and
@@ -414,7 +466,7 @@ holds only while each relationship has a single candidate; adding a second
 `[PlaylistEntry]` relationship to `Playlist` or `Episode` would withdraw it
 silently, and every reader that queries the other half would go blind at once.
 The new tests are the alarm for that edit. The 152 unreachable entries are
-explained by F8, not by a missing inverse.
+explained by F9, not by a missing inverse.
 
 **"`Podcast.episodes` cascades while `Episode.podcast` has no inverse, so
 deleting a former owner cascades into a re-pointed episode."** `Episode.podcast`
@@ -449,7 +501,7 @@ declared in `UserStateCloudSchemaAudit.rowGrowthBySyncedModel`.
 **Should derived aggregates sync at all?** No. Every device already holds the
 history the aggregates are computed from, and the aggregates are recomputable
 locally at any time. Syncing them buys nothing and costs the largest table in the
-store, the reconciliation problem in F4, and the feedback loop in F3. Removing
+store, the reconciliation problem in F5, and the feedback loop in F4. Removing
 them from the synced schema deletes a bug *class* rather than fixing an instance.
 The one thing they currently provide is a lifetime total for periods whose raw
 sessions were pruned — the `__legacy_shared__` row. That is a single row per
@@ -479,12 +531,12 @@ gaps are closed in `89c33947`.
 `StoreSplitReleasePhase.current` is the whole cutover. Moving it detaches every
 install's legacy store from CloudKit and enables the user-state import, for the
 entire population, in one release, with no per-install staging and no remote
-override (F5).
+override (F6).
 
 What makes it recoverable rather than merely careful, in the order it has to
 land:
 
-1. **A one-way door has to be recognised as one.** With F2 fixed, the rollback
+1. **A one-way door has to be recognised as one.** With F3 fixed, the rollback
    path is safe *because* it refuses to re-attach. That means the recovery
    story for a bad cutover is "sync stops until a fixed build ships", and that
    has to be an accepted answer before the flip, not discovered after it.
@@ -504,10 +556,14 @@ land:
    gap is that a remote pause does not *revert* an install that already reached
    `.newStoreReads`.
 
-**Did any shipped build ever have legacy mirroring off?** On the repository
-evidence, no build containing the flag has shipped at all: the flag does not
-exist on `main` (see [Exposure model](#exposure-model)). Within the branch, the
-window is `9c7ddeae` (2026-08-17) to `0d0f3f77` (2026-08-21).
+**Did any shipped build ever have legacy mirroring off?** Yes, conditionally —
+see F2. Builds from 2026-06-24 to 2026-08-17, which include the two release
+commits on this branch, opened the legacy store `cloudKitDatabase: .none`
+whenever the remote kill switch was engaged. Separately, the branch had it
+unconditionally off from `9c7ddeae` (2026-08-17) to `0d0f3f77` (2026-08-21),
+which is the development-device window. Users are already exposed if — and only
+if — the `RolloutConfig` record ever carried a killing value while such a build
+was installed.
 
 ---
 
@@ -515,33 +571,36 @@ window is `9c7ddeae` (2026-08-17) to `0d0f3f77` (2026-08-21).
 
 ### Must land before any cutover
 
-1. **Ship the recovery toolkit** (F1). At minimum: store export, dedup dry-run
+1. **Answer the `RolloutConfig` history question** (F2). Until it is answered, no
+   build that re-attaches the legacy store should ship: any device the kill
+   switch detached would merge on first launch, with no recovery UI.
+2. **Ship the recovery toolkit** (F1). At minimum: store export, dedup dry-run
    and apply, and a way to clear the re-attach block. Behind a support-only
    entry point if necessary, but present in the binary.
-2. **Bring the legacy CloudKit flag under the kill switch** (F5), or accept in
+3. **Bring the legacy CloudKit flag under the kill switch** (F6), or accept in
    writing that rollback means "sync stops" and put that in the release notes and
    the runbook.
-3. **Decide the `ListeningSummarySync` question** (F7). Cutting the derived
+4. **Decide the `ListeningSummarySync` question** (F8). Cutting the derived
    aggregates from the synced schema before the payload becomes a user-visible
    sync time is much cheaper than cutting them after.
-4. **Stage the cutover.** The phase constant flips for everyone at once. A
+5. **Stage the cutover.** The phase constant flips for everyone at once. A
    percentage rollout driven from the existing `RolloutConfig` record, or a
    TestFlight-only phase gate, converts a population-scale one-way door into a
    sampled one.
-5. **Add convergence telemetry** to the pre-cutover release, so "phase one has
+6. **Add convergence telemetry** to the pre-cutover release, so "phase one has
    converged across the population" is a measurement rather than an assumption.
 
 ### Follow-up
 
-6. Consolidate on read in `StoreSplitEpisodeStateSyncWriter` the way
-   `StoreSplitPlaylistSyncWriter.consolidateEntries` already does (F6).
-7. Add a bounded orphan-entry sweep to `LibraryDeduplicationService`'s plan/apply
-   model (F8) — planned and reviewed, never automatic.
-8. Give `modeAllowsDuplicateCleanupDuringProjection` a reason or delete it (F6),
+7. Consolidate on read in `StoreSplitEpisodeStateSyncWriter` the way
+   `StoreSplitPlaylistSyncWriter.consolidateEntries` already does (F7).
+8. Add a bounded orphan-entry sweep to `LibraryDeduplicationService`'s plan/apply
+   model (F9) — planned and reviewed, never automatic.
+9. Give `modeAllowsDuplicateCleanupDuringProjection` a reason or delete it (F7),
    and move `hideDuplicatePodcasts` after the subscription loop so duplicates
    created in the same pass are seen.
-9. Decide the listening-history payload shape (F7).
-10. Consider declaring the inverses on the four inferred relationship pairs
+10. Decide the listening-history payload shape (F8).
+11. Consider declaring the inverses on the four inferred relationship pairs
     explicitly. The tests added here catch a regression; a declaration would
     prevent one. It is a schema edit against a CloudKit-mirrored store and needs
     its own migration review, which is why it is not in this branch.
@@ -559,8 +618,18 @@ distribution from the branch. *Settled by:* App Store Connect build history for
 2026.15 and the branch each TestFlight build was cut from. Every "TestFlight
 exposure" statement above depends on this.
 
+**Was the `RolloutConfig` record ever set to a killing value?** This decides
+whether F2 is a closed code path or a population that is already duplicated.
+`forceLegacyReads = true`, or `minSupportedBuild` above an installed build, at
+any time between 2026-06-24 and 2026-08-17. *Settled by:* the CloudKit Dashboard
+history of the `store-split-rollout-config` record in the public database of
+`iCloud.de.holgerkrupp.PodcastClient`, and the TestFlight/App Store build list
+for the same period. Until that is checked, no build should ship that re-attaches
+the legacy store — the affected devices would merge on first launch, with no
+recovery UI (F1).
+
 **Are per-device summaries and `__legacy_shared__` provably disjoint now?** They
-are disjoint *by construction* given F4's fix, because the only mechanism that
+are disjoint *by construction* given F5's fix, because the only mechanism that
 moved a row between the sets is gone. That is an argument, not a proof: it
 assumes no other writer clears `isLegacyMigrated` and that the migration never
 emits a live-device summary. Both hold in the current code. *Settled by:* a
@@ -580,7 +649,7 @@ accumulate forever. The correct answer depends on whether any recovery has ever
 actually used one. *Settled by:* the tombstone-recovery reports from the affected
 development device.
 
-**Whether the escape hatch for a wrong tombstone is sufficient** (F9).
+**Whether the escape hatch for a wrong tombstone is sufficient** (F10).
 `restorePlaylistTombstones(deletedOnOrAfter:)` requires the user to know a
 cutoff date and requires a DEBUG build. *Settled by:* deciding whether tombstone
 recovery is a support operation or a user-facing one.
