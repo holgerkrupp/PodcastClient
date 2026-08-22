@@ -1105,11 +1105,14 @@ actor StoreSplitUserStateImporter {
                 ? nil
                 : URL(string: key.feedURL)
             legacyContext.insert(PlaySessionSummary(
-                id: StableIdentityKey.uuid(for: StableIdentityKey.make(
-                    key.feedURL,
-                    key.periodKind,
-                    String(Int(key.periodStart.timeIntervalSince1970))
-                )),
+                // Deterministic, and recognisable: the migration skips rows with
+                // this id so a projected total is never republished as the
+                // authoritative `__legacy_shared__` record.
+                id: PlaySessionSummary.splitStoreProjectionID(
+                    feedURL: key.feedURL,
+                    periodKind: key.periodKind,
+                    periodStart: key.periodStart
+                ),
                 periodKind: key.periodKind,
                 periodStart: key.periodStart,
                 podcastFeed: feed,

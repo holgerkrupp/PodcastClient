@@ -1552,6 +1552,13 @@ actor StoreSplitMigrationService {
                 outcome.delta.skipped += 1
                 continue
             }
+            // Rows the importer projected out of `UserState.sqlite` are not
+            // evidence of anything this device measured. Republishing them would
+            // feed the synced summaries back into the record that produced them.
+            guard summary.isSplitStoreProjection == false else {
+                outcome.delta.skipped += 1
+                continue
+            }
 
             let feedURL = summary.podcastFeed
                 .map(PodcastFeedIdentity.normalizedFeedURLString)

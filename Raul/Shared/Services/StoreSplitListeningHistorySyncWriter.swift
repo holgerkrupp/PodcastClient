@@ -101,7 +101,11 @@ actor StoreSplitListeningHistorySyncWriter {
         record.silenceGapTimeSavedSeconds = snapshot.silenceGapTimeSavedSeconds
         record.playbackRateTimeSavedSeconds = snapshot.playbackRateTimeSavedSeconds
         record.endedCleanly = snapshot.endedCleanly
-        record.isLegacyMigrated = false
+        // `isLegacyMigrated` is deliberately not reset. A migrated row's seconds
+        // are already inside the `__legacy_shared__` summary, and nothing ever
+        // subtracts them from it; clearing the flag here would additionally admit
+        // the row to this device's live per-device summary, so the same listening
+        // time would be counted twice by every reader that sums the two.
         record.updatedAt = snapshot.endedAt
     }
 
