@@ -1005,6 +1005,10 @@ actor PodcastModelActor {
                         if let episodeURL = episode.url {
                             modelContext.saveIfNeeded()
                             await episodeActor.processAfterCreation(episodeURL: episodeURL)
+                            // The episode is persisted at this point, so let the
+                            // inbox pick it up now instead of when the whole
+                            // refresh run finishes.
+                            await InboxChangeBroadcaster.notifyInboxDidChange()
                         }
                     }
                 } else {
@@ -1376,6 +1380,11 @@ actor PodcastModelActor {
 #endif
                 if result.success == false {
                     failed += 1
+                }
+                if result.success, result.newEpisodeCount > 0 {
+                    // Surface this feed's episodes while the remaining feeds are
+                    // still being fetched.
+                    await InboxChangeBroadcaster.notifyInboxDidChange()
                 }
                 await progress?(completed, feeds.count)
                 enqueueNext()

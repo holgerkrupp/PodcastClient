@@ -136,8 +136,48 @@ struct StoreDevelopmentConfiguration: Equatable {
         StoreSplitReleasePhase.current == .userStateAuthority && splitStoresEnabled
     }
 
+    static let legacyCloudSyncLastStateKey =
+        "storeSplit.legacyCloudSyncLastEnabled"
+    static let legacyCloudReattachApprovedKey =
+        "storeSplit.legacyCloudReattachApproved"
+
     static var legacyCloudSyncEnabled: Bool {
-        launch.effectiveLegacyCloudSyncEnabled
+        guard launch.effectiveLegacyCloudSyncEnabled else { return false }
+        return legacyCloudReattachBlocked == false
+    }
+
+    /// Whether the legacy store is being re-attached to CloudKit after a spell
+    /// with mirroring switched off — and has not been cleared to do so.
+    ///
+    /// Re-attaching is not the no-op it looks like. Rows written while the store
+    /// was detached carry no CloudKit identity, so turning mirroring back on
+    /// re-imports the zone and merges it alongside them. With no
+    /// `@Attribute(.unique)` anywhere in the schema, nothing collapses the two
+    /// copies: the library duplicates. That is what happened between
+    /// `9c7ddeae` (mirroring off, 2026-08-17) and `0d0f3f77` (back on,
+    /// 2026-08-21).
+    ///
+    /// A device that never had mirroring off has no recorded previous state and
+    /// is never blocked, so shipping users are unaffected.
+    static var legacyCloudReattachBlocked: Bool {
+        let defaults = UserDefaults.standard
+        guard let previous = defaults.object(forKey: legacyCloudSyncLastStateKey) as? Bool,
+              previous == false else {
+            return false
+        }
+        return defaults.bool(forKey: legacyCloudReattachApprovedKey) == false
+    }
+
+    /// Records the decision actually applied to the store, so the next launch can
+    /// recognise an off→on transition. Call this once the container is built.
+    static func recordLegacyCloudSyncDecision(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: legacyCloudSyncLastStateKey)
+    }
+
+    /// Clears the block. Deduplicate first — approving re-attach on a duplicated
+    /// library merges the duplicates into CloudKit for every other device.
+    static func approveLegacyCloudReattach() {
+        UserDefaults.standard.set(true, forKey: legacyCloudReattachApprovedKey)
     }
 
     static var userStateCloudSyncEnabled: Bool {

@@ -23,6 +23,14 @@ struct DevelopmentSettingsView: View {
     @State private var isRunningSyncAction = false
     @State private var resetMessage: String?
     @State private var remoteConfigRefreshToken = 0
+    @State private var reattachApprovalToken = 0
+    @State private var playlistDiagnostics: String?
+    @State private var showTombstoneRecoverySheet = false
+    @State private var tombstoneRecoveryCutoff = Calendar.current.date(
+        byAdding: .day,
+        value: -7,
+        to: Date()
+    ) ?? Date()
 
     private var remoteConfig: StoreSplitRemoteConfig {
         _ = remoteConfigRefreshToken
@@ -60,6 +68,19 @@ struct DevelopmentSettingsView: View {
                 Toggle("Enable migration and reconciliation", isOn: $splitStoreWorkEnabled)
                     .disabled(storeMode == .legacyOnly)
                 Toggle("CloudKit for legacy library store", isOn: $legacyCloudSyncEnabled)
+                if StoreDevelopmentConfiguration.legacyCloudReattachBlocked {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Re-attach blocked")
+                            .font(.footnote.bold())
+                        Text("This store ran with CloudKit off. Turning mirroring back on re-imports the zone and duplicates every row written meanwhile. Deduplicate first, then allow it.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Button("Allow Legacy CloudKit Re-attach", role: .destructive) {
+                            StoreDevelopmentConfiguration.approveLegacyCloudReattach()
+                            reattachApprovalToken += 1
+                        }
+                    }
+                }
                 Toggle("CloudKit for user-state store", isOn: $userStateCloudSyncEnabled)
                     .disabled(
                         storeMode != .splitStores && storeMode != .splitStoreReads
@@ -256,6 +277,40 @@ struct DevelopmentSettingsView: View {
                 }
                 .disabled(splitStoreActionDisabled)
 
+                Button("Preview Deduplication (no changes)") {
+                    deduplicate(dryRun: true)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Run Deduplication", role: .destructive) {
+                    deduplicate(dryRun: false)
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                Button("Export Databases for Backup") {
+                    exportDatabases()
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                // Read-only, so it stays available in the store modes that
+                // disable the write actions — those are exactly the modes worth
+                // diagnosing.
+                Button("Show Playlist Diagnostics") {
+                    showPlaylistTombstones()
+                }
+                .disabled(isRunningSyncAction || isResetting)
+
+                if let playlistDiagnostics {
+                    Text(playlistDiagnostics)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                }
+
+                Button("Restore Playlist Entries Deleted Since…") {
+                    showTombstoneRecoverySheet = true
+                }
+                .disabled(splitStoreActionDisabled)
+
                 Button("Republish Playlists") {
                     republishLegacyState(.playlists)
                 }
@@ -280,6 +335,11 @@ struct DevelopmentSettingsView: View {
                     republishLegacyState(.listeningHistory)
                 }
                 .disabled(splitStoreActionDisabled)
+
+                Button("Rebuild Analytics from Raw Sessions") {
+                    rebuildAnalyticsFromRawSessions()
+                }
+                .disabled(isRunningSyncAction || isResetting)
 
                 Button("Rebuild Listening Summaries") {
                     rebuildListeningSummaries()
@@ -375,6 +435,32 @@ struct DevelopmentSettingsView: View {
             Text("SharedDatabase.sqlite, UserState.sqlite, and PodcastCache.sqlite will be removed from this Mac before SwiftData opens them. CloudKit records, downloaded audio, and settings are not deleted.")
         }
 #endif
+        .sheet(isPresented: $showTombstoneRecoverySheet) {
+            NavigationStack {
+                Form {
+                    DatePicker(
+                        "Deleted on or after",
+                        selection: $tombstoneRecoveryCutoff,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    Section {
+                        Button("Restore Entries") {
+                            showTombstoneRecoverySheet = false
+                            restorePlaylistTombstones(since: tombstoneRecoveryCutoff)
+                        }
+                    } footer: {
+                        Text("Clears the deleted flag on playlist and queue records removed on or after this moment, then re-imports so the local playlists are rebuilt from them. Removals you made yourself before this moment stay removed — check \"Show Playlist Tombstones\" first to pick the right cutoff.")
+                    }
+                }
+                .navigationTitle("Restore Playlist Entries")
+                .platformInlineNavigationTitle()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showTombstoneRecoverySheet = false }
+                    }
+                }
+            }
+        }
         .confirmationDialog(
             "Delete split-store data from CloudKit?",
             isPresented: $showResetConfirmation,
@@ -559,6 +645,77 @@ struct DevelopmentSettingsView: View {
                 resetMessage = "\(scope.title) complete. Source: \(result.sourceSummary). New store: \(result.storedCounts.summary)."
             } catch {
                 resetMessage = error.localizedDescription
+            }
+            isRunningSyncAction = false
+        }
+    }
+
+    private func deduplicate(dryRun: Bool) {
+        isRunningSyncAction = true
+        playlistDiagnostics = nil
+        Task {
+            do {
+                let report = try await modelContainerManager
+                    .deduplicateLibrary(dryRun: dryRun)
+                playlistDiagnostics = report.summary
+            } catch {
+                playlistDiagnostics = error.localizedDescription
+            }
+            isRunningSyncAction = false
+        }
+    }
+
+    private func exportDatabases() {
+        isRunningSyncAction = true
+        playlistDiagnostics = nil
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                DatabaseBackupExporter.exportStores()
+            }.value
+            playlistDiagnostics = result.summary
+            isRunningSyncAction = false
+        }
+    }
+
+    private func showPlaylistTombstones() {
+        isRunningSyncAction = true
+        playlistDiagnostics = nil
+        Task {
+            do {
+                let lines = try await modelContainerManager.playlistTombstoneReport()
+                playlistDiagnostics = lines.joined(separator: "\n")
+            } catch {
+                playlistDiagnostics = "Failed: \(error.localizedDescription)"
+            }
+            isRunningSyncAction = false
+        }
+    }
+
+    private func restorePlaylistTombstones(since cutoff: Date) {
+        isRunningSyncAction = true
+        resetMessage = nil
+        Task {
+            do {
+                let result = try await modelContainerManager
+                    .restorePlaylistTombstones(deletedOnOrAfter: cutoff)
+                resetMessage = result.summary
+            } catch {
+                resetMessage = error.localizedDescription
+            }
+            isRunningSyncAction = false
+        }
+    }
+
+    private func rebuildAnalyticsFromRawSessions() {
+        isRunningSyncAction = true
+        playlistDiagnostics = nil
+        Task {
+            do {
+                try await modelContainerManager.rebuildAnalyticsFromRawSessions()
+                playlistDiagnostics =
+                    "Hourly stats and summaries recomputed from raw play sessions."
+            } catch {
+                playlistDiagnostics = error.localizedDescription
             }
             isRunningSyncAction = false
         }

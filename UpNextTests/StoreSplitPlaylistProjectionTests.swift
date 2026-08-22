@@ -431,4 +431,177 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
         )
         XCTAssertTrue(projectedQueue.ordered.isEmpty)
     }
+
+    @MainActor
+    func testStalePublishDoesNotReviveANewerRemoval() async throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let identity = EpisodeStableIdentity(
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "finished-episode"
+        )
+        let addedAt = Date(timeIntervalSince1970: 1_000)
+        let removedAt = Date(timeIntervalSince1970: 2_000)
+
+        let writer = StoreSplitPlaylistSyncWriter(modelContainer: userState)
+        await writer.tombstone(
+            [
+                StoreSplitPlaylistRemoval(
+                    playlistID: Playlist.defaultQueueSyncID,
+                    isDefaultQueue: true,
+                    identity: identity
+                )
+            ],
+            at: removedAt
+        )
+
+        // A device whose local queue still holds the finished episode republishes
+        // its whole playlist. That projection predates the removal, so it must not
+        // clear the tombstone.
+        await writer.upsert(
+            StoreSplitPlaylistSnapshot(
+                id: Playlist.defaultQueueSyncID,
+                title: Playlist.defaultQueueTitle,
+                symbolName: Playlist.defaultQueueSymbolName,
+                sortIndex: 0,
+                kindRawValue: Playlist.Kind.manual.rawValue,
+                smartFilterRawValue: nil,
+                isHidden: false,
+                entries: [
+                    StoreSplitPlaylistEntrySnapshot(
+                        identity: identity,
+                        sortIndex: 0,
+                        addedAt: addedAt
+                    )
+                ]
+            ),
+            at: Date(timeIntervalSince1970: 3_000)
+        )
+
+        let context = ModelContext(userState)
+        let playlistEntries = try context.fetch(FetchDescriptor<PlaylistEntrySync>())
+        let queueEntries = try context.fetch(FetchDescriptor<QueueEntrySync>())
+        XCTAssertEqual(playlistEntries.count, 1)
+        XCTAssertEqual(queueEntries.count, 1)
+        XCTAssertTrue(try XCTUnwrap(playlistEntries.first).isDeleted)
+        XCTAssertTrue(try XCTUnwrap(queueEntries.first).isDeleted)
+    }
+
+    @MainActor
+    func testDeliberateRelistenRevivesTheRemovedEntry() async throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let identity = EpisodeStableIdentity(
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "replayed-episode"
+        )
+
+        let writer = StoreSplitPlaylistSyncWriter(modelContainer: userState)
+        await writer.tombstone(
+            [
+                StoreSplitPlaylistRemoval(
+                    playlistID: Playlist.defaultQueueSyncID,
+                    isDefaultQueue: true,
+                    identity: identity
+                )
+            ],
+            at: Date(timeIntervalSince1970: 2_000)
+        )
+        await writer.upsert(
+            StoreSplitPlaylistSnapshot(
+                id: Playlist.defaultQueueSyncID,
+                title: Playlist.defaultQueueTitle,
+                symbolName: Playlist.defaultQueueSymbolName,
+                sortIndex: 0,
+                kindRawValue: Playlist.Kind.manual.rawValue,
+                smartFilterRawValue: nil,
+                isHidden: false,
+                entries: [
+                    StoreSplitPlaylistEntrySnapshot(
+                        identity: identity,
+                        sortIndex: 0,
+                        addedAt: Date(timeIntervalSince1970: 3_000)
+                    )
+                ]
+            ),
+            at: Date(timeIntervalSince1970: 3_000)
+        )
+
+        let context = ModelContext(userState)
+        let playlistEntries = try context.fetch(FetchDescriptor<PlaylistEntrySync>())
+        let queueEntries = try context.fetch(FetchDescriptor<QueueEntrySync>())
+        XCTAssertFalse(try XCTUnwrap(playlistEntries.first).isDeleted)
+        XCTAssertFalse(try XCTUnwrap(queueEntries.first).isDeleted)
+    }
+
+    @MainActor
+    func testImportDoesNotRequeueAnEpisodeThatWasAlreadyPlayed() async throws {
+        // The played-episode queue rule ships disabled; enable it to cover it.
+        UserDefaults.standard.set(
+            true,
+            forKey: PlayedEpisodePlaylistPruner.isEnabledKey
+        )
+        defer {
+            UserDefaults.standard.removeObject(
+                forKey: PlayedEpisodePlaylistPruner.isEnabledKey
+            )
+        }
+        let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let playedEpisode = Episode(
+            guid: "finished-elsewhere",
+            title: "Finished",
+            url: URL(string: "https://example.com/finished.mp3")!,
+            podcast: podcast
+        )
+        playedEpisode.metaData?.completionDate = Date(timeIntervalSince1970: 5_000)
+        podcast.episodes = [playedEpisode]
+        legacy.mainContext.insert(podcast)
+        legacy.mainContext.insert(Playlist())
+
+        let identity = playedEpisode.stableEpisodeIdentity
+        userState.mainContext.insert(
+            PlaylistSync(
+                id: Playlist.defaultQueueSyncID,
+                title: Playlist.defaultQueueTitle,
+                symbolName: Playlist.defaultQueueSymbolName,
+                sortIndex: 0,
+                kindRawValue: Playlist.Kind.manual.rawValue
+            )
+        )
+        // Authored before the episode was finished, so it is stale queue state
+        // rather than a deliberate re-listen.
+        userState.mainContext.insert(
+            PlaylistEntrySync(
+                playlistID: Playlist.defaultQueueSyncID,
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                sortIndex: 0,
+                addedAt: Date(timeIntervalSince1970: 1_000),
+                updatedAt: Date(timeIntervalSince1970: 1_000)
+            )
+        )
+        userState.mainContext.insert(
+            QueueEntrySync(
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                sortIndex: 0,
+                addedAt: Date(timeIntervalSince1970: 1_000),
+                updatedAt: Date(timeIntervalSince1970: 1_000)
+            )
+        )
+        try legacy.mainContext.save()
+        try userState.mainContext.save()
+
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacy,
+            userStateContainer: userState
+        )
+
+        let context = ModelContext(legacy)
+        let queue = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<Playlist>())
+                .first { $0.title == Playlist.defaultQueueTitle }
+        )
+        XCTAssertTrue(queue.ordered.isEmpty)
+    }
 }

@@ -343,6 +343,22 @@ class EpisodeDownloadStatus{
         return  progress > 1 ? 1 : progress
     }
 
+    /// Share of the episode that has to be heard before it counts as played.
+    /// Mirrors `Player.progressThreshold`.
+    static let playedProgressThreshold: Double = 0.99
+
+    /// Whether the episode counts as listened to.
+    ///
+    /// This is the membership test for playlists: a played episode is not a queue
+    /// member, so automatic paths must never (re-)insert one. Deliberate user
+    /// re-queues are allowed and are distinguished by the entry's `dateAdded`
+    /// being newer than `completionDate`, not by this flag.
+    var isPlayed: Bool {
+        if metaData?.completionDate != nil { return true }
+        if metaData?.isHistory == true || metaData?.status == .history { return true }
+        return maxPlayProgress >= Self.playedProgressThreshold
+    }
+
     @Transient var isVideo: Bool {
         EpisodeMedia.isVideo(url: url, mimeType: mediaType)
     }

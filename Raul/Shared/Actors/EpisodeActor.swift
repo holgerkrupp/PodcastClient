@@ -864,7 +864,8 @@ actor EpisodeActor {
                             try await playlistActor.add(
                                 episodeURL: episodeURL,
                                 to: queuePosition,
-                                startDownload: false
+                                startDownload: false,
+                                origin: .automatic
                             )
                             await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=success")
                         } catch {
@@ -1097,7 +1098,11 @@ actor EpisodeActor {
 
         if playnext != .none {
             let playlistActor = playlistActor(for: playlistID)
-            try? await playlistActor?.add(episodeURL: episodeURL, to: playnext)
+            try? await playlistActor?.add(
+                episodeURL: episodeURL,
+                to: playnext,
+                origin: .automatic
+            )
         }
 
         await NotificationManager().sendNotification(title: episode.displayPodcastTitle ?? "New Episode", body: episode.title)

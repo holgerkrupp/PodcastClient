@@ -14,6 +14,17 @@ actor PlaylistModelActor {
         case policyMaintenance
     }
 
+    /// Who asked for an episode to enter a playlist.
+    ///
+    /// Only `.user` may queue an episode that has already been played. Every
+    /// automatic path (playback bookkeeping, auto-download policy, feed intake)
+    /// must stay out of the way of a finished episode, otherwise a re-queue
+    /// racing the finish handler puts the episode back at the top of Up Next.
+    enum InsertionOrigin: Sendable {
+        case user
+        case automatic
+    }
+
     // Nonisolated so you can read them without await (types are value types)
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
@@ -252,7 +263,11 @@ actor PlaylistModelActor {
     /// queue snapshot while completion bookkeeping removes from a newer one later on.
     func dequeueFinishedEpisodeAndReturnNext(after episodeURL: URL) async throws -> URL? {
         guard let playlist = try fetchPlaylist() else { return nil }
+        try markEpisodeFinished(episodeURL)
         guard playlist.isSmartPlaylist == false else {
+            if modelContext.hasChanges {
+                try modelContext.save()
+            }
             return try nextEpisodeURL(after: episodeURL)
         }
 
@@ -281,7 +296,12 @@ actor PlaylistModelActor {
                 entry.episode?.url == episodeURL
             }
         ))
-        guard matchingEntries.isEmpty == false else { return nextEpisodeURL }
+        guard matchingEntries.isEmpty == false else {
+            if modelContext.hasChanges {
+                try modelContext.save()
+            }
+            return nextEpisodeURL
+        }
 
         let affectedPlaylistIDs = Set(matchingEntries.compactMap { $0.playlist?.id })
 
@@ -356,6 +376,35 @@ actor PlaylistModelActor {
 
     private func existingEntries(for episodeURL: URL, in playlist: Playlist) -> [PlaylistEntry] {
         playlist.items?.filter { $0.episode?.url == episodeURL } ?? []
+    }
+
+    /// Whether an automatic caller must leave this episode out of the playlist.
+    private func rejectsAutomaticInsertion(
+        _ episode: Episode,
+        origin: InsertionOrigin,
+        episodeURL: URL,
+        playlist: Playlist
+    ) -> Bool {
+        guard origin == .automatic, episode.isPlayed else { return false }
+        logAutoDownload(
+            "trigger/auto-add skipped playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) reason=played"
+        )
+        return true
+    }
+
+    /// Stamps the finished episode as completed inside the caller's transaction.
+    ///
+    /// `Player.finalizeFinishedEpisode` persists the full bookkeeping afterwards,
+    /// off the audio hand-off path. Until that lands, every "is this episode still
+    /// unplayed?" check would answer yes, and any re-queue racing it would put the
+    /// episode back into the queue it was just dequeued from.
+    private func markEpisodeFinished(_ episodeURL: URL) throws {
+        for episode in try fetchEpisodes(byURL: episodeURL) {
+            ensureMetadata(for: episode)
+            if episode.metaData?.completionDate == nil {
+                episode.metaData?.completionDate = Date()
+            }
+        }
     }
 
     private func ensureMetadata(for episode: Episode) {
@@ -486,11 +535,22 @@ actor PlaylistModelActor {
         return existingEntries(for: episodeURL, in: playlist).isEmpty == false
     }
     
-    func insert(episodeURL: URL, after anchorEpisodeURL: URL?, startDownload: Bool = true) async throws {
+    func insert(
+        episodeURL: URL,
+        after anchorEpisodeURL: URL?,
+        startDownload: Bool = true,
+        origin: InsertionOrigin = .user
+    ) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
+        guard rejectsAutomaticInsertion(
+            episode,
+            origin: origin,
+            episodeURL: episodeURL,
+            playlist: playlist
+        ) == false else { return }
 
         var sortedEntries = try fetchOrderedEntries()
         let reusableEntry = detachExistingEntries(
@@ -541,11 +601,22 @@ actor PlaylistModelActor {
     }
 
     /// Add/move an episode within the playlist.
-    func add(episodeURL: URL, to position: Playlist.Position = .end, startDownload: Bool = true) async throws {
+    func add(
+        episodeURL: URL,
+        to position: Playlist.Position = .end,
+        startDownload: Bool = true,
+        origin: InsertionOrigin = .user
+    ) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
+        guard rejectsAutomaticInsertion(
+            episode,
+            origin: origin,
+            episodeURL: episodeURL,
+            playlist: playlist
+        ) == false else { return }
 
         // Create a working copy of the ordered entries
         var sortedEntries = try fetchOrderedEntries()
@@ -603,11 +674,23 @@ actor PlaylistModelActor {
     }
 
     /// Add/move an episode with explicit index control within the visual order.
-    func add(episodeURL: URL, to position: Playlist.Position = .end, index explicitIndex: Int?, startDownload: Bool = true) async throws {
+    func add(
+        episodeURL: URL,
+        to position: Playlist.Position = .end,
+        index explicitIndex: Int?,
+        startDownload: Bool = true,
+        origin: InsertionOrigin = .user
+    ) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
         guard let episode = matchingEpisodes.first else { return }
+        guard rejectsAutomaticInsertion(
+            episode,
+            origin: origin,
+            episodeURL: episodeURL,
+            playlist: playlist
+        ) == false else { return }
 
         var sortedEntries = try fetchOrderedEntries()
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()

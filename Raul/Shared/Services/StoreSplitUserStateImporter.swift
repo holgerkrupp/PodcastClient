@@ -603,6 +603,19 @@ actor StoreSplitUserStateImporter {
                     appendMissingPlaylistFeed(record.feedURL, to: &result)
                     continue
                 }
+                // A queue record authored before the episode was finished must
+                // never put it back into a playlist: local completion outranks
+                // remote membership. A deliberate re-listen is recognised by an
+                // `addedAt` newer than the completion, and still projects.
+                // `PlayedEpisodePlaylistPruner` removes and tombstones whatever
+                // is already queued, so this only has to stop new arrivals.
+                if PlayedEpisodePlaylistPruner.isEnabled,
+                   PlayedEpisodeQueuePolicy.isStaleQueueMembership(
+                       for: episode,
+                       addedAt: record.addedAt
+                   ) {
+                    continue
+                }
                 let entry: PlaylistEntry
                 if let existing = localEntriesByPlaylistID[localPlaylistID]?[identityKey] {
                     entry = existing
@@ -741,6 +754,19 @@ actor StoreSplitUserStateImporter {
                     .insert(identityKey)
                 guard let episode = episodesByIdentity[identityKey] else {
                     appendMissingPlaylistFeed(record.feedURL, to: &result)
+                    continue
+                }
+                // A queue record authored before the episode was finished must
+                // never put it back into a playlist: local completion outranks
+                // remote membership. A deliberate re-listen is recognised by an
+                // `addedAt` newer than the completion, and still projects.
+                // `PlayedEpisodePlaylistPruner` removes and tombstones whatever
+                // is already queued, so this only has to stop new arrivals.
+                if PlayedEpisodePlaylistPruner.isEnabled,
+                   PlayedEpisodeQueuePolicy.isStaleQueueMembership(
+                       for: episode,
+                       addedAt: record.addedAt
+                   ) {
                     continue
                 }
                 let entry: PlaylistEntry

@@ -357,8 +357,18 @@ class Player {
     }
 
     private func moveEpisodeToFrontOfActivePlaybackPlaylist(_ episodeURL: URL) async {
+        // `playEpisode` defers this to a background task, so playback may already
+        // have moved on — or finished, and dequeued this episode — by the time it
+        // runs. Re-adding then would put a played episode back at the top of the
+        // queue, which is exactly the state the finish handler just cleared.
+        guard currentEpisodeURL == episodeURL else { return }
         guard let activePlaylistActor = activePlaybackPlaylistActor() else { return }
-        try? await activePlaylistActor.add(episodeURL: episodeURL, to: .front, startDownload: false)
+        try? await activePlaylistActor.add(
+            episodeURL: episodeURL,
+            to: .front,
+            startDownload: false,
+            origin: .automatic
+        )
     }
     
     func restoreLastPlayedFromPlaylist() async {
@@ -1214,7 +1224,11 @@ class Player {
             await episodeActor?.setCompletionDate(episodeURL: snapshot.episodeURL)
             await episodeActor?.moveToHistory(episodeURL: snapshot.episodeURL)
         } else if shouldRequeueUnfinishedEpisode {
-            try? await activePlaybackPlaylistActor()?.add(episodeURL: snapshot.episodeURL, to: .front)
+            try? await activePlaybackPlaylistActor()?.add(
+                episodeURL: snapshot.episodeURL,
+                to: .front,
+                origin: .automatic
+            )
         }
 
         WatchSyncCoordinator.refreshSoon(force: true)
@@ -1260,7 +1274,11 @@ class Player {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
             await episodeActor?.moveToHistory(episodeURL: episodeURL)
         } else if shouldRequeueUnfinishedEpisode {
-            try? await activePlaybackPlaylistActor()?.add(episodeURL: episodeURL, to: .front)
+            try? await activePlaybackPlaylistActor()?.add(
+                episodeURL: episodeURL,
+                to: .front,
+                origin: .automatic
+            )
         }
     }
     

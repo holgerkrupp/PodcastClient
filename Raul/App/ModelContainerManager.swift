@@ -650,6 +650,7 @@ class ModelContainerManager: ObservableObject {
         // drives the bounded backfill, so skipping it in debug builds meant the
         // migration only ever advanced when someone pressed a button.
         await resolveStoreSplitRolloutIfNeeded()
+        await prunePlayedPlaylistEntries()
         await splitStoreCoordinator.scheduleLaunchWork()
         await bootstrapFeedCacheIfNeeded(feedLimit: 15)
 #if canImport(UIKit)
@@ -1174,10 +1175,80 @@ class ModelContainerManager: ObservableObject {
         lastSplitStoreReconcileAt = .now
         lastSplitStoreReconcileSummary =
             "Reconciled subscriptions \(result.subscriptionsApplied), states \(result.episodeStatesApplied), playlists \(result.playlistsApplied), bookmarks \(result.bookmarksApplied), history \(result.listeningHistoryApplied)"
+        // An import is the one moment when playlist entries authored elsewhere —
+        // including records that predate the tombstone rules — land in the local
+        // queue. Re-assert "a played episode is not a queue member" right after.
+        await prunePlayedPlaylistEntries()
         _ = legacyContainer
         _ = userStateContainer
         _ = cacheContainer
         return result.interruptedByPlayback ? .deferredForPlayback : .completed
+    }
+
+    /// Removes finished episodes that are still queued, and tombstones them so the
+    /// removal survives the next CloudKit round trip.
+    func prunePlayedPlaylistEntries() async {
+        guard let legacyContainer = legacyMigrationSourceContainer else { return }
+        await PlayedEpisodePlaylistPruner(legacyContainer: legacyContainer).prune()
+    }
+
+    /// Recomputes the hourly buckets and every `PlaySessionSummary` from the raw
+    /// `PlaySession` rows.
+    ///
+    /// This is the analytics rebuild to reach for after a bad merge. It is *not*
+    /// `rebuildListeningSummariesForDevelopment`, which reads the legacy summary
+    /// table and republishes it as the shared `__legacy_shared__` record — if
+    /// those totals are wrong, that spreads them to every device instead of
+    /// fixing them.
+    func rebuildAnalyticsFromRawSessions() async throws {
+        guard let legacyContainer = legacyMigrationSourceContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        await PlaySessionTrackerActor(modelContainer: legacyContainer)
+            .rebuildListeningStats()
+    }
+
+    /// Collapses duplicate podcasts/episodes and repairs playlist membership.
+    /// `dryRun` reports what would change without writing.
+    func deduplicateLibrary(dryRun: Bool) async throws -> LibraryDeduplicationReport {
+        guard let legacyContainer = legacyMigrationSourceContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        return await LibraryDeduplicationService(legacyContainer: legacyContainer)
+            .run(dryRun: dryRun)
+    }
+
+    /// Reports where the queue currently lives, across both stores, plus the
+    /// rollout state that decides which of them the app reads.
+    func playlistTombstoneReport() async throws -> [String] {
+        await prepareSplitStores()
+        guard let userStateContainer = preparedUserStateContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        var lines = ["Rollout: \(storeSplitRolloutStateDescription)"]
+        lines += await PlaylistTombstoneRecoveryService(
+            userStateContainer: userStateContainer
+        ).diagnosticsReport(legacyContainer: legacyMigrationSourceContainer)
+        return lines
+    }
+
+    /// Clears playlist-entry tombstones stamped inside `window` and re-imports, so
+    /// the queue is rebuilt from the UserState records that survived the removal.
+    func restorePlaylistTombstones(
+        deletedOnOrAfter cutoff: Date
+    ) async throws -> PlaylistTombstoneRecoveryResult {
+        await prepareSplitStores()
+        guard let userStateContainer = preparedUserStateContainer else {
+            throw StoreSplitDevelopmentResetError.storesUnavailable
+        }
+        let result = await PlaylistTombstoneRecoveryService(
+            userStateContainer: userStateContainer
+        ).restoreTombstones(deletedOnOrAfter: cutoff)
+        guard result.restoredEntryCount + result.restoredQueueEntryCount > 0 else {
+            return result
+        }
+        try await importAvailableSplitStoreStateNow()
+        return result
     }
 
 #if DEBUG
@@ -1847,13 +1918,18 @@ class ModelContainerManager: ObservableObject {
             // behaviour is untouched while UserState is being built up. Ship #2
             // flips `StoreSplitReleasePhase.current` and this becomes `.none`,
             // which is the change that actually shrinks the iCloud payload.
+            let legacyCloudSyncApplied =
+                StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+            // Remember what was actually applied, so the next launch can tell an
+            // off→on re-attach from a store that has always been mirrored.
+            StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(
+                legacyCloudSyncApplied
+            )
             configuration = ModelConfiguration(
                 "Legacy",
                 url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
                 allowsSave: allowsSave,
-                cloudKitDatabase: StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-                    ? .automatic
-                    : .none
+                cloudKitDatabase: legacyCloudSyncApplied ? .automatic : .none
             )
         } else {
             configuration = ModelConfiguration(

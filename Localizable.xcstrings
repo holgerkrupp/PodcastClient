@@ -317,6 +317,16 @@
     "%lld next" : {
 
     },
+    "%lld of %lld podcasts checked" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld podcasts checked"
+          }
+        }
+      }
+    },
     "%lld rejected record(s):" : {
       "localizations" : {
         "de" : {
@@ -1381,6 +1391,9 @@
           }
         }
       }
+    },
+    "Checking for new episodes" : {
+
     },
     "Choose an audio output device" : {
       "localizations" : {
@@ -4252,6 +4265,9 @@
           }
         }
       }
+    },
+    "New episodes appear here as soon as their podcast has been checked." : {
+
     },
     "New episodes can be placed at the front, end, or not added automatically, depending on your settings." : {
       "localizations" : {

@@ -71,7 +71,14 @@ struct InboxListView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if episodes.isEmpty {
-                InboxEmptyView()
+                if refreshViewModel.isLoading {
+                    InboxRefreshPlaceholderView(
+                        completed: refreshViewModel.completed,
+                        total: refreshViewModel.total
+                    )
+                } else {
+                    InboxEmptyView()
+                }
             } else {
                 List {
                     ForEach(episodes, id: \.persistentModelID) { episode in
@@ -169,11 +176,6 @@ struct InboxListView: View {
                 }
             }
         }
-        .overlay {
-            if refreshViewModel.isLoading && refreshViewModel.total == 0 && !episodes.isEmpty {
-                ProgressView()
-            }
-        }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") {
                 errorMessage = nil
@@ -197,8 +199,12 @@ struct InboxListView: View {
             guard Task.isCancelled == false, generation == loadGeneration else {
                 return
             }
-            episodes = episodeIDs.compactMap {
-                modelContext.model(for: $0) as? Episode
+            // A refresh publishes new episodes every second or so. Reassigning an
+            // unchanged list would reset the rows the user is currently swiping.
+            if episodeIDs != episodes.map(\.persistentModelID) {
+                episodes = episodeIDs.compactMap {
+                    modelContext.model(for: $0) as? Episode
+                }
             }
             hasLoaded = true
         } catch {

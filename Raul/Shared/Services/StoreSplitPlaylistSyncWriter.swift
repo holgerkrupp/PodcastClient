@@ -158,6 +158,13 @@ actor StoreSplitPlaylistSyncWriter {
             )
             activeEntryIDs.insert(entryID)
             if let entry = existingEntries[entryID] {
+                if shouldPreserveTombstone(
+                    isDeleted: entry.isDeleted,
+                    deletedAt: entry.deletedAt,
+                    snapshotAddedAt: entrySnapshot.addedAt
+                ) {
+                    continue
+                }
                 entry.sortIndex = entrySnapshot.sortIndex
                 entry.addedAt = entrySnapshot.addedAt
                 entry.isDeleted = false
@@ -182,6 +189,13 @@ actor StoreSplitPlaylistSyncWriter {
                 let queueID = entrySnapshot.identity.key
                 activeQueueIDs.insert(queueID)
                 if let queueEntry = existingQueueEntries[queueID] {
+                    if shouldPreserveTombstone(
+                        isDeleted: queueEntry.isDeleted,
+                        deletedAt: queueEntry.deletedAt,
+                        snapshotAddedAt: entrySnapshot.addedAt
+                    ) {
+                        continue
+                    }
                     queueEntry.sortIndex = entrySnapshot.sortIndex
                     queueEntry.addedAt = entrySnapshot.addedAt
                     queueEntry.isDeleted = false
@@ -219,6 +233,22 @@ actor StoreSplitPlaylistSyncWriter {
         }
 
         modelContext.saveIfNeeded()
+    }
+
+    /// A snapshot is a projection of one device's local playlist, so it can be
+    /// older than a removal that already reached this store — from another device
+    /// via CloudKit, or from a dequeue whose tombstone landed while this publish
+    /// was in flight. Clearing the tombstone in that case is what put finished
+    /// episodes back at the top of Up Next, so an entry may only revive a
+    /// tombstone when it was demonstrably added *after* the removal.
+    private func shouldPreserveTombstone(
+        isDeleted: Bool,
+        deletedAt: Date?,
+        snapshotAddedAt: Date
+    ) -> Bool {
+        guard isDeleted || deletedAt != nil else { return false }
+        guard let deletedAt else { return false }
+        return snapshotAddedAt <= deletedAt
     }
 
     private func consolidateEntries<Model: PersistentModel>(
