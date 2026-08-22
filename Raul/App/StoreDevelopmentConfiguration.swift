@@ -170,8 +170,19 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     /// Records the decision actually applied to the store, so the next launch can
     /// recognise an off→on transition. Call this once the container is built.
+    ///
+    /// Detaching re-arms the guard. An approval covers the one divergence window
+    /// it was granted for and says nothing about rows written during a later one,
+    /// so it must not survive into the next off→on transition — otherwise the
+    /// guard fires once per install and the very sequence it exists to catch
+    /// (`userStateAuthority` detaches every store, a rollback re-attaches them)
+    /// passes unblocked on any device that has ever approved a re-attach.
     static func recordLegacyCloudSyncDecision(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: legacyCloudSyncLastStateKey)
+        let defaults = UserDefaults.standard
+        if enabled == false {
+            defaults.removeObject(forKey: legacyCloudReattachApprovedKey)
+        }
+        defaults.set(enabled, forKey: legacyCloudSyncLastStateKey)
     }
 
     /// Clears the block. Deduplicate first — approving re-attach on a duplicated

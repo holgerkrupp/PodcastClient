@@ -1905,6 +1905,11 @@ class ModelContainerManager: ObservableObject {
         allowsSave: Bool = true
     ) throws -> ModelContainer {
         let configuration: ModelConfiguration
+        // Only a container that actually opened tells us what the store is
+        // attached to. Recording before the open would let a failed launch leave
+        // behind a decision the store never saw, which is enough to disarm the
+        // re-attach guard on the following launch.
+        var legacyCloudSyncToRecord: Bool?
         if isStoredInMemoryOnly {
             configuration = ModelConfiguration(
                 "Legacy",
@@ -1920,11 +1925,7 @@ class ModelContainerManager: ObservableObject {
             // which is the change that actually shrinks the iCloud payload.
             let legacyCloudSyncApplied =
                 StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-            // Remember what was actually applied, so the next launch can tell an
-            // off→on re-attach from a store that has always been mirrored.
-            StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(
-                legacyCloudSyncApplied
-            )
+            legacyCloudSyncToRecord = legacyCloudSyncApplied
             configuration = ModelConfiguration(
                 "Legacy",
                 url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
@@ -1940,7 +1941,7 @@ class ModelContainerManager: ObservableObject {
             )
         }
 
-        return try ModelContainer(
+        let container = try ModelContainer(
             for: Podcast.self,
                 PodcastMetaData.self,
                 Episode.self,
@@ -1956,6 +1957,14 @@ class ModelContainerManager: ObservableObject {
                 TranscriptionRecord.self,
             configurations: configuration
         )
+        // Remember what was actually applied, so the next launch can tell an
+        // off→on re-attach from a store that has always been mirrored.
+        if let legacyCloudSyncToRecord {
+            StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(
+                legacyCloudSyncToRecord
+            )
+        }
+        return container
     }
 
     nonisolated static func makeRuntimeContainer() throws -> ModelContainer {
