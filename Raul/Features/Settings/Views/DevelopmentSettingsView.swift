@@ -341,7 +341,7 @@ struct DevelopmentSettingsView: View {
                 }
                 .disabled(isRunningSyncAction || isResetting)
 
-                Button("Rebuild Listening Summaries") {
+                Button("Capture Listening Baseline") {
                     rebuildListeningSummaries()
                 }
                 .disabled(splitStoreActionDisabled)
@@ -568,7 +568,7 @@ struct DevelopmentSettingsView: View {
             do {
                 let result = try await modelContainerManager
                     .recoverListeningHistoryForDevelopment()
-                resetMessage = "Recovered \(result.listeningHistoryApplied) sessions and \(result.listeningSummariesApplied) summaries."
+                resetMessage = "Recovered \(result.listeningHistoryApplied) sessions."
                     + (result.failed > 0 ? " \(result.failed) failures." : "")
             } catch {
                 resetMessage = error.localizedDescription

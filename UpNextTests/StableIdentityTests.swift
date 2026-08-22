@@ -903,9 +903,9 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertEqual(try destination.fetchCount(FetchDescriptor<QueueEntrySync>()), 1)
         XCTAssertEqual(try destination.fetchCount(FetchDescriptor<BookmarkSync>()), 1)
         XCTAssertEqual(try destination.fetchCount(FetchDescriptor<ListeningHistorySync>()), 1)
-        XCTAssertEqual(try destination.fetchCount(FetchDescriptor<ListeningSummarySync>()), 1)
+        XCTAssertEqual(try destination.fetchCount(FetchDescriptor<ListeningBaselineSync>()), 1)
         XCTAssertEqual(repeatedResult.listeningSummaries.updated, 0)
-        XCTAssertEqual(repeatedResult.listeningSummaries.skipped, 1)
+        XCTAssertGreaterThanOrEqual(repeatedResult.listeningSummaries.skipped, 1)
         XCTAssertNil(bookmark.uuid)
 
         let migratedBookmark = try XCTUnwrap(

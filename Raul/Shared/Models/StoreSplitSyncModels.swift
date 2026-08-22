@@ -340,63 +340,58 @@ final class PodcastPreferenceSync: Identifiable {
     }
 }
 
+/// The one number the split cannot recompute: how much listening happened before
+/// this account migrated.
+///
+/// Raw `PlaySession` rows are pruned after 30 days
+/// (`PlaySessionTrackerActor.rawSessionRetentionDays`), so the pre-split era
+/// survives only as legacy aggregates. One row per feed captures it, written once
+/// at migration and never touched again — not republished, not merged, not
+/// recomputed. That is what keeps it from becoming an input to its own
+/// derivation, which is how per-period, per-device rollups turned one device's
+/// wrong total into the account's permanent one.
+///
+/// Everything after the capture is derived locally from `ListeningHistorySync`,
+/// so this record is a constant rather than a running total. It is also the
+/// reason `ListeningHistorySync.isLegacyMigrated` still matters: migrated session
+/// rows are already inside this number and must never be added to it.
 @Model
-final class ListeningSummarySync: Identifiable {
+final class ListeningBaselineSync: Identifiable {
+    /// The normalized feed this baseline covers, or `__all_podcasts__`.
     var id: String = ""
     var feedURL: String = ""
-    var periodKind: String = ""
-    var periodStart: Date = Date.distantPast
-    var sourceDeviceID: String?
-    var sourceDeviceName: String?
-    var sourceDeviceModel: String?
     var podcastName: String?
     var totalSeconds: Double = 0
     var silenceGapTimeSavedSeconds: Double = 0
     var playbackRateTimeSavedSeconds: Double = 0
-    var activeHourCount: Int = 0
-    var updatedAt: Date = Date.distantPast
+    /// Which device captured the snapshot, and when. Both are for support and
+    /// display only; neither takes part in any total.
+    var capturedAt: Date = Date.distantPast
+    var capturedByDeviceID: String?
 
     init(
         feedURL: String,
-        periodKind: String,
-        periodStart: Date,
-        sourceDeviceID: String? = nil,
-        sourceDeviceName: String? = nil,
-        sourceDeviceModel: String? = nil,
         podcastName: String? = nil,
-        totalSeconds: Double = 0,
+        totalSeconds: Double,
         silenceGapTimeSavedSeconds: Double = 0,
         playbackRateTimeSavedSeconds: Double = 0,
-        activeHourCount: Int = 0,
-        updatedAt: Date = .now
+        capturedAt: Date = .now,
+        capturedByDeviceID: String? = nil
     ) {
-        self.id = StableIdentityKey.make(
-            feedURL,
-            periodKind,
-            String(Int(periodStart.timeIntervalSince1970)),
-            sourceDeviceID ?? "__unknown_device__"
-        )
+        self.id = feedURL
         self.feedURL = feedURL
-        self.periodKind = periodKind
-        self.periodStart = periodStart
-        self.sourceDeviceID = sourceDeviceID
-        self.sourceDeviceName = sourceDeviceName
-        self.sourceDeviceModel = sourceDeviceModel
         self.podcastName = podcastName
         self.totalSeconds = totalSeconds
         self.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
         self.playbackRateTimeSavedSeconds = playbackRateTimeSavedSeconds
-        self.activeHourCount = activeHourCount
-        self.updatedAt = updatedAt
+        self.capturedAt = capturedAt
+        self.capturedByDeviceID = capturedByDeviceID
     }
+}
 
-    var aggregationKey: String {
-        return StableIdentityKey.make(
-            feedURL,
-            periodKind,
-            String(Int(periodStart.timeIntervalSince1970))
-        )
-    }
+extension ListeningBaselineSync {
+    /// The feed key used for the account-wide baseline row.
+    static let allPodcastsFeedURL = "__all_podcasts__"
 }
 
 @Model
@@ -828,48 +823,68 @@ enum ListeningHistoryAggregation {
     }
 }
 
-enum ListeningSummaryAggregation {
-    static func globalStatistics(
-        from records: [ListeningSummarySync],
-        sourceDeviceID: String? = nil
-    ) -> GlobalListeningStatistics {
-        struct Contribution {
-            var totalSeconds: Double
-            var silenceGapTimeSavedSeconds: Double
-            var playbackRateTimeSavedSeconds: Double
+struct DeviceListeningShare: Equatable, Sendable {
+    let deviceID: String
+    let seconds: Double
+    /// Fraction of the account total, 0...1.
+    let share: Double
+}
+
+/// The arithmetic behind per-account listening statistics.
+///
+/// It lives here rather than in the statistics view because it is the invariant
+/// the synced schema is shaped around, not a presentation detail: the account
+/// total is the frozen pre-split baseline plus the sessions recorded since, and
+/// the per-device shares are the same sessions grouped by the device that
+/// recorded them. One set of rows, two readings, so the total and the shares
+/// cannot disagree.
+enum AccountListeningTotals {
+    /// Lifetime seconds for the account.
+    ///
+    /// `migratedSeconds` are the sessions the migration copied out of the legacy
+    /// store. The baseline was computed from aggregates that already contain
+    /// them, so they are counted only when this account has no baseline — on a
+    /// device that installed after the split, they are the sole record of the
+    /// pre-split era.
+    static func lifetimeSeconds(
+        baselineSeconds: Double?,
+        liveSeconds: Double,
+        migratedSeconds: Double
+    ) -> Double {
+        guard let baselineSeconds else {
+            return max(0, liveSeconds) + max(0, migratedSeconds)
         }
+        return max(0, baselineSeconds) + max(0, liveSeconds)
+    }
 
-        var contributionsByID: [String: Contribution] = [:]
-
-        for record in records {
-            guard sourceDeviceID == nil || record.sourceDeviceID == sourceDeviceID else {
-                continue
-            }
-            let existing = contributionsByID[record.id]
-            contributionsByID[record.id] = Contribution(
-                totalSeconds: max(existing?.totalSeconds ?? 0, record.totalSeconds),
-                silenceGapTimeSavedSeconds: max(
-                    existing?.silenceGapTimeSavedSeconds ?? 0,
-                    record.silenceGapTimeSavedSeconds
-                ),
-                playbackRateTimeSavedSeconds: max(
-                    existing?.playbackRateTimeSavedSeconds ?? 0,
-                    record.playbackRateTimeSavedSeconds
+    /// Per-device shares of one period's listening.
+    ///
+    /// The baseline predates device attribution, so when it is included it is
+    /// attributed to `baselineDeviceID` — a pseudo-device the statistics view
+    /// labels "Migrated history". Shares are computed against the sum of exactly
+    /// the rows returned, so they always add to 1.
+    static func deviceShares(
+        secondsByDevice: [String: Double],
+        baselineSeconds: Double? = nil,
+        baselineDeviceID: String = ListeningDeviceIdentity.legacySharedID
+    ) -> [DeviceListeningShare] {
+        var totals = secondsByDevice.compactMapValues { $0 > 0 ? $0 : nil }
+        if let baselineSeconds, baselineSeconds > 0 {
+            totals[baselineDeviceID] = baselineSeconds
+        }
+        let total = totals.values.reduce(0, +)
+        guard total > 0 else { return [] }
+        return totals
+            .map {
+                DeviceListeningShare(
+                    deviceID: $0.key,
+                    seconds: $0.value,
+                    share: $0.value / total
                 )
-            )
-        }
-
-        return contributionsByID.values.reduce(
-            into: GlobalListeningStatistics(
-                totalSeconds: 0,
-                silenceGapTimeSavedSeconds: 0,
-                playbackRateTimeSavedSeconds: 0,
-                sessionCount: 0
-            )
-        ) { result, contribution in
-            result.totalSeconds += max(0, contribution.totalSeconds)
-            result.silenceGapTimeSavedSeconds += max(0, contribution.silenceGapTimeSavedSeconds)
-            result.playbackRateTimeSavedSeconds += max(0, contribution.playbackRateTimeSavedSeconds)
-        }
+            }
+            .sorted {
+                if $0.seconds != $1.seconds { return $0.seconds > $1.seconds }
+                return $0.deviceID < $1.deviceID
+            }
     }
 }

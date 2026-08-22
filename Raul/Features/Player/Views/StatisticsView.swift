@@ -44,6 +44,10 @@ private struct DeviceListeningRollup: Identifiable {
     let id: String
     let name: String
     let totalSeconds: Double
+    /// Fraction of the account's listening in this period, 0...1. Statistics are
+    /// per-account, so the share is the point of the breakdown; the absolute
+    /// figure is context for it.
+    let share: Double
 }
 
 private struct ListeningHeatMapSnapshot {
@@ -363,7 +367,7 @@ struct StatisticsView: View {
             if isShowingCurrentSnapshot && !snapshot.deviceBreakdown.isEmpty {
                 Section("Listening by Device") {
                     ForEach(snapshot.deviceBreakdown) { device in
-                        HStack {
+                        HStack(alignment: .firstTextBaseline) {
                             Label(
                                 device.name,
                                 systemImage: device.id == ListeningDeviceIdentity.legacySharedID
@@ -371,10 +375,17 @@ struct StatisticsView: View {
                                     : "iphone.and.arrow.forward"
                             )
                             Spacer()
-                            Text(formatDuration(device.totalSeconds))
-                                .font(.headline)
-                                .monospacedDigit()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(device.share, format: .percent.precision(.fractionLength(0)))
+                                    .font(.headline)
+                                    .monospacedDigit()
+                                Text(formatDuration(device.totalSeconds))
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -1811,117 +1822,91 @@ struct StatisticsView: View {
         ).reduce(0) { $0 + listenedSeconds(for: $1) }
     }
 
+    /// Lifetime listening for the account, from the synced store.
+    ///
+    /// One rule, and it holds because there is nothing else in the synced store
+    /// to reconcile against: the frozen pre-split baseline, plus every session
+    /// recorded since. `isLegacyMigrated` rows are the sessions the migration
+    /// copied out of the legacy store, and the baseline was computed from
+    /// aggregates that already contain them, so counting them again is exactly
+    /// the double-count this design removes.
+    ///
+    /// The fallback matters on a device that has not captured a baseline yet —
+    /// there, the migrated rows are the only record of the pre-split era.
     private func syncedLifetimeListeningSeconds(
+        selectedPodcastFeedString: String?
+    ) -> Double? {
+        guard ModelContainerManager.shared.preparedUserStateContainer != nil else {
+            return nil
+        }
+        let baseline = syncedBaselineSeconds(
+            selectedPodcastFeedString: selectedPodcastFeedString
+        )
+        let live = syncedHistoryListeningSeconds(
+            selectedPodcastFeedString: selectedPodcastFeedString,
+            migratedOnly: false
+        )
+        let migrated = syncedHistoryListeningSeconds(
+            selectedPodcastFeedString: selectedPodcastFeedString,
+            migratedOnly: true
+        )
+        guard baseline != nil || live > 0 || migrated > 0 else { return nil }
+        return AccountListeningTotals.lifetimeSeconds(
+            baselineSeconds: baseline,
+            liveSeconds: live,
+            migratedSeconds: migrated
+        )
+    }
+
+    /// The frozen pre-split total for the selected scope, or `nil` when this
+    /// account has no baseline (a device that installed after the split).
+    private func syncedBaselineSeconds(
         selectedPodcastFeedString: String?
     ) -> Double? {
         guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
             return nil
         }
-        let context = ModelContext(container)
-        let summaries = (try? context.fetch(
-            FetchDescriptor<ListeningSummarySync>()
+        let rows = (try? ModelContext(container).fetch(
+            FetchDescriptor<ListeningBaselineSync>()
         )) ?? []
-        func summariesForSelectedFeed(
-            kind: PlaySessionSummaryPeriod
-        ) -> [ListeningSummarySync] {
-            let matching = summaries.filter { $0.periodKind == kind.rawValue }
-            guard let selectedPodcastFeedString,
-                  let selectedURL = URL(string: selectedPodcastFeedString) else {
-                return matching
-            }
-            let selectedKeys = selectedURL.podcastFeedComparisonKeys
-            return matching.filter { record in
-                guard let feed = URL(string: record.feedURL) else { return false }
-                return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
-            }
+        guard rows.isEmpty == false else { return nil }
+
+        guard let selectedPodcastFeedString,
+              let selectedURL = URL(string: selectedPodcastFeedString) else {
+            // Prefer the per-feed rows. A historical all-podcasts row is only a
+            // fallback; adding both would count the same listening twice.
+            let perFeed = rows.filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
+            let scoped = perFeed.isEmpty ? rows : perFeed
+            return scoped.reduce(0) { $0 + max(0, $1.totalSeconds) }
         }
-
-        // Prefer the `.forever` rollup (a single non-overlapping lifetime total),
-        // then fall back to the `.year` summaries — which also partition time
-        // without overlap, so summing them never double-counts. The `.year` tier
-        // keeps stores migrated before `.forever` rollups were synthesised from
-        // reporting only the retained raw sessions instead of the full lifetime.
-        for kind in [PlaySessionSummaryPeriod.forever, .year] {
-            let scoped = summariesForSelectedFeed(kind: kind)
-            if scoped.isEmpty == false {
-                let summaryTotal = ListeningSummaryAggregation.globalStatistics(
-                    from: scoped
-                ).totalSeconds
-                if kind == .forever,
-                   scoped.contains(where: {
-                       $0.sourceDeviceID == ListeningDeviceIdentity.legacySharedID
-                   }) == false {
-                    return summaryTotal + syncedHistoryListeningSeconds(
-                        selectedPodcastFeedString: selectedPodcastFeedString,
-                        migratedOnly: true
-                    )
-                }
-                return summaryTotal
-            }
+        let selectedKeys = selectedURL.podcastFeedComparisonKeys
+        let matching = rows.filter { row in
+            guard let feed = URL(string: row.feedURL) else { return false }
+            return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
         }
-
-        let selectedKeys = selectedPodcastFeedString
-            .flatMap(URL.init(string:))
-            .map(\.podcastFeedComparisonKeys)
-        let pageSize = 250
-        var offset = 0
-        var newestByIdentity: [String: ListeningHistorySync] = [:]
-
-        while true {
-            var descriptor = FetchDescriptor<ListeningHistorySync>()
-            descriptor.fetchOffset = offset
-            descriptor.fetchLimit = pageSize
-            let page = (try? context.fetch(descriptor)) ?? []
-            guard page.isEmpty == false else { break }
-
-            let filteredPage: [ListeningHistorySync]
-            if let selectedKeys {
-                filteredPage = page.filter { record in
-                    guard let feed = URL(string: record.feedURL) else { return false }
-                    return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
-                }
-            } else {
-                filteredPage = page
-            }
-
-            for record in filteredPage {
-                let key = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
-                if let existing = newestByIdentity[key] {
-                    let shouldReplace: Bool
-                    if record.updatedAt != existing.updatedAt {
-                        shouldReplace = record.updatedAt > existing.updatedAt
-                    } else if record.endedAt != existing.endedAt {
-                        shouldReplace = record.endedAt > existing.endedAt
-                    } else if record.listenedSeconds != existing.listenedSeconds {
-                        shouldReplace = record.listenedSeconds > existing.listenedSeconds
-                    } else {
-                        shouldReplace = record.sourceDeviceID < existing.sourceDeviceID
-                    }
-                    if shouldReplace {
-                        newestByIdentity[key] = record
-                    }
-                } else {
-                    newestByIdentity[key] = record
-                }
-            }
-
-            offset += page.count
-            if page.count < pageSize {
-                break
-            }
-        }
-        guard newestByIdentity.isEmpty == false else { return nil }
-        return newestByIdentity.values.reduce(0) { partial, record in
-            partial + max(0, record.listenedSeconds)
-        }
+        guard matching.isEmpty == false else { return nil }
+        return matching.reduce(0) { $0 + max(0, $1.totalSeconds) }
     }
 
-    private func syncedHistoryListeningSeconds(
-        selectedPodcastFeedString: String?,
-        migratedOnly: Bool
-    ) -> Double {
+    /// Which session rows a total is allowed to include.
+    ///
+    /// Migrated rows are already inside the frozen baseline. Naming the two sets
+    /// is what stops "include everything" from silently becoming a double-count
+    /// the next time one of these call sites is edited.
+    private enum SyncedHistoryScope {
+        /// Sessions recorded since the migration. Adds to the baseline.
+        case live
+        /// Sessions the migration copied from the legacy store. Already inside
+        /// the baseline; only counted when this account has no baseline.
+        case migrated
+    }
+
+    private func syncedHistoryRows(
+        scope: SyncedHistoryScope,
+        selectedPodcastFeedString: String?
+    ) -> [ListeningHistorySync] {
         guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
-            return 0
+            return []
         }
         let context = ModelContext(container)
         let selectedKeys = selectedPodcastFeedString
@@ -1937,12 +1922,14 @@ struct StatisticsView: View {
             let page = (try? context.fetch(descriptor)) ?? []
             guard page.isEmpty == false else { break }
             for record in page {
-                guard migratedOnly == false || record.isLegacyMigrated else { continue }
+                guard record.isLegacyMigrated == (scope == .migrated) else { continue }
                 if let selectedKeys {
                     guard let feed = URL(string: record.feedURL),
                           feed.podcastFeedComparisonKeys
                             .isDisjoint(with: selectedKeys) == false else { continue }
                 }
+                // The same session can arrive twice with different ids after a
+                // re-publish; keep the newest per canonical identity.
                 let key = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
                 if let existing = newestByIdentity[key] {
                     if record.updatedAt > existing.updatedAt {
@@ -1955,85 +1942,78 @@ struct StatisticsView: View {
             offset += page.count
             if page.count < pageSize { break }
         }
-        return newestByIdentity.values.reduce(0) {
-            $0 + max(0, $1.listenedSeconds)
-        }
+        return Array(newestByIdentity.values)
     }
 
+    private func syncedHistoryListeningSeconds(
+        selectedPodcastFeedString: String?,
+        migratedOnly: Bool
+    ) -> Double {
+        syncedHistoryRows(
+            scope: migratedOnly ? .migrated : .live,
+            selectedPodcastFeedString: selectedPodcastFeedString
+        ).reduce(0) { $0 + max(0, $1.listenedSeconds) }
+    }
+
+    /// Listening by device, as shares of the account total.
+    ///
+    /// Derived from the session rows rather than from per-device aggregates.
+    /// `ListeningHistorySync` already carries `sourceDeviceID`, `sourceDeviceName`
+    /// and `deviceModel`, so the attribution the breakdown needs is in the same
+    /// rows the total comes from — which is why the account total and the shares
+    /// can no longer disagree.
+    ///
+    /// The pre-split baseline has no device attribution (it predates it), so it
+    /// appears as a single "Migrated history" row on the lifetime view only.
     private func syncedDeviceBreakdown(
         period: PlaySessionSummaryPeriod,
         periodStart: Date,
         selectedPodcastFeedString: String?
     ) -> [DeviceListeningRollup] {
-        guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
-            return []
-        }
-        let context = ModelContext(container)
-        let periodKind = period.rawValue
-        let selectedKeys = selectedPodcastFeedString
-            .flatMap(URL.init(string:))?
-            .podcastFeedComparisonKeys
-        let records = ((try? context.fetch(FetchDescriptor<ListeningSummarySync>())) ?? [])
-            .filter { record in
-                guard record.periodKind == periodKind else { return false }
-                if period != .forever,
-                   !isSamePeriodStart(record.periodStart, as: periodStart, period: period) {
-                    return false
-                }
-                guard let selectedKeys else { return true }
-                guard let feed = URL(string: record.feedURL) else { return false }
-                return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
+        let rows = syncedHistoryRows(
+            scope: .live,
+            selectedPodcastFeedString: selectedPodcastFeedString
+        )
+        // A session belongs to the period its playback started in. Splitting one
+        // across a boundary would be more precise and would make the shares stop
+        // adding to the total, which is the property this view is for.
+        let scoped = period == .forever
+            ? rows
+            : rows.filter {
+                isSamePeriodStart($0.startedAt, as: periodStart, period: period)
             }
 
-        // Prefer per-feed rows. A historical all-podcasts row is only a fallback;
-        // combining both would count the same listening twice.
-        let perFeed = records.filter { $0.feedURL != "__all_podcasts__" }
-        let scoped = perFeed.isEmpty ? records : perFeed
-        struct Contribution {
-            var deviceID: String
-            var name: String
-            var seconds: Double
-            var updatedAt: Date
-        }
-        var newestByID: [String: Contribution] = [:]
+        var secondsByDevice: [String: Double] = [:]
+        var nameByDevice: [String: (name: String, updatedAt: Date)] = [:]
         for record in scoped {
-            let deviceID = record.sourceDeviceID ?? "__unknown_device__"
-            let contribution = Contribution(
-                deviceID: deviceID,
-                name: record.sourceDeviceName
-                    .flatMap { $0 == "This device" ? nil : $0 }
-                    ?? record.sourceDeviceModel
-                    ?? (deviceID == ListeningDeviceIdentity.legacySharedID
-                        ? "Migrated history"
-                        : "Unknown device"),
-                seconds: max(0, record.totalSeconds),
-                updatedAt: record.updatedAt
-            )
-            if let existing = newestByID[record.id] {
-                if contribution.updatedAt > existing.updatedAt
-                    || contribution.seconds > existing.seconds {
-                    newestByID[record.id] = contribution
-                }
-            } else {
-                newestByID[record.id] = contribution
+            let deviceID = record.sourceDeviceID
+            secondsByDevice[deviceID, default: 0] += max(0, record.listenedSeconds)
+            let name = record.sourceDeviceName
+                .flatMap { $0 == "This device" ? nil : $0 }
+                ?? record.deviceModel
+                ?? "Unknown device"
+            if record.updatedAt > (nameByDevice[deviceID]?.updatedAt ?? .distantPast) {
+                nameByDevice[deviceID] = (name, record.updatedAt)
             }
         }
-        return Dictionary(grouping: newestByID.values, by: \.deviceID)
-            .map { deviceID, values in
-                DeviceListeningRollup(
-                    id: deviceID,
-                    name: values.max(by: { $0.updatedAt < $1.updatedAt })?.name
-                        ?? "Unknown device",
-                    totalSeconds: values.reduce(0) { $0 + $1.seconds }
-                )
-            }
-            .filter { $0.totalSeconds > 0 }
-            .sorted {
-                if $0.totalSeconds != $1.totalSeconds {
-                    return $0.totalSeconds > $1.totalSeconds
-                }
-                return $0.name < $1.name
-            }
+
+        let baseline = period == .forever
+            ? syncedBaselineSeconds(selectedPodcastFeedString: selectedPodcastFeedString)
+            : nil
+
+        return AccountListeningTotals.deviceShares(
+            secondsByDevice: secondsByDevice,
+            baselineSeconds: baseline
+        ).map { share in
+            DeviceListeningRollup(
+                id: share.deviceID,
+                name: share.deviceID == ListeningDeviceIdentity.legacySharedID
+                    ? "Migrated history"
+                    : nameByDevice[share.deviceID]?.name ?? "Unknown device",
+                totalSeconds: share.seconds,
+                share: share.share
+            )
+        }
     }
 
     private func hasAnySummary() -> Bool {

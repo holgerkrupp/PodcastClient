@@ -181,10 +181,9 @@ actor StoreSplitMigrationService {
     }
 
 #if DEBUG
-    /// Development helper: re-runs only the listening-summary phase against the
-    /// live stores, rebuilding the per-period rows and the synthesized `.forever`
-    /// rollups. Idempotent — the upserts max-merge on a deterministic id, so
-    /// repeated runs never double-count. Used by the Development settings button.
+    /// Development helper: re-runs only the baseline-capture phase against the
+    /// live stores. Idempotent because the capture is write-once — a baseline that
+    /// already exists is left alone, so repeated runs cannot move a total.
     nonisolated static func rebuildListeningSummaries(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer
@@ -1511,25 +1510,48 @@ actor StoreSplitMigrationService {
 
     // MARK: - Listening summaries
 
-    private struct LegacySummaryKey: Hashable {
-        let feedURL: String
-        let periodKind: String
-        let periodStart: Date
-    }
-
     private struct LegacySummaryValue {
         var podcastName: String?
         var totalSeconds = 0.0
         var silenceGapTimeSavedSeconds = 0.0
         var playbackRateTimeSavedSeconds = 0.0
-        var activeHourCount = 0
         var seenRecordIDs = Set<String>()
     }
 
-    /// Listening summaries are aggregated period totals (a few records per period
-    /// per podcast), so the whole phase runs in a single slice. Aggregating the
-    /// full set in one pass preserves the existing summing semantics; paging it
-    /// would split same-key summaries across pages and break the totals.
+    /// The period tier to sum the baseline from: the coarsest one this store
+    /// actually has.
+    ///
+    /// Each tier partitions all time on its own, so summing within a single tier
+    /// never double-counts — but summing *across* tiers does, because a month is
+    /// inside a year. `PlaySessionTrackerActor` writes day, week, month and year
+    /// together, so `.year` is what a real store yields; the coarser-first search
+    /// only matters for a store whose older tiers were pruned, where the
+    /// alternative would be capturing no baseline and silently dropping the
+    /// account's pre-split history.
+    private static func baselinePeriodKind(
+        in summaries: [PlaySessionSummary]
+    ) -> String? {
+        let available = Set(summaries.compactMap(\.periodKind))
+        return [
+            PlaySessionSummaryPeriod.year,
+            .month,
+            .week,
+            .day
+        ].first { available.contains($0.rawValue) }?.rawValue
+    }
+
+    /// Captures the pre-split listening baseline: one frozen row per feed.
+    ///
+    /// Raw `PlaySession` rows are pruned after 30 days, so the era before the
+    /// split survives only as legacy `PlaySessionSummary` aggregates. Summing the
+    /// `.year` rows is what turns them into a lifetime figure — `.year` periods
+    /// partition all time, so summing them never double-counts, and it is the
+    /// same derivation the legacy statistics screen has always used.
+    ///
+    /// Write-once. A row that already exists is left exactly as it is, including
+    /// one that arrived from another device. Re-deriving or max-merging it is how
+    /// a single wrong total previously became the account's permanent total; a
+    /// constant cannot ratchet.
     private static func processListeningSummaries(
         offset: Int,
         legacyContext: ModelContext,
@@ -1543,149 +1565,69 @@ actor StoreSplitMigrationService {
         }
 
         let legacySummaries = (try? legacyContext.fetch(FetchDescriptor<PlaySessionSummary>())) ?? []
-        var aggregates: [LegacySummaryKey: LegacySummaryValue] = [:]
+        guard let baselineKind = baselinePeriodKind(in: legacySummaries) else {
+            outcome.delta.scanned += legacySummaries.count
+            outcome.delta.skipped += legacySummaries.count
+            outcome.processed = legacySummaries.count
+            outcome.reachedEnd = true
+            return outcome
+        }
+        var aggregates: [String: LegacySummaryValue] = [:]
 
         for summary in legacySummaries {
             outcome.delta.scanned += 1
             guard let periodKind = summary.periodKind,
+                  periodKind == baselineKind,
                   let periodStart = summary.periodStart else {
-                outcome.delta.skipped += 1
-                continue
-            }
-            // Rows the importer projected out of `UserState.sqlite` are not
-            // evidence of anything this device measured. Republishing them would
-            // feed the synced summaries back into the record that produced them.
-            guard summary.isSplitStoreProjection == false else {
                 outcome.delta.skipped += 1
                 continue
             }
 
             let feedURL = summary.podcastFeed
                 .map(PodcastFeedIdentity.normalizedFeedURLString)
-                ?? "__all_podcasts__"
-            let key = LegacySummaryKey(
-                feedURL: feedURL,
-                periodKind: periodKind,
-                periodStart: periodStart
-            )
+                ?? ListeningBaselineSync.allPodcastsFeedURL
             let recordID = summary.id?.uuidString ?? StableIdentityKey.make(
                 feedURL,
                 periodKind,
                 String(periodStart.timeIntervalSince1970),
                 summary.podcastName ?? ""
             )
-            guard aggregates[key]?.seenRecordIDs.contains(recordID) != true else {
+            guard aggregates[feedURL]?.seenRecordIDs.contains(recordID) != true else {
                 outcome.delta.skipped += 1
                 continue
             }
 
-            var value = aggregates[key] ?? LegacySummaryValue()
+            var value = aggregates[feedURL] ?? LegacySummaryValue()
             value.seenRecordIDs.insert(recordID)
             value.podcastName = summary.podcastName ?? value.podcastName
             value.totalSeconds += max(0, summary.totalSeconds ?? 0)
             value.silenceGapTimeSavedSeconds += max(0, summary.silenceGapTimeSavedSeconds ?? 0)
             value.playbackRateTimeSavedSeconds += max(0, summary.playbackRateTimeSavedSeconds ?? 0)
-            value.activeHourCount += max(0, summary.activeHourCount ?? 0)
-            aggregates[key] = value
+            aggregates[feedURL] = value
         }
 
-        var recordsByID = ((try? destinationContext.fetch(FetchDescriptor<ListeningSummarySync>())) ?? [])
-            .reduce(into: [String: ListeningSummarySync]()) { $0[$1.id] = $1 }
+        let existingIDs = Set(
+            ((try? destinationContext.fetch(FetchDescriptor<ListeningBaselineSync>())) ?? [])
+                .map(\.id)
+        )
+        let deviceID = ListeningDeviceIdentity.current().id
 
-        func upsert(_ candidate: ListeningSummarySync) {
-            if let destination = recordsByID[candidate.id] {
-                // Partial CloudKit imports may reveal additional legacy summaries later.
-                let totalSeconds = max(destination.totalSeconds, candidate.totalSeconds)
-                let silenceGapTimeSavedSeconds = max(
-                    destination.silenceGapTimeSavedSeconds,
-                    candidate.silenceGapTimeSavedSeconds
-                )
-                let playbackRateTimeSavedSeconds = max(
-                    destination.playbackRateTimeSavedSeconds,
-                    candidate.playbackRateTimeSavedSeconds
-                )
-                let activeHourCount = max(
-                    destination.activeHourCount,
-                    candidate.activeHourCount
-                )
-                let podcastName = candidate.podcastName ?? destination.podcastName
-                let changed = totalSeconds != destination.totalSeconds
-                    || silenceGapTimeSavedSeconds != destination.silenceGapTimeSavedSeconds
-                    || playbackRateTimeSavedSeconds != destination.playbackRateTimeSavedSeconds
-                    || activeHourCount != destination.activeHourCount
-                    || podcastName != destination.podcastName
-
-                if changed {
-                    destination.totalSeconds = totalSeconds
-                    destination.silenceGapTimeSavedSeconds = silenceGapTimeSavedSeconds
-                    destination.playbackRateTimeSavedSeconds = playbackRateTimeSavedSeconds
-                    destination.activeHourCount = activeHourCount
-                    destination.podcastName = podcastName
-                    destination.updatedAt = .now
-                    outcome.delta.updated += 1
-                } else {
-                    outcome.delta.skipped += 1
-                }
-            } else {
-                destinationContext.insert(candidate)
-                recordsByID[candidate.id] = candidate
-                outcome.delta.inserted += 1
+        for (feedURL, value) in aggregates where value.totalSeconds > 0 {
+            guard existingIDs.contains(feedURL) == false else {
+                outcome.delta.skipped += 1
+                continue
             }
-        }
-
-        for (key, value) in aggregates {
-            upsert(
-                ListeningSummarySync(
-                    feedURL: key.feedURL,
-                    periodKind: key.periodKind,
-                    periodStart: key.periodStart,
-                    sourceDeviceID: ListeningDeviceIdentity.legacySharedID,
-                    sourceDeviceName: "Migrated history",
-                    podcastName: value.podcastName,
-                    totalSeconds: value.totalSeconds,
-                    silenceGapTimeSavedSeconds: value.silenceGapTimeSavedSeconds,
-                    playbackRateTimeSavedSeconds: value.playbackRateTimeSavedSeconds,
-                    activeHourCount: value.activeHourCount,
-                    updatedAt: .now
-                )
-            )
-        }
-
-        // Synthesize a per-feed `.forever` rollup from the `.year` aggregates so the
-        // split-store lifetime reader has a single non-overlapping total to sum.
-        // `.year` periods partition all time, so summing them never double-counts;
-        // this mirrors how the legacy lifetime total is derived from `.year`
-        // summaries. The `.forever` rows reuse the deterministic id keyed on
-        // (feedURL, periodKind, periodStart, device), so re-running migration
-        // max-merges instead of duplicating.
-        var foreverByFeed: [String: LegacySummaryValue] = [:]
-        for (key, value) in aggregates
-        where key.periodKind == PlaySessionSummaryPeriod.year.rawValue {
-            var forever = foreverByFeed[key.feedURL] ?? LegacySummaryValue()
-            forever.podcastName = value.podcastName ?? forever.podcastName
-            forever.totalSeconds += value.totalSeconds
-            forever.silenceGapTimeSavedSeconds += value.silenceGapTimeSavedSeconds
-            forever.playbackRateTimeSavedSeconds += value.playbackRateTimeSavedSeconds
-            forever.activeHourCount += value.activeHourCount
-            foreverByFeed[key.feedURL] = forever
-        }
-
-        for (feedURL, value) in foreverByFeed {
-            upsert(
-                ListeningSummarySync(
+            destinationContext.insert(
+                ListeningBaselineSync(
                     feedURL: feedURL,
-                    periodKind: PlaySessionSummaryPeriod.forever.rawValue,
-                    periodStart: .distantPast,
-                    sourceDeviceID: ListeningDeviceIdentity.legacySharedID,
-                    sourceDeviceName: "Migrated history",
                     podcastName: value.podcastName,
                     totalSeconds: value.totalSeconds,
                     silenceGapTimeSavedSeconds: value.silenceGapTimeSavedSeconds,
                     playbackRateTimeSavedSeconds: value.playbackRateTimeSavedSeconds,
-                    activeHourCount: value.activeHourCount,
-                    updatedAt: .now
+                    capturedByDeviceID: deviceID
                 )
             )
+            outcome.delta.inserted += 1
         }
 
         guard save(destinationContext, result: &outcome.delta) else {

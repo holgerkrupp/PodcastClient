@@ -66,7 +66,7 @@ actor StoreSplitDevelopmentResetService {
             from: userStateContext
         )
         result.userStateRecordsDeleted += try deleteAll(
-            ListeningSummarySync.self,
+            ListeningBaselineSync.self,
             from: userStateContext
         )
         result.cacheRecordsDeleted += try deleteAll(

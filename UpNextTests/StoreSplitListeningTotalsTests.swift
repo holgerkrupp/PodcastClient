@@ -2,15 +2,68 @@ import SwiftData
 import XCTest
 @testable import UpNext
 
-/// Lifetime listening totals are summed across the `__legacy_shared__` migration
-/// record and the live per-device rollups. That is only correct while the two are
-/// disjoint, and only stable while neither is computed from the other.
+/// Per-account listening totals: the frozen pre-split baseline plus the sessions
+/// recorded since.
+///
+/// The synced store carries no aggregates, so there is no second version of any
+/// total to reconcile against. These tests pin the two things that keep it that
+/// way — the baseline is written once and never moves, and migrated sessions are
+/// never added on top of the baseline that already contains them.
 final class StoreSplitListeningTotalsTests: XCTestCase {
-    /// `__legacy_shared__` already accounts for every migrated session, and nothing
-    /// ever subtracts from it. Clearing `isLegacyMigrated` on a live upsert would
-    /// additionally admit the row to this device's per-device summary, so readers
-    /// that sum the two would count the same seconds twice.
-    func testLiveUpsertDoesNotPromoteAMigratedRowIntoTheLiveSummaries() async throws {
+    // MARK: - The account rule
+
+    func testLifetimeIsBaselinePlusLiveSessions() {
+        XCTAssertEqual(
+            AccountListeningTotals.lifetimeSeconds(
+                baselineSeconds: 1_000,
+                liveSeconds: 250,
+                migratedSeconds: 400
+            ),
+            1_250,
+            "migrated sessions are inside the baseline; adding them again is the double-count"
+        )
+    }
+
+    func testLifetimeFallsBackToMigratedSessionsWithoutABaseline() {
+        XCTAssertEqual(
+            AccountListeningTotals.lifetimeSeconds(
+                baselineSeconds: nil,
+                liveSeconds: 250,
+                migratedSeconds: 400
+            ),
+            650,
+            "with no baseline the migrated rows are the only record of the pre-split era"
+        )
+    }
+
+    func testDeviceSharesAddToTheAccountTotal() {
+        let shares = AccountListeningTotals.deviceShares(
+            secondsByDevice: ["phone": 300, "mac": 100],
+            baselineSeconds: 200
+        )
+        XCTAssertEqual(
+            shares.map(\.deviceID),
+            ["phone", ListeningDeviceIdentity.legacySharedID, "mac"],
+            "ordered by contribution, so the biggest share reads first"
+        )
+        XCTAssertEqual(shares.reduce(0) { $0 + $1.share }, 1, accuracy: 0.000_001)
+        XCTAssertEqual(shares[0].share, 0.5, accuracy: 0.000_001)
+    }
+
+    func testDeviceSharesOmitTheBaselineWhenThereIsNone() {
+        let shares = AccountListeningTotals.deviceShares(
+            secondsByDevice: ["phone": 300],
+            baselineSeconds: nil
+        )
+        XCTAssertEqual(shares.map(\.deviceID), ["phone"])
+        XCTAssertEqual(shares[0].share, 1, accuracy: 0.000_001)
+    }
+
+    // MARK: - Session rows
+
+    /// The baseline covers every migrated session and nothing ever subtracts from
+    /// it, so a live upsert must not quietly reclassify a migrated row as live.
+    func testLiveUpsertDoesNotReclassifyAMigratedRow() async throws {
         let userState = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
@@ -29,7 +82,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             startPosition: 0,
             endPosition: 600
         )
-        let migrated = ListeningHistorySync(
+        context.insert(ListeningHistorySync(
             id: id,
             feedURL: identity.feedURL,
             episodeID: identity.episodeID,
@@ -41,8 +94,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             listenedSeconds: 600,
             isLegacyMigrated: true,
             updatedAt: startedAt
-        )
-        context.insert(migrated)
+        ))
         try context.save()
 
         await StoreSplitListeningHistorySyncWriter(modelContainer: userState).upsert(
@@ -65,24 +117,17 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             )
         )
 
-        let verification = ModelContext(userState)
         let stored = try XCTUnwrap(
-            try verification.fetch(FetchDescriptor<ListeningHistorySync>()).first
+            try ModelContext(userState)
+                .fetch(FetchDescriptor<ListeningHistorySync>()).first
         )
         XCTAssertTrue(stored.isLegacyMigrated)
-        let liveSeconds = try verification
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
-            .reduce(0) { $0 + $1.totalSeconds }
-        XCTAssertEqual(
-            liveSeconds, 0,
-            "a migrated row must contribute nothing to the live per-device rollup; __legacy_shared__ already carries it"
-        )
     }
 
-    /// The contrast case: a row that was never migrated is exactly what the live
-    /// per-device rollup is for.
-    func testLiveUpsertCountsARowThatWasNeverMigrated() async throws {
+    /// Publishing a session must not create anything but the session. An
+    /// aggregate written here would immediately be a second version of a number
+    /// the sessions already carry.
+    func testPublishingASessionCreatesNoAggregate() async throws {
         let userState = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
@@ -91,18 +136,9 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             episodeID: "episode-1"
         )
         let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
-        let endedAt = startedAt.addingTimeInterval(600)
-
         await StoreSplitListeningHistorySyncWriter(modelContainer: userState).upsert(
             StoreSplitListeningHistorySnapshot(
-                id: ListeningHistoryIdentity.make(
-                    feedURL: identity.feedURL,
-                    episodeID: identity.episodeID,
-                    startedAt: startedAt,
-                    endedAt: endedAt,
-                    startPosition: 0,
-                    endPosition: 600
-                ),
+                id: "session-1",
                 identity: identity,
                 podcastName: "Example",
                 episodeTitle: "Episode 1",
@@ -110,7 +146,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
                 sourceDeviceName: "Phone",
                 deviceModel: "iPhone",
                 startedAt: startedAt,
-                endedAt: endedAt,
+                endedAt: startedAt.addingTimeInterval(600),
                 startPosition: 0,
                 endPosition: 600,
                 listenedSeconds: 600,
@@ -120,93 +156,125 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             )
         )
 
-        let liveSeconds = try ModelContext(userState)
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
-            .reduce(0) { $0 + $1.totalSeconds }
-        XCTAssertEqual(liveSeconds, 600)
-    }
-
-    /// The importer rewrites the legacy summary table from the synced summaries and
-    /// the migration republishes that table as the authoritative `__legacy_shared__`
-    /// record. Because the republish max-merges, a total that round-trips once can
-    /// never come back down — on any device on the account.
-    @MainActor
-    func testProjectedSummariesAreNotRepublishedAsTheMigrationRecord() throws {
-        let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
-        let userState = try ModelContainerManager.makeUserStateContainer(
-            isStoredInMemoryOnly: true
-        )
-        let feed = URL(string: "https://example.com/feed.xml")!
-        let periodStart = Calendar.current.startOfDay(
-            for: Date(timeIntervalSince1970: 1_700_000_000)
-        )
-        let projected = PlaySessionSummary(
-            id: PlaySessionSummary.splitStoreProjectionID(
-                feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
-                periodKind: PlaySessionSummaryPeriod.year.rawValue,
-                periodStart: periodStart
-            ),
-            periodKind: PlaySessionSummaryPeriod.year.rawValue,
-            periodStart: periodStart,
-            podcastFeed: feed,
-            podcastName: "Example",
-            totalSeconds: 9_999
-        )
-        legacy.mainContext.insert(projected)
-        try legacy.mainContext.save()
-
-        XCTAssertTrue(projected.isSplitStoreProjection)
-
-        _ = StoreSplitMigrationService.rebuildListeningSummaries(
-            legacyContainer: legacy,
-            userStateContainer: userState
-        )
-
-        let published = try ModelContext(userState)
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-        XCTAssertTrue(
-            published.isEmpty,
-            "a summary row that came from UserState must not be published back into it"
-        )
-    }
-
-    @MainActor
-    func testLocallyComputedSummariesAreStillRepublished() throws {
-        let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
-        let userState = try ModelContainerManager.makeUserStateContainer(
-            isStoredInMemoryOnly: true
-        )
-        let feed = URL(string: "https://example.com/feed.xml")!
-        let periodStart = Calendar.current.startOfDay(
-            for: Date(timeIntervalSince1970: 1_700_000_000)
-        )
-        let measured = PlaySessionSummary(
-            id: UUID(),
-            periodKind: PlaySessionSummaryPeriod.year.rawValue,
-            periodStart: periodStart,
-            podcastFeed: feed,
-            podcastName: "Example",
-            totalSeconds: 1_200
-        )
-        legacy.mainContext.insert(measured)
-        try legacy.mainContext.save()
-
-        XCTAssertFalse(measured.isSplitStoreProjection)
-
-        _ = StoreSplitMigrationService.rebuildListeningSummaries(
-            legacyContainer: legacy,
-            userStateContainer: userState
-        )
-
-        let published = try ModelContext(userState)
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.sourceDeviceID == ListeningDeviceIdentity.legacySharedID }
-        XCTAssertEqual(published.count, 2, "the year row plus its synthesized forever rollup")
+        let context = ModelContext(userState)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<ListeningHistorySync>()).count, 1)
         XCTAssertEqual(
-            published.first { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }?
-                .totalSeconds,
-            1_200
+            try context.fetch(FetchDescriptor<ListeningBaselineSync>()).count, 0,
+            "only the migration writes a baseline, and it writes it once"
         )
+    }
+
+    // MARK: - Baseline capture
+
+    @MainActor
+    func testBaselineCapturesLifetimeFromYearSummariesOnly() throws {
+        let (legacy, userState) = try makeStores()
+        let feed = URL(string: "https://example.com/feed.xml")!
+        insertLegacySummary(feed: feed, kind: .year, seconds: 3_600, in: legacy)
+        insertLegacySummary(feed: feed, kind: .year, seconds: 1_800, in: legacy, yearOffset: 1)
+        // Inside a year already counted — including it would double-count.
+        insertLegacySummary(feed: feed, kind: .month, seconds: 1_800, in: legacy)
+        try legacy.mainContext.save()
+
+        _ = StoreSplitMigrationService.rebuildListeningSummaries(
+            legacyContainer: legacy,
+            userStateContainer: userState
+        )
+
+        let baselines = try ModelContext(userState)
+            .fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(baselines.count, 1)
+        XCTAssertEqual(baselines[0].totalSeconds, 5_400)
+    }
+
+    /// The defect this design removes: a total that can be re-derived from data
+    /// the sync itself produced can ratchet upwards and never come back down.
+    /// A write-once constant cannot.
+    @MainActor
+    func testBaselineIsWriteOnceAndDoesNotMoveOnRecapture() throws {
+        let (legacy, userState) = try makeStores()
+        let feed = URL(string: "https://example.com/feed.xml")!
+        insertLegacySummary(feed: feed, kind: .year, seconds: 3_600, in: legacy)
+        try legacy.mainContext.save()
+
+        _ = StoreSplitMigrationService.rebuildListeningSummaries(
+            legacyContainer: legacy,
+            userStateContainer: userState
+        )
+
+        // The legacy table grows — a re-import, a rebuild, anything.
+        insertLegacySummary(feed: feed, kind: .year, seconds: 9_000, in: legacy, yearOffset: 2)
+        try legacy.mainContext.save()
+
+        _ = StoreSplitMigrationService.rebuildListeningSummaries(
+            legacyContainer: legacy,
+            userStateContainer: userState
+        )
+
+        let baselines = try ModelContext(userState)
+            .fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(baselines.count, 1)
+        XCTAssertEqual(
+            baselines[0].totalSeconds, 3_600,
+            "the baseline is a constant from the moment of capture; recapture must not move it"
+        )
+    }
+
+    /// A store whose year-level rollups were pruned must still yield a baseline.
+    /// Summing within one tier is safe; summing across tiers is not, which is why
+    /// the capture picks the coarsest tier present rather than everything.
+    @MainActor
+    func testBaselineFallsBackToTheCoarsestAvailableTier() throws {
+        let (legacy, userState) = try makeStores()
+        let feed = URL(string: "https://example.com/feed.xml")!
+        insertLegacySummary(feed: feed, kind: .week, seconds: 600, in: legacy)
+        insertLegacySummary(feed: feed, kind: .day, seconds: 600, in: legacy)
+        try legacy.mainContext.save()
+
+        _ = StoreSplitMigrationService.rebuildListeningSummaries(
+            legacyContainer: legacy,
+            userStateContainer: userState
+        )
+
+        let baselines = try ModelContext(userState)
+            .fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(baselines.count, 1)
+        XCTAssertEqual(
+            baselines[0].totalSeconds, 600,
+            "the week tier is used and the day rows inside it are not added on top"
+        )
+    }
+
+    // MARK: - Helpers
+
+    @MainActor
+    private func makeStores() throws -> (ModelContainer, ModelContainer) {
+        (
+            try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true),
+            try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        )
+    }
+
+    @MainActor
+    private func insertLegacySummary(
+        feed: URL,
+        kind: PlaySessionSummaryPeriod,
+        seconds: Double,
+        in container: ModelContainer,
+        yearOffset: Int = 0
+    ) {
+        var components = DateComponents()
+        components.year = 2023 + yearOffset
+        components.month = 1
+        components.day = 1
+        let start = Calendar(identifier: .gregorian).date(from: components) ?? .distantPast
+        container.mainContext.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: kind.rawValue,
+            periodStart: start,
+            podcastFeed: feed,
+            podcastName: "Example",
+            totalSeconds: seconds
+        ))
     }
 }

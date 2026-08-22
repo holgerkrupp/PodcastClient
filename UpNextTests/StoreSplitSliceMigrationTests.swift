@@ -164,7 +164,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             "queueEntries": try context.fetchCount(FetchDescriptor<QueueEntrySync>()),
             "bookmarks": try context.fetchCount(FetchDescriptor<BookmarkSync>()),
             "listeningHistory": try context.fetchCount(FetchDescriptor<ListeningHistorySync>()),
-            "listeningSummaries": try context.fetchCount(FetchDescriptor<ListeningSummarySync>())
+            "listeningBaselines": try context.fetchCount(FetchDescriptor<ListeningBaselineSync>())
         ]
     }
 
@@ -201,7 +201,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         XCTAssertEqual(counts["queueEntries"], 2)
         XCTAssertEqual(counts["bookmarks"], 1)
         XCTAssertEqual(counts["listeningHistory"], 1)
-        XCTAssertEqual(counts["listeningSummaries"], 1)
+        XCTAssertEqual(counts["listeningBaselines"], 1)
     }
 
     @MainActor
@@ -447,17 +447,12 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         await drainSlices(containers, shouldContinue: { true })
 
         let destination = ModelContext(containers.userState)
-        let foreverRows = try destination
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
+        let baselines = try destination.fetch(FetchDescriptor<ListeningBaselineSync>())
 
-        // One forever row per feed, each summed only from its `.year` rows.
-        XCTAssertEqual(foreverRows.map(\.totalSeconds).sorted(), [600, 5_400])
-
-        // Lifetime total ignores the `.month` overlap — no double-count.
-        XCTAssertEqual(
-            ListeningSummaryAggregation.globalStatistics(from: foreverRows).totalSeconds,
-            6_000
-        )
+        // One frozen row per feed, each summed only from that feed's `.year`
+        // rows. The `.month` row overlaps a year it is already inside, so
+        // including it would double-count.
+        XCTAssertEqual(baselines.map(\.totalSeconds).sorted(), [600, 5_400])
+        XCTAssertEqual(baselines.reduce(0) { $0 + $1.totalSeconds }, 6_000)
     }
 }

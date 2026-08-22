@@ -96,7 +96,10 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
         )
     }
 
-    func testLiveSummariesAddDevicesAndRetryDoesNotDoubleCount() async throws {
+    /// Device attribution has to survive in the session rows, because the
+    /// per-device breakdown is derived from them now rather than from per-device
+    /// rollups. A retried publish must not add a second copy.
+    func testSessionsRetainDeviceAttributionAndRetryDoesNotDuplicate() async throws {
         let userState = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
@@ -123,18 +126,29 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
         await writer.upsert(second)
         await writer.upsert(first)
 
-        let context = ModelContext(userState)
-        let forever = try context.fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
-        XCTAssertEqual(Set(forever.compactMap(\.sourceDeviceID)), ["phone", "mac"])
+        let rows = try ModelContext(userState)
+            .fetch(FetchDescriptor<ListeningHistorySync>())
+        XCTAssertEqual(Set(rows.map(\.sourceDeviceID)), ["phone", "mac"])
         XCTAssertEqual(
-            ListeningSummaryAggregation.globalStatistics(from: forever).totalSeconds,
+            ListeningHistoryAggregation.globalStatistics(from: rows).totalSeconds,
             180,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            ListeningHistoryAggregation.globalStatistics(
+                from: rows,
+                sourceDeviceID: "mac"
+            ).totalSeconds,
+            120,
             accuracy: 0.001
         )
     }
 
-    func testLiveSummarySplitsSessionAcrossCalendarBoundaries() async throws {
+    /// The synced store keeps one row per session, whatever calendar boundaries
+    /// the session crosses. Splitting it into calendar buckets is a reader's job
+    /// and happens locally, which is why a session spanning midnight is still one
+    /// record and still one total.
+    func testSessionCrossingMidnightStaysOneRecord() async throws {
         let userState = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
@@ -157,14 +171,10 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
             duration: 7_200
         ))
 
-        let daily = try ModelContext(userState)
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.periodKind == PlaySessionSummaryPeriod.day.rawValue }
-            .sorted { $0.periodStart < $1.periodStart }
-        XCTAssertEqual(daily.count, 2)
-        XCTAssertEqual(daily[0].totalSeconds, 3_600, accuracy: 0.001)
-        XCTAssertEqual(daily[1].totalSeconds, 3_600, accuracy: 0.001)
-        XCTAssertEqual(daily.reduce(0) { $0 + $1.totalSeconds }, 7_200, accuracy: 0.001)
+        let rows = try ModelContext(userState)
+            .fetch(FetchDescriptor<ListeningHistorySync>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].listenedSeconds, 7_200, accuracy: 0.001)
     }
 
     func testCrossDeviceHistoryProjectsOnceAndRebuildsStatistics() async throws {
@@ -227,7 +237,9 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
         )
     }
 
-    func testMigratedHistoryDoesNotEnterLiveDeviceSummary() async throws {
+    /// A migrated row is already inside the frozen baseline, so it must stay
+    /// excluded from the live total no matter what a later upsert does to it.
+    func testMigratedHistoryStaysOutOfTheLiveTotal() async throws {
         let userState = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
@@ -255,11 +267,19 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
             duration: 120
         ))
 
-        let summaries = try ModelContext(userState)
-            .fetch(FetchDescriptor<ListeningSummarySync>())
-            .filter { $0.periodKind == PlaySessionSummaryPeriod.forever.rawValue }
-        XCTAssertEqual(summaries.count, 1)
-        XCTAssertEqual(summaries[0].totalSeconds, 120, accuracy: 0.001)
+        let rows = try ModelContext(userState)
+            .fetch(FetchDescriptor<ListeningHistorySync>())
+        XCTAssertEqual(rows.count, 2)
+        let live = rows.filter { $0.isLegacyMigrated == false }
+        XCTAssertEqual(
+            ListeningHistoryAggregation.globalStatistics(from: live).totalSeconds,
+            120,
+            accuracy: 0.001
+        )
+        XCTAssertTrue(
+            rows.contains { $0.isLegacyMigrated },
+            "the migrated row must survive for per-episode display; it is only excluded from totals"
+        )
     }
 
     func testLegacyMigrationBackfillsLocalRawAnalyticsAndMarksHistory() async throws {

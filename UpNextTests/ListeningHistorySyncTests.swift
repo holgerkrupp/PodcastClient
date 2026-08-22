@@ -1,105 +1,11 @@
 import XCTest
 @testable import UpNext
 
-final class ListeningSummarySyncTests: XCTestCase {
-    func testAggregationKeyIgnoresSourceDevice() {
-        let baseDate = Date(timeIntervalSince1970: 1_000)
-        let left = ListeningSummarySync(
-            feedURL: "feed-a",
-            periodKind: PlaySessionSummaryPeriod.week.rawValue,
-            periodStart: baseDate,
-            sourceDeviceID: "device-a",
-            totalSeconds: 120
-        )
-        let right = ListeningSummarySync(
-            feedURL: "feed-a",
-            periodKind: PlaySessionSummaryPeriod.week.rawValue,
-            periodStart: baseDate,
-            sourceDeviceID: "device-b",
-            totalSeconds: 180
-        )
-
-        XCTAssertEqual(left.aggregationKey, right.aggregationKey)
-        XCTAssertNotEqual(left.id, right.id)
-    }
-
-    func testStableIDIncludesSourceDeviceToPreventLocalDuplicates() {
-        let baseDate = Date(timeIntervalSince1970: 1_000)
-        let first = ListeningSummarySync(
-            feedURL: "feed-a",
-            periodKind: PlaySessionSummaryPeriod.week.rawValue,
-            periodStart: baseDate,
-            sourceDeviceID: "device-a"
-        )
-        let duplicate = ListeningSummarySync(
-            feedURL: "feed-a",
-            periodKind: PlaySessionSummaryPeriod.week.rawValue,
-            periodStart: baseDate,
-            sourceDeviceID: "device-a"
-        )
-
-        XCTAssertEqual(first.id, duplicate.id)
-    }
-
-    func testGlobalSummaryAggregationAddsDifferentDevices() {
-        let baseDate = Date(timeIntervalSince1970: 1_000)
-        let records = [
-            ListeningSummarySync(
-                feedURL: "feed-a",
-                periodKind: PlaySessionSummaryPeriod.week.rawValue,
-                periodStart: baseDate,
-                sourceDeviceID: "device-a",
-                totalSeconds: 120
-            ),
-            ListeningSummarySync(
-                feedURL: "feed-a",
-                periodKind: PlaySessionSummaryPeriod.week.rawValue,
-                periodStart: baseDate,
-                sourceDeviceID: "device-b",
-                totalSeconds: 180
-            )
-        ]
-
-        XCTAssertEqual(
-            ListeningSummaryAggregation.globalStatistics(from: records).totalSeconds,
-            300
-        )
-        XCTAssertEqual(
-            ListeningSummaryAggregation.globalStatistics(
-                from: records,
-                sourceDeviceID: "device-a"
-            ).totalSeconds,
-            120
-        )
-    }
-
-    func testGlobalSummaryAggregationDoesNotAddDuplicateLogicalRecords() {
-        let periodStart = Date(timeIntervalSince1970: 1_000)
-        let first = ListeningSummarySync(
-            feedURL: "feed-a",
-            periodKind: PlaySessionSummaryPeriod.week.rawValue,
-            periodStart: periodStart,
-            sourceDeviceID: "device-a",
-            totalSeconds: 120,
-            silenceGapTimeSavedSeconds: 5
-        )
-        let duplicate = ListeningSummarySync(
-            feedURL: "feed-a",
-            periodKind: PlaySessionSummaryPeriod.week.rawValue,
-            periodStart: periodStart,
-            sourceDeviceID: "device-a",
-            totalSeconds: 180,
-            silenceGapTimeSavedSeconds: 3
-        )
-
-        let statistics = ListeningSummaryAggregation.globalStatistics(
-            from: [first, duplicate]
-        )
-
-        XCTAssertEqual(statistics.totalSeconds, 180)
-        XCTAssertEqual(statistics.silenceGapTimeSavedSeconds, 5)
-    }
-
+/// Session-level deduplication. Since the synced store stopped carrying
+/// aggregates, these rows are the only thing any listening total is computed
+/// from, so collapsing the duplicates CloudKit can deliver is what makes the
+/// totals correct rather than merely close.
+final class ListeningHistorySyncTests: XCTestCase {
     func testListeningHistoryDeduplicatesSessionIDAcrossDevices() {
         let first = ListeningHistorySync(
             id: "shared-session",

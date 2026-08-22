@@ -96,8 +96,8 @@ enum StoreSplitMigrationVerifier {
         destinationCounts["preferences"] = preferences.count
         destinationCounts["listeningHistory"] =
             (try? userState.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0
-        destinationCounts["listeningSummaries"] =
-            (try? userState.fetchCount(FetchDescriptor<ListeningSummarySync>())) ?? 0
+        destinationCounts["listeningBaselines"] =
+            (try? userState.fetchCount(FetchDescriptor<ListeningBaselineSync>())) ?? 0
 
         var requiredFeedKeys = Set<String>()
         var requiredEpisodeKeys = Set<String>()
@@ -461,12 +461,13 @@ enum StoreSplitMigrationVerifier {
 }
 
 /// The CloudKit-backed schema is intentionally enumerated here so tests and
-/// release tooling can assert that no cache/legacy model is accidentally added.
+/// release tooling can assert that no cache/legacy model is accidentally added,
+/// and that nothing aggregate-shaped comes back.
 enum UserStateCloudSchemaAudit {
     static let allowedModelNames: Set<String> = [
         "SubscriptionSync", "EpisodeStateSync", "QueueEntrySync",
         "PlaylistSync", "PlaylistEntrySync", "BookmarkSync",
-        "PodcastPreferenceSync", "ListeningSummarySync",
+        "PodcastPreferenceSync", "ListeningBaselineSync",
         "ListeningHistorySync"
     ]
 
@@ -478,6 +479,18 @@ enum UserStateCloudSchemaAudit {
         "CachedFeedExtensionElement", "CachedDownloadRecord",
         "CachedPlaySession", "CachedRateSegment", "CachedHourlyListeningStat",
         "AITranscriptSync", "AITranscriptChunkSync", "AIChapterSetSync"
+    ]
+
+    /// Entities retired from the synced schema, and why they may not come back.
+    ///
+    /// `ListeningSummarySync` was a per-feed, per-period, per-device rollup of
+    /// data the store already held as sessions. It was the largest table in the
+    /// store the split exists to keep small, and because it was derived from rows
+    /// that also synced, every reader had to reconcile the aggregate against its
+    /// own source — which is where both double-counting defects lived. Statistics
+    /// are per-account and are computed locally; nothing needs it back.
+    static let retiredModelNames: Set<String> = [
+        "ListeningSummarySync"
     ]
 
     static var containsFeedDerivedData: Bool {
@@ -499,6 +512,11 @@ enum UserStateCloudSchemaAudit {
         allowedModelNames.subtracting(schema.entities.map(\.name))
     }
 
+    /// Retired entities that have found their way back into the synced schema.
+    static func reintroducedRetiredModelNames(in schema: Schema) -> Set<String> {
+        Set(schema.entities.map(\.name)).intersection(retiredModelNames)
+    }
+
     /// How a synced entity's row count grows.
     ///
     /// The split exists to make the synchronized store *small*, which is a claim
@@ -517,8 +535,20 @@ enum UserStateCloudSchemaAudit {
         case perUserAction
         /// One row per playback session, forever, across every device.
         case perSessionPerDevice
-        /// Rows multiply: feeds × distinct periods × five period kinds × devices.
+        /// Rows multiply along more than one axis at once. Nothing in the synced
+        /// schema is allowed to grow this way: this is the shape
+        /// `ListeningSummarySync` had, and `permitsAggregateGrowth` is false so a
+        /// reintroduction fails the audit rather than merely being noted.
         case perFeedPerPeriodPerDevice
+    }
+
+    /// Whether an entity with this growth shape may live in the synced store.
+    ///
+    /// Everything a multiplicative aggregate would carry is derivable from rows
+    /// the store already holds, so paying for it in sync payload buys nothing and
+    /// costs a reconciliation problem.
+    static func permitsAggregateGrowth(_ growth: RowGrowth) -> Bool {
+        growth != .perFeedPerPeriodPerDevice
     }
 
     static let rowGrowthBySyncedModel: [String: RowGrowth] = [
@@ -530,7 +560,8 @@ enum UserStateCloudSchemaAudit {
         "PlaylistEntrySync": .perMembership,
         "BookmarkSync": .perUserAction,
         "ListeningHistorySync": .perSessionPerDevice,
-        "ListeningSummarySync": .perFeedPerPeriodPerDevice
+        // One frozen row per feed, written once and never updated.
+        "ListeningBaselineSync": .perFeed
     ]
 
     /// Fields carried in the synced schema that a feed refresh could supply.
@@ -540,18 +571,18 @@ enum UserStateCloudSchemaAudit {
     /// has to be a deliberate edit here, not an incidental one in a model.
     static let feedDerivedFieldsBySyncedModel: [String: Set<String>] = [
         "EpisodeStateSync": ["duration"],
-        "ListeningSummarySync": ["podcastName"],
+        "ListeningBaselineSync": ["podcastName"],
         "ListeningHistorySync": ["podcastName", "episodeTitle"]
     ]
 
-    /// Upper bound on `ListeningSummarySync` rows for a library of this shape.
+    /// Rows a multiplicative per-period, per-device aggregate would materialise
+    /// for a library of this shape.
     ///
-    /// `PlaySessionSummaryPeriod` has five cases and the record identity includes
-    /// `sourceDeviceID`, so one day of listening to one feed on one device
-    /// materialises a day, week, month, year and forever row. This is the number
-    /// to compare against the eight other entities before calling the synced
-    /// store small.
-    static func estimatedListeningSummaryRowCount(
+    /// `PlaySessionSummaryPeriod` has five cases, so one day of listening to one
+    /// feed on one device produced a day, week, month, year and forever row. Kept
+    /// as the measurement that justified retiring `ListeningSummarySync`, and as
+    /// the number to run again before anyone proposes another aggregate.
+    static func estimatedAggregateRowCount(
         feeds: Int,
         distinctListeningDays: Int,
         devices: Int
@@ -562,5 +593,33 @@ enum UserStateCloudSchemaAudit {
         let years = Int((Double(days) / 365).rounded(.up))
         let periodsPerFeed = days + weeks + months + years + 1
         return feeds * periodsPerFeed * devices
+    }
+
+    /// Rows the synced store actually materialises for a library of this shape.
+    ///
+    /// Sessions dominate, and they grow with listening rather than with the
+    /// product of listening and calendar granularity.
+    static func estimatedSyncedRowCount(
+        feeds: Int,
+        distinctListeningDays: Int,
+        devices: Int,
+        sessionsPerDayPerDevice: Int,
+        touchedEpisodesPerFeedPerYear: Int,
+        queueAndPlaylistEntries: Int,
+        bookmarks: Int
+    ) -> Int {
+        let years = max(1, Int((Double(distinctListeningDays) / 365).rounded(.up)))
+        let sessions = distinctListeningDays * sessionsPerDayPerDevice * devices
+        let episodeStates = feeds * touchedEpisodesPerFeedPerYear * years
+        let subscriptions = feeds
+        let preferences = feeds + 1
+        let baselines = feeds + 1
+        return sessions
+            + episodeStates
+            + subscriptions
+            + preferences
+            + baselines
+            + queueAndPlaylistEntries
+            + bookmarks
     }
 }

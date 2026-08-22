@@ -21,28 +21,21 @@ struct StoreSplitListeningHistorySnapshot: Sendable {
 
 @ModelActor
 actor StoreSplitListeningHistorySyncWriter {
+    /// Sessions are the only thing this writer publishes.
+    ///
+    /// It also used to maintain per-device, per-period rollups in the synced
+    /// store. Those were derived from exactly these rows, which forced every
+    /// reader to reconcile an aggregate against the sessions it came from — and
+    /// both double-counting defects lived in that reconciliation. Readers
+    /// aggregate the sessions themselves now, so there is nothing to reconcile.
     func upsert(_ snapshot: StoreSplitListeningHistorySnapshot) {
         upsertWithoutSaving(snapshot)
-        rebuildLiveSummaries(changedSnapshots: [snapshot], reference: snapshot)
         modelContext.saveIfNeeded()
     }
 
     func upsert(_ snapshots: [StoreSplitListeningHistorySnapshot]) {
-        var summarySources: [String: [StoreSplitListeningHistorySnapshot]] = [:]
         for snapshot in snapshots {
             upsertWithoutSaving(snapshot)
-            let key = StableIdentityKey.make(
-                snapshot.sourceDeviceID,
-                snapshot.identity.feedURL
-            )
-            summarySources[key, default: []].append(snapshot)
-        }
-        for changedSnapshots in summarySources.values {
-            guard let reference = changedSnapshots.last else { continue }
-            rebuildLiveSummaries(
-                changedSnapshots: changedSnapshots,
-                reference: reference
-            )
         }
         modelContext.saveIfNeeded()
     }
@@ -102,259 +95,10 @@ actor StoreSplitListeningHistorySyncWriter {
         record.playbackRateTimeSavedSeconds = snapshot.playbackRateTimeSavedSeconds
         record.endedCleanly = snapshot.endedCleanly
         // `isLegacyMigrated` is deliberately not reset. A migrated row's seconds
-        // are already inside the `__legacy_shared__` summary, and nothing ever
-        // subtracts them from it; clearing the flag here would additionally admit
-        // the row to this device's live per-device summary, so the same listening
-        // time would be counted twice by every reader that sums the two.
+        // are already inside the frozen `ListeningBaselineSync` figure, and
+        // nothing ever subtracts from that; clearing the flag here would let the
+        // same listening time be counted a second time by every reader that adds
+        // the baseline to the live sessions.
         record.updatedAt = snapshot.endedAt
-    }
-
-    /// Recomputes absolute per-device rows from live compact history. Absolute
-    /// totals make a retry harmless and avoid increment-vs-CloudKit conflicts.
-    /// Migrated rows are excluded because `__legacy_shared__` summaries already
-    /// contain their historical contribution.
-    private func rebuildLiveSummaries(
-        changedSnapshots: [StoreSplitListeningHistorySnapshot],
-        reference snapshot: StoreSplitListeningHistorySnapshot
-    ) {
-        let deviceID = snapshot.sourceDeviceID
-        var offset = 0
-        let pageSize = 250
-        var newestByIdentity: [String: ListeningHistorySync] = [:]
-        let targetFeedKeys = URL(string: snapshot.identity.feedURL)?
-            .podcastFeedComparisonKeys ?? Set([snapshot.identity.feedURL])
-
-        while true {
-            var descriptor = FetchDescriptor<ListeningHistorySync>(
-                predicate: #Predicate {
-                    $0.sourceDeviceID == deviceID && $0.isLegacyMigrated == false
-                },
-                sortBy: [SortDescriptor(\ListeningHistorySync.updatedAt, order: .reverse)]
-            )
-            descriptor.fetchOffset = offset
-            descriptor.fetchLimit = pageSize
-            let page = (try? modelContext.fetch(descriptor)) ?? []
-            guard page.isEmpty == false else { break }
-
-            for record in page {
-                let matchesFeed: Bool
-                if let recordURL = URL(string: record.feedURL) {
-                    matchesFeed = recordURL.podcastFeedComparisonKeys
-                        .isDisjoint(with: targetFeedKeys) == false
-                } else {
-                    matchesFeed = record.feedURL == snapshot.identity.feedURL
-                }
-                guard matchesFeed else { continue }
-                let key = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
-                if newestByIdentity[key] == nil {
-                    newestByIdentity[key] = record
-                }
-            }
-
-            offset += page.count
-            if page.count < pageSize { break }
-        }
-
-        let calendar = Calendar.current
-        for period in PlaySessionSummaryPeriod.allCases {
-            let affectedStarts = Set(changedSnapshots.flatMap {
-                touchedPeriodStarts(
-                    for: period,
-                    from: $0.startedAt,
-                    to: $0.endedAt,
-                    calendar: calendar
-                )
-            })
-            for start in affectedStarts {
-                let end = summaryPeriodEnd(
-                    for: period,
-                    start: start,
-                    calendar: calendar
-                )
-                let contributions = newestByIdentity.values.compactMap {
-                    contribution(
-                        from: $0,
-                        period: period,
-                        start: start,
-                        end: end
-                    )
-                }
-                let totals = contributions.reduce(
-                    into: (listened: 0.0, silence: 0.0, rate: 0.0)
-                ) { total, contribution in
-                    total.listened += contribution.listened
-                    total.silence += contribution.silence
-                    total.rate += contribution.rate
-                }
-                let activeHours = Set(contributions.flatMap { contribution in
-                    touchedHourStarts(
-                        from: contribution.overlapStart,
-                        to: contribution.overlapEnd,
-                        calendar: calendar
-                    )
-                }).count
-                upsertSummary(
-                    ListeningSummarySync(
-                        feedURL: snapshot.identity.feedURL,
-                        periodKind: period.rawValue,
-                        periodStart: start,
-                        sourceDeviceID: deviceID,
-                        sourceDeviceName: snapshot.sourceDeviceName,
-                        sourceDeviceModel: snapshot.deviceModel,
-                        podcastName: snapshot.podcastName,
-                        totalSeconds: totals.listened,
-                        silenceGapTimeSavedSeconds: totals.silence,
-                        playbackRateTimeSavedSeconds: totals.rate,
-                        activeHourCount: activeHours,
-                        updatedAt: .now
-                    )
-                )
-            }
-        }
-    }
-
-    private func upsertSummary(_ candidate: ListeningSummarySync) {
-        let summaryID = candidate.id
-        var descriptor = FetchDescriptor<ListeningSummarySync>(
-            predicate: #Predicate { $0.id == summaryID }
-        )
-        descriptor.fetchLimit = 1
-        if let existing = try? modelContext.fetch(descriptor).first {
-            existing.feedURL = candidate.feedURL
-            existing.periodKind = candidate.periodKind
-            existing.periodStart = candidate.periodStart
-            existing.sourceDeviceID = candidate.sourceDeviceID
-            existing.sourceDeviceName = candidate.sourceDeviceName
-            existing.sourceDeviceModel = candidate.sourceDeviceModel
-            existing.podcastName = candidate.podcastName
-            existing.totalSeconds = candidate.totalSeconds
-            existing.silenceGapTimeSavedSeconds = candidate.silenceGapTimeSavedSeconds
-            existing.playbackRateTimeSavedSeconds = candidate.playbackRateTimeSavedSeconds
-            existing.activeHourCount = candidate.activeHourCount
-            existing.updatedAt = candidate.updatedAt
-        } else {
-            modelContext.insert(candidate)
-        }
-    }
-
-    private func touchedPeriodStarts(
-        for period: PlaySessionSummaryPeriod,
-        from start: Date,
-        to end: Date,
-        calendar: Calendar
-    ) -> [Date] {
-        if period == .forever { return [.distantPast] }
-        guard end > start else {
-            return [summaryPeriodStart(for: period, containing: start, calendar: calendar)]
-        }
-        var result: [Date] = []
-        var cursor = summaryPeriodStart(
-            for: period,
-            containing: start,
-            calendar: calendar
-        )
-        while cursor < end {
-            result.append(cursor)
-            let next = summaryPeriodEnd(for: period, start: cursor, calendar: calendar)
-            guard next > cursor else { break }
-            cursor = next
-        }
-        return result
-    }
-
-    private func contribution(
-        from record: ListeningHistorySync,
-        period: PlaySessionSummaryPeriod,
-        start: Date,
-        end: Date
-    ) -> (
-        listened: Double,
-        silence: Double,
-        rate: Double,
-        overlapStart: Date,
-        overlapEnd: Date
-    )? {
-        if period == .forever {
-            return (
-                max(0, record.listenedSeconds),
-                max(0, record.silenceGapTimeSavedSeconds),
-                max(0, record.playbackRateTimeSavedSeconds),
-                record.startedAt,
-                record.endedAt
-            )
-        }
-        let overlapStart = max(record.startedAt, start)
-        let overlapEnd = min(record.endedAt, end)
-        guard overlapEnd > overlapStart else { return nil }
-        let wallDuration = max(record.endedAt.timeIntervalSince(record.startedAt), 0)
-        let fraction = wallDuration > 0
-            ? overlapEnd.timeIntervalSince(overlapStart) / wallDuration
-            : 0
-        return (
-            max(0, record.listenedSeconds) * fraction,
-            max(0, record.silenceGapTimeSavedSeconds) * fraction,
-            max(0, record.playbackRateTimeSavedSeconds) * fraction,
-            overlapStart,
-            overlapEnd
-        )
-    }
-
-    private func summaryPeriodStart(
-        for period: PlaySessionSummaryPeriod,
-        containing date: Date,
-        calendar: Calendar
-    ) -> Date {
-        switch period {
-        case .day:
-            calendar.startOfDay(for: date)
-        case .week:
-            calendar.date(from: calendar.dateComponents(
-                [.yearForWeekOfYear, .weekOfYear],
-                from: date
-            )) ?? calendar.startOfDay(for: date)
-        case .month:
-            calendar.date(from: calendar.dateComponents([.year, .month], from: date))
-                ?? calendar.startOfDay(for: date)
-        case .year:
-            calendar.date(from: calendar.dateComponents([.year], from: date))
-                ?? calendar.startOfDay(for: date)
-        case .forever:
-            .distantPast
-        }
-    }
-
-    private func summaryPeriodEnd(
-        for period: PlaySessionSummaryPeriod,
-        start: Date,
-        calendar: Calendar
-    ) -> Date {
-        switch period {
-        case .day:
-            calendar.date(byAdding: .day, value: 1, to: start) ?? .distantFuture
-        case .week:
-            calendar.date(byAdding: .weekOfYear, value: 1, to: start) ?? .distantFuture
-        case .month:
-            calendar.date(byAdding: .month, value: 1, to: start) ?? .distantFuture
-        case .year:
-            calendar.date(byAdding: .year, value: 1, to: start) ?? .distantFuture
-        case .forever:
-            .distantFuture
-        }
-    }
-
-    private func touchedHourStarts(
-        from start: Date,
-        to end: Date,
-        calendar: Calendar
-    ) -> [Date] {
-        guard end > start else { return [] }
-        var result: [Date] = []
-        var cursor = start
-        while cursor < end {
-            let hour = calendar.dateInterval(of: .hour, for: cursor)?.start ?? cursor
-            result.append(hour)
-            cursor = calendar.date(byAdding: .hour, value: 1, to: hour) ?? end
-        }
-        return result
     }
 }

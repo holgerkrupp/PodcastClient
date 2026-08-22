@@ -17,7 +17,7 @@ struct StoreSplitMigrationDiagnosticsSnapshot: Sendable {
     var syncedQueueEntryCount: Int
     var syncedBookmarkCount: Int
     var syncedListeningHistoryCount: Int
-    var syncedListeningSummaryCount: Int
+    var syncedListeningBaselineCount: Int
     var cachedAITranscriptCount: Int
     var cachedAITranscriptChunkCount: Int
     var cachedAIChapterSetCount: Int
@@ -114,7 +114,7 @@ enum StoreSplitMigrationDiagnostics {
             syncedQueueEntryCount: (try? userStateContext.fetchCount(FetchDescriptor<QueueEntrySync>())) ?? 0,
             syncedBookmarkCount: (try? userStateContext.fetchCount(FetchDescriptor<BookmarkSync>())) ?? 0,
             syncedListeningHistoryCount: (try? userStateContext.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0,
-            syncedListeningSummaryCount: (try? userStateContext.fetchCount(FetchDescriptor<ListeningSummarySync>())) ?? 0,
+            syncedListeningBaselineCount: (try? userStateContext.fetchCount(FetchDescriptor<ListeningBaselineSync>())) ?? 0,
             cachedAITranscriptCount: (try? cacheContext.fetchCount(FetchDescriptor<AITranscriptSync>())) ?? 0,
             cachedAITranscriptChunkCount: (try? cacheContext.fetchCount(FetchDescriptor<AITranscriptChunkSync>())) ?? 0,
             cachedAIChapterSetCount: (try? cacheContext.fetchCount(FetchDescriptor<AIChapterSetSync>())) ?? 0,
@@ -222,7 +222,7 @@ enum StoreSplitMigrationDiagnostics {
         case "listening_history":
             return (try? context.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0
         case "listening_summaries":
-            return (try? context.fetchCount(FetchDescriptor<ListeningSummarySync>())) ?? 0
+            return (try? context.fetchCount(FetchDescriptor<ListeningBaselineSync>())) ?? 0
         case "ai_transcripts":
             return (try? context.fetchCount(FetchDescriptor<AITranscriptSync>())) ?? 0
         case "ai_chapters":

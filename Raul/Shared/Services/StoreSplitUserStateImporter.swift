@@ -9,7 +9,6 @@ struct StoreSplitUserStateImportResult: Sendable {
     var bookmarksApplied = 0
     var preferencesApplied = 0
     var listeningHistoryApplied = 0
-    var listeningSummariesApplied = 0
     var duplicatePodcastsHidden = 0
     var feedsToBootstrap: [URL] = []
     var playlistFeedsToBootstrap: [URL] = []
@@ -98,14 +97,12 @@ actor StoreSplitUserStateImporter {
         // history for episodes whose GUID/URL lookup misses would be dropped.
         buildPodcastIndex()
 
-        applyListeningSummaries(result: &result)
-        saveLegacyChanges(phase: "recovery_listening_summaries", result: &result)
         await applyListeningHistory(result: &result)
         saveLegacyChanges(phase: "recovery_listening_history", result: &result)
 
         CrashBreadcrumbs.shared.record(
             "store_split_listening_history_recovery_completed",
-            details: "history=\(result.listeningHistoryApplied),summaries=\(result.listeningSummariesApplied),failed=\(result.failed)"
+            details: "history=\(result.listeningHistoryApplied),failed=\(result.failed)"
         )
         return result
     }
@@ -197,8 +194,10 @@ actor StoreSplitUserStateImporter {
         }
         if projectListeningHistoryToLegacy {
             await awaitIdleWindow()
-            applyListeningSummaries(result: &result)
-            saveLegacyChanges(phase: "listening_summaries", result: &result)
+            // Only sessions are projected. The legacy `PlaySessionSummary` table
+            // is rebuilt from them locally by `rebuildListeningStats`; writing it
+            // from synced aggregates is what let a derived total become an input
+            // to its own derivation.
             await applyListeningHistory(
                 result: &result
             )
@@ -1008,122 +1007,6 @@ actor StoreSplitUserStateImporter {
             activeProjectedSessionIDs: activeProjectedSessionIDs,
             result: &result
         )
-    }
-
-    private func applyListeningSummaries(
-        result: inout StoreSplitUserStateImportResult
-    ) {
-        struct Key: Hashable {
-            let feedURL: String
-            let periodKind: String
-            let periodStart: Date
-        }
-        struct Value {
-            var podcastName: String?
-            var total = 0.0
-            var silence = 0.0
-            var rate = 0.0
-            var activeHours = 0
-        }
-        struct Contribution {
-            var key: Key
-            var podcastName: String?
-            var total = 0.0
-            var silence = 0.0
-            var rate = 0.0
-            var activeHours = 0
-            var updatedAt = Date.distantPast
-        }
-
-        var contributionsByID: [String: Contribution] = [:]
-        var offset = 0
-        while true {
-            let page = fetchPage(
-                ListeningSummarySync.self,
-                offset: offset,
-                limit: sourcePageSize,
-                sortBy: [SortDescriptor(\ListeningSummarySync.updatedAt, order: .reverse)]
-            )
-            guard page.isEmpty == false else { break }
-            for record in page {
-                let key = Key(
-                    feedURL: record.feedURL,
-                    periodKind: record.periodKind,
-                    periodStart: record.periodStart
-                )
-                if var existing = contributionsByID[record.id] {
-                    existing.total = max(existing.total, record.totalSeconds)
-                    existing.silence = max(
-                        existing.silence,
-                        record.silenceGapTimeSavedSeconds
-                    )
-                    existing.rate = max(
-                        existing.rate,
-                        record.playbackRateTimeSavedSeconds
-                    )
-                    existing.activeHours = max(existing.activeHours, record.activeHourCount)
-                    if record.updatedAt > existing.updatedAt {
-                        existing.podcastName = record.podcastName ?? existing.podcastName
-                        existing.updatedAt = record.updatedAt
-                    }
-                    contributionsByID[record.id] = existing
-                } else {
-                    contributionsByID[record.id] = Contribution(
-                        key: key,
-                        podcastName: record.podcastName,
-                        total: max(0, record.totalSeconds),
-                        silence: max(0, record.silenceGapTimeSavedSeconds),
-                        rate: max(0, record.playbackRateTimeSavedSeconds),
-                        activeHours: max(0, record.activeHourCount),
-                        updatedAt: record.updatedAt
-                    )
-                }
-            }
-            offset += page.count
-            if page.count < sourcePageSize { break }
-        }
-
-        var totals: [Key: Value] = [:]
-        for contribution in contributionsByID.values {
-            var value = totals[contribution.key] ?? Value()
-            value.podcastName = contribution.podcastName ?? value.podcastName
-            value.total += contribution.total
-            value.silence += contribution.silence
-            value.rate += contribution.rate
-            value.activeHours += contribution.activeHours
-            totals[contribution.key] = value
-        }
-
-        do {
-            try legacyContext.delete(model: PlaySessionSummary.self)
-        } catch {
-            result.failed += 1
-            return
-        }
-        for (key, value) in totals where value.total > 0 {
-            let feed = key.feedURL == "__all_podcasts__"
-                ? nil
-                : URL(string: key.feedURL)
-            legacyContext.insert(PlaySessionSummary(
-                // Deterministic, and recognisable: the migration skips rows with
-                // this id so a projected total is never republished as the
-                // authoritative `__legacy_shared__` record.
-                id: PlaySessionSummary.splitStoreProjectionID(
-                    feedURL: key.feedURL,
-                    periodKind: key.periodKind,
-                    periodStart: key.periodStart
-                ),
-                periodKind: key.periodKind,
-                periodStart: key.periodStart,
-                podcastFeed: feed,
-                podcastName: value.podcastName,
-                totalSeconds: value.total,
-                silenceGapTimeSavedSeconds: value.silence,
-                playbackRateTimeSavedSeconds: value.rate,
-                activeHourCount: value.activeHours
-            ))
-            result.listeningSummariesApplied += 1
-        }
     }
 
     private func clearProjectedListeningHistory(

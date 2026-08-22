@@ -919,7 +919,7 @@ class ModelContainerManager: ObservableObject {
             || hasAny(BookmarkSync.self)
             || hasAny(PodcastPreferenceSync.self)
             || hasAny(ListeningHistorySync.self)
-            || hasAny(ListeningSummarySync.self)
+            || hasAny(ListeningBaselineSync.self)
     }
 
     private func cloudKitLegacyImportSettled() -> Bool {
@@ -1065,14 +1065,14 @@ class ModelContainerManager: ObservableObject {
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer
         )
-        if result.listeningHistoryApplied > 0 || result.listeningSummariesApplied > 0 {
+        if result.listeningHistoryApplied > 0 {
             await PlaySessionTrackerActor(
                 modelContainer: legacyContainer
             ).rebuildListeningStats()
         }
         StoreSplitMigrationDebugLog.record(
             "listening history recovery finished",
-            details: "history=\(result.listeningHistoryApplied), summaries=\(result.listeningSummariesApplied), failed=\(result.failed)"
+            details: "history=\(result.listeningHistoryApplied), failed=\(result.failed)"
         )
         return result
     }
@@ -1206,11 +1206,9 @@ class ModelContainerManager: ObservableObject {
     /// Recomputes the hourly buckets and every `PlaySessionSummary` from the raw
     /// `PlaySession` rows.
     ///
-    /// This is the analytics rebuild to reach for after a bad merge. It is *not*
-    /// `rebuildListeningSummariesForDevelopment`, which reads the legacy summary
-    /// table and republishes it as the shared `__legacy_shared__` record — if
-    /// those totals are wrong, that spreads them to every device instead of
-    /// fixing them.
+    /// This is the analytics rebuild to reach for after a bad merge, and since
+    /// the synced store stopped carrying aggregates it is the only thing that
+    /// recomputes them: summaries are now a purely local derivation.
     func rebuildAnalyticsFromRawSessions() async throws {
         guard let legacyContainer = legacyMigrationSourceContainer else {
             throw StoreSplitDevelopmentResetError.storesUnavailable
@@ -1735,7 +1733,7 @@ class ModelContainerManager: ObservableObject {
         // Only rebuild the hourly statistics when history actually moved.
         // Rebuilding after every reconcile rewrote the whole stats table for no
         // reason and was a large part of the write volume.
-        if result.listeningHistoryApplied > 0 || result.listeningSummariesApplied > 0 {
+        if result.listeningHistoryApplied > 0 {
             await PlaySessionTrackerActor(
                 modelContainer: legacyContainer
             ).rebuildListeningStats()
@@ -1777,7 +1775,7 @@ class ModelContainerManager: ObservableObject {
             newest(\BookmarkSync.updatedAt),
             newest(\PodcastPreferenceSync.updatedAt),
             newest(\ListeningHistorySync.updatedAt),
-            newest(\ListeningSummarySync.updatedAt)
+            newest(\ListeningBaselineSync.capturedAt)
         ].compactMap { $0 }.max()
     }
 
@@ -1994,7 +1992,7 @@ class ModelContainerManager: ObservableObject {
             PlaylistEntrySync.self,
             BookmarkSync.self,
             PodcastPreferenceSync.self,
-            ListeningSummarySync.self,
+            ListeningBaselineSync.self,
             ListeningHistorySync.self
         ])
         let configuration: ModelConfiguration
