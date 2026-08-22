@@ -2,6 +2,10 @@ import Foundation
 import SwiftData
 import BasicLogger
 
+// Development-only. Clearing tombstones re-publishes removals as revivals to
+// every device, so it must never be reachable from a shipping build by accident.
+// See the precondition on `ModelContainerManager`'s recovery section.
+#if DEBUG
 struct PlaylistTombstoneRecoveryResult: Sendable, Equatable {
     var inspectedEntryCount = 0
     var restoredEntryCount = 0
@@ -229,3 +233,4 @@ actor PlaylistTombstoneRecoveryService {
         return lines
     }
 }
+#endif

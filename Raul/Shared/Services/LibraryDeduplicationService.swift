@@ -2,6 +2,11 @@ import Foundation
 import SwiftData
 import BasicLogger
 
+// Development-only. Deduplication rewrites the library graph in place, so it
+// must never be reachable from a shipping build by accident; `#if DEBUG` makes
+// that the compiler's job rather than a UI convention. See the precondition on
+// `ModelContainerManager`'s recovery section.
+#if DEBUG
 struct LibraryDeduplicationReport: Sendable, Equatable {
     var isDryRun = true
     var podcastGroups = 0
@@ -531,3 +536,4 @@ actor LibraryDeduplicationService {
         return lhs.id.uuidString < rhs.id.uuidString
     }
 }
+#endif

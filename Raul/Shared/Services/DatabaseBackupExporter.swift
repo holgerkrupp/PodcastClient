@@ -1,6 +1,11 @@
 import Foundation
 import BasicLogger
 
+// Development-only. Staging copies of every store under `Library` is a support
+// affordance, not a user feature: the copies are unencrypted-at-rest duplicates
+// of the whole library. See the precondition on `ModelContainerManager`'s
+// recovery section.
+#if DEBUG
 struct DatabaseBackupExportResult: Sendable {
     var directoryName: String = ""
     var copiedFiles: [String] = []
@@ -84,3 +89,4 @@ enum DatabaseBackupExporter {
         return result
     }
 }
+#endif

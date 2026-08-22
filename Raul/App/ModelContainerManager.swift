@@ -1192,6 +1192,17 @@ class ModelContainerManager: ObservableObject {
         await PlayedEpisodePlaylistPruner(legacyContainer: legacyContainer).prune()
     }
 
+#if DEBUG
+    // MARK: - Incident recovery (development builds only)
+    //
+    // Deduplication, tombstone recovery and store export exist to repair a
+    // library that a CloudKit re-attach merged. Keeping them out of shipping
+    // builds is safe only while nothing a user can install is able to detach or
+    // re-attach the legacy store — today that is true, because the attachment is
+    // decided solely by `StoreSplitReleasePhase.current`, the remote kill switch
+    // cannot reach it, and no released build has ever changed it. The moment the
+    // cutover ships, a release build can detach; these have to ship with it.
+
     /// Recomputes the hourly buckets and every `PlaySessionSummary` from the raw
     /// `PlaySession` rows.
     ///
@@ -1250,6 +1261,7 @@ class ModelContainerManager: ObservableObject {
         try await importAvailableSplitStoreStateNow()
         return result
     }
+#endif
 
 #if DEBUG
     func republishLegacyStateToCloudKit(
