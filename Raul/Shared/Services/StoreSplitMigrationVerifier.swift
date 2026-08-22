@@ -483,4 +483,84 @@ enum UserStateCloudSchemaAudit {
     static var containsFeedDerivedData: Bool {
         allowedModelNames.isDisjoint(with: forbiddenFeedDerivedModelNames) == false
     }
+
+    /// Synced entities the container carries but the allow-list does not name.
+    ///
+    /// The allow-list is written by hand and the container schema is written by
+    /// hand, so on their own the two only agree until someone edits one of them.
+    /// Comparing them is what turns the allow-list from documentation into a
+    /// constraint.
+    static func unlistedModelNames(in schema: Schema) -> Set<String> {
+        Set(schema.entities.map(\.name)).subtracting(allowedModelNames)
+    }
+
+    /// Allow-listed entities the container does not actually carry.
+    static func absentModelNames(in schema: Schema) -> Set<String> {
+        allowedModelNames.subtracting(schema.entities.map(\.name))
+    }
+
+    /// How a synced entity's row count grows.
+    ///
+    /// The split exists to make the synchronized store *small*, which is a claim
+    /// about growth, not about membership. An entity whose rows multiply per
+    /// device and per period is a different kind of thing from one bounded by the
+    /// number of feeds the user subscribes to, even though both pass the
+    /// allow-list.
+    enum RowGrowth: String {
+        /// One row per feed, or per feed-scoped preference.
+        case perFeed
+        /// One row per episode the user has touched.
+        case perTouchedEpisode
+        /// One row per queue or playlist membership, including tombstones.
+        case perMembership
+        /// One row per bookmark the user created.
+        case perUserAction
+        /// One row per playback session, forever, across every device.
+        case perSessionPerDevice
+        /// Rows multiply: feeds × distinct periods × five period kinds × devices.
+        case perFeedPerPeriodPerDevice
+    }
+
+    static let rowGrowthBySyncedModel: [String: RowGrowth] = [
+        "SubscriptionSync": .perFeed,
+        "PodcastPreferenceSync": .perFeed,
+        "EpisodeStateSync": .perTouchedEpisode,
+        "QueueEntrySync": .perMembership,
+        "PlaylistSync": .perMembership,
+        "PlaylistEntrySync": .perMembership,
+        "BookmarkSync": .perUserAction,
+        "ListeningHistorySync": .perSessionPerDevice,
+        "ListeningSummarySync": .perFeedPerPeriodPerDevice
+    ]
+
+    /// Fields carried in the synced schema that a feed refresh could supply.
+    ///
+    /// They are listed rather than removed because each one has a reader that
+    /// currently depends on it; the point of the inventory is that adding another
+    /// has to be a deliberate edit here, not an incidental one in a model.
+    static let feedDerivedFieldsBySyncedModel: [String: Set<String>] = [
+        "EpisodeStateSync": ["duration"],
+        "ListeningSummarySync": ["podcastName"],
+        "ListeningHistorySync": ["podcastName", "episodeTitle"]
+    ]
+
+    /// Upper bound on `ListeningSummarySync` rows for a library of this shape.
+    ///
+    /// `PlaySessionSummaryPeriod` has five cases and the record identity includes
+    /// `sourceDeviceID`, so one day of listening to one feed on one device
+    /// materialises a day, week, month, year and forever row. This is the number
+    /// to compare against the eight other entities before calling the synced
+    /// store small.
+    static func estimatedListeningSummaryRowCount(
+        feeds: Int,
+        distinctListeningDays: Int,
+        devices: Int
+    ) -> Int {
+        let days = distinctListeningDays
+        let weeks = Int((Double(days) / 7).rounded(.up))
+        let months = Int((Double(days) / 30).rounded(.up))
+        let years = Int((Double(days) / 365).rounded(.up))
+        let periodsPerFeed = days + weeks + months + years + 1
+        return feeds * periodsPerFeed * devices
+    }
 }
