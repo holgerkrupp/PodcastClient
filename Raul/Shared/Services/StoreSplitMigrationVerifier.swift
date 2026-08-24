@@ -312,9 +312,17 @@ enum StoreSplitMigrationVerifier {
         destinationCounts["cachedPlaySessions"] = (try? cache.fetchCount(
             FetchDescriptor<CachedPlaySession>()
         )) ?? 0
-        sourceCounts["listeningSummaries"] = (try? legacy.fetchCount(
-            FetchDescriptor<PlaySessionSummary>()
-        )) ?? 0
+        // Legacy summaries do not migrate one-to-one: they collapse into the
+        // frozen per-feed `ListeningBaselineSync` rows, and only the summaries
+        // in the baseline period tier that carry positive time produce a row.
+        // Comparing the raw summary count against a `listeningSummaries`
+        // destination bucket nothing ever writes made this issue permanent for
+        // every user with listening history, so `isMigrationVerified` and the
+        // cleanup/convergence gate could never pass.
+        let legacySummaries = (try? legacy.fetch(FetchDescriptor<PlaySessionSummary>())) ?? []
+        let baselineFeedKeys = baselineEligibleFeedKeys(in: legacySummaries)
+        sourceCounts["listeningSummaries"] = legacySummaries.count
+        sourceCounts["listeningBaselines"] = baselineFeedKeys.count
         if completedSessionCount > 0,
            destinationCounts["listeningHistory", default: 0] == 0 {
             issues.append("missing_listening_history")
@@ -322,10 +330,15 @@ enum StoreSplitMigrationVerifier {
         // Cached raw sessions are deliberately prunable device-local analytics
         // (`StoreSplitLocalAnalyticsWriter` enforces a 30-day retention), so
         // their count is telemetry, not a losslessness invariant. Compact
-        // history and summaries above carry what has to survive.
-        if sourceCounts["listeningSummaries", default: 0] > 0,
-           destinationCounts["listeningSummaries", default: 0] == 0 {
-            issues.append("missing_listening_summaries")
+        // history and the baselines below carry what has to survive.
+        //
+        // Baselines are write-once per feed, including rows that arrived from
+        // another device, so a per-feed comparison would be unsatisfiable by
+        // design. The invariant is only that a store with migratable baseline
+        // material did not end up with an empty baseline table.
+        if baselineFeedKeys.isEmpty == false,
+           destinationCounts["listeningBaselines", default: 0] == 0 {
+            issues.append("missing_listening_baselines")
         }
 
         let cachedFeedKeys = Set(
@@ -420,6 +433,29 @@ enum StoreSplitMigrationVerifier {
         record.verifiedAt = report.isLossless ? .now : nil
         record.updatedAt = .now
         try? context.save()
+    }
+
+    /// The feeds a baseline row is actually expected for, derived exactly the
+    /// way `StoreSplitMigrationService` derives them: only the coarsest period
+    /// tier the store has, only rows with a period start, and only feeds whose
+    /// summed time is positive. Anything else is legitimately dropped, so it
+    /// must not count as a source row here.
+    private static func baselineEligibleFeedKeys(
+        in summaries: [PlaySessionSummary]
+    ) -> Set<String> {
+        guard let baselineKind = StoreSplitMigrationService.baselinePeriodKind(
+            in: summaries
+        ) else { return [] }
+        var totals: [String: Double] = [:]
+        for summary in summaries {
+            guard summary.periodKind == baselineKind,
+                  summary.periodStart != nil else { continue }
+            let feedURL = summary.podcastFeed
+                .map(PodcastFeedIdentity.normalizedFeedURLString)
+                ?? ListeningBaselineSync.allPodcastsFeedURL
+            totals[feedURL, default: 0] += max(0, summary.totalSeconds ?? 0)
+        }
+        return Set(totals.filter { $0.value > 0 }.keys)
     }
 
     private static func newest<Model>(

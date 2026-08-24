@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import BasicLogger
+import StoreKit
 
 
 
@@ -15,6 +16,7 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.requestReview) private var requestReview
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
 
@@ -91,6 +93,9 @@ struct ContentView: View {
             guard Task.isCancelled == false else { return }
             await podcastYearShareCoordinator.evaluateAppLaunch(modelContext: modelContext)
             CrashBreadcrumbs.shared.record("content_view_task_completed")
+        }
+        .task(id: phase) {
+            await considerRequestingAppReview()
         }
         .onChange(of: phase, {
             SystemPressureGate.shared.setSceneActive(phase == .active)
@@ -205,6 +210,58 @@ struct ContentView: View {
     
     func setGoingToBackgroundDate() {
         goingToBackgroundDate = Date()
+    }
+
+    @MainActor
+    private func considerRequestingAppReview() async {
+        guard phase == .active else { return }
+
+        let foregroundStartedAt = Date()
+        do {
+            try await Task.sleep(for: .seconds(AppReviewPromptPolicy.minimumForegroundDuration))
+        } catch {
+            return
+        }
+
+        guard Task.isCancelled == false, phase == .active else { return }
+        let manager = ModelContainerManager.shared
+        let loader = AppReviewLifetimeListeningLoader(
+            legacyContainer: modelContext.container,
+            userStateContainer: manager.preparedUserStateContainer,
+            useSyncedStore: StoreDevelopmentConfiguration.newStoreReadsEnabled
+        )
+        let listeningSeconds = await loader.totalSeconds()
+        guard Task.isCancelled == false, phase == .active else { return }
+
+        let now = Date()
+        let hasBlockingPresentation = showOnboarding
+            || incomingPodcastSubscription.isPresented
+            || podcastYearShareCoordinator.sheetRequest != nil
+            || navigation.isPlayerPresented
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
+        let store = AppReviewPromptStore()
+        guard AppReviewPromptPolicy.shouldRequestReview(
+            listeningSeconds: listeningSeconds,
+            foregroundDuration: now.timeIntervalSince(foregroundStartedAt),
+            isSceneActive: phase == .active,
+            hasBlockingPresentation: hasBlockingPresentation,
+            currentVersion: version,
+            state: store.state,
+            now: now
+        ) else {
+            return
+        }
+
+        // StoreKit doesn't report whether its system-controlled prompt was
+        // displayed, so record the attempt before handing control to it.
+        store.recordRequest(version: version, at: now)
+        CrashBreadcrumbs.shared.record(
+            "app_review_requested",
+            details: "version=\(version),listening_hours=\(Int(listeningSeconds / 3_600))"
+        )
+        requestReview()
     }
     
     // MARK: - Manual count loader

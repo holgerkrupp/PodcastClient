@@ -129,6 +129,90 @@ actor StoreSplitMigrationService {
         static let listeningHistory = "listening_history"
     }
 
+    /// The paging order of every sliced phase, in one place. `resolvedOffset`
+    /// re-reads the same order to find where a checkpointed row moved to, so the
+    /// two must never drift apart.
+    private enum SourceOrder {
+        static let podcasts = [SortDescriptor(\Podcast.title)]
+        static let playlists = [
+            SortDescriptor(\Playlist.sortIndex),
+            SortDescriptor(\Playlist.title)
+        ]
+        static let playlistEntries = [SortDescriptor(\PlaylistEntry.order)]
+        static let markers = [SortDescriptor(\Marker.creationtime)]
+        static let preferences = [SortDescriptor(\PodcastSettings.title)]
+        static let episodes = [SortDescriptor(\Episode.publishDate, order: .reverse)]
+        static let playSessions = [SortDescriptor(\PlaySession.startTime)]
+    }
+
+    /// Where a phase resumes.
+    ///
+    /// A bare row offset is not a safe cursor: `SharedDatabase.sqlite` stays the
+    /// live runtime store while slices run across foreground and background
+    /// sessions. Delete a row ahead of the cursor — or change a row's sort key,
+    /// which a feed refresh does routinely — and every later row shifts down by
+    /// one, so the next `fetchOffset` steps over unmigrated rows and the phase
+    /// still reports itself complete.
+    ///
+    /// The boundary key pins the offset to an actual row: the last row the
+    /// previous slice consumed. On resume the engine looks that row up again and
+    /// continues right after wherever it now sits.
+    struct SliceCursor: Equatable {
+        var offset: Int
+        var boundaryKey: String?
+        /// Whether the previous slice already answered a lost boundary row with
+        /// a full re-scan. A second consecutive failure keeps paging by raw
+        /// offset instead of restarting again, so a store the engine cannot
+        /// re-locate rows in degrades to the old offset behaviour rather than
+        /// replaying the first page forever.
+        var didRelocateFail: Bool = false
+
+        var encoded: String {
+            guard boundaryKey?.isEmpty == false || didRelocateFail else {
+                return String(offset)
+            }
+            let separator = String(SliceCursor.separator)
+            return [
+                String(offset),
+                didRelocateFail ? "1" : "0",
+                boundaryKey ?? ""
+            ].joined(separator: separator)
+        }
+
+        static let separator: Character = "\u{1f}"
+
+        /// Also accepts the plain numeric cursors written before boundary keys
+        /// existed; those resume exactly as they did before.
+        static func decode(_ raw: String) -> SliceCursor? {
+            let parts = raw.split(
+                separator: separator,
+                maxSplits: 2,
+                omittingEmptySubsequences: false
+            )
+            guard let first = parts.first, let offset = Int(first) else { return nil }
+            guard parts.count == 3 else { return SliceCursor(offset: max(0, offset)) }
+            let boundary = String(parts[2])
+            return SliceCursor(
+                offset: max(0, offset),
+                boundaryKey: boundary.isEmpty ? nil : boundary,
+                didRelocateFail: parts[1] == "1"
+            )
+        }
+    }
+
+    /// The human-readable form of a stored cursor: the row position, without the
+    /// boundary key that pins it. Used by the migration debug readout.
+    nonisolated static func cursorDisplay(_ raw: String) -> String {
+        SliceCursor.decode(raw).map { String($0.offset) } ?? raw
+    }
+
+    /// How far either side of the recorded offset the engine looks for the
+    /// boundary row, as a multiple of the phase's page size. Beyond that the
+    /// phase restarts from zero, which costs a re-scan but cannot lose a row:
+    /// every write in every phase is idempotent and an already-migrated record
+    /// resolves to a skip.
+    private static let cursorRelocationPages = 2
+
     private let legacyContainer: ModelContainer
     private let userStateContainer: ModelContainer
     private let cacheContainer: ModelContainer
@@ -226,9 +310,19 @@ actor StoreSplitMigrationService {
         let legacyContext = Self.makeContext(for: legacyContainer)
         let userStateContext = Self.makeContext(for: userStateContainer)
 
+        // The legacy store kept serving the running app between slices, so the
+        // checkpointed offset is corrected against the row it was taken from
+        // before it is used to page.
+        let resolved = Self.resolvedOffset(
+            phase: phase,
+            cursor: resume.cursor,
+            legacyContext: legacyContext
+        )
+        let offset = resolved.offset
+
         let outcome = processPage(
             phase: phase,
-            offset: resume.offset,
+            offset: offset,
             legacyContext: legacyContext,
             userStateContext: userStateContext,
             cacheContext: cacheContext,
@@ -236,11 +330,15 @@ actor StoreSplitMigrationService {
         )
 
         let combined = resume.result + outcome.delta
-        let newOffset = resume.offset + outcome.processed
+        let nextCursor = SliceCursor(
+            offset: offset + outcome.processed,
+            boundaryKey: outcome.boundaryKey ?? resume.cursor.boundaryKey,
+            didRelocateFail: resolved.didRelocateFail
+        )
         Self.recordCheckpoint(
             phase: phase,
             result: combined,
-            cursor: String(newOffset),
+            cursor: nextCursor.encoded,
             completed: outcome.reachedEnd,
             error: outcome.error,
             context: cacheContext
@@ -254,7 +352,7 @@ actor StoreSplitMigrationService {
             Self.recordCheckpoint(
                 phase: Phase.queueEntries,
                 result: queueResume.result + outcome.queueDelta,
-                cursor: String(newOffset),
+                cursor: nextCursor.encoded,
                 completed: outcome.reachedEnd,
                 context: cacheContext
             )
@@ -369,6 +467,7 @@ actor StoreSplitMigrationService {
     private func processPhaseFully(_ phase: String) -> PhaseRunResult {
         var run = PhaseRunResult()
         var offset = 0
+        var boundaryKey: String?
         while true {
             // Each page runs inside its own autorelease pool so the faulted
             // object graph and the autoreleased CoreFoundation temporaries
@@ -390,11 +489,15 @@ actor StoreSplitMigrationService {
                 run.primary = run.primary + outcome.delta
                 run.queue = run.queue + outcome.queueDelta
                 offset += outcome.processed
+                boundaryKey = outcome.boundaryKey ?? boundaryKey
+                // Recorded in the same form the slice engine reads, so a run cut
+                // short here resumes safely there.
+                let cursor = SliceCursor(offset: offset, boundaryKey: boundaryKey)
 
                 Self.recordCheckpoint(
                     phase: phase,
                     result: run.primary,
-                    cursor: String(offset),
+                    cursor: cursor.encoded,
                     completed: outcome.reachedEnd,
                     error: outcome.error,
                     context: cacheContext
@@ -403,7 +506,7 @@ actor StoreSplitMigrationService {
                     Self.recordCheckpoint(
                         phase: Phase.queueEntries,
                         result: run.queue,
-                        cursor: String(offset),
+                        cursor: cursor.encoded,
                         completed: outcome.reachedEnd,
                         context: cacheContext
                     )
@@ -426,6 +529,9 @@ actor StoreSplitMigrationService {
         var processed = 0
         var reachedEnd = true
         var error: String?
+        /// Identifies the last source row this page consumed, so the next slice
+        /// can resume from that row rather than from a raw offset.
+        var boundaryKey: String?
     }
 
     private func processPage(
@@ -498,6 +604,147 @@ actor StoreSplitMigrationService {
         }
     }
 
+    // MARK: - Stable cursors
+
+    /// The stable key of the last row a page actually consumed.
+    ///
+    /// Pages count `processed` in fetch order, one per row, so the row at
+    /// `processed - 1` is the boundary — including a page cut short by
+    /// cancellation.
+    private static func boundaryKey<T: PersistentModel>(
+        of page: [T],
+        processed: Int
+    ) -> String? {
+        guard processed > 0, processed <= page.count else { return nil }
+        return rowKey(page[processed - 1].persistentModelID)
+    }
+
+    /// A comparable string form of a row identity. Only ever compared against
+    /// other keys produced here, so the encoding just has to be deterministic.
+    private static func rowKey(_ id: PersistentIdentifier) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(id) else {
+            return String(describing: id)
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Corrects a checkpointed offset against the live source before paging.
+    ///
+    /// Returns the position right after the boundary row's *current* index, so
+    /// rows that shifted while the app kept using the legacy store are neither
+    /// skipped nor re-scanned. Falls back to restarting the phase when the
+    /// boundary row is gone or has moved further than the search window.
+    private static func resolvedOffset(
+        phase: String,
+        cursor: SliceCursor,
+        legacyContext: ModelContext
+    ) -> (offset: Int, didRelocateFail: Bool) {
+        guard cursor.offset > 0, let boundaryKey = cursor.boundaryKey else {
+            return (cursor.offset, cursor.didRelocateFail)
+        }
+        guard let located = locate(
+            phase: phase,
+            boundaryKey: boundaryKey,
+            offset: cursor.offset,
+            legacyContext: legacyContext
+        ) else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_migration_cursor_lost",
+                details: "phase=\(phase),offset=\(cursor.offset),rescan=\(cursor.didRelocateFail == false)"
+            )
+            // The boundary row is gone or moved further than the window. Re-scan
+            // the phase once — every write is idempotent, so the pass resolves to
+            // skips — but never twice in a row.
+            return (cursor.didRelocateFail ? cursor.offset : 0, true)
+        }
+        return (located, false)
+    }
+
+    private static func locate(
+        phase: String,
+        boundaryKey: String,
+        offset: Int,
+        legacyContext: ModelContext
+    ) -> Int? {
+        switch phase {
+        case Phase.subscriptions:
+            return relocate(
+                FetchDescriptor<Podcast>(sortBy: SourceOrder.podcasts),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: defaultPageSize, context: legacyContext
+            )
+        case Phase.playlists:
+            return relocate(
+                FetchDescriptor<Playlist>(sortBy: SourceOrder.playlists),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: defaultPageSize, context: legacyContext
+            )
+        case Phase.playlistEntries:
+            return relocate(
+                FetchDescriptor<PlaylistEntry>(sortBy: SourceOrder.playlistEntries),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: defaultPageSize, context: legacyContext
+            )
+        case Phase.bookmarks:
+            return relocate(
+                FetchDescriptor<Marker>(sortBy: SourceOrder.markers),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: defaultPageSize, context: legacyContext
+            )
+        case Phase.preferences:
+            return relocate(
+                FetchDescriptor<PodcastSettings>(sortBy: SourceOrder.preferences),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: defaultPageSize, context: legacyContext
+            )
+        case Phase.episodeStates:
+            return relocate(
+                FetchDescriptor<Episode>(sortBy: SourceOrder.episodes),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: episodePageSize, context: legacyContext
+            )
+        case Phase.listeningHistory:
+            return relocate(
+                FetchDescriptor<PlaySession>(sortBy: SourceOrder.playSessions),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: listeningHistoryPageSize, context: legacyContext
+            )
+        default:
+            return offset
+        }
+    }
+
+    /// The position right after the boundary row's current index, or `nil` when
+    /// the row is no longer inside the search window.
+    ///
+    /// The window is read with a plain fetch rather than `fetchIdentifiers`:
+    /// sorted identifier fetches throw `sortingPendingChangesWithIdentifiers`
+    /// whenever the store has uncommitted changes, which the live legacy store
+    /// routinely does. It is bounded to a couple of pages and released
+    /// immediately, so it stays inside the same memory budget as a page.
+    private static func relocate<T: PersistentModel>(
+        _ descriptor: FetchDescriptor<T>,
+        boundaryKey: String,
+        offset: Int,
+        pageSize: Int,
+        context: ModelContext
+    ) -> Int? {
+        autoreleasepool {
+            let window = pageSize * cursorRelocationPages
+            var windowDescriptor = descriptor
+            let start = max(0, offset - window)
+            windowDescriptor.fetchOffset = start
+            windowDescriptor.fetchLimit = (offset - start) + window
+            guard let rows = try? context.fetch(windowDescriptor) else { return offset }
+            guard let index = rows.firstIndex(
+                where: { rowKey($0.persistentModelID) == boundaryKey }
+            ) else { return nil }
+            return start + index + 1
+        }
+    }
+
     // MARK: - Subscriptions
 
     private static func processSubscriptionsPage(
@@ -507,9 +754,7 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<Podcast>(
-            sortBy: [SortDescriptor(\Podcast.title)]
-        )
+        var descriptor = FetchDescriptor<Podcast>(sortBy: SourceOrder.podcasts)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = defaultPageSize
 
@@ -577,6 +822,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: podcasts, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = podcasts.count < defaultPageSize
         }
@@ -592,9 +838,7 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<Playlist>(
-            sortBy: [SortDescriptor(\Playlist.sortIndex), SortDescriptor(\Playlist.title)]
-        )
+        var descriptor = FetchDescriptor<Playlist>(sortBy: SourceOrder.playlists)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = defaultPageSize
 
@@ -667,6 +911,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: playlists, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = playlists.count < defaultPageSize
         }
@@ -682,9 +927,7 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<PlaylistEntry>(
-            sortBy: [SortDescriptor(\PlaylistEntry.order)]
-        )
+        var descriptor = FetchDescriptor<PlaylistEntry>(sortBy: SourceOrder.playlistEntries)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = defaultPageSize
 
@@ -764,6 +1007,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: entries, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = entries.count < defaultPageSize
         }
@@ -859,9 +1103,7 @@ actor StoreSplitMigrationService {
         // by an inherited key path crashes SwiftData on supported OS versions,
         // so page the base table and retain Bookmark subclasses. This keeps the
         // legacy read bounded without relying on the broken subclass key path.
-        var descriptor = FetchDescriptor<Marker>(
-            sortBy: [SortDescriptor(\Marker.creationtime)]
-        )
+        var descriptor = FetchDescriptor<Marker>(sortBy: SourceOrder.markers)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = defaultPageSize
         let markerPage: [Marker]
@@ -937,6 +1179,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: markerPage, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = markerPage.count < defaultPageSize
         }
@@ -954,9 +1197,7 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<PodcastSettings>(
-            sortBy: [SortDescriptor(\PodcastSettings.title)]
-        )
+        var descriptor = FetchDescriptor<PodcastSettings>(sortBy: SourceOrder.preferences)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = defaultPageSize
         let settings: [PodcastSettings]
@@ -1032,6 +1273,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: settings, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = settings.count < defaultPageSize
         }
@@ -1078,9 +1320,7 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<Episode>(
-            sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
-        )
+        var descriptor = FetchDescriptor<Episode>(sortBy: SourceOrder.episodes)
         descriptor.fetchLimit = episodePageSize
         descriptor.fetchOffset = offset
 
@@ -1179,6 +1419,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: episodes, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = episodes.count < episodePageSize
         }
@@ -1222,9 +1463,7 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
-        var descriptor = FetchDescriptor<PlaySession>(
-            sortBy: [SortDescriptor(\PlaySession.startTime)]
-        )
+        var descriptor = FetchDescriptor<PlaySession>(sortBy: SourceOrder.playSessions)
         descriptor.fetchLimit = listeningHistoryPageSize
         descriptor.fetchOffset = offset
 
@@ -1366,6 +1605,7 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        outcome.boundaryKey = boundaryKey(of: sessions, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = sessions.count < listeningHistoryPageSize
         }
@@ -1528,7 +1768,7 @@ actor StoreSplitMigrationService {
     /// only matters for a store whose older tiers were pruned, where the
     /// alternative would be capturing no baseline and silently dropping the
     /// account's pre-split history.
-    private static func baselinePeriodKind(
+    static func baselinePeriodKind(
         in summaries: [PlaySessionSummary]
     ) -> String? {
         let available = Set(summaries.compactMap(\.periodKind))
@@ -2006,19 +2246,19 @@ actor StoreSplitMigrationService {
     private static func resumeProgress(
         phase: String,
         context: ModelContext
-    ) -> (offset: Int, result: StoreSplitMigrationPhaseResult) {
+    ) -> (cursor: SliceCursor, result: StoreSplitMigrationPhaseResult) {
         let checkpointID = "v\(migrationVersion).\(phase)"
         let descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
             predicate: #Predicate { $0.id == checkpointID }
         )
         guard let checkpoint = try? context.fetch(descriptor).first,
               checkpoint.completedAt == nil,
-              let cursor = checkpoint.cursor,
-              let offset = Int(cursor) else {
-            return (0, StoreSplitMigrationPhaseResult())
+              let raw = checkpoint.cursor,
+              let cursor = SliceCursor.decode(raw) else {
+            return (SliceCursor(offset: 0), StoreSplitMigrationPhaseResult())
         }
         return (
-            max(0, offset),
+            cursor,
             StoreSplitMigrationPhaseResult(
                 scanned: checkpoint.scannedCount,
                 inserted: checkpoint.insertedCount,

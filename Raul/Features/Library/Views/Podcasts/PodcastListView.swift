@@ -29,6 +29,7 @@ struct PodcastListView: View {
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
 
     @StateObject private var viewModel: PodcastListViewModel
+    @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
 
@@ -150,6 +151,14 @@ struct PodcastListView: View {
             _ = Playlist.ensureDefaultQueue(in: modelContext)
             ensurePlaylistPreferencesValid()
         }
+        .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress in
+            refreshProgress = progress
+        }
+        // A screen that was off-screen while the run started may have missed the
+        // announcement, so re-read the snapshot every time it comes back.
+        .onAppear {
+            refreshProgress = PodcastRefreshCoordinator.shared.progress
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -177,13 +186,17 @@ struct PodcastListView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    Task { await viewModel.refreshAllPodcasts() }
+                    Task {
+                        await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
+                            modelContainer: modelContainer
+                        )
+                    }
                 } label: {
-                    if viewModel.isLoading {
-                        if viewModel.total != 0 {
+                    if refreshProgress.isRefreshing {
+                        if refreshProgress.total != 0 {
                             CircularProgressView(
-                                value: Double(viewModel.completed),
-                                total: Double(viewModel.total)
+                                value: Double(refreshProgress.completed),
+                                total: Double(refreshProgress.total)
                             )
                         } else {
                             ProgressView()
@@ -192,8 +205,8 @@ struct PodcastListView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
-                .disabled(viewModel.isLoading)
-                .accessibilityLabel(viewModel.isLoading ? "Refreshing podcasts" : "Refresh podcasts")
+                .disabled(refreshProgress.isRefreshing)
+                .accessibilityLabel(refreshProgress.isRefreshing ? "Refreshing podcasts" : "Refresh podcasts")
                 .accessibilityHint("Updates all podcast feeds in your library")
                 .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
             }

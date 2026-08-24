@@ -121,6 +121,36 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         XCTAssertEqual(defaultEntries.map(\.order), [0, 1])
     }
 
+    /// Removing an episode that sits in several playlists has to reindex each of
+    /// them. Reindexing the actor's own playlist repeatedly left every other
+    /// affected playlist with a gap in `order`, which a later append then
+    /// collided with.
+    func testRemovingFromAllPlaylistsReindexesEveryAffectedPlaylist() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([1, 0, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        try queueEpisodes([2, 0, 1], in: fixture.defaultPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        try await actor.removeFromAllPlaylists(
+            episodeURL: try XCTUnwrap(fixture.episodes[0].url)
+        )
+
+        let context = ModelContext(fixture.container)
+        func orders(of playlist: Playlist) throws -> [Int] {
+            let playlistID = playlist.id
+            return try context.fetch(FetchDescriptor<PlaylistEntry>(
+                predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == playlistID },
+                sortBy: [SortDescriptor(\PlaylistEntry.order)]
+            )).map(\.order)
+        }
+
+        XCTAssertEqual(try orders(of: fixture.selectedPlaylist), [0, 1])
+        XCTAssertEqual(try orders(of: fixture.defaultPlaylist), [0, 1])
+    }
+
     func testFinishingAlreadyDequeuedEpisodeReturnsFirstQueuedEpisode() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         try queueEpisodes([1, 2], in: fixture.selectedPlaylist, fixture: fixture)

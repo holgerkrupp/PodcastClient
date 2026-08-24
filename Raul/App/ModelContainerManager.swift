@@ -1542,7 +1542,7 @@ class ModelContainerManager: ObservableObject {
                 "Phase \(status.completedPhaseCount)/\(status.totalPhaseCount), scanned \(status.scannedItemCount)"
             if let phase = report.phase,
                let cursor = status.phases.first(where: { $0.id == phase })?.cursor {
-                migrationCursorSummary = cursor
+                migrationCursorSummary = StoreSplitMigrationService.cursorDisplay(cursor)
             }
         }
 #if DEBUG

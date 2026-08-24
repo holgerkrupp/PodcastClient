@@ -57,13 +57,7 @@ struct InboxListView: View {
 
     @State private var errorMessage: String?
     @Environment(\.modelContext) private var modelContext
-    @StateObject private var refreshViewModel: PodcastListViewModel
-
-    init() {
-        _refreshViewModel = StateObject(
-            wrappedValue: PodcastListViewModel(modelContainer: ModelContainerManager.shared.container)
-        )
-    }
+    @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
 
     var body: some View {
         Group {
@@ -71,10 +65,10 @@ struct InboxListView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if episodes.isEmpty {
-                if refreshViewModel.isLoading {
+                if refreshProgress.isRefreshing {
                     InboxRefreshPlaceholderView(
-                        completed: refreshViewModel.completed,
-                        total: refreshViewModel.total
+                        completed: refreshProgress.completed,
+                        total: refreshProgress.total
                     )
                 } else {
                     InboxEmptyView()
@@ -128,6 +122,14 @@ struct InboxListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
             Task { await loadEpisodes() }
         }
+        .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress in
+            refreshProgress = progress
+        }
+        // A screen that was off-screen while the run started may have missed the
+        // announcement, so re-read the snapshot every time it comes back.
+        .onAppear {
+            refreshProgress = PodcastRefreshCoordinator.shared.progress
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(action: {
@@ -136,11 +138,11 @@ struct InboxListView: View {
                         await loadEpisodes()
                     }
                 }) {
-                    if refreshViewModel.isLoading {
-                        if refreshViewModel.total != 0 {
+                    if refreshProgress.isRefreshing {
+                        if refreshProgress.total != 0 {
                             CircularProgressView(
-                                value: Double(refreshViewModel.completed),
-                                total: Double(refreshViewModel.total)
+                                value: Double(refreshProgress.completed),
+                                total: Double(refreshProgress.total)
                             )
                         } else {
                             ProgressView()
@@ -149,8 +151,8 @@ struct InboxListView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
-                .disabled(refreshViewModel.isLoading)
-                .accessibilityLabel(refreshViewModel.isLoading ? "Refreshing inbox" : "Refresh inbox")
+                .disabled(refreshProgress.isRefreshing)
+                .accessibilityLabel(refreshProgress.isRefreshing ? "Refreshing inbox" : "Refresh inbox")
                 .accessibilityHint("Fetches new episodes and reloads your inbox")
                 .accessibilityInputLabels([Text("Refresh inbox"), Text("Update inbox")])
             }
@@ -228,11 +230,11 @@ struct InboxListView: View {
     }
     
     private func refreshEpisodes() async {
-        await MainActor.run { errorMessage = nil }
-        await refreshViewModel.refreshAllPodcasts()
-        await MainActor.run {
-            errorMessage = refreshViewModel.errorMessage
-        }
+        errorMessage = nil
+        await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
+            modelContainer: modelContext.container
+        )
+        errorMessage = PodcastRefreshCoordinator.shared.progress.errorMessage
     }
 }
 

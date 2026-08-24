@@ -146,6 +146,14 @@ actor PlaylistModelActor {
     /// while another context is updating the playlist; reading `order` from
     /// that invalidated object traps inside the generated property getter.
     private func fetchOrderedEntries() throws -> [PlaylistEntry] {
+        try fetchOrderedEntries(in: playlistID)
+    }
+
+    /// Same fetch for an arbitrary playlist. Callers that touch several playlists
+    /// in one turn must pass the playlist they are reindexing; reusing the
+    /// actor's own `playlistID` there silently leaves the other playlists with
+    /// gaps in `order`, which a later append then collides with.
+    private func fetchOrderedEntries(in playlistID: UUID) throws -> [PlaylistEntry] {
         let predicate = #Predicate<PlaylistEntry> { entry in
             entry.playlist?.id == playlistID
         }
@@ -320,15 +328,8 @@ actor PlaylistModelActor {
             modelContext.delete(entry)
         }
         for affectedPlaylistID in affectedPlaylistIDs {
-            let entries = try modelContext.fetch(FetchDescriptor<PlaylistEntry>(
-                predicate: #Predicate<PlaylistEntry> { entry in
-                    entry.playlist?.id == affectedPlaylistID
-                },
-                sortBy: [
-                    SortDescriptor(\PlaylistEntry.order, order: .forward),
-                    SortDescriptor(\PlaylistEntry.dateAdded, order: .forward)
-                ]
-            )).filter { $0.episode?.url != episodeURL }
+            let entries = try fetchOrderedEntries(in: affectedPlaylistID)
+                .filter { $0.episode?.url != episodeURL }
             for (index, entry) in entries.enumerated() {
                 entry.order = index
             }
@@ -866,7 +867,11 @@ actor PlaylistModelActor {
                 predicate: #Predicate<Playlist> { $0.id == playlistID }
             )
             if let playlist = try modelContext.fetch(playlistDescriptor).first, playlist.isSmartPlaylist == false {
-                for (index, entry) in try fetchOrderedEntries().enumerated() {
+                // Deleted-but-uncommitted entries can still come back from a
+                // fetch, so drop them the same way the dequeue path does.
+                let remaining = try fetchOrderedEntries(in: playlistID)
+                    .filter { $0.episode?.url != episodeURL }
+                for (index, entry) in remaining.enumerated() {
                     entry.order = index
                 }
             }

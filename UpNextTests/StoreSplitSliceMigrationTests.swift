@@ -455,4 +455,134 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         XCTAssertEqual(baselines.map(\.totalSeconds).sorted(), [600, 5_400])
         XCTAssertEqual(baselines.reduce(0) { $0 + $1.totalSeconds }, 6_000)
     }
+
+    /// The legacy store stays live while slices run, so a row deleted between
+    /// slices shifts every later row down. A bare offset cursor would step over
+    /// exactly one unmigrated row per deletion and still call the phase complete.
+    @MainActor
+    func testDeletionBetweenSlicesDoesNotSkipUnmigratedRows() async throws {
+        let containers = try makeContainers()
+        try populate(containers.legacy, episodeCount: 130)
+
+        // Run slices until the episode-state phase has committed its first page.
+        var advancedEpisodePages = 0
+        while advancedEpisodePages == 0 {
+            let report = await StoreSplitMigrationService.runSlice(
+                legacyContainer: containers.legacy,
+                userStateContainer: containers.userState,
+                cacheContainer: containers.cache,
+                shouldContinue: { true }
+            )
+            XCTAssertNotEqual(report.status, .failed)
+            if report.phase == "episode_states", report.processed > 0 {
+                advancedEpisodePages += 1
+            }
+        }
+
+        // Delete an episode the first page already migrated. Episodes page by
+        // descending publish date, so this is the very first row.
+        let legacy = containers.legacy.mainContext
+        let newest = try XCTUnwrap(
+            legacy.fetch(
+                FetchDescriptor<Episode>(
+                    predicate: #Predicate { $0.guid == "episode-129" }
+                )
+            ).first
+        )
+        legacy.delete(newest)
+        try legacy.save()
+
+        await drainSlices(containers, shouldContinue: { true })
+
+        // Every episode that still exists has a state row. Counting rows is not
+        // enough: the deleted episode's own row stays behind in the destination
+        // and would mask a skipped episode one-for-one.
+        let remaining = try legacy.fetch(FetchDescriptor<Episode>())
+        let expected = Set(remaining.map(\.stableEpisodeIdentity.key))
+        let migrated = Set(
+            try ModelContext(containers.userState)
+                .fetch(FetchDescriptor<EpisodeStateSync>())
+                .map(\.id)
+        )
+        XCTAssertEqual(remaining.count, 129)
+        XCTAssertEqual(expected.subtracting(migrated), [])
+    }
+
+    /// Deleting the very row the cursor was taken from cannot strand the phase:
+    /// it re-scans once, which is safe because every write is idempotent, and it
+    /// still reaches completion.
+    @MainActor
+    func testDeletingTheBoundaryRowRescansAndStillCompletes() async throws {
+        let containers = try makeContainers()
+        try populate(containers.legacy, episodeCount: 130)
+
+        var sawEpisodePage = false
+        while sawEpisodePage == false {
+            let report = await StoreSplitMigrationService.runSlice(
+                legacyContainer: containers.legacy,
+                userStateContainer: containers.userState,
+                cacheContainer: containers.cache,
+                shouldContinue: { true }
+            )
+            XCTAssertNotEqual(report.status, .failed)
+            sawEpisodePage = report.phase == "episode_states" && report.processed > 0
+        }
+
+        // Episodes page newest-first, so the first page ends at episode-80 — the
+        // row the checkpoint pinned itself to.
+        let legacy = containers.legacy.mainContext
+        let boundary = try XCTUnwrap(
+            legacy.fetch(
+                FetchDescriptor<Episode>(
+                    predicate: #Predicate { $0.guid == "episode-80" }
+                )
+            ).first
+        )
+        legacy.delete(boundary)
+        try legacy.save()
+
+        let reports = await drainSlices(containers, shouldContinue: { true })
+        XCTAssertEqual(reports.last?.status, .completed)
+
+        let remaining = try legacy.fetch(FetchDescriptor<Episode>())
+        let migrated = Set(
+            try ModelContext(containers.userState)
+                .fetch(FetchDescriptor<EpisodeStateSync>())
+                .map(\.id)
+        )
+        XCTAssertEqual(
+            Set(remaining.map(\.stableEpisodeIdentity.key)).subtracting(migrated), []
+        )
+    }
+
+    /// Verification has to compare legacy summaries against the baselines they
+    /// actually migrate into. Comparing them against a bucket nothing writes made
+    /// `missing_listening_summaries` permanent, which pinned the cleanup gate shut
+    /// for every user with listening history.
+    @MainActor
+    func testVerificationPassesAfterListeningBaselineMigration() async throws {
+        let containers = try makeContainers()
+        try populate(containers.legacy, episodeCount: 5)
+
+        await drainSlices(containers, shouldContinue: { true })
+
+        let report = StoreSplitMigrationVerifier.verify(
+            legacyContainer: containers.legacy,
+            userStateContainer: containers.userState,
+            cacheContainer: containers.cache
+        )
+        XCTAssertGreaterThan(
+            try destinationCounts(containers.userState)["listeningBaselines"] ?? 0, 0
+        )
+        XCTAssertEqual(
+            report.issues.filter { $0.hasPrefix("missing_listening") }, []
+        )
+        let gate = StoreSplitMigrationVerifier.cleanupGate(
+            cacheContainer: containers.cache,
+            legacyFallbackDisabled: true,
+            convergenceTelemetryPassed: true,
+            gracePeriodEnd: .distantPast
+        )
+        XCTAssertTrue(gate.migrationVerified, "issues: \(report.issues)")
+    }
 }
