@@ -135,6 +135,9 @@ struct StatisticsView: View {
     @State private var podcastShareImage: UIImage?
     @State private var showInitialShareGallery = false
     @State private var didPresentInitialShareGallery = false
+    @State private var isRebuildingAnalytics = false
+    @State private var rebuildAnalyticsStatusMessage: String?
+    @State private var showRebuildAnalyticsStatus = false
 
     private let presentShareGalleryOnAppear: Bool
 
@@ -609,6 +612,29 @@ struct StatisticsView: View {
         }
         .navigationTitle("Listening History")
         .listStyle(.inset)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    rebuildAnalytics()
+                } label: {
+                    if isRebuildingAnalytics {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise.circle")
+                    }
+                }
+                .disabled(isRebuildingAnalytics)
+                .accessibilityLabel("Rebuild analytics")
+                .accessibilityHint("Recalculate hourly listening stats and period summaries from recorded play sessions")
+                .accessibilityInputLabels([Text("Rebuild analytics"), Text("Rebuild listening history")])
+            }
+        }
+        .alert("Rebuild Analytics", isPresented: $showRebuildAnalyticsStatus) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(rebuildAnalyticsStatusMessage ?? "")
+        }
         .task(id: refreshSignature) {
             await refreshSnapshotWithLoading()
             presentInitialShareGalleryIfNeeded()
@@ -650,6 +676,27 @@ struct StatisticsView: View {
                     }
                 }
         )
+    }
+
+    /// Mirrors the Settings ▸ Data & Storage action so the rebuild is reachable
+    /// from the screen whose numbers it repairs.
+    @MainActor
+    private func rebuildAnalytics() {
+        guard !isRebuildingAnalytics else { return }
+        isRebuildingAnalytics = true
+        rebuildAnalyticsStatusMessage = nil
+
+        let modelContainer = modelContext.container
+        Task {
+            await Task.detached(priority: .utility) {
+                await PlaySessionTrackerActor(modelContainer: modelContainer).rebuildListeningStats()
+            }.value
+
+            isRebuildingAnalytics = false
+            rebuildAnalyticsStatusMessage = "Analytics rebuilt."
+            showRebuildAnalyticsStatus = true
+            await refreshSnapshotWithLoading()
+        }
     }
 
     @MainActor
