@@ -107,9 +107,10 @@ struct AllEpisodesListView: View {
                 return
             }
 
-            episodes = result.episodeIDs.compactMap {
-                modelContext.model(for: $0) as? Episode
-            }
+            let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
+                for: result.episodeIDs
+            )
+            episodes = result.episodeIDs.compactMap { episodesByID[$0] }
             if recentlyPlayedOnly {
                 recentlyPlayedHasMore = result.hasMore
             } else {

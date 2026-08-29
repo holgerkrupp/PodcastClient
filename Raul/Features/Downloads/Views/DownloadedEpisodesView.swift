@@ -106,9 +106,10 @@ struct DownloadedEpisodesView: View {
             guard Task.isCancelled == false, generation == refreshGeneration else {
                 return
             }
-            downloadedEpisodes = episodeIDs.compactMap {
-                modelContext.model(for: $0) as? Episode
-            }
+            let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
+                for: episodeIDs
+            )
+            downloadedEpisodes = episodeIDs.compactMap { episodesByID[$0] }
         } catch {
             guard generation == refreshGeneration else { return }
             downloadedEpisodes = []

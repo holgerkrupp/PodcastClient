@@ -63,7 +63,7 @@ actor PodcastModelActor {
     }
 
     private func recordFeedRefreshSuccess(metadataID: PersistentIdentifier) {
-        guard let metadata = modelContext.model(for: metadataID) as? PodcastMetaData else { return }
+        guard let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) else { return }
         metadata.consecutiveFeedFailureCount = 0
         metadata.firstConsecutiveFeedFailureDate = nil
         metadata.lastFeedFailureDate = nil
@@ -75,7 +75,7 @@ actor PodcastModelActor {
         metadataID: PersistentIdentifier,
         error: Error
     ) {
-        guard let metadata = modelContext.model(for: metadataID) as? PodcastMetaData else { return }
+        guard let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) else { return }
         let now = Date()
         if metadata.consecutiveFeedFailureCount == 0 {
             metadata.firstConsecutiveFeedFailureDate = now
@@ -132,7 +132,7 @@ actor PodcastModelActor {
     }
 
     func setSubscriptionStatus(_ podcastID: PersistentIdentifier, isSubscribed: Bool) async {
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
         let metaData = ensureMetadata(for: podcast)
 
         metaData.isSubscribed = isSubscribed
@@ -152,7 +152,7 @@ actor PodcastModelActor {
         to alternativeFeed: PodcastAlternativeFeed,
         progress: SubscriptionProgressHandler? = nil
     ) async throws {
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
         let metaData = ensureMetadata(for: podcast)
         let previousFeedURL = podcast.feed
         let alternativeFeedURL: URL? = alternativeFeed.url
@@ -202,7 +202,7 @@ actor PodcastModelActor {
     }
     
     func setFeedUpdated(_ metaDataID: PersistentIdentifier, to updated: Bool? = nil) async {
-        guard let metaData = modelContext.model(for: metaDataID) as? PodcastMetaData else { return }
+        guard let metaData: PodcastMetaData = modelContext.existingModel(for: metaDataID) else { return }
         metaData.feedUpdateCheckDate = Date()
         metaData.feedUpdated = updated
         modelContext.saveIfNeeded()
@@ -308,7 +308,7 @@ actor PodcastModelActor {
             return
         }
 
-        guard let episode = modelContext.model(for: episodeID) as? Episode,
+        guard let episode: Episode = modelContext.existingModel(for: episodeID),
               episode.duration == nil || episode.duration == 0 else {
             return
         }
@@ -375,9 +375,9 @@ actor PodcastModelActor {
 
         // --- Re-fetch fresh models after await ---
         guard
-            let freshPodcast = modelContext.model(for: podcastID) as? Podcast,
+            let freshPodcast: Podcast = modelContext.existingModel(for: podcastID),
             let metaID,
-            let freshMeta = modelContext.model(for: metaID) as? PodcastMetaData
+            let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaID)
         else {
             return nil
         }
@@ -474,11 +474,11 @@ actor PodcastModelActor {
         }
 
         if let metaIDRef,
-           let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+           let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
             freshMeta.message = "Restoring subscription ..."
             freshMeta.isUpdating = true
         }
-        if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+        if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
             freshPodcast.message = "Restoring subscription ..."
         }
         modelContext.saveIfNeeded()
@@ -489,8 +489,8 @@ actor PodcastModelActor {
 
             guard
                 let metaIDRef,
-                let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
-                let finalPodcast = modelContext.model(for: podcastIDRef) as? Podcast
+                let finalMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
+                let finalPodcast: Podcast = modelContext.existingModel(for: podcastIDRef)
             else {
                 return false
             }
@@ -514,12 +514,12 @@ actor PodcastModelActor {
             return true
         } catch {
             if let metaIDRef,
-               let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+               let failedMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                 failedMeta.isUpdating = false
                 failedMeta.message = nil
                 failedMeta.feedUpdateCheckDate = Date()
             }
-            if let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+            if let failedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                 failedPodcast.message = nil
             }
             modelContext.saveIfNeeded()
@@ -609,14 +609,14 @@ actor PodcastModelActor {
 
         // Update messages (still safe, no await yet)
         if silent != true {
-            if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+            if let metaIDRef, let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                 freshMeta.message = "Refreshing Podcast ..."
                 freshMeta.isUpdating = true
             }
             modelContext.saveIfNeeded()
         }
         /*
-        if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+        if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
             freshPodcast.message = "Refreshing Podcast ..."
         }
          */
@@ -632,18 +632,18 @@ actor PodcastModelActor {
                 print("\(titleSnapshot) not updated")
 
                 if silent != true {
-                    if let metaIDRef, let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                    if let metaIDRef, let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                         freshMeta.isUpdating = false
                         freshMeta.message = nil
                     }
-                    if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                    if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                         freshPodcast.message = nil
                     }
                     modelContext.saveIfNeeded()
                 }
                 if let metaIDRef {
                     recordFeedRefreshSuccess(metadataID: metaIDRef)
-                    if let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                    if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                         PodcastReleasePredictor.updateCachedPrediction(for: freshPodcast, after: Date())
                     }
                     modelContext.saveIfNeeded()
@@ -658,8 +658,8 @@ actor PodcastModelActor {
         // --- SECOND await boundary ---
         guard
               let metaIDRef,
-              let freshMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
-              let freshPodcast = modelContext.model(for: podcastIDRef) as? Podcast else {
+              let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
+              let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) else {
             return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
         }
          
@@ -683,8 +683,8 @@ actor PodcastModelActor {
             try checkRefreshDeadline(deadline)
 
             guard
-                let finalMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData,
-                let finalPodcast = modelContext.model(for: podcastIDRef) as? Podcast
+                let finalMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
+                let finalPodcast: Podcast = modelContext.existingModel(for: podcastIDRef)
             else {
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
@@ -728,11 +728,11 @@ actor PodcastModelActor {
             )
         } catch is CancellationError {
             if silent != true {
-                if let cancelledMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+                if let cancelledMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                     cancelledMeta.isUpdating = false
                     cancelledMeta.message = nil
                 }
-                if let cancelledPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+                if let cancelledPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                     cancelledPodcast.message = nil
                 }
                 modelContext.saveIfNeeded()
@@ -748,7 +748,7 @@ actor PodcastModelActor {
                 "code=\(nsError.code)",
                 "description=\(error.localizedDescription)"
             )
-            if let failedMeta = modelContext.model(for: metaIDRef) as? PodcastMetaData {
+            if let failedMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                 failedMeta.isUpdating = false
                 if silent != true {
                     failedMeta.message = nil
@@ -757,7 +757,7 @@ actor PodcastModelActor {
                 failedMeta.feedUpdated = nil
             }
             recordFeedRefreshFailure(metadataID: metaIDRef, error: error)
-            if silent != true, let failedPodcast = modelContext.model(for: podcastIDRef) as? Podcast {
+            if silent != true, let failedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                 failedPodcast.message = nil
             }
             modelContext.saveIfNeeded()
@@ -1214,7 +1214,7 @@ actor PodcastModelActor {
     }
     
     func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
         if let episodes = podcast.episodes{
             for episode in episodes {
                 let episodeActor = EpisodeActor(modelContainer: modelContainer)
@@ -1233,14 +1233,14 @@ actor PodcastModelActor {
     
     func unarchiveEpisode(_ episodeID: PersistentIdentifier) async throws {
         
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return }
         episode.metaData?.setArchived(false)
 
         modelContext.saveIfNeeded()
     }
     
     func deleteEpisode(_ episodeID: PersistentIdentifier) async throws {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return }
         if episode.source != .sideLoaded {
             await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeURL: episode.url)
         }
@@ -1249,8 +1249,17 @@ actor PodcastModelActor {
     }
     
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {
-        guard let podcast = modelContext.model(for: podcastID) as? Podcast else { return }
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
         let feedURL = podcast.feed
+
+        // Drop the feed from the manifest before the cascade delete starts.
+        // Removing a podcast walks every episode, chapter and bookmark it owns,
+        // and anything that interrupts that work would otherwise leave a
+        // manifest that restores the podcast on the next launch.
+        if let feedURL {
+            SubscriptionManifestSync.forgetFeed(feedURL)
+        }
+
         if let episodeFolder = podcast.directoryURL {
             try? FileManager.default.removeItem(at: episodeFolder)
         }

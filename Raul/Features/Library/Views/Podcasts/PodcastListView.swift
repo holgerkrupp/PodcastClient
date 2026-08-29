@@ -136,9 +136,14 @@ struct PodcastListView: View {
                                          trailing: 0))
                 }
                 .onDelete { indexSet in
+                    let podcastIDs = indexSet.compactMap { index in
+                        visiblePodcasts.indices.contains(index)
+                            ? visiblePodcasts[index].persistentModelID
+                            : nil
+                    }
                     Task {
-                        for index in indexSet {
-                            await viewModel.deletePodcast(visiblePodcasts[index])
+                        for podcastID in podcastIDs {
+                            await viewModel.deletePodcast(podcastID)
                         }
                     }
                 }

@@ -204,9 +204,10 @@ struct InboxListView: View {
             // A refresh publishes new episodes every second or so. Reassigning an
             // unchanged list would reset the rows the user is currently swiping.
             if episodeIDs != episodes.map(\.persistentModelID) {
-                episodes = episodeIDs.compactMap {
-                    modelContext.model(for: $0) as? Episode
-                }
+                let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
+                    for: episodeIDs
+                )
+                episodes = episodeIDs.compactMap { episodesByID[$0] }
             }
             hasLoaded = true
         } catch {

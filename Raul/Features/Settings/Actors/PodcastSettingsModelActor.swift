@@ -145,14 +145,14 @@ actor PodcastSettingsModelActor {
     
     /// Example: Update a settings object (edit as needed for your app's settings editing UI)
     func updateSettings(_ settingsID: PersistentIdentifier, apply changes: (PodcastSettings) -> Void) {
-        guard let settings = modelContext.model(for: settingsID) as? PodcastSettings else { return }
+        guard let settings: PodcastSettings = modelContext.existingModel(for: settingsID) else { return }
         changes(settings)
         modelContext.saveIfNeeded()
     }
     
     /// Fetch PodcastSettings by PersistentIdentifier
     func fetchSettings(_ settingsID: PersistentIdentifier) -> PodcastSettings? {
-        modelContext.model(for: settingsID) as? PodcastSettings
+        modelContext.existingModel(for: settingsID)
     }
     
     func fetchPodcast(_ podcastFeed: URL) -> Podcast? {
@@ -190,7 +190,7 @@ actor PodcastSettingsModelActor {
     
     /// Example: Delete a PodcastSettings object
     func deleteSettings(_ settingsID: PersistentIdentifier) {
-        guard let settings = modelContext.model(for: settingsID) as? PodcastSettings else { return }
+        guard let settings: PodcastSettings = modelContext.existingModel(for: settingsID) else { return }
         modelContext.delete(settings)
         modelContext.saveIfNeeded()
     }

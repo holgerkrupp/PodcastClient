@@ -130,8 +130,7 @@ actor StoreSplitUserStateImporter {
                 continue
             }
             let podcast = feedURL.podcastFeedComparisonKeys.compactMap {
-                podcastsByComparisonKey[$0]
-                    .flatMap { legacyContext.model(for: $0) as? Podcast }
+                podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
                 let podcast = Podcast(feed: feedURL)
@@ -228,11 +227,18 @@ actor StoreSplitUserStateImporter {
     @discardableResult
     private func buildPodcastIndex() -> [Podcast] {
         let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
+        // The fetch already handed us every podcast, so duplicate keys are
+        // settled against that list rather than by asking the context to
+        // resolve an identifier again.
+        let podcastsByID = podcasts.reduce(into: [PersistentIdentifier: Podcast]()) { values, podcast in
+            values[podcast.persistentModelID] = podcast
+        }
+
         podcastsByComparisonKey = podcasts.reduce(into: [String: PersistentIdentifier]()) { values, podcast in
             guard let feed = podcast.feed else { return }
             for key in feed.podcastFeedComparisonKeys {
                 if let existing = values[key] {
-                    guard let existingPodcast = legacyContext.model(for: existing) as? Podcast else {
+                    guard let existingPodcast = podcastsByID[existing] else {
                         values[key] = podcast.persistentModelID
                         continue
                     }
@@ -243,6 +249,15 @@ actor StoreSplitUserStateImporter {
             }
         }
         return podcasts
+    }
+
+    /// Resolves an identifier the comparison-key index handed out.
+    ///
+    /// The index is built once and then consulted across many `await`s, so an
+    /// entry can name a podcast that a delete or a dedup pass has since removed.
+    /// `model(for:)` would return an object for it anyway and trap on first use.
+    private func indexedPodcast(_ podcastID: PersistentIdentifier) -> Podcast? {
+        legacyContext.existingModel(for: podcastID)
     }
 
     private func applyPreferences(
@@ -266,8 +281,7 @@ actor StoreSplitUserStateImporter {
                 if let feedKey = record.feedURL,
                    let feedURL = URL(string: feedKey) {
                     guard let podcast = feedURL.podcastFeedComparisonKeys.compactMap({
-                        podcastsByComparisonKey[$0]
-                            .flatMap { legacyContext.model(for: $0) as? Podcast }
+                        podcastsByComparisonKey[$0].flatMap(indexedPodcast)
                     }).first else {
                         appendMissingFeed(feedKey, to: &result)
                         continue
@@ -1351,15 +1365,20 @@ actor StoreSplitUserStateImporter {
         let uniqueKeys = Set(identityKeys)
         await resolveEpisodeIDsIfNeeded(for: uniqueKeys)
 
-        var episodesByIdentity: [String: Episode] = [:]
-        for identityKey in uniqueKeys {
-            guard let episodeID = resolvedEpisodeIDsByIdentity[identityKey] ?? nil,
-                  let episode = legacyContext.model(for: episodeID) as? Episode else {
-                continue
-            }
-            episodesByIdentity[identityKey] = episode
+        let episodeIDsByIdentity = uniqueKeys.reduce(into: [String: PersistentIdentifier]()) { result, identityKey in
+            guard let episodeID = resolvedEpisodeIDsByIdentity[identityKey] ?? nil else { return }
+            result[identityKey] = episodeID
         }
-        return episodesByIdentity
+        // Resolved identifiers are cached across pages, so some of them name
+        // episodes that are already gone. One fetch keeps the live ones.
+        let episodesByID: [PersistentIdentifier: Episode] = legacyContext.existingModels(
+            for: Array(episodeIDsByIdentity.values)
+        )
+
+        return episodeIDsByIdentity.reduce(into: [String: Episode]()) { result, entry in
+            guard let episode = episodesByID[entry.value] else { return }
+            result[entry.key] = episode
+        }
     }
 
     private func resolveEpisodeIDsIfNeeded(for identityKeys: Set<String>) async {
@@ -1471,7 +1490,7 @@ actor StoreSplitUserStateImporter {
         expectedKeys: Set<String>
     ) async {
         guard let podcastID = podcastsByComparisonKey[normalizedFeedURL],
-              let podcast = legacyContext.model(for: podcastID) as? Podcast,
+              let podcast = indexedPodcast(podcastID),
               let feed = podcast.feed else {
             return
         }

@@ -302,14 +302,7 @@ actor SubscriptionManager:NSObject{
     }
 
     private func fetchPodcast(by id: PersistentIdentifier) -> Podcast? {
-        if let podcast = modelContext.model(for: id) as? Podcast {
-            return podcast
-        }
-
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.persistentModelID == id }
-        )
-        return try? modelContext.fetch(descriptor).first
+        modelContext.existingModel(for: id)
     }
 
     private func fetchEpisode(by episodeURL: URL) -> Episode? {

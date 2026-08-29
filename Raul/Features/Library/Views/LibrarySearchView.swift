@@ -622,7 +622,7 @@ private struct PodcastSearchDestinationView: View {
     let podcastID: PersistentIdentifier
 
     var body: some View {
-        if let podcast = modelContext.model(for: podcastID) as? Podcast {
+        if let podcast: Podcast = modelContext.existingModel(for: podcastID) {
             PodcastDetailView(podcast: podcast)
         } else {
             ContentUnavailableView(
@@ -639,7 +639,7 @@ private struct EpisodeSearchDestinationView: View {
     let episodeID: PersistentIdentifier
 
     var body: some View {
-        if let episode = modelContext.model(for: episodeID) as? Episode {
+        if let episode: Episode = modelContext.existingModel(for: episodeID) {
             EpisodeDetailView(episode: episode)
         } else {
             ContentUnavailableView(

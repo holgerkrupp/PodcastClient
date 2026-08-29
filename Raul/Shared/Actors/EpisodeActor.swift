@@ -1829,13 +1829,16 @@ actor EpisodeActor {
     
     @discardableResult
     private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async -> Bool {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return false }
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         guard let url = episode.localFile else {
             return false
         }
         let chapters = await ChapterExtractionHooks.loadLocalMP3Chapters(url)
         guard chapters.isEmpty == false else { return false }
 
+        // Re-acquired rather than carried across the await: reading the file
+        // takes long enough that the episode may be gone by now.
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
@@ -1947,13 +1950,16 @@ actor EpisodeActor {
     
     @discardableResult
     private func extractM4AChapters(_ episodeID: PersistentIdentifier) async -> Bool {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return false }
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         guard let url = episode.localFile else {
             return false
         }
         let chapters = await ChapterExtractionHooks.loadM4AChapters(url)
         guard chapters.isEmpty == false else { return false }
 
+        // Re-acquired rather than carried across the await: reading the file
+        // takes long enough that the episode may be gone by now.
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
@@ -2204,13 +2210,14 @@ actor EpisodeActor {
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async throws {
         print("downloading transcript")
-        guard let episode = modelContext.model(for: episodeID) as? Episode else {
-            throw TranscriptError.episodeNotFound }
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard await settingsActor.getTranscriptionsEnabled() else {
             throw TranscriptError.noTranscriptFileFound
         }
-        
+
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else {
+            throw TranscriptError.episodeNotFound }
+
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
             throw TranscriptError.transcriptionExists }
         
@@ -2232,6 +2239,11 @@ actor EpisodeActor {
                 let transcription = await downloadAndParseStringFile(url: url)
                 if let transcription {
                     let snapshots = decodeTranscriptSnapshots(transcription)
+                    // The episode is taken from the store again: the download
+                    // above may have outlived it.
+                    guard let episode: Episode = modelContext.existingModel(for: episodeID) else {
+                        throw TranscriptError.episodeNotFound
+                    }
                     try await replaceTranscriptLines(for: episode, with: snapshots)
                     episode.refresh.toggle()
                     if let episodeURL = episode.url {

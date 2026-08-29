@@ -166,7 +166,7 @@ struct PodcastSettingsView: View {
 
     private var podcast: Podcast? {
         guard let podcastID else { return nil }
-        return context.model(for: podcastID) as? Podcast
+        return context.existingModel(for: podcastID)
     }
 
     private var supportsAlternateAppIcons: Bool {
@@ -2401,7 +2401,7 @@ private struct ChapterRuleSettingsDetailView: View {
     let onChange: () -> Void
 
     private var settings: PodcastSettings? {
-        context.model(for: settingsID) as? PodcastSettings
+        context.existingModel(for: settingsID)
     }
 
     var body: some View {

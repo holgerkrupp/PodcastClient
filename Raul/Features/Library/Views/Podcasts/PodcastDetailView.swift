@@ -642,9 +642,10 @@ struct PodcastDetailView: View {
                     request: request
                 )
                 guard Task.isCancelled == false else { return }
-                filteredEpisodes = episodeIDs.compactMap {
-                    modelContext.model(for: $0) as? Episode
-                }
+                let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
+                    for: episodeIDs
+                )
+                filteredEpisodes = episodeIDs.compactMap { episodesByID[$0] }
             } catch {
                 guard Task.isCancelled == false else { return }
                 filteredEpisodes = []

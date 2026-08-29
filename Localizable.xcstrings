@@ -6263,6 +6263,15 @@
         }
       }
     },
+    "Rebuild analytics" : {
+
+    },
+    "Rebuild Analytics" : {
+
+    },
+    "Rebuild listening history" : {
+
+    },
     "Rebuilding analytics…" : {
       "localizations" : {
         "de" : {
@@ -6272,6 +6281,9 @@
           }
         }
       }
+    },
+    "Recalculate hourly listening stats and period summaries from recorded play sessions" : {
+
     },
     "Recent %@" : {
       "localizations" : {
