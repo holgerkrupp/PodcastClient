@@ -1,10 +1,16 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import CoreImage
 
 struct AudioClipExportView: View {
+    private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
+    /// Reusing one context prevents every preview frame from creating a new
+    /// Metal shader/cache pipeline. Intermediate caching is unnecessary because
+    /// each frame is immediately converted to a UIImage.
+    private static let previewCIContext = CIContext(options: [.cacheIntermediates: false])
+
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var trimStart: Double = 0
     @State private var trimEnd: Double = 60
     @State private var isExporting = false
@@ -20,6 +26,13 @@ struct AudioClipExportView: View {
     @State private var exportProgress: Double = 0.0
     @State private var videoSize = CGSize(width: 720, height: 720)
     @State private var previewImage: UIImage?
+    @State private var exportPlaybackRate: Float = 1.0
+    // Visible portion of the full episode waveform; scrollable and pinch-zoomable by the user.
+    @State private var windowStart: Double = 0
+    @State private var windowEnd: Double = 60
+    @State private var isWaveformLoading = false
+    @State private var waveformLoadTask: Task<Void, Never>?
+    @State private var previewUpdateTask: Task<Void, Never>?
     var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
@@ -29,23 +42,23 @@ struct AudioClipExportView: View {
     let playPosition: Double // The center position for +/- 30s
     let duration: Double // Audio duration
 
-    private var trimRange: ClosedRange<Double> {
+    private var initialWindow: ClosedRange<Double> {
         let minTime = max(0, playPosition - 30)
         let maxTime = min(duration, playPosition + 30)
         return minTime...maxTime
     }
-    
+
 
     var body: some View {
         GeometryReader { geometry in
             ZStack{
                 
-                CoverImageView(episode: Player.shared.currentEpisode)
+                BlurredCoverImageView(imageURL: coverImageURL ?? fallbackCoverImageURL, radius: 50)
                     .aspectRatio(1, contentMode: .fill)
                     .scaledToFill()
                     .ignoresSafeArea(.all, edges: .bottom)
                     .frame(width: geometry.size.width, height: geometry.size.height)
-                    .blur(radius: 50)
+                    .opacity(0.5)
                 
                 Group{
                     Spacer()
@@ -81,16 +94,18 @@ struct AudioClipExportView: View {
                             width: previewWidth(for: geometry.size),
                             height: previewHeight(for: geometry.size)
                         )
-                        .onChange(of: coverImage) { updatePreviewImage() }
-                        .onChange(of: trimStart) { updatePreviewImage() }
-                        .onChange(of: trimEnd) { updatePreviewImage() }
-                        .onChange(of: videoSize) {  updatePreviewImage() }
-                        .onChange(of: playbackProgress) {  updatePreviewImage() }
+                        .onChange(of: coverImage) { schedulePreviewImageUpdate() }
+                        .onChange(of: trimStart) { schedulePreviewImageUpdate() }
+                        .onChange(of: trimEnd) { schedulePreviewImageUpdate() }
+                        .onChange(of: videoSize) { schedulePreviewImageUpdate() }
+                        .onChange(of: playbackProgress) { schedulePreviewImageUpdate() }
                         
                         
                         Text("Select the segment to share")
                             .font(.headline)
                             .padding(.horizontal)
+
+                        playbackRateControl
                         
                         if waveformSamples.isEmpty {
                             ZStack {
@@ -106,8 +121,9 @@ struct AudioClipExportView: View {
                             VStack(spacing: 6) {
                                 WaveformView(
                                     samples: waveformSamples.map { max($0, 0.05) },
-                                    trimRange: trimRange,
-                                    duration: duration,
+                                    windowStart: $windowStart,
+                                    windowEnd: $windowEnd,
+                                    fullDuration: duration,
                                     trimStart: trimStart,
                                     trimEnd: trimEnd,
                                     onTrimStartChanged: { newStart in
@@ -119,17 +135,27 @@ struct AudioClipExportView: View {
                                         trimEnd = newEnd
                                         if trimEnd < trimStart { trimEnd = trimStart }
                                         stopAudioPlayer()
-                                    }, progress: $playbackProgress
+                                    },
+                                    progress: $playbackProgress,
+                                    onWindowChanged: { newWindow in
+                                        reloadWaveform(for: newWindow)
+                                    }
                                 )
                                 .frame(height: 70)
-                                .animation(reduceMotion ? nil : .easeInOut, value: waveformSamples)
                                 .background{
                                     RoundedRectangle(cornerRadius:  8.0)
                                         .fill(.black.opacity(0.5))
                                 }
+                                .overlay(alignment: .topTrailing) {
+                                    if isWaveformLoading {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .accent))
+                                            .padding(6)
+                                    }
+                                }
 
-                                    
-                                    
+
+
                                     Button {
                                         togglePreview()
                                     } label: {
@@ -172,6 +198,8 @@ struct AudioClipExportView: View {
                    
                 }
                 
+                .ESAFullBackground(image: coverImageURL ?? fallbackCoverImageURL)
+                
                 
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .ignoresSafeArea(.all, edges: .bottom)
@@ -191,8 +219,10 @@ struct AudioClipExportView: View {
                 }
                 .onAppear {
                     Player.shared.pause()
-                    trimStart = trimRange.lowerBound
-                    trimEnd = trimRange.upperBound
+                    trimStart = initialWindow.lowerBound
+                    trimEnd = initialWindow.upperBound
+                    windowStart = initialWindow.lowerBound
+                    windowEnd = initialWindow.upperBound
                     Task {
                         if let url = coverImageURL {
                             if let loaded = await ImageLoaderAndCache.loadUIImage(from: url) {
@@ -207,7 +237,7 @@ struct AudioClipExportView: View {
                         } else {
                             self.coverImage = UIImage()
                         }
-                        waveformSamples = await WaveformView.extractSamples(from: audioURL, in: trimRange)
+                        waveformSamples = await WaveformView.extractSamples(from: audioURL, in: initialWindow)
                         if waveformSamples.allSatisfy({ $0 < 0.07 }) {
                             waveformSamples = Array(repeating: 0.5, count: 480)
                         }
@@ -219,6 +249,8 @@ struct AudioClipExportView: View {
                 }
                 .onDisappear {
                     stopAudioPlayer()
+                    waveformLoadTask?.cancel()
+                    previewUpdateTask?.cancel()
                 }
                 
                 
@@ -287,13 +319,44 @@ struct AudioClipExportView: View {
     
     private func pixelBufferToUIImage(_ buffer: CVPixelBuffer) -> UIImage? {
         let ciImage = CIImage(cvPixelBuffer: buffer)
-        let context = CIContext()
-        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+        if let cgImage = Self.previewCIContext.createCGImage(ciImage, from: ciImage.extent) {
             return UIImage(cgImage: cgImage)
         }
         return nil
     }
+
+    /// Coalesce high-frequency trim and playback changes. Playback progress is
+    /// sampled every 50 ms, but rebuilding a 720x720 pixel buffer at that rate is
+    /// unnecessary for an editor preview and caused sustained file-backed Metal
+    /// writes. This caps preview rendering at roughly 6 frames per second.
+    private func schedulePreviewImageUpdate() {
+        guard previewUpdateTask == nil else { return }
+        previewUpdateTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(160))
+            guard Task.isCancelled == false else { return }
+            previewUpdateTask = nil
+            updatePreviewImage()
+        }
+    }
     
+    private func reloadWaveform(for window: ClosedRange<Double>) {
+        waveformLoadTask?.cancel()
+        isWaveformLoading = true
+        waveformLoadTask = Task {
+            var samples = await WaveformView.extractSamples(from: audioURL, in: window)
+            if Task.isCancelled { return }
+            if samples.allSatisfy({ $0 < 0.07 }) {
+                samples = Array(repeating: 0.5, count: samples.count)
+            }
+            await MainActor.run {
+                self.waveformSamples = samples
+                self.windowStart = window.lowerBound
+                self.windowEnd = window.upperBound
+                self.isWaveformLoading = false
+            }
+        }
+    }
+
     private func updatePreviewImage() {
         if isVideo {
             previewImage = nil
@@ -304,7 +367,17 @@ struct AudioClipExportView: View {
             previewImage = nil
             return
         }
-        if let buffer = AudioClipExporter.createPixelBuffer(from: coverImage, size: videoSize, progress: playbackProgress / (trimEnd - trimStart), startTime: trimStart, endTime: trimEnd, title: title) {
+        let segmentDuration = max(trimEnd - trimStart, 0.001)
+        let normalizedProgress = min(max(playbackProgress / segmentDuration, 0), 1)
+        if let buffer = AudioClipExporter.createPixelBuffer(
+            from: coverImage,
+            size: videoSize,
+            progress: normalizedProgress,
+            startTime: trimStart,
+            endTime: trimEnd,
+            playbackRate: exportPlaybackRate,
+            title: title
+        ) {
             previewImage = pixelBufferToUIImage(buffer)
         } else {
             previewImage = nil
@@ -322,7 +395,8 @@ struct AudioClipExportView: View {
                     url = try await AudioClipExporter.exportVideoClipAsync(
                         videoURL: audioURL,
                         startTime: trimStart,
-                        endTime: trimEnd
+                        endTime: trimEnd,
+                        playbackRate: exportPlaybackRate
                     ) { progress in
                         Task {
                             await MainActor.run {
@@ -337,6 +411,7 @@ struct AudioClipExportView: View {
                         coverImage: coverImage ?? UIImage(),
                         startTime: trimStart,
                         endTime: trimEnd,
+                        playbackRate: exportPlaybackRate,
                         fps: 30,
                         videoSize: videoSize
                     ) { progress in
@@ -397,7 +472,7 @@ struct AudioClipExportView: View {
     private func toggleVideoPreview() {
         guard let player = videoPlayer else {
             setupVideoPreviewPlayer()
-            videoPlayer?.play()
+            videoPlayer?.playImmediately(atRate: exportPlaybackRate)
             startProgressTimer()
             return
         }
@@ -406,7 +481,7 @@ struct AudioClipExportView: View {
             stopVideoPreview()
         } else {
             seekVideoPreview(to: trimStart + playbackProgress)
-            player.play()
+            player.playImmediately(atRate: exportPlaybackRate)
             startProgressTimer()
         }
     }
@@ -429,6 +504,8 @@ struct AudioClipExportView: View {
         stopAudioPlayer()
         do {
             let player = try AVAudioPlayer(contentsOf: audioURL)
+            player.enableRate = true
+            player.rate = exportPlaybackRate
             player.currentTime = trimStart
             player.numberOfLoops = 0
             let delegate = AudioPlayerDelegateWrapper(onFinish: stopAudioPlayer)
@@ -495,6 +572,38 @@ struct AudioClipExportView: View {
         progressTimer?.invalidate()
         progressTimer = nil
     }
+
+    private var playbackRateControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Playback Rate", systemImage: "gauge.with.dots.needle.50percent")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(exportPlaybackRate.formattedPlaybackSpeed)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            Stepper(
+                value: $exportPlaybackRate,
+                in: Self.clipPlaybackRateRange,
+                step: 0.1
+            ) {
+                Text("Export speed \(exportPlaybackRate.formattedPlaybackSpeed)")
+            }
+            .onChange(of: exportPlaybackRate) { _, _ in
+                if let player = audioPlayer {
+                    player.rate = exportPlaybackRate
+                }
+                if videoPlayer?.rate ?? 0 > 0 {
+                    videoPlayer?.rate = exportPlaybackRate
+                }
+                schedulePreviewImageUpdate()
+            }
+            .accessibilityValue(exportPlaybackRate.formattedPlaybackSpeed)
+        }
+        .padding(.horizontal)
+    }
 }
 
 private struct VideoClipPreviewPlayerView: View {
@@ -502,6 +611,12 @@ private struct VideoClipPreviewPlayerView: View {
 
     var body: some View {
         VideoPlayer(player: player)
+    }
+}
+
+private extension Float {
+    var formattedPlaybackSpeed: String {
+        String(format: "%.1fx", self)
     }
 }
 

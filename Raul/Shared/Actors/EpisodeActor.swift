@@ -7,6 +7,7 @@
 import SwiftData
 import Foundation
 import mp3ChapterReader
+
 import AVFoundation
 import BasicLogger
 import SwiftUI
@@ -22,14 +23,34 @@ struct EpisodePlaybackStateSnapshot: Sendable {
     let maxPlayPosition: Double?
 }
 
+struct LastPlayedEpisodeReference: Sendable {
+    let url: URL
+    let lastPlayed: Date
+}
+
 
 @ModelActor
 actor EpisodeActor {
     private static let legacyBackCatalogSuppressionMigrationKey = "EpisodeMetaData.backCatalogSuppressionMigration.v1"
     private static let legacyBackCatalogSuppressionArchiveWindow: TimeInterval = 24 * 60 * 60
+    private var cachedEpisodeStateWriter: StoreSplitEpisodeStateSyncWriter?
+    private var cachedEpisodeStateWriterStoreID: ObjectIdentifier?
+    private var cachedLocalClassificationWriter:
+        StoreSplitLocalEpisodeClassificationWriter?
+    private var cachedLocalClassificationWriterStoreID: ObjectIdentifier?
 
     static func scheduleRemoteChapterFetch(episodeURL: URL, modelContainer: ModelContainer) {
         Task.detached(priority: .utility) {
+#if canImport(UIKit)
+            // Chapter extraction parses arbitrary HTML and may fault several
+            // related SwiftData records. Starting that work from a download
+            // callback while the app is backgrounded can keep scene updates
+            // alive long enough for the watchdog to terminate the process.
+            let isBackgrounded = await MainActor.run {
+                UIApplication.shared.applicationState != .active
+            }
+            guard isBackgrounded == false else { return }
+#endif
             await EpisodeActor(modelContainer: modelContainer)
                 .getRemoteChapters(episodeURL: episodeURL)
         }
@@ -72,6 +93,8 @@ actor EpisodeActor {
             episode.chapters = []
         }
 
+        let shouldPreserveChapterProgress = episode.hasPlaybackHistory
+
         var existingByIdentity: [String: Marker] = [:]
         for chapter in (episode.chapters ?? []) where types.contains(chapter.type) {
             let identity = chapterIdentity(for: chapter)
@@ -85,7 +108,7 @@ actor EpisodeActor {
             chapter.episode = episode
             if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
                 chapter.shouldPlay = existing.shouldPlay
-                chapter.progress = existing.progress
+                chapter.progress = shouldPreserveChapterProgress ? existing.progress : 0
                 chapter.image = chapter.image ?? existing.image
                 chapter.imageData = chapter.imageData ?? existing.imageData
                 chapter.link = chapter.link ?? existing.link
@@ -113,6 +136,14 @@ actor EpisodeActor {
         }
 
         return false
+    }
+
+    private func shouldExtractShownotesChapters(for episode: Episode) -> Bool {
+        guard let chapters = episode.chapters, chapters.isEmpty == false else { return true }
+        guard chapters.allSatisfy({ $0.type == .extracted }) else { return false }
+
+        let uniqueStartTimes = Set(chapters.compactMap(\.start))
+        return uniqueStartTimes.count < 2
     }
 
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
@@ -170,14 +201,15 @@ actor EpisodeActor {
     }
 
     
-    func updateDuration(fileURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
+    @discardableResult
+    func updateDuration(fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
         print("updateDuration of \(episode.title)")
 
         guard let localFile = episode.localFile,
               FileManager.default.fileExists(atPath: localFile.path) else {
             print("no local file")
-            return
+            return false
         }
 
         do {
@@ -186,38 +218,58 @@ actor EpisodeActor {
 
             guard seconds.isFinite, seconds > 0 else {
                 print("invalid local duration: \(seconds)")
-                return
+                return false
             }
 
             if let existingDuration = episode.duration,
                abs(existingDuration - seconds) < 0.5 {
-                return
+                return false
             }
 
             episode.duration = seconds
+            episode.refresh.toggle()
             print("new duration: \(seconds)")
             modelContext.saveIfNeeded()
+            return true
         } catch {
             print(error)
+            return false
         }
     }
     
-    func updateChapterDurations(fileURL: URL) async{
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        guard !(episode.chapters?.isEmpty ?? true) else { return }
-        guard let totalDuration = episode.duration else { return }
+    @discardableResult
+    func updateChapterDurations(fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        guard !(episode.chapters?.isEmpty ?? true) else { return false }
+        guard let totalDuration = episode.duration else { return false }
         
         // print("updateChapterDurations")
         
+        var didChange = false
         if let  chapters = episode.chapters{
             var lastEnd = totalDuration
             for chapter in chapters.sorted(by: {$0.start ?? 0.0 > $1.start ?? lastEnd}){
-                if chapter.duration == nil{
-                    chapter.duration = lastEnd - (chapter.start ?? 0.0)
-                    lastEnd = chapter.start ?? 0.0
+                let start = chapter.start ?? 0.0
+                let end = max(lastEnd, start)
+                let duration = end - start
+
+                if chapter.duration != duration {
+                    chapter.duration = duration
+                    didChange = true
                 }
+                if chapter.endTime != end {
+                    chapter.endTime = end
+                    didChange = true
+                }
+
+                lastEnd = start
             }
         }
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
     }
     
     //MARK: Meta Data for Statistics
@@ -266,15 +318,30 @@ actor EpisodeActor {
     }
     
     func getLastPlayedEpisodeURL() async -> URL? {
+        await lastPlayedEpisodeReference()?.url
+    }
+
+    /// Newest played episode, resolved with a sorted single-row fetch.
+    ///
+    /// This runs on the launch path before playback can be restored, so it must
+    /// not materialize every episode that was ever played just to take the
+    /// maximum in memory.
+    func lastPlayedEpisodeReference() async -> LastPlayedEpisodeReference? {
         let predicate = #Predicate<EpisodeMetaData> { metadata in
             metadata.isHistory != true && metadata.lastPlayed != nil
         }
+        var descriptor = FetchDescriptor<EpisodeMetaData>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\EpisodeMetaData.lastPlayed, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
         do {
-            let results = try modelContext.fetch(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
-            let mostRecentlyPlayed = results.max {
-                ($0.lastPlayed ?? .distantPast) < ($1.lastPlayed ?? .distantPast)
+            guard let metadata = try modelContext.fetch(descriptor).first,
+                  let url = metadata.episode?.url,
+                  let lastPlayed = metadata.lastPlayed else {
+                return nil
             }
-            return mostRecentlyPlayed?.episode?.url
+            return LastPlayedEpisodeReference(url: url, lastPlayed: lastPlayed)
         } catch {
             // print("❌ Error fetching or saving metadata: \(error)")
         }
@@ -287,6 +354,8 @@ actor EpisodeActor {
         ensureMetadata(for: episode)
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification([episode])
+        await publishSplitEpisodeState(episode)
     }
     
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
@@ -299,6 +368,7 @@ actor EpisodeActor {
             }
             episode.metaData?.playPosition = position
             modelContext.saveIfNeeded()
+            await publishSplitEpisodeState(episode)
         }
 
     }
@@ -316,8 +386,16 @@ actor EpisodeActor {
         let storedMaxPosition = episode.metaData?.maxPlayposition ?? 0.0
         episode.metaData?.playPosition = playPosition
         episode.metaData?.maxPlayposition = max(storedMaxPosition, maxPlayPosition, playPosition)
+        let hasRecoveredPlaybackState = playPosition > 0
+            || maxPlayPosition > 0
+            || chapterProgresses.values.contains(where: { $0 > 0 })
         if let lastPlayed {
             episode.metaData?.lastPlayed = lastPlayed
+        } else if hasRecoveredPlaybackState, episode.metaData?.lastPlayed == nil {
+            episode.metaData?.lastPlayed = .now
+        }
+        if hasRecoveredPlaybackState, episode.metaData?.firstListenDate == nil {
+            episode.metaData?.firstListenDate = episode.metaData?.lastPlayed ?? .now
         }
 
         for (chapterIDString, progress) in chapterProgresses {
@@ -330,6 +408,7 @@ actor EpisodeActor {
         guard modelContext.hasChanges else { return true }
         do {
             try modelContext.save()
+            await publishSplitEpisodeState(episode)
             return true
         } catch {
             return false
@@ -346,12 +425,15 @@ actor EpisodeActor {
     
     func markasPlayed(_ episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        ensureMetadata(for: episode)
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
         episode.metaData?.isInbox = false
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification([episode])
+        await publishSplitEpisodeState(episode)
 
         if let podcastFeed = episode.podcast?.feed {
             await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
@@ -385,20 +467,16 @@ actor EpisodeActor {
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
         await logAutoDownload("trigger/archive episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         
-        await removeFromPlaylist(episodeURL)
-
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isArchived = true
-            episode.metaData?.isInbox = false
-            episode.metaData?.status = .archived
-            episode.metaData?.archivedAt = Date()
-            episode.metaData?.systemSuppressionReason = nil
+            episode.metaData?.setArchived(true)
+            episode.metaData?.setInboxMembership(false)
         }
 
         modelContext.saveIfNeeded()
-        await MainActor.run {
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        await persistLocalEpisodeClassification(episodes)
+        for episode in episodes {
+            await publishSplitEpisodeState(episode)
         }
         WatchSyncCoordinator.refreshSoon(force: true)
 
@@ -416,13 +494,49 @@ actor EpisodeActor {
 
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isArchived = false
-            episode.metaData?.isInbox = true
-            episode.metaData?.status = .inbox
-            episode.metaData?.archivedAt = nil
-            episode.metaData?.systemSuppressionReason = nil
+            episode.metaData?.setArchived(false)
         }
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(episodes)
+        for episode in episodes {
+            await publishSplitEpisodeState(episode)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
+    }
+
+    func removeFromInbox(_ episodeURL: URL?) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.setInboxMembership(false)
+        }
+
+        modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(episodes)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
+    }
+
+    func addToInbox(_ episodeURL: URL?) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.setInboxMembership(true)
+        }
+
+        modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(episodes)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
         WatchSyncCoordinator.refreshSoon(force: true)
     }
 
@@ -436,17 +550,70 @@ actor EpisodeActor {
 
         for episode in episodes {
             ensureMetadata(for: episode)
-            episode.metaData?.isArchived = false
-            episode.metaData?.isInbox = false
-            episode.metaData?.status = nil
-            episode.metaData?.archivedAt = nil
+            episode.metaData?.setInboxMembership(false)
             episode.metaData?.systemSuppressionReason = reason
         }
 
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(episodes)
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
+    }
+
+    private func publishSplitEpisodeState(_ episode: Episode) async {
+        guard let metadata = episode.metaData else { return }
+        // Stamp before publishing so the local row and the UserState record carry
+        // the same generation. The importer compares the two and refuses to
+        // replace local state with an older remote record.
+        //
+        // `setPlayPosition` calls this every 10 seconds during playback, so the
+        // stamp is only advanced when the published state actually differs from
+        // what this device last published. Writing it unconditionally dirtied the
+        // row on every tick and forced a save each time.
+        let publishedAt = Date()
+        let snapshot = StoreSplitEpisodeStateSnapshot(
+            identity: episode.stableEpisodeIdentity,
+            playPosition: max(0, metadata.playPosition ?? 0),
+            maxPlayPosition: max(
+                0,
+                metadata.maxPlayposition ?? 0,
+                metadata.playPosition ?? 0
+            ),
+            duration: episode.duration,
+            isPlayed: metadata.completionDate != nil || metadata.isHistory == true,
+            isArchived: metadata.isArchived == true || metadata.status == .archived,
+            wasSkipped: metadata.wasSkipped,
+            completedAt: metadata.completionDate,
+            archivedAt: metadata.archivedAt,
+            firstPlayedAt: metadata.firstListenDate,
+            lastPlayedAt: metadata.lastPlayed
+        )
+        guard let writer = await episodeStateWriter() else { return }
+        let didChange = await writer.upsert(snapshot, at: publishedAt)
+        if didChange {
+            metadata.stateUpdatedAt = publishedAt
+            modelContext.saveIfNeeded()
+        }
+    }
+
+    private func episodeStateWriter() async -> StoreSplitEpisodeStateSyncWriter? {
+        guard let userStateContainer = await preparedUserStateContainer() else {
+            return nil
+        }
+
+        let storeID = ObjectIdentifier(userStateContainer)
+        if let cachedEpisodeStateWriter,
+           cachedEpisodeStateWriterStoreID == storeID {
+            return cachedEpisodeStateWriter
+        }
+
+        let writer = StoreSplitEpisodeStateSyncWriter(
+            modelContainer: userStateContainer
+        )
+        cachedEpisodeStateWriter = writer
+        cachedEpisodeStateWriterStoreID = storeID
+        return writer
     }
 
     func clearSystemSuppression(_ episodeURL: URL?) async {
@@ -460,6 +627,7 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(episodes)
     }
     
     func moveToHistory(episodeURL: URL) async {
@@ -483,6 +651,10 @@ actor EpisodeActor {
         }
         
         modelContext.saveIfNeeded()
+        await persistLocalEpisodeClassification(episodes)
+        for episode in episodes {
+            await publishSplitEpisodeState(episode)
+        }
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
             WatchSyncCoordinator.refreshSoon(force: true)
@@ -551,6 +723,7 @@ actor EpisodeActor {
         var skippedHistory = 0
         var skippedArchived = 0
         var skippedPlayed = 0
+        var skippedManualPlaylistRemoval = 0
         var skippedMissingSideload = 0
         var skippedBackCatalogToggle = 0
         var sampledDecisions: [String] = []
@@ -596,6 +769,14 @@ actor EpisodeActor {
                 return false
             }
 
+            if suppressionReason == .manualPlaylistRemoval {
+                skippedManualPlaylistRemoval += 1
+                if sampledDecisions.count < maxSampledDecisions {
+                    sampledDecisions.append("\(episodeLogID(episode)) => skipped:manualPlaylistRemoval")
+                }
+                return false
+            }
+
             if suppressionReason == .backCatalogImport && includesBackCatalogEpisodes == false {
                 skippedBackCatalogToggle += 1
                 if sampledDecisions.count < maxSampledDecisions {
@@ -611,7 +792,7 @@ actor EpisodeActor {
         }
 
         await logAutoDownload(
-            "policy/eligibility feed=\(podcastFeed.absoluteString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
+            "policy/eligibility feed=\(podcastFeed.absoluteString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedManualPlaylistRemoval=\(skippedManualPlaylistRemoval) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
         )
         if sampledDecisions.isEmpty == false {
             await logAutoDownload("policy/eligibility-sample feed=\(podcastFeed.absoluteString) \(sampledDecisions.joined(separator: " | "))")
@@ -683,7 +864,8 @@ actor EpisodeActor {
                             try await playlistActor.add(
                                 episodeURL: episodeURL,
                                 to: queuePosition,
-                                startDownload: false
+                                startDownload: false,
+                                origin: .automatic
                             )
                             await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=success")
                         } catch {
@@ -729,7 +911,7 @@ actor EpisodeActor {
                     do {
                         try await playlistActor.remove(
                             episodeURL: episodeURL,
-                            triggerAutoDownload: false
+                            origin: .policyMaintenance
                         )
                         removedFromPlaylist += 1
                         await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")
@@ -810,12 +992,50 @@ actor EpisodeActor {
 
         if didChange {
             modelContext.saveIfNeeded()
+            await persistLocalEpisodeClassification(episodes)
             await MainActor.run {
                 NotificationCenter.default.post(name: .inboxDidChange, object: nil)
             }
         }
 
         defaults.set(true, forKey: Self.legacyBackCatalogSuppressionMigrationKey)
+    }
+
+    private func persistLocalEpisodeClassification(
+        _ episodes: [Episode]
+    ) async {
+        let snapshots = episodes.compactMap {
+            episode -> StoreSplitLocalEpisodeClassificationSnapshot? in
+            guard let metadata = episode.metaData else { return nil }
+            return StoreSplitLocalEpisodeClassificationSnapshot(
+                identity: episode.stableEpisodeIdentity,
+                isInbox: metadata.isInbox == true,
+                statusRawValue: metadata.status?.rawValue,
+                systemSuppressionReasonRawValue:
+                    metadata.systemSuppressionReasonRawValue
+            )
+        }
+        guard snapshots.isEmpty == false,
+              let writer = await localEpisodeClassificationWriter() else { return }
+        await writer.upsert(snapshots)
+    }
+
+    private func localEpisodeClassificationWriter() async
+        -> StoreSplitLocalEpisodeClassificationWriter? {
+        guard let cacheContainer = await preparedCacheContainer() else {
+            return nil
+        }
+        let storeID = ObjectIdentifier(cacheContainer)
+        if let cachedLocalClassificationWriter,
+           cachedLocalClassificationWriterStoreID == storeID {
+            return cachedLocalClassificationWriter
+        }
+        let writer = StoreSplitLocalEpisodeClassificationWriter(
+            modelContainer: cacheContainer
+        )
+        cachedLocalClassificationWriter = writer
+        cachedLocalClassificationWriterStoreID = storeID
+        return writer
     }
 
     private func canScheduleAutoDownloads(for networkMode: AutoDownloadNetworkMode) async -> Bool {
@@ -878,7 +1098,11 @@ actor EpisodeActor {
 
         if playnext != .none {
             let playlistActor = playlistActor(for: playlistID)
-            try? await playlistActor?.add(episodeURL: episodeURL, to: playnext)
+            try? await playlistActor?.add(
+                episodeURL: episodeURL,
+                to: playnext,
+                origin: .automatic
+            )
         }
 
         await NotificationManager().sendNotification(title: episode.displayPodcastTitle ?? "New Episode", body: episode.title)
@@ -890,6 +1114,11 @@ actor EpisodeActor {
             return }
         guard let url = episode.url else { return }
 
+        // Remote episodes do not pass through markEpisodeAvailable(), so run the
+        // regular chapter creation flow here before attempting MP3-only remote
+        // extraction. This keeps shownotes/external JSON chapters available for
+        // streamed episodes published without embedded chapter metadata.
+        _ = await createChapters(url)
         await extractRemoteMP3Chapters(url)
         await applyAutoSkipWords(episodeURL: episodeURL)
     }
@@ -901,6 +1130,18 @@ actor EpisodeActor {
         let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
         modelContext.saveIfNeeded()
+        guard let bookmarkID = bookmark.uuid?.uuidString else { return }
+        let snapshot = StoreSplitBookmarkSnapshot(
+            id: bookmarkID,
+            identity: episode.stableEpisodeIdentity,
+            time: playPosition,
+            title: bookmarkTitle,
+            createdAt: bookmark.creationtime ?? .now
+        )
+        if let userStateContainer = await preparedUserStateContainer() {
+            await StoreSplitBookmarkSyncWriter(modelContainer: userStateContainer)
+                .upsert(snapshot)
+        }
     }
     
     func deleteFile(episodeURL: URL?) async{
@@ -916,6 +1157,7 @@ actor EpisodeActor {
         for episode in episodes {
             ensureMetadata(for: episode)
             episode.metaData?.isAvailableLocally = false
+            episode.refresh.toggle()
         }
         
         modelContext.saveIfNeeded()
@@ -933,14 +1175,23 @@ actor EpisodeActor {
             return
         }
         ensureMetadata(for: episode)
+        let wasAvailableLocally = episode.metaData?.isAvailableLocally == true
+            && episode.metaData?.calculatedIsAvailableLocally == true
+
+        if wasAvailableLocally == false {
+            episode.metaData?.isAvailableLocally = true
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+
         await updateDuration(fileURL: url)
         await createChapters(url)
 
-        if episode.metaData?.isAvailableLocally == true,
-           episode.metaData?.calculatedIsAvailableLocally == true {
+        if wasAvailableLocally {
             return
         }
-        episode.metaData?.isAvailableLocally = true
+
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
         let automaticOnDeviceTranscriptionsEnabled = await settingsActor
@@ -1050,14 +1301,27 @@ actor EpisodeActor {
     
     func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
         print("decodeTranscription")
+        let snapshots = decodeTranscriptSnapshots(transcription)
+        print("created \(snapshots.count) lines")
+        return snapshots.map {
+            TranscriptLineAndTime(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+    }
+
+    private func decodeTranscriptSnapshots(_ transcription: String) -> [TranscriptLineSnapshot] {
         let decoder = TranscriptDecoder(transcription)
-        let lines = decoder.transcriptLines
-        let transcript = lines.enumerated().map { _, line in
-            let text = line.text
-            let start = line.startTime
-            let end = line.endTime
-            let speaker = line.speaker
-            return TranscriptLineAndTime(speaker: speaker, text: text, startTime: start, endTime: end)
+        return decoder.transcriptLines.map {
+            TranscriptLineSnapshot(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
         }.sorted {
             if $0.startTime != $1.startTime {
                 return $0.startTime < $1.startTime
@@ -1066,27 +1330,42 @@ actor EpisodeActor {
             let rightEnd = $1.endTime ?? .greatestFiniteMagnitude
             return leftEnd < rightEnd
         }
-        print("created \(lines.count) lines")
-        return transcript
     }
     
     func deleteMarker(markerID: UUID) async{
         guard let marker = await fetchMarker(byID: markerID) else { return}
+        if let episode = marker.bookmarkEpisode,
+           let userStateContainer = await preparedUserStateContainer() {
+            await StoreSplitBookmarkSyncWriter(modelContainer: userStateContainer)
+                .tombstone(
+                    StoreSplitBookmarkSnapshot(
+                        id: markerID.uuidString,
+                        identity: episode.stableEpisodeIdentity,
+                        time: marker.start ?? 0,
+                        title: marker.title,
+                        createdAt: marker.creationtime ?? .now
+                    )
+                )
+        }
         marker.episode = nil
         marker.bookmarkEpisode = nil
         modelContext.delete(marker)
         modelContext.saveIfNeeded()
     }
 
-    func createChapters(_ fileURL: URL) async  {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
+    @discardableResult
+    func createChapters(_ fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        var didChange = false
         
         if episode.chapters == nil {
             episode.chapters = []
         }
         let removedDuplicateChapters = removeDuplicateChapters(on: episode)
+        didChange = didChange || removedDuplicateChapters
 
-        await refreshLocalFileChapters(for: episode)
+        let refreshedLocalChapters = await refreshLocalFileChapters(for: episode)
+        didChange = didChange || refreshedLocalChapters
 
         if let chapters = episode.chapters, chapters.isEmpty,
            let chapterFile = episode.externalFiles.first(where: { $0.category == .chapter }),
@@ -1099,18 +1378,22 @@ actor EpisodeActor {
                let chapters = await parseJSONChapters(jsonData: jsonData) {
                 replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
                 modelContext.saveIfNeeded()
+                didChange = true
             }
         }
 
-        if let chapers = episode.chapters, chapers.isEmpty, let url = episode.url{
-            await extractShownotesChapters(fileURL: url)
+        if shouldExtractShownotesChapters(for: episode), let url = episode.url {
+            let extractedShownotesChapters = await extractShownotesChapters(fileURL: url)
+            didChange = didChange || extractedShownotesChapters
         }
         if let url = episode.url {
-            await finalizeTranscriptChapters(for: url)
+            let finalizedTranscriptChapters = await finalizeTranscriptChapters(for: url)
+            didChange = didChange || finalizedTranscriptChapters
         }
         if removedDuplicateChapters {
             modelContext.saveIfNeeded()
         }
+        return didChange
     }
 
     func maintainChapterImageStorage() async -> ChapterImageMaintenanceResult {
@@ -1175,12 +1458,19 @@ actor EpisodeActor {
         return restoredImageCount
     }
     
-    private func applyAutoSkipWords(episodeURL: URL) async{
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+    @discardableResult
+    func rerunChapterSkipRules(for episodeURL: URL) async -> Bool {
+        return await applyAutoSkipWords(episodeURL: episodeURL)
+    }
+
+    @discardableResult
+    private func applyAutoSkipWords(episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.feed) else {
-            return
+            return false
         }
+        var didChange = false
         for skipWord in skipWord {
             guard let keyword = skipWord.keyWord?.lowercased(), !keyword.isEmpty else { continue }
             let matches: (String) -> Bool
@@ -1197,12 +1487,17 @@ actor EpisodeActor {
             if let chapters = episode.chapters{
                 for chapter in chapters {
                     if matches(chapter.title.lowercased()) {
+                        didChange = didChange || chapter.shouldPlay
                         chapter.shouldPlay = false
                     }
                 }
             }
         }
-        modelContext.saveIfNeeded()
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
     }
 
     private func currentUpNextEpisodeURLs() async -> Set<URL> {
@@ -1532,55 +1827,74 @@ actor EpisodeActor {
         await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil)
     }
     
-    private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return  }
+    @discardableResult
+    private func extractMP3Chapters(_ episodeID: PersistentIdentifier) async -> Bool {
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         guard let url = episode.localFile else {
-            return
+            return false
         }
         let chapters = await ChapterExtractionHooks.loadLocalMP3Chapters(url)
-        guard chapters.isEmpty == false else { return }
+        guard chapters.isEmpty == false else { return false }
 
+        // Re-acquired rather than carried across the await: reading the file
+        // takes long enough that the episode may be gone by now.
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        return true
     }
     
-    func extractRemoteMP3Chapters(_ fileURL: URL) async {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        guard let remoteURL = episode.url else { return }
+    @discardableResult
+    func extractRemoteMP3Chapters(_ fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        guard let remoteURL = episode.url else { return false }
 
         let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(remoteURL)
-        guard chapters.isEmpty == false else { return }
+        guard chapters.isEmpty == false else { return false }
 
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
+        return true
     }
 
-    private func refreshLocalFileChapters(for episode: Episode) async {
-        guard let localFile = episode.localFile else { return }
-        guard FileManager.default.fileExists(atPath: localFile.path) else { return }
+    @discardableResult
+    func rerunLocalAudioChapters(for episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        return await refreshLocalFileChapters(for: episode)
+    }
+
+    @discardableResult
+    private func refreshLocalFileChapters(for episode: Episode) async -> Bool {
+        guard let localFile = episode.localFile else { return false }
+        guard FileManager.default.fileExists(atPath: localFile.path) else { return false }
 
         let lowercasedExtension = localFile.pathExtension.lowercased()
         if lowercasedExtension == "mp3" {
-            await extractMP3Chapters(episode.persistentModelID)
-            return
+            return await extractMP3Chapters(episode.persistentModelID)
         }
 
         if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
-            await extractM4AChapters(episode.persistentModelID)
-            return
+            return await extractM4AChapters(episode.persistentModelID)
         }
 
         do {
             if let formatInfo = try await MetadataLoader.getAudioFormat(from: localFile) {
                 if formatInfo.formatID == kAudioFormatMPEGLayer3 {
-                    await extractMP3Chapters(episode.persistentModelID)
+                    return await extractMP3Chapters(episode.persistentModelID)
                 } else if formatInfo.formatID == kAudioFormatMPEG4AAC {
-                    await extractM4AChapters(episode.persistentModelID)
+                    return await extractM4AChapters(episode.persistentModelID)
                 }
             }
         } catch {
-            return
+            return false
         }
+        return false
     }
     
     private func parse(chapters: [String: Any]) -> [Marker]? {
@@ -1634,16 +1948,22 @@ actor EpisodeActor {
         return episode.title
     }
     
-    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async {
-        guard let episode = modelContext.model(for: episodeID) as? Episode else { return }
+    @discardableResult
+    private func extractM4AChapters(_ episodeID: PersistentIdentifier) async -> Bool {
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         guard let url = episode.localFile else {
-            return
+            return false
         }
         let chapters = await ChapterExtractionHooks.loadM4AChapters(url)
-        guard chapters.isEmpty == false else { return }
+        guard chapters.isEmpty == false else { return false }
 
+        // Re-acquired rather than carried across the await: reading the file
+        // takes long enough that the episode may be gone by now.
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
+        episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        return true
     }
     
     @discardableResult
@@ -1674,14 +1994,53 @@ actor EpisodeActor {
         replaceChapters(on: episode, replacingTypes: [.extracted, .ai], with: newchapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        await writeAIChaptersToSplitStore(
+            episode: episode,
+            chapters: newchapters,
+            generatedAt: .now
+        )
         return true
         
     }
     
-    func extractShownotesChapters(fileURL: URL) async  {
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return  }
-        guard let text = episode.desc else { return  }
-        var extractedData = extractTimeCodesAndTitles(from: text)
+    @discardableResult
+    func rerunExternalJSONChapters(for episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        var didChange = false
+
+        for chapterFile in episode.externalFiles where chapterFile.category == .chapter {
+            guard let url = URL(string: chapterFile.url) else { continue }
+            let isJSON = (url.pathExtension.lowercased() == "json")
+                || (chapterFile.fileType?.lowercased().contains("json") == true)
+            guard isJSON,
+                  let jsonString = await downloadAndParseStringFile(url: url),
+                  let jsonData = jsonString.data(using: .utf8),
+                  let chapters = await parseJSONChapters(jsonData: jsonData),
+                  chapters.isEmpty == false else {
+                continue
+            }
+
+            replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
+            didChange = true
+        }
+
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
+    }
+
+    @discardableResult
+    func extractShownotesChapters(fileURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        let shownotesCandidates = [episode.content, episode.desc]
+        guard let text = shownotesCandidates.compactMap({ $0 }).first(where: { $0.isEmpty == false }) else {
+            return false
+        }
+        var extractedData = ShownotesChapterExtractor.extractTimeCodesAndTitles(
+            fromShownotesCandidates: shownotesCandidates
+        )
         
         if  extractedData == nil || extractedData?.count == 0{
             extractedData = await generateAIChapters(from: text)
@@ -1695,9 +2054,13 @@ actor EpisodeActor {
                     newchapters.append(newChapter)
                 }
             }
+            guard Set(newchapters.compactMap(\.start)).count >= 2 else { return false }
             replaceChapters(on: episode, replacingTypes: [.extracted], with: newchapters)
+            episode.refresh.toggle()
             modelContext.saveIfNeeded()
+            return true
         }
+        return false
     }
     
     func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
@@ -1740,7 +2103,7 @@ actor EpisodeActor {
     }
 
     @discardableResult
-    private func finalizeTranscriptChapters(for episodeURL: URL, force: Bool = false) async -> Bool {
+    func finalizeTranscriptChapters(for episodeURL: URL, force: Bool = false) async -> Bool {
         let didGenerate = await extractTranscriptChapters(fileURL: episodeURL, force: force)
         await updateChapterDurations(episodeURL: episodeURL)
         await applyAutoSkipWords(episodeURL: episodeURL)
@@ -1752,22 +2115,38 @@ actor EpisodeActor {
         return await finalizeTranscriptChapters(for: episodeURL, force: true)
     }
     
-    func updateChapterDurations(episodeURL: URL) async {
+    @discardableResult
+    func updateChapterDurations(episodeURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
-            return }
+            return false
+        }
         var chapters = episode.preferredChapters
         chapters.sort { ($0.start ?? 0.0) < ($1.start ?? 0.0) }
+        var didChange = false
         for i in 0..<chapters.count {
             guard let start = chapters[i].start else { continue }
-            let end: Double
+            let end: Double?
             if i + 1 < chapters.count, let nextStart = chapters[i + 1].start {
-                end = nextStart
+                end = max(nextStart, start)
             } else {
-                end = episode.duration ?? start
+                end = episode.duration.map { max($0, start) }
             }
-            chapters[i].duration = end - start
+
+            let duration = end.map { $0 - start }
+            if chapters[i].duration != duration {
+                chapters[i].duration = duration
+                didChange = true
+            }
+            if chapters[i].endTime != end {
+                chapters[i].endTime = end
+                didChange = true
+            }
         }
-        modelContext.saveIfNeeded()
+        if didChange {
+            episode.refresh.toggle()
+            modelContext.saveIfNeeded()
+        }
+        return didChange
     }
     
     
@@ -1831,13 +2210,14 @@ actor EpisodeActor {
     
     func downloadTranscript(_ episodeID: PersistentIdentifier) async throws {
         print("downloading transcript")
-        guard let episode = modelContext.model(for: episodeID) as? Episode else {
-            throw TranscriptError.episodeNotFound }
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard await settingsActor.getTranscriptionsEnabled() else {
             throw TranscriptError.noTranscriptFileFound
         }
-        
+
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else {
+            throw TranscriptError.episodeNotFound }
+
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
             throw TranscriptError.transcriptionExists }
         
@@ -1858,9 +2238,14 @@ actor EpisodeActor {
             if let url = URL(string: transcriptfile.url) {
                 let transcription = await downloadAndParseStringFile(url: url)
                 if let transcription {
-                    episode.transcriptLines = decodeTranscription(transcription)
+                    let snapshots = decodeTranscriptSnapshots(transcription)
+                    // The episode is taken from the store again: the download
+                    // above may have outlived it.
+                    guard let episode: Episode = modelContext.existingModel(for: episodeID) else {
+                        throw TranscriptError.episodeNotFound
+                    }
+                    try await replaceTranscriptLines(for: episode, with: snapshots)
                     episode.refresh.toggle()
-                    modelContext.saveIfNeeded()
                     if let episodeURL = episode.url {
                         await finalizeTranscriptChapters(for: episodeURL)
                     }
@@ -1879,11 +2264,18 @@ actor EpisodeActor {
     }
     
     // Inside EpisodeActor
-    func setTranscript(for episodeURL: URL, lines: [TranscriptLineAndTime]) async {
+    func setTranscript(for episodeURL: URL, lines: [TranscriptLineAndTime]) async throws {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
-        episode.transcriptLines = lines
+        let snapshots = lines.map {
+            TranscriptLineSnapshot(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+        try await replaceTranscriptLines(for: episode, with: snapshots)
         episode.refresh.toggle()
-        modelContext.saveIfNeeded()
         await finalizeTranscriptChapters(for: episodeURL)
     }
     
@@ -1927,19 +2319,116 @@ actor EpisodeActor {
     }
 
     // 3) Decode VTT and persist transcript lines inside EpisodeActor
-    func decodeAndSetTranscript(for episodeURL: URL, vtt: String) async {
+    func decodeAndSetTranscript(
+        for episodeURL: URL,
+        vtt: String
+    ) async throws -> [TranscriptLineSnapshot] {
         print("decoding vtt")
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
-        let lines = decodeTranscription(vtt) // existing helper returns [TranscriptLineAndTime]
-        episode.transcriptLines = lines
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            throw TranscriptError.episodeNotFound
+        }
+        let snapshots = decodeTranscriptSnapshots(vtt)
+        try await replaceTranscriptLines(for: episode, with: snapshots)
         episode.refresh.toggle()
-        modelContext.saveIfNeeded()
-        await finalizeTranscriptChapters(for: episodeURL)
+        return snapshots
+    }
+
+    private func replaceTranscriptLines(
+        for episode: Episode,
+        with snapshots: [TranscriptLineSnapshot]
+    ) async throws {
+        let batchSize = 100
+        let episodeID = episode.persistentModelID
+
+        // Do not touch episode.transcriptLines here. Reading or assigning the
+        // relationship materializes the entire old/new graph and was the direct
+        // cause of the 1.8 GB CPU-kill report. Delete through a bounded fetch.
+        while true {
+            try Task.checkCancellation()
+            var descriptor = FetchDescriptor<TranscriptLineAndTime>(
+                predicate: #Predicate { line in
+                    line.episode?.persistentModelID == episodeID
+                }
+            )
+            descriptor.fetchLimit = batchSize
+            let existing = try modelContext.fetch(descriptor)
+            guard existing.isEmpty == false else { break }
+            for line in existing {
+                modelContext.delete(line)
+            }
+            try modelContext.save()
+        }
+
+        var pending = 0
+        for snapshot in snapshots {
+            try Task.checkCancellation()
+            let line = TranscriptLineAndTime(
+                speaker: snapshot.speaker,
+                text: snapshot.text,
+                startTime: snapshot.startTime,
+                endTime: snapshot.endTime
+            )
+            // Insert first so SwiftData uses managed backing storage for the inverse
+            // relationship update. Setting the relationship on an uninserted model
+            // repeatedly copied the growing Episode.transcriptLines graph (O(n²)).
+            modelContext.insert(line)
+            line.episode = episode
+            pending += 1
+
+            if pending >= batchSize {
+                try Task.checkCancellation()
+                try modelContext.save()
+                pending = 0
+            }
+        }
+
+        if pending > 0 {
+            try Task.checkCancellation()
+            try modelContext.save()
+        }
     }
 
     func transcriptLineCount() async -> Int {
         (try? modelContext.fetchCount(FetchDescriptor<TranscriptLineAndTime>())) ?? 0
     }
+
+#if DEBUG
+    func deleteTranscript(for episodeURL: URL) async throws {
+        // The singleton is initialized from the app's main-actor model container.
+        // Resolve it on the main actor before crossing to this model actor; accessing
+        // it here can be its first initialization and trips MainActor.assumeIsolated.
+        let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+        await transcriptionManager.clearTranscriptionState(for: episodeURL)
+
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            throw TranscriptError.episodeNotFound
+        }
+
+        let identity = episode.stableEpisodeIdentity
+        try Task.checkCancellation()
+
+        // Detaching the relationship is sufficient to make the episode eligible for
+        // transcription again. Deleting every line individually updates the inverse
+        // relationship once per row and becomes quadratic for long transcripts.
+        episode.transcriptLines = nil
+
+        let recordDescriptor = FetchDescriptor<TranscriptionRecord>(
+            predicate: #Predicate { record in
+                record.episodeURL == episodeURL
+            }
+        )
+        for record in try modelContext.fetch(recordDescriptor) {
+            modelContext.delete(record)
+        }
+        try modelContext.save()
+        episode.refresh.toggle()
+
+        if let cacheContainer = await preparedCacheContainer() {
+            await StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
+                .tombstoneTranscripts(identities: [identity])
+        }
+    }
+#endif
 
     @discardableResult
     func deleteAllTranscriptLines() async -> Int {
@@ -1947,6 +2436,18 @@ actor EpisodeActor {
         guard lines.isEmpty == false else { return 0 }
 
         let episodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+        let generatedEpisodeURLs = Set(
+            ((try? modelContext.fetch(FetchDescriptor<TranscriptionRecord>())) ?? [])
+                .compactMap(\.episodeURL)
+        )
+        let generatedIdentities = episodes.compactMap { episode -> EpisodeStableIdentity? in
+            guard let episodeURL = episode.url,
+                  generatedEpisodeURLs.contains(episodeURL),
+                  episode.transcriptLines?.isEmpty == false else {
+                return nil
+            }
+            return episode.stableEpisodeIdentity
+        }
         for episode in episodes where episode.transcriptLines?.isEmpty == false {
             episode.transcriptLines = nil
             episode.refresh.toggle()
@@ -1957,6 +2458,13 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
+        if generatedIdentities.isEmpty == false,
+           let cacheContainer = await preparedCacheContainer() {
+            let writer = StoreSplitAIContentSyncWriter(
+                modelContainer: cacheContainer
+            )
+            await writer.tombstoneTranscripts(identities: generatedIdentities)
+        }
         WatchSyncCoordinator.refreshSoon()
         return lines.count
     }
@@ -1965,7 +2473,8 @@ actor EpisodeActor {
         for snapshot: TranscriptionEpisodeSnapshot,
         localeIdentifier: String,
         startedAt: Date,
-        finishedAt: Date
+        finishedAt: Date,
+        transcriptSnapshots: [TranscriptLineSnapshot]
     ) async {
         let record = TranscriptionRecord(
             episodeURL: snapshot.episodeURL,
@@ -1978,6 +2487,78 @@ actor EpisodeActor {
         )
         modelContext.insert(record)
         modelContext.saveIfNeeded()
+        guard let episode = await fetchEpisode(byURL: snapshot.episodeURL) else {
+            return
+        }
+        await writeAITranscriptToSplitStore(
+            episode: episode,
+            lines: transcriptSnapshots,
+            localeIdentifier: localeIdentifier,
+            generatedAt: finishedAt
+        )
+    }
+
+    private func writeAITranscriptToSplitStore(
+        episode: Episode,
+        lines: [TranscriptLineSnapshot],
+        localeIdentifier: String?,
+        generatedAt: Date
+    ) async {
+        let identity = episode.stableEpisodeIdentity
+        let values = lines.map {
+            AITranscriptLineValue(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+        guard values.isEmpty == false else { return }
+        guard let cacheContainer = await preparedCacheContainer() else { return }
+        let writer = StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
+        await writer.writeTranscript(
+            identity: identity,
+            lines: values,
+            localeIdentifier: localeIdentifier,
+            generatedAt: generatedAt
+        )
+    }
+
+    private func writeAIChaptersToSplitStore(
+        episode: Episode,
+        chapters: [Marker],
+        generatedAt: Date
+    ) async {
+        let values = chapters.compactMap { chapter -> AIChapterValue? in
+            guard chapter.type == .ai, let start = chapter.start else { return nil }
+            return AIChapterValue(
+                title: chapter.title,
+                startTime: start,
+                duration: chapter.duration
+            )
+        }
+        guard values.isEmpty == false else { return }
+        guard let cacheContainer = await preparedCacheContainer() else { return }
+        let writer = StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
+        await writer.writeChapters(
+            identity: episode.stableEpisodeIdentity,
+            chapters: values,
+            generatedAt: generatedAt
+        )
+    }
+
+    private func preparedUserStateContainer() async -> ModelContainer? {
+        await ModelContainerManager.shared.prepareSplitStores()
+        return await MainActor.run {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }
+    }
+
+    private func preparedCacheContainer() async -> ModelContainer? {
+        await ModelContainerManager.shared.prepareSplitStores()
+        return await MainActor.run {
+            ModelContainerManager.shared.preparedCacheContainer
+        }
     }
 
     

@@ -95,9 +95,9 @@ class CarPlayInbox {
             }
         }
 
-        let archive = CPAlertAction(title: "Archive", style: .destructive) { _ in
+        let removeFromInbox = CPAlertAction(title: "Remove from Inbox", style: .destructive) { _ in
             Task {
-                await episodeActor.archiveEpisode(episode.url)
+                await episodeActor.removeFromInbox(episode.url)
                 await refreshTemplate()
                 interfaceController.dismissTemplate(animated: true, completion: nil)
             }
@@ -110,7 +110,7 @@ class CarPlayInbox {
         let sheet = CPActionSheetTemplate(
             title: episode.title,
             message: episode.displayPodcastTitle,
-            actions: [playNext, playLast, archive, cancel]
+            actions: [playNext, playLast, removeFromInbox, cancel]
         )
         interfaceController.presentTemplate(sheet, animated: true, completion: nil)
     }

@@ -1,56 +1,93 @@
 import Foundation
 import SwiftData
+import CloudDataPresence
 
-struct CloudSyncProgressReference: Codable, Sendable {
-    static let currentSchemaVersion = 1
-
-    var schemaVersion: Int
-    var updatedAt: Date
-    var recordCount: Int
-
-    init(
-        schemaVersion: Int = Self.currentSchemaVersion,
-        updatedAt: Date = Date(),
-        recordCount: Int
-    ) {
-        self.schemaVersion = schemaVersion
-        self.updatedAt = updatedAt
-        self.recordCount = recordCount
-    }
-}
+typealias CloudSyncProgressReference = CloudDataPresenceReference
 
 enum CloudSyncProgressReferenceStore {
     private static let key = "cloudSyncProgressReference.v1"
 
     static func load() -> CloudSyncProgressReference? {
-        let store = NSUbiquitousKeyValueStore.default
-        store.synchronize()
-
-        guard let data = store.data(forKey: key),
-              let reference = try? JSONDecoder().decode(CloudSyncProgressReference.self, from: data),
-              reference.schemaVersion == CloudSyncProgressReference.currentSchemaVersion,
-              reference.recordCount > 0 else {
-            return nil
-        }
-
-        return reference
+        CloudDataPresenceStore.loadReference(forKey: key)
     }
 
     static func publish(modelContainer: ModelContainer) async {
         let recordCount = await CloudSyncRecordCounter(modelContainer: modelContainer)
             .recordCount()
-        guard recordCount > 0 else { return }
-
-        let reference = CloudSyncProgressReference(recordCount: recordCount)
-        guard let data = try? JSONEncoder().encode(reference) else { return }
-
-        let store = NSUbiquitousKeyValueStore.default
-        store.set(data, forKey: key)
-        store.synchronize()
+        CloudDataPresenceStore.publish(recordCount: recordCount, forKey: key)
     }
 
     static func localRecordCount(modelContainer: ModelContainer) async -> Int {
         await CloudSyncRecordCounter(modelContainer: modelContainer).recordCount()
+    }
+}
+
+struct StoreSplitPlaylistRecordCounts: Sendable, Equatable {
+    var queueEntries: Int
+    var playlistEntries: Int
+}
+
+enum StoreSplitPlaylistPresenceStore {
+    private static let queueEntriesKey = "cloudPresence.userState.queueEntries.v1"
+    private static let playlistEntriesKey = "cloudPresence.userState.playlistEntries.v1"
+
+    static func publish(modelContainer: ModelContainer) async {
+        let counts = await localRecordCounts(modelContainer: modelContainer)
+        CloudDataPresenceStore.publish(
+            recordCountsByKey: [
+                queueEntriesKey: counts.queueEntries,
+                playlistEntriesKey: counts.playlistEntries
+            ]
+        )
+    }
+
+    static func cloudReferenceCount(forDefaultQueue: Bool) -> Int? {
+        guard forDefaultQueue else { return nil }
+        return CloudDataPresenceStore.loadReference(forKey: queueEntriesKey)?.recordCount
+    }
+
+    static func localRecordCounts(
+        modelContainer: ModelContainer
+    ) async -> StoreSplitPlaylistRecordCounts {
+        await StoreSplitPlaylistRecordCounter(modelContainer: modelContainer).counts()
+    }
+
+    static func localPlaylistEntryCount(
+        playlistID: UUID,
+        modelContainer: ModelContainer
+    ) async -> Int {
+        await StoreSplitPlaylistRecordCounter(modelContainer: modelContainer)
+            .playlistEntryCount(playlistID: playlistID.uuidString)
+    }
+}
+
+@ModelActor
+private actor StoreSplitPlaylistRecordCounter {
+    func counts() -> StoreSplitPlaylistRecordCounts {
+        let queueEntries = (try? modelContext.fetchCount(
+            FetchDescriptor<QueueEntrySync>(
+                predicate: #Predicate<QueueEntrySync> { $0.deletedAt == nil }
+            )
+        )) ?? 0
+        let playlistEntries = (try? modelContext.fetchCount(
+            FetchDescriptor<PlaylistEntrySync>(
+                predicate: #Predicate<PlaylistEntrySync> { $0.deletedAt == nil }
+            )
+        )) ?? 0
+        return StoreSplitPlaylistRecordCounts(
+            queueEntries: queueEntries,
+            playlistEntries: playlistEntries
+        )
+    }
+
+    func playlistEntryCount(playlistID: String) -> Int {
+        (try? modelContext.fetchCount(
+            FetchDescriptor<PlaylistEntrySync>(
+                predicate: #Predicate<PlaylistEntrySync> {
+                    $0.playlistID == playlistID && $0.deletedAt == nil
+                }
+            )
+        )) ?? 0
     }
 }
 

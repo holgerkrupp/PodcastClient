@@ -193,6 +193,84 @@ struct CloudSyncStatusDetailView: View {
         return errors
     }
 
+    /// Flattens a sync error into something a human can read. CloudKit reports
+    /// a bulk export rejection as `CKError.partialFailure` (CKErrorDomain 2),
+    /// which hides the real reason inside `partialErrorsByItemID`. CoreData also
+    /// tends to wrap the `CKError` under `NSUnderlyingErrorKey`, so we dig for it.
+    private func describe(_ error: Error) -> CloudKitErrorDetail {
+        let ckError = Self.firstCKError(in: error as NSError)
+        var partials: [CloudKitErrorDetail.PartialFailure] = []
+
+        if let map = ckError?.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: Error] {
+            for (itemID, subError) in map {
+                partials.append(
+                    CloudKitErrorDetail.PartialFailure(
+                        itemID: String(describing: itemID),
+                        reason: subError.localizedDescription,
+                        code: Self.ckCodeDescription(for: subError as NSError)
+                    )
+                )
+            }
+            partials.sort { $0.itemID < $1.itemID }
+        }
+
+        return CloudKitErrorDetail(
+            summary: error.localizedDescription,
+            code: Self.ckCodeDescription(for: ckError ?? error as NSError),
+            partialFailures: partials
+        )
+    }
+
+    /// Walks the `NSUnderlyingErrorKey` chain to find the first CloudKit error.
+    private static func firstCKError(in nsError: NSError) -> NSError? {
+        if nsError.domain == CKErrorDomain {
+            return nsError
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            return firstCKError(in: underlying)
+        }
+        return nil
+    }
+
+    private static func ckCodeDescription(for nsError: NSError) -> String? {
+        guard nsError.domain == CKErrorDomain else { return nil }
+
+        let name: String
+        switch CKError.Code(rawValue: nsError.code) {
+        case .internalError: name = "internalError"
+        case .partialFailure: name = "partialFailure"
+        case .networkUnavailable: name = "networkUnavailable"
+        case .networkFailure: name = "networkFailure"
+        case .badContainer: name = "badContainer"
+        case .serviceUnavailable: name = "serviceUnavailable"
+        case .requestRateLimited: name = "requestRateLimited"
+        case .missingEntitlement: name = "missingEntitlement"
+        case .notAuthenticated: name = "notAuthenticated"
+        case .permissionFailure: name = "permissionFailure"
+        case .unknownItem: name = "unknownItem"
+        case .invalidArguments: name = "invalidArguments"
+        case .serverRecordChanged: name = "serverRecordChanged"
+        case .serverRejectedRequest: name = "serverRejectedRequest"
+        case .assetFileNotFound: name = "assetFileNotFound"
+        case .assetFileModified: name = "assetFileModified"
+        case .incompatibleVersion: name = "incompatibleVersion"
+        case .constraintViolation: name = "constraintViolation"
+        case .operationCancelled: name = "operationCancelled"
+        case .changeTokenExpired: name = "changeTokenExpired"
+        case .batchRequestFailed: name = "batchRequestFailed"
+        case .zoneBusy: name = "zoneBusy"
+        case .badDatabase: name = "badDatabase"
+        case .quotaExceeded: name = "quotaExceeded"
+        case .zoneNotFound: name = "zoneNotFound"
+        case .limitExceeded: name = "limitExceeded"
+        case .userDeletedZone: name = "userDeletedZone"
+        case .accountTemporarilyUnavailable: name = "accountTemporarilyUnavailable"
+        default: name = "code \(nsError.code)"
+        }
+
+        return "CKError \(nsError.code) — \(name)"
+    }
+
     var body: some View {
         List {
             Section("Current Status") {
@@ -270,14 +348,58 @@ struct CloudSyncStatusDetailView: View {
             if reportedErrors.isEmpty == false {
                 Section("Errors") {
                     ForEach(Array(reportedErrors.enumerated()), id: \.offset) { _, item in
-                        VStack(alignment: .leading, spacing: 4) {
+                        let detail = describe(item.error)
+
+                        VStack(alignment: .leading, spacing: 6) {
                             Label(item.title, systemImage: "exclamationmark.triangle.fill")
                                 .font(.headline)
                                 .foregroundStyle(.red)
 
-                            Text(item.error.localizedDescription)
+                            Text(detail.summary)
                                 .font(.callout)
                                 .textSelection(.enabled)
+
+                            if let code = detail.code {
+                                Text(code)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+
+                            if detail.partialFailures.isEmpty == false {
+                                Divider()
+
+                                Text("\(detail.partialFailures.count) rejected record(s):")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                ForEach(detail.partialFailures.prefix(25)) { failure in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(failure.itemID)
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+
+                                        Text(failure.reason)
+                                            .font(.caption2)
+                                            .textSelection(.enabled)
+
+                                        if let code = failure.code {
+                                            Text(code)
+                                                .font(.caption2.monospaced())
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    .padding(.leading, 8)
+                                }
+
+                                if detail.partialFailures.count > 25 {
+                                    Text("+ \(detail.partialFailures.count - 25) more")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
                         }
                         .padding(.vertical, 4)
                     }
@@ -324,6 +446,19 @@ struct CloudSyncStatusDetailView: View {
         @unknown default:
             return "Unknown"
         }
+    }
+}
+
+private struct CloudKitErrorDetail {
+    let summary: String
+    let code: String?
+    let partialFailures: [PartialFailure]
+
+    struct PartialFailure: Identifiable {
+        let id = UUID()
+        let itemID: String
+        let reason: String
+        let code: String?
     }
 }
 

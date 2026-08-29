@@ -48,7 +48,11 @@ struct PlayerChapterView: View {
                         Rectangle()
                             .fill(Color.accent.opacity(0.05))
                         //  .frame(width: geo.size.width * (fakeProgress ?? player.progress))
-                            .scaleEffect(x: (player.currentChapter?.progress ?? 0.0), y: 1, anchor: .leading)
+                            .scaleEffect(
+                                x: player.chapterProgress ?? player.currentChapter?.progress ?? 0.0,
+                                y: 1,
+                                anchor: .leading
+                            )
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .overlay {
                                 if differentiateWithoutColor {

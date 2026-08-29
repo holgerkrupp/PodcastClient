@@ -143,11 +143,10 @@ struct TranscriptListView: View {
         }
     }
 
-    @ViewBuilder
     private func transcriptRow(_ row: TranscriptDisplayRow) -> some View {
         let isActive = row.id == activeDisplayRowID
 
-        VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Button {
                     Task {

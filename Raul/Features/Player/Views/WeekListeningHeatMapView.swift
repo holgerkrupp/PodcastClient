@@ -129,8 +129,10 @@ struct WeekListeningHeatMapView: View {
                                 .frame(width: blockWidth, height: 18)
 
                             ForEach(hours, id: \.self) { hour in
-                                heatCell(
+                                WeekListeningHeatMapCell(
                                     seconds: heatMap.seconds(weekday: column.weekday, hour: hour),
+                                    maxSeconds: heatMap.maxSeconds,
+                                    differentiateWithoutColor: differentiateWithoutColor,
                                     blockWidth: blockWidth,
                                     blockHeight: blockHeight
                                 )
@@ -239,26 +241,6 @@ struct WeekListeningHeatMapView: View {
         min(max(seconds / heatMap.maxSeconds, 0), 1)
     }
 
-    @ViewBuilder
-    private func heatCell(seconds: Double, blockWidth: CGFloat, blockHeight: CGFloat) -> some View {
-        let intensity = normalizedIntensity(for: seconds)
-        RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .fill(heatColor(for: seconds))
-            .overlay {
-                if differentiateWithoutColor && seconds > 0 {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(
-                            Color.primary.opacity(0.75),
-                            style: StrokeStyle(
-                                lineWidth: intensity > 0.66 ? 1.2 : 0.8,
-                                dash: intensity > 0.66 ? [] : (intensity > 0.33 ? [2, 1] : [1, 2])
-                            )
-                        )
-                }
-            }
-            .frame(width: blockWidth, height: blockHeight)
-    }
-
     private var heatMapAccessibilitySummary: String {
         var strongest: (weekday: Int, hour: Int, seconds: Double)?
         for weekday in weekdayIndexOrder {
@@ -278,6 +260,40 @@ struct WeekListeningHeatMapView: View {
         let hourLabel = String(format: "%02d:00", strongest.hour)
         let durationLabel = Duration.seconds(strongest.seconds).formatted(.units(width: .wide))
         return "Most listening: \(dayName) at \(hourLabel), about \(durationLabel)."
+    }
+}
+
+private struct WeekListeningHeatMapCell: View {
+    let seconds: Double
+    let maxSeconds: Double
+    let differentiateWithoutColor: Bool
+    let blockWidth: CGFloat
+    let blockHeight: CGFloat
+
+    private var intensity: Double {
+        min(max(seconds / max(maxSeconds, 1), 0), 1)
+    }
+
+    private var fillColor: Color {
+        Color.accentColor.opacity(0.12 + intensity * 0.88)
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(fillColor)
+            .overlay {
+                if differentiateWithoutColor && seconds > 0 {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(
+                            Color.primary.opacity(0.75),
+                            style: StrokeStyle(
+                                lineWidth: intensity > 0.66 ? 1.2 : 0.8,
+                                dash: intensity > 0.66 ? [] : (intensity > 0.33 ? [2, 1] : [1, 2])
+                            )
+                        )
+                }
+            }
+            .frame(width: blockWidth, height: blockHeight)
     }
 }
 

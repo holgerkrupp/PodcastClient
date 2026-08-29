@@ -12,10 +12,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private var playbackStateBackgroundTaskID = UIBackgroundTaskIdentifier.invalid
 
     func applicationWillResignActive(_ application: UIApplication) {
+        ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
         flushPlaybackState(reason: "will_resign_active")
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
+        ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
         flushPlaybackState(reason: "did_enter_background")
     }
 
@@ -40,6 +42,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier,
+            using: DispatchQueue.main
+        ) { task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handleFeedProcessing(task: processingTask)
+        }
+
+        BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier,
             using: DispatchQueue.main
         ) { task in
@@ -50,7 +63,147 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             self.handleAutomaticTranscriptionProcessing(task: processingTask)
         }
 
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier,
+            using: DispatchQueue.main
+        ) { task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handleStoreSplitMigration(task: processingTask)
+        }
+
         return true
+    }
+
+    /// Schedules the overnight store-split migration pass. Requires external
+    /// power so it runs while charging and idle, and network so CloudKit can
+    /// export the migrated user-state. Only scheduled while migration could still
+    /// have work to do.
+    static func scheduleStoreSplitMigrationProcessingIfNeeded() {
+        // Gate on real remaining work, not on the rollout marker. A device can
+        // sit at `newStoreReads` from an earlier migration version and still owe
+        // the current version every phase — that combination silently stopped the
+        // overnight pass from ever being scheduled.
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              ModelContainerManager.hasPendingMigrationWork else {
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
+            )
+            CrashBreadcrumbs.shared.record(
+                "store_split_migration_background_task_not_scheduled",
+                details: "state=\(StoreSplitRollout.state.rawValue),pending=\(ModelContainerManager.hasPendingMigrationWork)"
+            )
+#if DEBUG
+            StoreSplitMigrationDebugLog.record(
+                "background task not scheduled",
+                details: "no pending migration work"
+            )
+#endif
+            return
+        }
+
+        Task {
+            // Never cancel-and-resubmit an existing request. Doing that on every
+            // launch and every background transition pushed `earliestBeginDate`
+            // forward each time, so on a phone that gets picked up during the
+            // evening the task could keep sliding and never become eligible.
+            let alreadyPending = await BGTaskScheduler.shared.pendingTaskRequests().contains {
+                $0.identifier == BackgroundTaskConfiguration.storeSplitMigrationIdentifier
+            }
+            guard alreadyPending == false else {
+                CrashBreadcrumbs.shared.record(
+                    "store_split_migration_background_task_already_scheduled"
+                )
+#if DEBUG
+                StoreSplitMigrationDebugLog.record(
+                    "background task already scheduled",
+                    details: "left the existing request in place"
+                )
+#endif
+                return
+            }
+
+            let request = BGProcessingTaskRequest(
+                identifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
+            )
+            request.requiresExternalPower = true
+            request.requiresNetworkConnectivity = true
+            let earliestBeginDate = Date(
+                timeIntervalSinceNow: BackgroundTaskConfiguration.storeSplitMigrationInterval
+            )
+            request.earliestBeginDate = earliestBeginDate
+
+            do {
+                try BGTaskScheduler.shared.submit(request)
+                CrashBreadcrumbs.shared.record("store_split_migration_background_task_scheduled")
+#if DEBUG
+                StoreSplitMigrationDebugLog.record(
+                    "background task scheduled",
+                    details: "not before \(earliestBeginDate.formatted(date: .omitted, time: .shortened)), needs power + network"
+                )
+#endif
+            } catch {
+                CrashBreadcrumbs.shared.record(
+                    "store_split_migration_background_task_schedule_failed",
+                    details: error.localizedDescription
+                )
+#if DEBUG
+                StoreSplitMigrationDebugLog.record(
+                    "background task scheduling failed",
+                    details: error.localizedDescription
+                )
+#endif
+                BasicLogger.shared.log(error.localizedDescription)
+            }
+        }
+    }
+
+    private func handleStoreSplitMigration(task: BGProcessingTask) {
+        CrashBreadcrumbs.shared.record("store_split_migration_background_task_started")
+#if DEBUG
+        StoreSplitMigrationDebugLog.record("background pass launched by iOS")
+#endif
+        let processingTask = Task(priority: .utility) {
+            await ModelContainerManager.shared.prepareContainer()
+            guard ModelContainerManager.shared.preparedContainer != nil else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            await ModelContainerManager.shared.runStoreSplitMigrationBackgroundPass()
+
+            // Re-arm only if work remains (state still pre-completion).
+            Self.scheduleStoreSplitMigrationProcessingIfNeeded()
+
+            CrashBreadcrumbs.shared.record(
+                "store_split_migration_background_task_completed",
+                details: "state=\(StoreSplitRollout.state.rawValue),cancelled=\(Task.isCancelled)"
+            )
+#if DEBUG
+            StoreSplitMigrationDebugLog.record(
+                "background pass ended",
+                details: "cancelled=\(Task.isCancelled), pending=\(ModelContainerManager.hasPendingMigrationWork)"
+            )
+#endif
+            task.setTaskCompleted(success: Task.isCancelled == false)
+        }
+
+        task.expirationHandler = {
+            CrashBreadcrumbs.shared.record("store_split_migration_background_task_expired")
+#if DEBUG
+            StoreSplitMigrationDebugLog.record(
+                "background pass expired",
+                details: "iOS reclaimed the time budget"
+            )
+#endif
+            processingTask.cancel()
+            // Unstructured migration work isn't a child task, so cancel it directly.
+            Task { @MainActor in
+                ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
+            }
+        }
     }
 
     private func flushPlaybackState(reason: String) {
@@ -113,6 +266,47 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
+    private static func scheduleFeedProcessing() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
+        let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
+        request.requiresNetworkConnectivity = true
+        request.requiresExternalPower = false
+        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedProcessingInterval)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_scheduled")
+        } catch {
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_schedule_failed", details: error.localizedDescription)
+            BasicLogger.shared.log(error.localizedDescription)
+        }
+    }
+
+    private func handleFeedProcessing(task: BGProcessingTask) {
+        CrashBreadcrumbs.shared.record("feed_processing_background_task_started")
+        let processingTask = Task(priority: .utility) {
+            await ModelContainerManager.shared.prepareContainer()
+            guard let container = ModelContainerManager.shared.preparedContainer else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            Self.scheduleFeedProcessing()
+            await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .processing)
+            await PredictedReleaseRefreshScheduler.schedule(using: container)
+            guard Task.isCancelled == false else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_completed")
+            task.setTaskCompleted(success: true)
+        }
+
+        task.expirationHandler = {
+            CrashBreadcrumbs.shared.record("feed_processing_background_task_expired")
+            processingTask.cancel()
+        }
+    }
+
     private func handleAutomaticTranscriptionProcessing(task: BGProcessingTask) {
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_started")
         let processingTask = Task(priority: .utility) {
@@ -154,6 +348,26 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
+#if DEBUG
+    /// Presents the migration diagnostics while the app is open. Scoped to the
+    /// debug log's own identifiers so the app's real notifications keep their
+    /// existing foreground behaviour.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler:
+            @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        guard StoreSplitMigrationDebugLog.isDebugNotification(
+            notification.request.identifier
+        ) else {
+            completionHandler([])
+            return
+        }
+        completionHandler([.banner, .list])
+    }
+#endif
+
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,

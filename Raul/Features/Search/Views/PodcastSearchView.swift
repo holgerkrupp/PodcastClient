@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import fyyd_swift
 
 struct PodcastSearchView: View {
     @StateObject private var viewModel = PodcastSearchViewModel()
@@ -24,7 +23,17 @@ struct PodcastSearchView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        Group {
+            // Invisible anchor row carrying the search sync, so the result
+            // rows below stay as individual (lazy) List rows.
+            Color.clear
+                .frame(height: 0)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .onChange(of: search) {
+                    viewModel.searchText = search
+                }
 
             if viewModel.isLoading {
                 ProgressView()
@@ -127,19 +136,6 @@ struct PodcastSearchView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }
-
-            if let url = URL(string: "https://fyyd.de"){
-                Link(destination: url) {
-                    Label("Search is powered by fyyd", systemImage: "safari")
-                }
-                .padding()
-                .buttonStyle(.glass(.clear))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            }
-        }
-        .onChange(of: search) {
-            viewModel.searchText = search
         }
     }
 

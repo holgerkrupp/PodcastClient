@@ -1,12 +1,21 @@
 import SwiftUI
 
+enum PlatformSupport {
+    static var usesDesktopLayout: Bool {
+#if os(macOS) || targetEnvironment(macCatalyst)
+        true
+#else
+        false
+#endif
+    }
+}
+
 extension View {
-    @ViewBuilder
     func platformInlineNavigationTitle() -> some View {
 #if os(iOS)
-        navigationBarTitleDisplayMode(.inline)
+        return navigationBarTitleDisplayMode(.inline)
 #else
-        self
+        return self
 #endif
     }
 }

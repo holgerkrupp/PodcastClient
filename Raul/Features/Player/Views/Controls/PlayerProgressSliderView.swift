@@ -11,13 +11,13 @@ struct PlayerProgressSliderView: View {
     @Binding var value: Double
     @Binding var markers: [Marker]?
     @State var allowTouch: Bool = true
+    var chapterTimelineDuration: Double?
     
     @State var lastCoordinateValue: CGFloat = 0.0
     var sliderRange: ClosedRange<Double> = 1...100
     var thumbColor: Color = .yellow
     var minTrackColor: Color = .blue
     var maxTrackColor: Color = .gray
-    var player = Player.shared
     
     var body: some View {
         GeometryReader { gr in
@@ -116,26 +116,34 @@ struct PlayerProgressSliderView: View {
     }
 
     private func chapterMarkerPositions(width: CGFloat) -> [CGFloat] {
+        Self.chapterMarkerPositions(
+            width: width,
+            duration: chapterTimelineDuration,
+            markers: markers
+        )
+    }
+
+    static func chapterMarkerPositions(
+        width: CGFloat,
+        duration: Double?,
+        markers: [Marker]?
+    ) -> [CGFloat] {
         guard width > 0,
-              let duration = player.currentEpisode?.duration,
-              duration > 0 else {
+              let duration,
+              duration > 0,
+              let chapters = markers else {
             return []
         }
-        
-        if let chapters = markers{
-            
-            return chapters.compactMap { chapter in
-                guard let start = chapter.start,
-                      start > 0,
-                      start < duration else {
-                    return nil
-                }
-                
-                let progress = min(max(start / duration, 0), 1)
-                return width * CGFloat(progress)
+
+        return chapters.compactMap { chapter in
+            guard let start = chapter.start,
+                  start > 0,
+                  start < duration else {
+                return nil
             }
-        }else{
-            return []
+
+            let progress = min(max(start / duration, 0), 1)
+            return width * CGFloat(progress)
         }
     }
 }

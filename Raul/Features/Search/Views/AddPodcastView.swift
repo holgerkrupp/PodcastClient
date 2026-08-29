@@ -16,51 +16,43 @@ struct AddPodcastView: View {
     }
     @State private var listSelection:Selection = .search
     var body: some View {
-        NavigationStack{
-            List{
+        List {
             
-                NavigationLink(destination: ImportExportView()
-                    .modelContext(context)) {
-                    HStack {
-                        Text("Import / Export")
-                            .font(.headline)
+            NavigationLink(destination: ImportExportView()
+                .modelContext(context)) {
+                HStack {
+                    Text("Import / Export")
+                        .font(.headline)
 
-                    }
                 }
-                NavigationLink(destination:  PodcastCategoryView()
-                    .modelContext(context)) {
-                    HStack {
-                        Text("Browse by Category")
-                            .font(.headline)
-
-                    }
-                }
-                NavigationLink(destination:  HotPodcastView()
-                    .modelContext(context)) {
-                    HStack {
-                        Text("Hot Podcasts")
-                            .font(.headline)
-
-                    }
-                }
-                
-             
-                    PodcastSearchView(search: $search)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-
             }
-            .listStyle(.plain)
+            NavigationLink(destination:  PodcastCategoryView()
+                .modelContext(context)) {
+                HStack {
+                    Text("Browse by Category")
+                        .font(.headline)
 
+                }
+            }
+            NavigationLink(destination:  HotPodcastView()
+                .modelContext(context)) {
+                HStack {
+                    Text("Hot Podcasts")
+                        .font(.headline)
 
+                }
+            }
             
-            
+            PodcastSearchView(search: $search)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0,
+                                     leading: 0,
+                                     bottom: 0,
+                                     trailing: 0))
         }
-       
+        .listStyle(.plain)
+        .navigationTitle("Add Podcast")
     }
 }
 

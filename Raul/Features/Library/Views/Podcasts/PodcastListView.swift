@@ -29,6 +29,7 @@ struct PodcastListView: View {
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
 
     @StateObject private var viewModel: PodcastListViewModel
+    @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
 
@@ -51,6 +52,8 @@ struct PodcastListView: View {
     }
 
     var body: some View {
+        let visiblePodcasts = podcastsInScope
+
         List {
             NavigationLink(destination: LibrarySearchView()) {
                 Label("Search Library", systemImage: "magnifyingglass")
@@ -92,7 +95,7 @@ struct PodcastListView: View {
                     .font(.headline)
             }
 
-            if podcastsInScope.isEmpty {
+            if visiblePodcasts.isEmpty {
                 if selectedScope == .subscribed {
                     PodcastsEmptyView()
                         .listRowSeparator(.hidden)
@@ -115,7 +118,7 @@ struct PodcastListView: View {
                                          trailing: 0))
                 }
             } else {
-                ForEach(podcastsInScope) { podcast in
+                ForEach(visiblePodcasts) { podcast in
                     ZStack {
                         PodcastRowView(podcast: podcast)
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
@@ -133,20 +136,33 @@ struct PodcastListView: View {
                                          trailing: 0))
                 }
                 .onDelete { indexSet in
+                    let podcastIDs = indexSet.compactMap { index in
+                        visiblePodcasts.indices.contains(index)
+                            ? visiblePodcasts[index].persistentModelID
+                            : nil
+                    }
                     Task {
-                        for index in indexSet {
-                            await viewModel.deletePodcast(podcastsInScope[index])
+                        for podcastID in podcastIDs {
+                            await viewModel.deletePodcast(podcastID)
                         }
                     }
                 }
             }
         }
         .navigationTitle("Library")
-        .animation(.easeInOut, value: podcastsInScope.map(\.persistentModelID))
+        .animation(.easeInOut, value: visiblePodcasts.map(\.persistentModelID))
         .listStyle(.plain)
         .task {
             _ = Playlist.ensureDefaultQueue(in: modelContext)
             ensurePlaylistPreferencesValid()
+        }
+        .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress in
+            refreshProgress = progress
+        }
+        // A screen that was off-screen while the run started may have missed the
+        // announcement, so re-read the snapshot every time it comes back.
+        .onAppear {
+            refreshProgress = PodcastRefreshCoordinator.shared.progress
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -175,13 +191,17 @@ struct PodcastListView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    Task { await viewModel.refreshAllPodcasts() }
+                    Task {
+                        await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
+                            modelContainer: modelContainer
+                        )
+                    }
                 } label: {
-                    if viewModel.isLoading {
-                        if viewModel.total != 0 {
+                    if refreshProgress.isRefreshing {
+                        if refreshProgress.total != 0 {
                             CircularProgressView(
-                                value: Double(viewModel.completed),
-                                total: Double(viewModel.total)
+                                value: Double(refreshProgress.completed),
+                                total: Double(refreshProgress.total)
                             )
                         } else {
                             ProgressView()
@@ -190,8 +210,8 @@ struct PodcastListView: View {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
-                .disabled(viewModel.isLoading)
-                .accessibilityLabel(viewModel.isLoading ? "Refreshing podcasts" : "Refresh podcasts")
+                .disabled(refreshProgress.isRefreshing)
+                .accessibilityLabel(refreshProgress.isRefreshing ? "Refreshing podcasts" : "Refresh podcasts")
                 .accessibilityHint("Updates all podcast feeds in your library")
                 .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
             }
@@ -281,6 +301,9 @@ private struct LibraryPlaylistsView: View {
             for entry in playlist.items ?? [] {
                 modelContext.delete(entry)
             }
+            StoreSplitPlaylistSyncCoordinator.tombstone(
+                playlistID: playlist.storeSplitSyncID
+            )
             modelContext.delete(playlist)
         }
 
@@ -325,6 +348,7 @@ private struct LibraryPlaylistsView: View {
 
         modelContext.insert(playlist)
         modelContext.saveIfNeeded()
+        StoreSplitPlaylistSyncCoordinator.publish(playlist)
     }
 
     private func playlistRowContent(for playlist: Playlist) -> some View {
@@ -525,7 +549,7 @@ struct SideLoadedEpisodesView: View {
                                     .listRowBackground(Color.clear)
                                     .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
                             } else {
-                                ForEach(importedEpisodes) { episode in
+                                ForEach(importedEpisodes, id: \.persistentModelID) { episode in
                                     ZStack {
                                         EpisodeRowView(episode: episode)
                                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {

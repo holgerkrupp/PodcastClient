@@ -8,33 +8,30 @@
 import SwiftUI
 import SwiftData
 import BasicLogger
+import StoreKit
 
 
 
 struct ContentView: View {
-    private enum RootTab: Hashable {
-        case playlist
-        case inbox
-        case library
-        case add
-    }
-
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.requestReview) private var requestReview
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
-    @Query private var podcasts: [Podcast]
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
+    @SceneStorage("mainWindow.selectedSection") private var restoredSelection = AppSection.queue.rawValue
     @State private var inboxCount: Int = 0
-    @State private var selectedTab: RootTab = .playlist
+    @State private var subscribedPodcastCount: Int?
+    @State private var navigation = AppNavigationModel()
+    @State private var didRestoreSelection = false
     @State private var showOnboarding: Bool = false
     @State private var didEvaluateOnboardingLaunch = false
-    @State private var requestedPlaylistEpisodeURL: URL?
+    @State private var didCompleteInitialContentLoad = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
-    @Bindable private var player = Player.shared
     
     @State private var search:String = ""
     @StateObject private var incomingPodcastSubscription = IncomingPodcastSubscriptionController()
@@ -43,78 +40,65 @@ struct ContentView: View {
     
     @AppStorage("lastPlayedEpisodeID") var lastPlayedEpisode:Int?
 
-    private var playlistTabTitle: String {
-        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
-
+    private func playlistTabMetadata(
+        from visiblePlaylists: [Playlist]
+    ) -> (title: String, symbolName: String) {
         if let selectedID = UUID(uuidString: selectedPlaylistID),
            let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
-            return selectedPlaylist.displayTitle
+            return (selectedPlaylist.displayTitle, selectedPlaylist.displaySymbolName)
         }
 
         if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
-            return defaultPlaylist.displayTitle
+            return (defaultPlaylist.displayTitle, defaultPlaylist.displaySymbolName)
         }
 
-        return Playlist.defaultQueueDisplayName
-    }
-
-    private var playlistTabSymbolName: String {
-        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
-
-        if let selectedID = UUID(uuidString: selectedPlaylistID),
-           let selectedPlaylist = visiblePlaylists.first(where: { $0.id == selectedID }) {
-            return selectedPlaylist.displaySymbolName
-        }
-
-        if let defaultPlaylist = visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle }) {
-            return defaultPlaylist.displaySymbolName
-        }
-
-        return Playlist.defaultQueueSymbolName
+        return (Playlist.defaultQueueDisplayName, Playlist.defaultQueueSymbolName)
     }
     
     var body: some View {
-        
-        TabView(selection: $selectedTab) {
-            
-            Tab(LocalizedStringKey(playlistTabTitle), systemImage: playlistTabSymbolName, value: RootTab.playlist) {
-                PlaylistView(requestedEpisodeURL: $requestedPlaylistEpisodeURL)
-            }
-          
-            Tab("Inbox", systemImage: "tray.fill", value: RootTab.inbox) {
-                InboxView()
-            }
-            .badge(inboxCount)
-
-            Tab("Library", systemImage: "books.vertical", value: RootTab.library) {
-                LibraryView()
-            }
-
-            
-            Tab("Add", systemImage: "plus", value: RootTab.add, role: .search) {
-                AddPodcastView(search: $search)
-                    .searchable(text: $search, prompt: "URL or Search")
-            }
-            
-
-            
-        }
-        .platformPlayerAccessory()
-        .sheet(isPresented: $player.isPlayerSheetPresented) {
-            PlayerView(fullSize: true)
-                .presentationDragIndicator(.visible)
-                .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        let visiblePlaylists = Playlist.manualVisibleSorted(playlists)
+        let currentPlaylistTabMetadata = playlistTabMetadata(from: visiblePlaylists)
+        let episodeControlPlaylists = visiblePlaylists.map {
+            EpisodeControlPlaylist(playlist: $0)
         }
 
-        
+        Group {
+            if usesSidebarLayout {
+                SidebarAppShell(
+                    navigation: navigation,
+                    inboxCount: inboxCount,
+                    search: $search
+                )
+            } else {
+                CompactAppShell(
+                    navigation: navigation,
+                    inboxCount: inboxCount,
+                    playlistTitle: currentPlaylistTabMetadata.title,
+                    playlistSymbolName: currentPlaylistTabMetadata.symbolName,
+                    search: $search
+                )
+            }
+        }
+        .environment(\.episodeControlPlaylists, episodeControlPlaylists)
+        .hostsPlayerPresentation(navigation: navigation)
+#if os(macOS) || targetEnvironment(macCatalyst)
+        .focusedSceneValue(\.appNavigationModel, navigation)
+#endif
         .task {
             CrashBreadcrumbs.shared.record("content_view_task_started")
-            await loadInboxCount()
+            await loadLaunchCounts()
             await importPendingSharedEpisodeIfNeeded()
+            didCompleteInitialContentLoad = true
+            try? await Task.sleep(for: .seconds(4))
+            guard Task.isCancelled == false else { return }
             await podcastYearShareCoordinator.evaluateAppLaunch(modelContext: modelContext)
             CrashBreadcrumbs.shared.record("content_view_task_completed")
         }
+        .task(id: phase) {
+            await considerRequestingAppReview()
+        }
         .onChange(of: phase, {
+            SystemPressureGate.shared.setSceneActive(phase == .active)
             if SETTINGgoingBackToPlayerafterBackground{
                 switch phase {
                 case .background:
@@ -123,6 +107,7 @@ struct ContentView: View {
                    
                 case .active:
                     CrashBreadcrumbs.shared.record("scene_phase_active")
+                    guard didCompleteInitialContentLoad else { break }
                     // Refresh the badge when app becomes active
                     Task { await loadInboxCount() }
                     Task { await importPendingSharedEpisodeIfNeeded() }
@@ -151,49 +136,39 @@ struct ContentView: View {
         .onChange(of: selectedPlaylistID) { _, newValue in
             refreshWidgetForSelectedPlaylist(newValue)
         }
+        .onChange(of: navigation.selectedSection) { _, newValue in
+            restoredSelection = newValue.rawValue
+        }
         .onOpenURL { url in
             CrashBreadcrumbs.shared.record("on_open_url", details: url.absoluteString)
-            if url.scheme == "upnext" {
-                if PodcastYearShareCoordinator.isPodcastYearURL(url) {
-                    selectedTab = .library
-                    Task {
-                        _ = await podcastYearShareCoordinator.handleOpenURL(url, modelContext: modelContext)
-                    }
-                    return
-                }
+            guard let appLink = AppLink.parse(url) else { return }
 
-                if let episodeURL = widgetPlaybackEpisodeURL(from: url) {
-                    Task {
-                        await Player.shared.playEpisode(episodeURL, playDirectly: true)
-                    }
-                    return
+            switch appLink {
+            case .podcastYear(let url):
+                navigation.select(.library)
+                Task {
+                    _ = await podcastYearShareCoordinator.handleOpenURL(url, modelContext: modelContext)
                 }
-
-                if let episodeURL = widgetDetailEpisodeURL(from: url) {
-                    if let playlistID = playlistID(from: url) {
-                        selectedPlaylistID = playlistID
-                    }
-                    selectedTab = .playlist
-                    requestedPlaylistEpisodeURL = episodeURL
-                    return
+            case .playEpisode(let episodeURL):
+                Task {
+                    await Player.shared.playEpisode(episodeURL, playDirectly: true)
                 }
-
-                if let sharedEpisodeURL = sharedEpisodeURL(from: url) {
-                    Task {
-                        await importSharedEpisode(from: sharedEpisodeURL)
-                    }
-                    return
-                }
-
-                if let playlistID = playlistID(from: url) {
+            case .showEpisode(let episodeURL, let playlistID):
+                if let playlistID {
                     selectedPlaylistID = playlistID
                 }
-                selectedTab = .playlist
-                return
-            }
-
-            if IncomingPodcastSubscriptionController.canHandle(url) {
-                selectedTab = .add
+                navigation.openPlaylistEpisode(episodeURL)
+            case .importSharedEpisode(let sharedEpisodeURL):
+                Task {
+                    await importSharedEpisode(from: sharedEpisodeURL)
+                }
+            case .selectQueue(let playlistID):
+                if let playlistID {
+                    selectedPlaylistID = playlistID
+                }
+                navigation.select(.queue)
+            case .incomingSubscription(let url):
+                navigation.select(.search)
                 incomingPodcastSubscription.handleIncomingURL(url)
             }
         }
@@ -209,28 +184,107 @@ struct ContentView: View {
         .sheet(isPresented: $showOnboarding, onDismiss: {
             didCompleteOnboarding = true
         }) {
-            OnboardingView()
+            OnboardingView(
+                requiresInitialCloudImport: ModelContainerManager.shared.requiresInitialCloudImport,
+                modelContainer: modelContext.container
+            )
                 .interactiveDismissDisabled()
         }
         .onChange(of: subscribedPodcastCount) { _, _ in
             evaluateOnboardingLaunchIfNeeded()
         }
         .onAppear {
+            if didRestoreSelection == false {
+                navigation.selectedSection = AppNavigationModel.restoredSection(from: restoredSelection)
+                didRestoreSelection = true
+            }
             evaluateOnboardingLaunchIfNeeded()
         }
         
 
     }
 
-    private var subscribedPodcastCount: Int {
-        podcasts.filter(\.isSubscribed).count
+    private var usesSidebarLayout: Bool {
+        PlatformSupport.usesDesktopLayout || horizontalSizeClass == .regular
     }
     
     func setGoingToBackgroundDate() {
         goingToBackgroundDate = Date()
     }
+
+    @MainActor
+    private func considerRequestingAppReview() async {
+        guard phase == .active else { return }
+
+        let foregroundStartedAt = Date()
+        do {
+            try await Task.sleep(for: .seconds(AppReviewPromptPolicy.minimumForegroundDuration))
+        } catch {
+            return
+        }
+
+        guard Task.isCancelled == false, phase == .active else { return }
+        let manager = ModelContainerManager.shared
+        let loader = AppReviewLifetimeListeningLoader(
+            legacyContainer: modelContext.container,
+            userStateContainer: manager.preparedUserStateContainer,
+            useSyncedStore: StoreDevelopmentConfiguration.newStoreReadsEnabled
+        )
+        let listeningSeconds = await loader.totalSeconds()
+        guard Task.isCancelled == false, phase == .active else { return }
+
+        let now = Date()
+        let hasBlockingPresentation = showOnboarding
+            || incomingPodcastSubscription.isPresented
+            || podcastYearShareCoordinator.sheetRequest != nil
+            || navigation.isPlayerPresented
+        let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "unknown"
+        let store = AppReviewPromptStore()
+        guard AppReviewPromptPolicy.shouldRequestReview(
+            listeningSeconds: listeningSeconds,
+            foregroundDuration: now.timeIntervalSince(foregroundStartedAt),
+            isSceneActive: phase == .active,
+            hasBlockingPresentation: hasBlockingPresentation,
+            currentVersion: version,
+            state: store.state,
+            now: now
+        ) else {
+            return
+        }
+
+        // StoreKit doesn't report whether its system-controlled prompt was
+        // displayed, so record the attempt before handing control to it.
+        store.recordRequest(version: version, at: now)
+        CrashBreadcrumbs.shared.record(
+            "app_review_requested",
+            details: "version=\(version),listening_hours=\(Int(listeningSeconds / 3_600))"
+        )
+        requestReview()
+    }
     
     // MARK: - Manual count loader
+    @MainActor
+    private func loadLaunchCounts() async {
+        let loader = AppLaunchCountLoader(modelContainer: modelContext.container)
+        do {
+            let counts = try await loader.counts()
+            inboxCount = counts.inbox
+            subscribedPodcastCount = counts.subscribedPodcasts
+            evaluateOnboardingLaunchIfNeeded()
+            CrashBreadcrumbs.shared.record(
+                "launch_counts_loaded",
+                details: "inbox=\(counts.inbox),subscriptions=\(counts.subscribedPodcasts)"
+            )
+        } catch {
+            BasicLogger.shared.log("Failed to load launch counts: \(error.localizedDescription)")
+            inboxCount = 0
+            subscribedPodcastCount = 0
+            evaluateOnboardingLaunchIfNeeded()
+        }
+    }
+
     @MainActor
     private func loadInboxCount() async {
         CrashBreadcrumbs.shared.record("load_inbox_count_started")
@@ -257,7 +311,7 @@ struct ContentView: View {
 
     @MainActor
     private func importSharedEpisode(from sharedEpisodeURL: URL) async {
-        selectedTab = .inbox
+        navigation.select(.inbox)
         do {
             let importedURL = try await PodcastEpisodeShareImporter().importEpisode(
                 from: sharedEpisodeURL,
@@ -291,6 +345,7 @@ struct ContentView: View {
 
     private func evaluateOnboardingLaunchIfNeeded() {
         guard didEvaluateOnboardingLaunch == false else { return }
+        guard let subscribedPodcastCount else { return }
         didEvaluateOnboardingLaunch = true
 
         if subscribedPodcastCount > 0 {
@@ -303,46 +358,29 @@ struct ContentView: View {
         }
     }
 
-    private func sharedEpisodeURL(from url: URL) -> URL? {
-        guard url.host() == "shareEpisode",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
+}
+
+private struct AppLaunchCounts: Sendable {
+    let inbox: Int
+    let subscribedPodcasts: Int
+}
+
+@ModelActor
+private actor AppLaunchCountLoader {
+    func counts() throws -> AppLaunchCounts {
+        let inboxPredicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
+        let subscriptionPredicate = #Predicate<Podcast> {
+            $0.metaData?.isSubscribed != false
         }
-
-        return URL(string: rawURL)
+        return AppLaunchCounts(
+            inbox: try modelContext.fetchCount(
+                FetchDescriptor<EpisodeMetaData>(predicate: inboxPredicate)
+            ),
+            subscribedPodcasts: try modelContext.fetchCount(
+                FetchDescriptor<Podcast>(predicate: subscriptionPredicate)
+            )
+        )
     }
-
-    private func widgetPlaybackEpisodeURL(from url: URL) -> URL? {
-        guard url.host() == "playEpisode",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
-        }
-
-        return URL(string: rawURL)
-    }
-
-    private func widgetDetailEpisodeURL(from url: URL) -> URL? {
-        guard url.host() == "episode",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let rawURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
-        }
-
-        return URL(string: rawURL)
-    }
-
-    private func playlistID(from url: URL) -> String? {
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let playlistID = components.queryItems?.first(where: { $0.name == "playlistID" })?.value,
-              UUID(uuidString: playlistID) != nil else {
-            return nil
-        }
-
-        return playlistID
-    }
-        
 }
 
 private actor InboxCountLoader {

@@ -11,12 +11,21 @@ struct EpisodeProgressView: View {
     
     @State var episode: Episode
     var body: some View {
+        let progress = episode.displayProgress
+        let remainingTime = episode.displayRemainingTime
+
         VStack{
-            PlayerProgressSliderView(value: $episode.playProgress, markers: $episode.chapters, allowTouch: false, sliderRange: 0...1)
+            PlayerProgressSliderView(
+                value: .constant(progress),
+                markers: $episode.chapters,
+                allowTouch: false,
+                chapterTimelineDuration: episode.duration,
+                sliderRange: 0...1
+            )
                 .frame(height: 30)
             HStack{
-                if let remainingTime = episode.remainingTime,remainingTime != episode.duration, remainingTime > 0 {
-                    Text(Duration.seconds(episode.remainingTime ?? 0.0).formatted(.units(width: .narrow)) + " remaining")
+                if let remainingTime, remainingTime != episode.duration, remainingTime > 0 {
+                    Text(Duration.seconds(remainingTime).formatted(.units(width: .narrow)) + " remaining")
                         .font(.caption)
                         .monospacedDigit()
                         .foregroundColor(.primary)
@@ -36,5 +45,3 @@ struct EpisodeProgressView: View {
         }
     }
 }
-
-

@@ -12,13 +12,12 @@
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
-		48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */ = {isa = PBXBuildFile; productRef = 48B3BA072DA06825005B40B8 /* fyyd_swift */; };
 		48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
 		48BCBD602FC99A95008EC322 /* Apple Podcasts to OPML.shortcut in Resources */ = {isa = PBXBuildFile; fileRef = 48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */; };
-		48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078062DB410D000D6DD9C /* DeviceInfo */; };
-		48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078082DB4111500D6DD9C /* DeviceInfo */; };
+		48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */ = {isa = PBXBuildFile; productRef = 48C038EE2FF7806300343AF1 /* CloudDataPresence */; };
 		48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */ = {isa = PBXBuildFile; productRef = 48C078832DBEA9AA00D6DD9C /* BasicLogger */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
+		48CCC2ED2FFCF61D00517567 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 48CCC2EC2FFCF61D00517567 /* ESADesignKit */; };
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
 		48F5872D2FBA3D940027EE58 /* DeviceInfo in Frameworks */ = {isa = PBXBuildFile; productRef = 48F5872C2FBA3D940027EE58 /* DeviceInfo */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -287,12 +286,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				4812C1023020000100000001 /* CloudKitSyncMonitor in Frameworks */,
-				48B3BA082DA06825005B40B8 /* fyyd_swift in Frameworks */,
+				48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */,
 				48C078842DBEA9AA00D6DD9C /* BasicLogger in Frameworks */,
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
-				48C078092DB4111500D6DD9C /* DeviceInfo in Frameworks */,
-				48C078072DB410D000D6DD9C /* DeviceInfo in Frameworks */,
+				48CCC2ED2FFCF61D00517567 /* ESADesignKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -418,12 +416,11 @@
 			name = UpNext;
 			packageProductDependencies = (
 				4812C1033020000100000001 /* CloudKitSyncMonitor */,
-				48B3BA072DA06825005B40B8 /* fyyd_swift */,
-				48C078062DB410D000D6DD9C /* DeviceInfo */,
-				48C078082DB4111500D6DD9C /* DeviceInfo */,
+				48C038EE2FF7806300343AF1 /* CloudDataPresence */,
 				48C078832DBEA9AA00D6DD9C /* BasicLogger */,
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
+				48CCC2EC2FFCF61D00517567 /* ESADesignKit */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
@@ -588,11 +585,12 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */,
-				48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */,
-				48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */,
-				48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */,
-				48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */,
 				4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */,
+				48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */,
+				48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */,
+				48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */,
+				48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */,
+				48CDCCF13000141D006A32F8 /* XCRemoteSwiftPackageReference "ESADesignKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -872,10 +870,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Raul/Raul-macOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -886,8 +884,6 @@
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
-					AudioClipExporter.swift,
-					AudioClipExportView.swift,
 					CarPlayChapterMarkList.swift,
 					CarPlayInbox.swift,
 					CarPlayNowPlaying.swift,
@@ -901,10 +897,12 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "To save exported clips to the library";
 				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -913,6 +911,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -933,10 +932,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Raul/Raul.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Raul/Raul-macOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -947,8 +946,6 @@
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
-					AudioClipExporter.swift,
-					AudioClipExportView.swift,
 					CarPlayChapterMarkList.swift,
 					CarPlayInbox.swift,
 					CarPlayNowPlaying.swift,
@@ -962,10 +959,12 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Up Next";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "To save exported clips to the library";
 				INFOPLIST_KEY_NSSiriUsageDescription = "To resume playback or create bookmarks";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -974,6 +973,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -993,6 +993,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1003,6 +1004,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1020,6 +1022,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1030,6 +1033,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1047,6 +1051,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -1055,6 +1060,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1074,6 +1080,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -1082,6 +1089,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1107,9 +1115,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient.UpNextTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1130,9 +1139,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient.UpNextTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1147,6 +1157,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1156,6 +1167,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1175,6 +1187,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1184,6 +1197,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1202,8 +1216,8 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PodcastShareExtension/PodcastShareExtension.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "PodcastShareExtension/PodcastShareExtension-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1215,10 +1229,12 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1231,8 +1247,8 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PodcastShareExtension/PodcastShareExtension.entitlements;
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "PodcastShareExtension/PodcastShareExtension-macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 334;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1244,10 +1260,12 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				MARKETING_VERSION = 2026.19;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1322,25 +1340,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		48B3BA062DA06825005B40B8 /* XCLocalSwiftPackageReference "../fyyd-swift" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../fyyd-swift";
-		};
-		48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../DeviceInfo;
-		};
-		48C078822DBEA9AA00D6DD9C /* XCLocalSwiftPackageReference "../BasicLogger" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../BasicLogger;
-		};
-		48C30C252E4B5B8200E51444 /* XCLocalSwiftPackageReference "../mp3ChapterReader" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../mp3ChapterReader;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		4803081D2E5B7D6C0059DFA2 /* XCRemoteSwiftPackageReference "RichText" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1358,6 +1357,46 @@
 				minimumVersion = 3.1.0;
 			};
 		};
+		48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/CloudDataPresence";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CDCCF13000141D006A32F8 /* XCRemoteSwiftPackageReference "ESADesignKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/ESADesignKit";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/mp3ChapterReader";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/SwiftDeviceInfo.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/BasicLogger";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1371,29 +1410,28 @@
 			package = 4812C1043020000100000001 /* XCRemoteSwiftPackageReference "CloudKitSyncMonitor" */;
 			productName = CloudKitSyncMonitor;
 		};
-		48B3BA072DA06825005B40B8 /* fyyd_swift */ = {
+		48C038EE2FF7806300343AF1 /* CloudDataPresence */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = fyyd_swift;
-		};
-		48C078062DB410D000D6DD9C /* DeviceInfo */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = DeviceInfo;
-		};
-		48C078082DB4111500D6DD9C /* DeviceInfo */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = DeviceInfo;
+			package = 48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */;
+			productName = CloudDataPresence;
 		};
 		48C078832DBEA9AA00D6DD9C /* BasicLogger */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 48CE1CFA2FF287BF00AD6067 /* XCRemoteSwiftPackageReference "BasicLogger" */;
 			productName = BasicLogger;
 		};
 		48C30C262E4B5B8200E51444 /* mp3ChapterReader */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */;
 			productName = mp3ChapterReader;
+		};
+		48CCC2EC2FFCF61D00517567 /* ESADesignKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ESADesignKit;
 		};
 		48F5872C2FBA3D940027EE58 /* DeviceInfo */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 48C078052DB410D000D6DD9C /* XCLocalSwiftPackageReference "../DeviceInfo" */;
+			package = 48CE1CF92FF2878300AD6067 /* XCRemoteSwiftPackageReference "SwiftDeviceInfo" */;
 			productName = DeviceInfo;
 		};
 /* End XCSwiftPackageProductDependency section */

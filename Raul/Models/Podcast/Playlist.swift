@@ -116,6 +116,9 @@ struct SmartPlaylistFilter: Codable, Hashable, Sendable {
 @Model
 class Playlist {
     static let defaultQueueTitle = "de.holgerkrupp.podbay.queue"
+    /// A device-independent identity for the built-in queue in the split store.
+    /// Local playlist UUIDs predate split-store sync and differ per installation.
+    static let defaultQueueSyncID = "7E9C0B29-10C4-4EE1-9B8D-2FDCB6073C39"
     static let defaultQueueDisplayName = "Up Next"
     static let defaultManualSymbolName = "list.bullet"
     static let defaultQueueSymbolName = "calendar.day.timeline.leading"
@@ -157,6 +160,10 @@ class Playlist {
     var title: String = ""
     var symbolName: String = Playlist.defaultManualSymbolName
     var id: UUID = UUID()
+    /// The PlaylistSync identity this local projection came from. Keeping it
+    /// separate from `id` lets each device retain its local navigation identity
+    /// while subsequent edits continue updating the same cloud record.
+    var syncID: String?
     var deleteable: Bool = true // to enable standard lists like "play next queue" or similar that can't be deleted by the user
     var hidden: Bool = false
     var sortIndex: Int = 0
@@ -172,6 +179,7 @@ class Playlist {
     init() {
         self.title = Self.defaultQueueTitle
         self.symbolName = Self.defaultQueueSymbolName
+        self.syncID = id.uuidString
         self.deleteable = false
         self.sortIndex = 0
         self.kindRawValue = Kind.manual.rawValue
@@ -249,6 +257,10 @@ class Playlist {
 
         if defaultPlaylist.title != defaultQueueTitle {
             defaultPlaylist.title = defaultQueueTitle
+            changed = true
+        }
+        if defaultPlaylist.syncID != defaultQueueSyncID {
+            defaultPlaylist.syncID = defaultQueueSyncID
             changed = true
         }
         if defaultPlaylist.deleteable {

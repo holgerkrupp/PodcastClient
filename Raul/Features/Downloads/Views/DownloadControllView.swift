@@ -13,39 +13,25 @@ struct DownloadControllView: View {
 
     @StateObject var viewModel = DownloadViewModel()
     @State var episode: Episode
-    @State private var updateUI: Bool = false
     var showDelete: Bool = true
 
-    // New: This holds a fallback DownloadItem reference for when viewModel.item is nil but an in-progress download exists
-    @StateObject private var fallbackDownloadItem = DownloadItem(url: URL(string: "about:blank")!)
-    @State private var hasCheckedManager = false
-
     var body: some View {
+        let downloadedFiles = fileManager.downloadedFiles
+        let isDownloaded = isDownloaded(downloadedFiles: downloadedFiles)
+
         Group {
             if episode.source == .sideLoaded {
                 EmptyView()
             } else if let item = viewModel.item {
                 DownloadProgressView(item: item, viewModel: viewModel)
                     .progressViewStyle(CircularProgressViewStyle())
-            } else if let url = episode.url, fileManager.isDownloaded(episode.localFile) != true {
-                // Avoid calling actor-isolated API synchronously from the view body.
-                // Kick off a task to capture any ongoing download and bind it to the view model.
-                let _ = {
-                    let currentURL = url
-                    Task { @MainActor in
-                        if let item = await DownloadManager.shared.getItem(for: currentURL), item.isDownloading {
-                            viewModel.item = item
-                        }
-                    }
-                }()
-
+            } else if episode.url != nil, isDownloaded == false {
                 if let item = viewModel.item, item.isDownloading {
                     DownloadProgressView(item: item, viewModel: viewModel)
                         .progressViewStyle(CircularProgressViewStyle())
                 } else {
                     Button {
                         viewModel.startDownload(for: episode)
-                        updateUI.toggle()
                     } label: {
                         Label("Download", systemImage: "arrow.down.circle")
                     }
@@ -66,21 +52,39 @@ struct DownloadControllView: View {
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.glass(.clear))
-        .onAppear {
+        .task(id: episode.url) {
             guard episode.source != .sideLoaded else { return }
-            viewModel.observeDownload(for: episode)
-            // Fallback: Check for ongoing download in DownloadManager if viewModel.item is nil
-            if let url = episode.url {
-                Task {
-                    if let item = await DownloadManager.shared.getItem(for: url), item.isDownloading {
-                        // Set fallbackDownloadItem to this DownloadItem so progress UI can be shown if needed
-                        // Removed assignments to fallbackDownloadItem properties as per instructions
-                        // Set viewModel.item as well for better reactivity
-                        viewModel.item = item
-                    }
-                }
+            await viewModel.observeDownload(for: episode)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
+            guard let url = notificationURL(from: notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL]),
+                  url == episode.url else { return }
+            Task { @MainActor in
+                await Task.yield()
+                guard Task.isCancelled == false else { return }
+                viewModel.clearFinishedItem(for: url)
+                fileManager.refreshDownloadedFiles()
             }
         }
+    }
+
+    private func isDownloaded(downloadedFiles: Set<URL>) -> Bool {
+        guard episode.source != .sideLoaded else { return true }
+        guard let localFile = episode.localFile?.standardizedFileURL else { return false }
+        return downloadedFiles.contains(localFile) || episode.metaData?.calculatedIsAvailableLocally == true
+    }
+
+    private func notificationURL(from value: Any?) -> URL? {
+        if let url = value as? URL {
+            return url
+        }
+        if let url = value as? NSURL {
+            return url as URL
+        }
+        if let string = value as? String {
+            return URL(string: string)
+        }
+        return nil
     }
 }
 

@@ -78,7 +78,6 @@ struct FastExportClipIntent: AppIntent {
         }  else {
             coverImage = UIImage() // Fallback empty layout canvas
         }
-
         do {
             // Trigger your asynchronous export logic immediately
             let generatedURL = try await AudioClipExporter.exportClipAsync(
@@ -87,6 +86,7 @@ struct FastExportClipIntent: AppIntent {
                 coverImage: coverImage,
                 startTime: trimStart,
                 endTime: trimEnd,
+                playbackRate: Player.shared.playbackRate,
                 fps: 30,
                 videoSize: CGSize(width: 720, height: 720)
             ) { _ in
@@ -104,6 +104,7 @@ struct FastExportClipIntent: AppIntent {
             return .result(value: intentFile, dialog: dialog)
 
         } catch {
+         
             throw NSError(domain: "ExportClipIntent", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed rendering clip background process: \(error.localizedDescription)"])
         }
     }
@@ -321,10 +322,7 @@ struct PlayPodcastEpisodeIntent: AudioPlaybackIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        await ModelContainerManager.shared.prepareContainer()
-        guard let container = ModelContainerManager.shared.preparedContainer else {
-            throw PlayPodcastEpisodeError.libraryUnavailable
-        }
+        let container = try await preparedIntentModelContainer()
 
         let podcastDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate { $0.metaData?.isSubscribed != false }
@@ -522,7 +520,8 @@ struct RefreshPodcastFeedsIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        await SubscriptionManager(modelContainer: ModelContainerManager.shared.container).bgupdateFeeds()
+        let container = try await preparedIntentModelContainer()
+        await SubscriptionManager(modelContainer: container).bgupdateFeeds()
         return .result(dialog: "Podcast refresh started.")
     }
 }
@@ -778,7 +777,8 @@ private struct PodcastShareShortcutRenderer {
     private let calendar = Calendar.autoupdatingCurrent
 
     func render(request: PodcastShareShortcutRequest) async throws -> IntentFile {
-        let context = ModelContext(ModelContainerManager.shared.container)
+        let container = try await preparedIntentModelContainer()
+        let context = ModelContext(container)
         let targetDate = targetDate(for: request.period, timing: request.timing)
         let start = periodStart(for: targetDate, period: request.period)
         let end = nextPeriodStart(from: start, period: request.period)
@@ -1363,6 +1363,39 @@ private struct PodcastShareShortcutRenderer {
             return "\(hours)h \(minutes)m"
         }
         return "\(minutes)m"
+    }
+}
+
+@MainActor
+private func preparedIntentModelContainer() async throws -> ModelContainer {
+    let manager = ModelContainerManager.shared
+    if let container = manager.preparedContainer {
+        return container
+    }
+#if canImport(UIKit)
+    guard UIApplication.shared.applicationState == .active else {
+        throw IntentModelContainerError.unavailable(
+            "Open Up Next before running this action so the podcast library can finish loading."
+        )
+    }
+#endif
+    await manager.prepareContainer()
+    guard let container = manager.preparedContainer else {
+        throw IntentModelContainerError.unavailable(
+            manager.initializationError ?? "The podcast library could not be opened."
+        )
+    }
+    return container
+}
+
+private enum IntentModelContainerError: LocalizedError {
+    case unavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable(let message):
+            return message
+        }
     }
 }
 

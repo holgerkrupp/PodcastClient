@@ -13,11 +13,44 @@ enum PlaybackInterruptionEvent {
      
 }
 
-actor PlayerEngine {
-    let avPlayer = AVPlayer()
 #if os(iOS)
-    private let session = AVAudioSession.sharedInstance()
+/// Serializes `AVAudioSession` configuration off the main thread.
+///
+/// `setCategory` and `setActive` are synchronous IPC to the media server and
+/// can block the caller for tens of milliseconds; AVFoundation warns about it
+/// when they run on the main thread ("This method can lead to UI
+/// unresponsiveness"). `AVAudioSession` is thread-safe, so the work just moves
+/// to a dedicated queue.
+///
+/// The queue is serial on purpose. Activation and deactivation are ordered
+/// against each other — an interruption that deactivates and then reactivates
+/// must not land inverted — and the category has to be applied before the
+/// first activation. iOS 27 adds a non-blocking `activate(options:)`, but its
+/// completion is independent of the calls queued behind it, so it would give up
+/// exactly that ordering.
+private enum AudioSessionConfigurator {
+    private static let queue = DispatchQueue(
+        label: "de.holgerkrupp.upnext.audio-session",
+        qos: .userInitiated
+    )
+
+    static func configureForPlayback() {
+        queue.async {
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        }
+    }
+
+    static func setActive(_ active: Bool) {
+        queue.async {
+            try? AVAudioSession.sharedInstance().setActive(active)
+        }
+    }
+}
 #endif
+
+@MainActor
+final class PlayerEngine {
+    let avPlayer = AVPlayer()
     private var interruptionHandler: (@Sendable (PlaybackInterruptionEvent) -> Void)?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
@@ -29,12 +62,7 @@ actor PlayerEngine {
 
      init() {
 #if os(iOS)
-        do{
-            try session.setCategory(.playback, mode: .spokenAudio)
-           
-        }catch{
-            // print("Audio session setup failed:", error)
-        }
+        AudioSessionConfigurator.configureForPlayback()
 #endif
 
          avPlayer.automaticallyWaitsToMinimizeStalling = false
@@ -175,14 +203,21 @@ actor PlayerEngine {
         activateSession()
         avPlayer.play()
     }
-    
-    func setRate(_ newRate: Float) async {
-        if newRate > 0 {
-            activateSession()
-            avPlayer.playImmediately(atRate: newRate)
-        } else {
+
+    /// Starts playback synchronously so hardware and CarPlay play commands are not
+    /// delayed behind unrelated work queued on the main actor.
+    func resume(atRate rate: Float) {
+        guard rate > 0 else {
             avPlayer.pause()
+            return
         }
+
+        activateSession()
+        avPlayer.playImmediately(atRate: rate)
+    }
+
+    func setRate(_ newRate: Float) async {
+        resume(atRate: newRate)
     }
 
     func pause() {
@@ -205,21 +240,18 @@ actor PlayerEngine {
     
     private func deactiveSession()  {
 #if os(iOS)
-        do{
-            try session.setActive(false)
-        }catch{
-            // print(error)
-        }
+        AudioSessionConfigurator.setActive(false)
 #endif
     }
-    
+
+    /// Requests activation and returns immediately.
+    ///
+    /// Callers start playback right after this, which is safe: `AVPlayer`
+    /// activates the session itself when it begins playing, so the explicit
+    /// request only needs to be ordered, not awaited.
     private func activateSession()  {
 #if os(iOS)
-        do{
-            try session.setActive(true)
-        }catch{
-            // print(error)
-        }
+        AudioSessionConfigurator.setActive(true)
 #endif
     }
 

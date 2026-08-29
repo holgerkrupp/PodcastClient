@@ -4,6 +4,57 @@ import XCTest
 @testable import UpNext
 
 final class EpisodeChapterIngestionTests: XCTestCase {
+    func testTranscriptionQueueCanPromoteAnEpisodeToNext() async {
+        let queue = TranscriptionTurnQueue()
+        let first = URL(string: "https://example.com/first.mp3")!
+        let second = URL(string: "https://example.com/second.mp3")!
+        let promoted = URL(string: "https://example.com/promoted.mp3")!
+
+        await queue.wait(for: first)
+        let secondTask = Task {
+            await queue.wait(for: second)
+            return second
+        }
+        while await queue.snapshot().queued.contains(second) == false {
+            await Task.yield()
+        }
+
+        let promotedTask = Task {
+            await queue.wait(for: promoted)
+            return promoted
+        }
+        while await queue.snapshot().queued.contains(promoted) == false {
+            await Task.yield()
+        }
+
+        await queue.promote(promoted)
+        let promotedQueue = await queue.snapshot()
+        XCTAssertEqual(promotedQueue.queued, [promoted, second])
+
+        await queue.finish(first)
+        let firstResumedEpisode = await promotedTask.value
+        let afterFirstFinished = await queue.snapshot()
+        XCTAssertEqual(firstResumedEpisode, promoted)
+        XCTAssertEqual(afterFirstFinished.active, promoted)
+
+        await queue.finish(promoted)
+        let secondResumedEpisode = await secondTask.value
+        let afterPromotedFinished = await queue.snapshot()
+        XCTAssertEqual(secondResumedEpisode, second)
+        XCTAssertEqual(afterPromotedFinished.active, second)
+        await queue.finish(second)
+    }
+
+    func testSpeechAttributedTextPersistsOnlyVisibleCharacters() {
+        var attributedText = AttributedString("Recognized speech")
+        attributedText.inlinePresentationIntent = .stronglyEmphasized
+
+        XCTAssertEqual(
+            AITranscripts.plainTranscriptText(attributedText),
+            "Recognized speech"
+        )
+    }
+
     func testLocalMP3ChaptersAreAddedEvenWhenFeedChaptersAlreadyExist() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "mp3")
@@ -84,6 +135,88 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertTrue(chapters.contains { $0.type == .mp3 && $0.title == "Remote Chapter" })
     }
 
+    func testRemoteMP3ChaptersPreserveFeedChaptersAndExistingChapterState() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/episode.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+
+        let feedChapter = Marker(start: 0, title: "Feed Intro", type: .podlove, duration: 30)
+        feedChapter.episode = episode
+        let existingMP3Chapter = Marker(start: 45, title: "Remote Chapter", type: .mp3, duration: 90)
+        existingMP3Chapter.shouldPlay = false
+        existingMP3Chapter.progress = 0.35
+        existingMP3Chapter.episode = episode
+        episode.chapters = [feedChapter, existingMP3Chapter]
+        episode.metaData?.lastPlayed = Date(timeIntervalSince1970: 1_000)
+        try fixture.context.save()
+
+        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
+        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in
+            [Marker(start: 45, title: "Remote Chapter", type: .mp3, duration: 120)]
+        }
+
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        await actor.getRemoteChapters(episodeURL: episodeURL)
+        await actor.getRemoteChapters(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = try XCTUnwrap(reloaded.chapters)
+        XCTAssertEqual(chapters.count, 2)
+        XCTAssertTrue(chapters.contains { $0.type == .podlove && $0.title == "Feed Intro" })
+
+        let remoteChapter = try XCTUnwrap(chapters.first { $0.type == .mp3 })
+        XCTAssertEqual(remoteChapter.title, "Remote Chapter")
+        XCTAssertEqual(remoteChapter.shouldPlay, false)
+        XCTAssertEqual(remoteChapter.progress ?? -1, 0.35, accuracy: 0.0001)
+    }
+
+    func testRemoteChapterRefreshExtractsShownotesForStreamingEpisodes() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/streaming-episode.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.content = """
+        <p>Kapitelmarken, KI-unterstützt
+        00:00:00 - Hallo Jannis!
+        00:03:39 - Studie zur Wirksamkeit des Social-Media-Verbots in Australien
+        00:07:44 - Nachhak: DAK Mediensuchtstudie und Zahlen zur Mediennutzung
+        00:11:38 - Australien erhöht Strafen für Tech-Unternehmen nach unwirksamem Verbot
+        00:13:27 - Meta fordert Immunität bei Kindesmissbrauchsklagen in Kalifornien
+        00:20:05 - Grok-Hauptnutzung: Adult Content
+        00:25:03 - US-Regierung schränkt Verfügbarkeit von KI-Modellen ein
+        00:29:52 - Amazon Prime blockiert Film über Sam Altman wegen OpenAI-Kooperation
+        00:33:46 - OpenAI-Börsengang auf 2027 verschoben
+        00:40:15 - KI-generierte Texte im Journalismus
+        00:46:46 - Medienaufsichtsbehörde vs. ungeskriptet
+        00:53:02 - Funktionen und Emotionen
+        01:00:31 - Elon Musk muss unter Eid aussagen</p>
+        """
+        try fixture.context.save()
+
+        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
+        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in [] }
+
+        await EpisodeActor(modelContainer: fixture.container).getRemoteChapters(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = try XCTUnwrap(reloaded.chapters)
+        let extracted = chapters.filter { $0.type == .extracted }
+        XCTAssertEqual(extracted.count, 13)
+        XCTAssertTrue(extracted.contains { $0.start == 0 && $0.title == "Hallo Jannis!" })
+        XCTAssertTrue(extracted.contains { $0.start == 3_631 && $0.title == "Elon Musk muss unter Eid aussagen" })
+    }
+
     func testRefreshingLocalMP3ChaptersPreservesExistingStateAndDoesNotDuplicateMarkers() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "mp3")
@@ -100,6 +233,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         existingChapter.imageData = Data([0x01, 0x02, 0x03])
         existingChapter.episode = episode
         episode.chapters = [existingChapter]
+        episode.metaData?.lastPlayed = Date(timeIntervalSince1970: 1_000)
         try fixture.context.save()
 
         let originalLoader = ChapterExtractionHooks.loadLocalMP3Chapters
@@ -120,6 +254,199 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertEqual(chapters.first?.shouldPlay, false)
         XCTAssertEqual(chapters.first?.progress ?? -1, 0.42, accuracy: 0.0001)
         XCTAssertEqual(chapters.first?.imageData ?? Data(), Data([0x01, 0x02, 0x03]))
+    }
+
+    func testLargeTranscriptReplacementUsesPersistedLinesWithoutWholeArrayAssignment() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/large-transcript.mp3")!
+        _ = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+
+        func makeVTT(lineCount: Int) -> String {
+            var vtt = "WEBVTT\n\n"
+            for index in 0..<lineCount {
+                let start = String(format: "%02d:%02d:%02d.000", index / 3600, (index / 60) % 60, index % 60)
+                let end = String(format: "%02d:%02d:%02d.500", (index + 1) / 3600, ((index + 1) / 60) % 60, (index + 1) % 60)
+                vtt += "\(start) --> \(end)\nLine \(index)\n\n"
+            }
+            return vtt
+        }
+
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        try await actor.decodeAndSetTranscript(
+            for: episodeURL,
+            vtt: makeVTT(lineCount: 100)
+        )
+        try await actor.decodeAndSetTranscript(
+            for: episodeURL,
+            vtt: makeVTT(lineCount: 2_000)
+        )
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let transcript = try XCTUnwrap(reloaded.transcriptLines).sorted {
+            $0.startTime < $1.startTime
+        }
+        XCTAssertEqual(transcript.count, 2_000)
+        XCTAssertEqual(transcript.first?.text, "Line 0")
+        XCTAssertEqual(transcript.last?.text, "Line 1999")
+    }
+
+#if DEBUG
+    func testDeletingEpisodeTranscriptRemovesLinesAndAllowsRegeneration() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/delete-transcript.mp3")!
+        _ = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        var vtt = "WEBVTT\n\n"
+        for index in 0..<2_000 {
+            let start = String(format: "%02d:%02d:%02d.000", index / 3600, (index / 60) % 60, index % 60)
+            let end = String(format: "%02d:%02d:%02d.500", (index + 1) / 3600, ((index + 1) / 60) % 60, (index + 1) % 60)
+            vtt += "\(start) --> \(end)\nLine \(index)\n\n"
+        }
+        try await actor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
+
+        XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count, 2_000)
+        try await actor.deleteTranscript(for: episodeURL)
+        XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count ?? 0, 0)
+
+        try await actor.decodeAndSetTranscript(
+            for: episodeURL,
+            vtt: """
+            WEBVTT
+
+            00:00:00.000 --> 00:00:01.000
+            Regenerated transcript
+            """
+        )
+        XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count, 1)
+    }
+#endif
+
+    func testInvalidExtractedChaptersAreReplacedFromContentEncodedShownotes() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/methodisch-inkorrekt.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.desc = """
+        Du möchtest mehr über unsere Werbepartner erfahren?
+        Diesmal mit dem Pilzpaten, metalem Stress im Homeoffice und ganz viel Infraschall.
+        """
+        episode.content = """
+        <p><strong>Inhalt</strong><br>
+        00:00:00 Intro<br>
+        00:05:19 Lab Rampage Brettspiel<br>
+        00:13:11 Radentscheid Essen<br>
+        00:14:56 Xteink X4<br>
+        00:24:44 FreeTube<br>
+        00:28:43 Community Fotokalender<br>
+        00:32:23 Thema 1: “Weltweiter Pilzpate”<br>
+        00:52:18 Science Snack<br>
+        01:11:43 Thema 2: “Stabiles Büro”<br>
+        01:42:26 Schwurbel der Woche<br>
+        02:05:33 Outro</p>
+        """
+
+        let badAdvertisementChapter = Marker(
+            start: 0,
+            title: "Du möchtest mehr über unsere Werbepartner erfahren?",
+            type: .extracted
+        )
+        badAdvertisementChapter.episode = episode
+        let badSummaryChapter = Marker(
+            start: 0,
+            title: "Diesmal mit dem Pilzpaten, metalem Stress im Homeoffice und ganz viel Infraschall.",
+            type: .extracted
+        )
+        badSummaryChapter.episode = episode
+        episode.chapters = [badAdvertisementChapter, badSummaryChapter]
+        try fixture.context.save()
+
+        await EpisodeActor(modelContainer: fixture.container).createChapters(episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = try XCTUnwrap(reloaded.chapters)
+        XCTAssertEqual(chapters.count, 11)
+        XCTAssertTrue(chapters.contains { $0.start == 0 && $0.title == "Intro" })
+        XCTAssertTrue(chapters.contains { $0.start == 7_533 && $0.title == "Outro" })
+        XCTAssertFalse(chapters.contains { $0.title.contains("Werbepartner") })
+        XCTAssertFalse(chapters.contains { $0.title.contains("Pilzpaten, metalem Stress") })
+    }
+
+    func testUpdateChapterDurationsSetsEndTimeFromNextChapterOrEpisodeEnd() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/chapter-durations.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.duration = 120
+
+        let intro = Marker(start: 0, title: "Intro", type: .extracted)
+        let topic = Marker(start: 30, title: "Topic", type: .extracted)
+        let outro = Marker(start: 90, title: "Outro", type: .extracted)
+        intro.episode = episode
+        topic.episode = episode
+        outro.episode = episode
+        episode.chapters = [intro, topic, outro]
+        try fixture.context.save()
+
+        await EpisodeActor(modelContainer: fixture.container).updateChapterDurations(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = reloaded.preferredChapters
+        XCTAssertEqual(chapters.count, 3)
+        XCTAssertEqual(chapters[0].duration, 30)
+        XCTAssertEqual(chapters[0].endTime, 30)
+        XCTAssertEqual(chapters[1].duration, 60)
+        XCTAssertEqual(chapters[1].endTime, 90)
+        XCTAssertEqual(chapters[2].duration, 30)
+        XCTAssertEqual(chapters[2].endTime, 120)
+    }
+
+    func testUpdateChapterDurationsLeavesLastChapterEndNilWhenEpisodeDurationIsUnknown() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/chapter-durations-nil.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.duration = nil
+
+        let intro = Marker(start: 0, title: "Intro", type: .extracted)
+        let topic = Marker(start: 30, title: "Topic", type: .extracted)
+        intro.episode = episode
+        topic.episode = episode
+        episode.chapters = [intro, topic]
+        try fixture.context.save()
+
+        await EpisodeActor(modelContainer: fixture.container).updateChapterDurations(episodeURL: episodeURL)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let chapters = reloaded.preferredChapters
+        XCTAssertEqual(chapters.count, 2)
+        XCTAssertEqual(chapters[0].duration, 30)
+        XCTAssertEqual(chapters[0].endTime, 30)
+        XCTAssertNil(chapters[1].duration)
+        XCTAssertNil(chapters[1].endTime)
+        XCTAssertNil(chapters[1].end)
     }
 }
 

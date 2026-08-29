@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import fyyd_swift
 
 @Observable
 class PodcastFeed: Hashable, @unchecked Sendable {
@@ -65,13 +64,10 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     }
     
     enum Source {
-        case fyyd
         case iTunes
-        
+
         var description: String {
             switch self {
-            case .fyyd:
-                return "fyyd"
             case .iTunes:
                 return "iTunes"
             }
@@ -308,22 +304,5 @@ class PodcastFeed: Hashable, @unchecked Sendable {
 
         return false
     }
-    
-    convenience init(fyydPodcast: FyydPodcast) {
-        let url = fyydPodcast.xmlURL.flatMap { URL(string: $0) }
-        self.init(
-            url: url,
-            title: fyydPodcast.title,
-            subtitle: fyydPodcast.subtitle,
-            description: fyydPodcast.description,
-            source: .fyyd,
-            artist: fyydPodcast.author,
-            artworkURL: fyydPodcast.imgURL.flatMap { URL(string: $0) }
-        )
-        // Parse lastpub to Date if possible, fallback to nil
-        let dateFormatter = ISO8601DateFormatter()
-        self.lastRelease = dateFormatter.date(from: fyydPodcast.lastpub)
-    }
-    
 
 }

@@ -42,6 +42,135 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         XCTAssertNil(nextURL)
     }
 
+    func testFinishingEpisodeAtomicallyDequeuesItAndReturnsSuccessor() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+        let containsFinishedEpisode = try await actor.containsEpisodeURL(
+            try XCTUnwrap(fixture.episodes[0].url)
+        )
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        XCTAssertEqual(
+            orderedURLs,
+            [fixture.episodes[1].url, fixture.episodes[2].url].compactMap { $0 }
+        )
+        XCTAssertFalse(containsFinishedEpisode)
+    }
+
+    func testFinishingLastEpisodeDequeuesItAndReturnsNil() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0], in: fixture.selectedPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+
+        XCTAssertNil(nextURL)
+        XCTAssertEqual(orderedURLs, [])
+    }
+
+    func testFinishingEpisodeRemovesDuplicateEntriesAndNormalizesOrder() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        try queueEpisodes([2, 0, 1], in: fixture.defaultPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        let context = ModelContext(fixture.container)
+        let playlistID = fixture.selectedPlaylist.id
+        let entries = try context.fetch(FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == playlistID },
+            sortBy: [SortDescriptor(\PlaylistEntry.order)]
+        ))
+        XCTAssertEqual(entries.compactMap { $0.episode?.url }, [
+            fixture.episodes[1].url,
+            fixture.episodes[2].url
+        ].compactMap { $0 })
+        XCTAssertEqual(entries.map(\.order), [0, 1])
+
+        let defaultPlaylistID = fixture.defaultPlaylist.id
+        let defaultEntries = try context.fetch(FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == defaultPlaylistID },
+            sortBy: [SortDescriptor(\PlaylistEntry.order)]
+        ))
+        XCTAssertEqual(defaultEntries.compactMap { $0.episode?.url }, [
+            fixture.episodes[2].url,
+            fixture.episodes[1].url
+        ].compactMap { $0 })
+        XCTAssertEqual(defaultEntries.map(\.order), [0, 1])
+    }
+
+    /// Removing an episode that sits in several playlists has to reindex each of
+    /// them. Reindexing the actor's own playlist repeatedly left every other
+    /// affected playlist with a gap in `order`, which a later append then
+    /// collided with.
+    func testRemovingFromAllPlaylistsReindexesEveryAffectedPlaylist() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([1, 0, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        try queueEpisodes([2, 0, 1], in: fixture.defaultPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        try await actor.removeFromAllPlaylists(
+            episodeURL: try XCTUnwrap(fixture.episodes[0].url)
+        )
+
+        let context = ModelContext(fixture.container)
+        func orders(of playlist: Playlist) throws -> [Int] {
+            let playlistID = playlist.id
+            return try context.fetch(FetchDescriptor<PlaylistEntry>(
+                predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == playlistID },
+                sortBy: [SortDescriptor(\PlaylistEntry.order)]
+            )).map(\.order)
+        }
+
+        XCTAssertEqual(try orders(of: fixture.selectedPlaylist), [0, 1])
+        XCTAssertEqual(try orders(of: fixture.defaultPlaylist), [0, 1])
+    }
+
+    func testFinishingAlreadyDequeuedEpisodeReturnsFirstQueuedEpisode() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
+            after: try XCTUnwrap(fixture.episodes[0].url)
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        XCTAssertEqual(
+            orderedURLs,
+            [fixture.episodes[1].url, fixture.episodes[2].url].compactMap { $0 }
+        )
+    }
+
     func testActivePlaybackPlaylistFallsBackToDefaultWhenStoredSelectionIsStale() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         let defaults = makeDefaults()
@@ -73,6 +202,170 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         let nextURL = try await activeActor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[0].url))
 
         XCTAssertEqual(nextURL, fixture.episodes[2].url)
+    }
+
+    func testAddingToPlaylistRemovesFromInboxAndPreservesArchiveState() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let episode = fixture.episodes[0]
+        episode.metaData?.setArchived(true, at: Date(timeIntervalSince1970: 1_000))
+        episode.metaData?.systemSuppressionReason = .manualPlaylistRemoval
+        try fixture.context.save()
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        try await actor.add(
+            episodeURL: try XCTUnwrap(episode.url),
+            to: .end,
+            startDownload: false
+        )
+
+        let refreshed = try fetchEpisode(
+            url: try XCTUnwrap(episode.url),
+            container: fixture.container
+        )
+        XCTAssertEqual(refreshed.metaData?.isInbox, false)
+        XCTAssertEqual(refreshed.metaData?.isArchived, true)
+        XCTAssertEqual(refreshed.metaData?.status, .archived)
+        XCTAssertNil(refreshed.metaData?.systemSuppressionReason)
+        let isQueued = try await actor.containsEpisodeURL(try XCTUnwrap(episode.url))
+        XCTAssertTrue(isQueued)
+    }
+
+    func testUserPlaylistRemovalPreservesEpisodeStateAndPreventsAutomaticRequeue() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let episode = fixture.episodes[0]
+        try queueEpisodes([0], in: fixture.selectedPlaylist, fixture: fixture)
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        try await actor.remove(episodeURL: try XCTUnwrap(episode.url))
+
+        let refreshed = try fetchEpisode(
+            url: try XCTUnwrap(episode.url),
+            container: fixture.container
+        )
+        XCTAssertEqual(refreshed.metaData?.isInbox, true)
+        XCTAssertEqual(refreshed.metaData?.isArchived, false)
+        XCTAssertEqual(refreshed.metaData?.status, .inbox)
+        XCTAssertEqual(
+            refreshed.metaData?.systemSuppressionReason,
+            .manualPlaylistRemoval
+        )
+        let isQueued = try await actor.containsEpisodeURL(try XCTUnwrap(episode.url))
+        XCTAssertFalse(isQueued)
+    }
+
+    func testAutomaticInsertionSkipsAnAlreadyPlayedEpisode() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let episode = fixture.episodes[0]
+        episode.metaData?.completionDate = Date(timeIntervalSince1970: 1_000)
+        try fixture.context.save()
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        try await actor.add(
+            episodeURL: try XCTUnwrap(episode.url),
+            to: .front,
+            startDownload: false,
+            origin: .automatic
+        )
+
+        let isQueued = try await actor.containsEpisodeURL(try XCTUnwrap(episode.url))
+        XCTAssertFalse(isQueued)
+    }
+
+    func testUserInsertionStillQueuesAnAlreadyPlayedEpisode() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let episode = fixture.episodes[0]
+        episode.metaData?.completionDate = Date(timeIntervalSince1970: 1_000)
+        try fixture.context.save()
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        try await actor.add(
+            episodeURL: try XCTUnwrap(episode.url),
+            to: .front,
+            startDownload: false
+        )
+
+        let isQueued = try await actor.containsEpisodeURL(try XCTUnwrap(episode.url))
+        XCTAssertTrue(isQueued)
+    }
+
+    func testFinishingEpisodeStampsCompletionSoARacingRequeueIsRejected() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 1], in: fixture.selectedPlaylist, fixture: fixture)
+        let finishedURL = try XCTUnwrap(fixture.episodes[0].url)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+
+        _ = try await actor.dequeueFinishedEpisodeAndReturnNext(after: finishedURL)
+
+        let refreshed = try fetchEpisode(url: finishedURL, container: fixture.container)
+        XCTAssertNotNil(refreshed.metaData?.completionDate)
+
+        // A deferred "move now playing to the front" task landing after the finish
+        // handler must not put the finished episode back at the top of the queue.
+        try await actor.add(
+            episodeURL: finishedURL,
+            to: .front,
+            startDownload: false,
+            origin: .automatic
+        )
+
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+        XCTAssertEqual(orderedURLs, [fixture.episodes[1].url])
+    }
+
+    func testPrunerRemovesPlayedEpisodesButKeepsADeliberateRelisten() async throws {
+        // The pruner ships disabled; this test covers the removal path itself.
+        UserDefaults.standard.set(
+            true,
+            forKey: PlayedEpisodePlaylistPruner.isEnabledKey
+        )
+        defer {
+            UserDefaults.standard.removeObject(
+                forKey: PlayedEpisodePlaylistPruner.isEnabledKey
+            )
+        }
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
+
+        let completedAt = Date(timeIntervalSince1970: 2_000)
+        let staleEntry = try XCTUnwrap(
+            fixture.selectedPlaylist.ordered.first { $0.episode?.url == fixture.episodes[0].url }
+        )
+        staleEntry.dateAdded = Date(timeIntervalSince1970: 1_000)
+        fixture.episodes[0].metaData?.completionDate = completedAt
+
+        let relistenEntry = try XCTUnwrap(
+            fixture.selectedPlaylist.ordered.first { $0.episode?.url == fixture.episodes[1].url }
+        )
+        relistenEntry.dateAdded = Date(timeIntervalSince1970: 3_000)
+        fixture.episodes[1].metaData?.completionDate = completedAt
+        try fixture.context.save()
+
+        let result = await PlayedEpisodePlaylistPruner(
+            legacyContainer: fixture.container
+        ).prune()
+
+        XCTAssertEqual(result.removedEntryCount, 1)
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+        XCTAssertEqual(orderedURLs, [fixture.episodes[1].url, fixture.episodes[2].url])
     }
 }
 
@@ -147,5 +440,13 @@ private extension PlaylistModelActorPlaybackQueueTests {
             entry.playlist = playlist
         }
         try fixture.context.save()
+    }
+
+    func fetchEpisode(url: URL, container: ModelContainer) throws -> Episode {
+        let context = ModelContext(container)
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.url == url }
+        )
+        return try XCTUnwrap(context.fetch(descriptor).first)
     }
 }

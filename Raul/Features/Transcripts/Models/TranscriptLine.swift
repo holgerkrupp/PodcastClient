@@ -14,7 +14,7 @@ import SwiftData
  var text: String = ""
      var startTime: TimeInterval = 0.0
  var endTime: TimeInterval?
- var episode: Episode?
+ @Relationship(inverse: \Episode.transcriptLines) var episode: Episode?
  init( speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil) {
 
  self.speaker = speaker
@@ -27,4 +27,3 @@ import SwiftData
  }
  
  
-

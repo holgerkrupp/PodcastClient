@@ -9,6 +9,71 @@ enum TranscriptionStartOrigin: Sendable {
     case automatic
 }
 
+struct TranscriptionQueueEntry: Identifiable, Sendable {
+    enum QueueState: Sendable {
+        case active
+        case queued(position: Int)
+    }
+
+    let episodeURL: URL
+    let episodeTitle: String
+    let podcastTitle: String?
+    let state: QueueState
+
+    var id: URL { episodeURL }
+}
+
+actor TranscriptionTurnQueue {
+    private struct Waiter {
+        let episodeURL: URL
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private var activeEpisodeURL: URL?
+    private var waiters: [Waiter] = []
+
+    func wait(for episodeURL: URL) async {
+        if activeEpisodeURL == nil {
+            activeEpisodeURL = episodeURL
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(Waiter(episodeURL: episodeURL, continuation: continuation))
+        }
+    }
+
+    func finish(_ episodeURL: URL) {
+        guard activeEpisodeURL == episodeURL else { return }
+        guard waiters.isEmpty == false else {
+            activeEpisodeURL = nil
+            return
+        }
+
+        let next = waiters.removeFirst()
+        activeEpisodeURL = next.episodeURL
+        next.continuation.resume()
+    }
+
+    func promote(_ episodeURL: URL) {
+        guard let index = waiters.firstIndex(where: { $0.episodeURL == episodeURL }), index > 0 else {
+            return
+        }
+        let waiter = waiters.remove(at: index)
+        waiters.insert(waiter, at: 0)
+    }
+
+    func cancel(_ episodeURL: URL) {
+        guard let index = waiters.firstIndex(where: { $0.episodeURL == episodeURL }) else { return }
+        let waiter = waiters.remove(at: index)
+        waiter.continuation.resume()
+    }
+
+    func snapshot() -> (active: URL?, queued: [URL]) {
+        (activeEpisodeURL, waiters.map(\.episodeURL))
+    }
+}
+
 actor TranscriptionManager {
     // Immutable singleton initialized once, using the main-actor container.
     static let shared: TranscriptionManager = {
@@ -21,10 +86,16 @@ actor TranscriptionManager {
     private var items: [URL: TranscriptionItem] = [:]
     private var tasks: [URL: Task<Void, Never>] = [:]
     private var taskOrigins: [URL: TranscriptionStartOrigin] = [:]
+    private var episodeSnapshots: [URL: TranscriptionEpisodeSnapshot] = [:]
     private var automaticScanCursor = 0
     private var lastAutomaticSweepAt: Date?
     private let automaticScanLimit = 12
     private let automaticSweepCooldown: TimeInterval = 30
+
+    // Serializes the heavy transcription work so at most one Speech analyzer runs at a
+    // time. Two concurrent analyzers double the e-core pressure, memory, and the odds of
+    // tripping the background CPU monitor.
+    private let transcriptionQueue = TranscriptionTurnQueue()
 
     // Dependency
     private let container: ModelContainer
@@ -51,6 +122,7 @@ actor TranscriptionManager {
             await finish(episodeURL: episodeURL, error: "Missing local file.")
             return nil
         }
+        episodeSnapshots[episodeURL] = snapshot
 
         let uiItem = await MainActor.run { () -> TranscriptionItem in
             let item = TranscriptionItem(episodeURL: episodeURL, sourceURL: snapshot.localFile)
@@ -65,8 +137,13 @@ actor TranscriptionManager {
             return uiItem
         }
 
+        // User-requested transcriptions run at userInitiated so the Speech XPC lands on
+        // performance cores and finishes quickly (and isn't subject to the background
+        // 50%/180s CPU monitor). Automatic ones stay at background priority.
+        let jobPriority: TaskPriority = origin == .manual ? .userInitiated : .background
+
         // Kick off orchestration in a Task, but never carry @Model instances out of EpisodeActor.
-        let job = Task(priority: .background) { [weak self] in
+        let job = Task(priority: jobPriority) { [weak self] in
             guard let self else { return }
 
             let startedAt = Date()
@@ -78,7 +155,11 @@ actor TranscriptionManager {
                 guard origin == .manual else { return .invalid }
                 return UIApplication.shared.beginBackgroundTask(
                     withName: "Transcription",
-                    expirationHandler: nil
+                    expirationHandler: {
+                        Task {
+                            await TranscriptionManager.shared.cancel(episodeURL: episodeURL)
+                        }
+                    }
                 )
             }
 
@@ -92,7 +173,13 @@ actor TranscriptionManager {
             }
 #endif
 
+            // Only one transcription runs at a time; others wait here.
+            let transcriptionQueue = self.transcriptionQueue
+            await transcriptionQueue.wait(for: episodeURL)
+            defer { Task { await transcriptionQueue.finish(episodeURL) } }
+
             do {
+                try Task.checkCancellation()
                 await MainActor.run {
                     uiItem.setState(.preparingModel, progress: 0.02, status: "Preparing model…")
                 }
@@ -100,11 +187,15 @@ actor TranscriptionManager {
                 let settingsActor = PodcastSettingsModelActor(modelContainer: container)
                 let maxSnippetDurationSeconds = await settingsActor.getTranscriptionMaxSnippetDurationSeconds()
 
-                // Build transcriber (pure value types: URL + language string)
+                // Build transcriber (pure value types: URL + language string).
+                // Manual runs race to completion on performance cores; automatic runs
+                // duty-cycle on efficiency cores to stay under the background CPU monitor.
                 let transcriber = await AITranscripts(
                     url: snapshot.localFile,
                     language: snapshot.language,
                     maxSnippetDurationSeconds: maxSnippetDurationSeconds,
+                    analyzerPriority: origin == .manual ? .userInitiated : .background,
+                    throttle: origin == .manual ? .none : .backgroundFriendly,
                     progressHandler: { progress, status in
                         await MainActor.run {
                             let nextState: TranscriptionItem.State
@@ -136,18 +227,37 @@ actor TranscriptionManager {
                     )
                 }
 
-                // Decode inside EpisodeActor to produce model instances and save there
-                await episodeActor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
+                // Persist the transcript first. Chapter generation is optional enrichment
+                // and can involve several on-device language-model calls; keeping it out
+                // of this critical path makes the transcript available as soon as it is
+                // written instead of leaving the UI stuck at "Saving transcript…".
+                await MainActor.run {
+                    uiItem.setState(.saving, progress: 0.96, status: "Writing transcript…")
+                }
+                let transcriptSnapshots = try await episodeActor.decodeAndSetTranscript(
+                    for: episodeURL,
+                    vtt: vtt
+                )
                 let finishedAt = Date()
+                await MainActor.run {
+                    uiItem.setState(.saving, progress: 0.98, status: "Saving transcription history…")
+                }
                 await episodeActor.saveTranscriptionRecord(
                     for: snapshot,
                     localeIdentifier: transcriber.language.identifier(.bcp47),
                     startedAt: startedAt,
-                    finishedAt: finishedAt
+                    finishedAt: finishedAt,
+                    transcriptSnapshots: transcriptSnapshots
                 )
 
                 await MainActor.run {
                     uiItem.setState(.finished, progress: 1.0, status: "Finished")
+                }
+
+                // Generate chapters after the transcript has been committed. This keeps
+                // chapter enrichment from delaying the user's newly saved transcript.
+                Task(priority: .utility) {
+                    await episodeActor.finalizeTranscriptChapters(for: episodeURL)
                 }
                 await self.cleanUp(episodeURL: episodeURL)
             } catch is CancellationError {
@@ -166,10 +276,55 @@ actor TranscriptionManager {
         return uiItem
     }
 
-    func cancel(episodeURL: URL) {
+    func cancel(episodeURL: URL) async {
         tasks[episodeURL]?.cancel()
+        await transcriptionQueue.cancel(episodeURL)
         tasks[episodeURL] = nil
         taskOrigins[episodeURL] = nil
+    }
+
+    func clearTranscriptionState(for episodeURL: URL) async {
+        tasks[episodeURL]?.cancel()
+        await transcriptionQueue.cancel(episodeURL)
+        tasks[episodeURL] = nil
+        taskOrigins[episodeURL] = nil
+        items[episodeURL] = nil
+        episodeSnapshots[episodeURL] = nil
+    }
+
+    func queueEntries() async -> [TranscriptionQueueEntry] {
+        let snapshot = await transcriptionQueue.snapshot()
+        var entries: [TranscriptionQueueEntry] = []
+
+        if let active = snapshot.active,
+           let episode = episodeSnapshots[active],
+           tasks[active] != nil {
+            entries.append(
+                TranscriptionQueueEntry(
+                    episodeURL: active,
+                    episodeTitle: episode.episodeTitle,
+                    podcastTitle: episode.podcastTitle,
+                    state: .active
+                )
+            )
+        }
+
+        for (index, episodeURL) in snapshot.queued.enumerated() {
+            guard let episode = episodeSnapshots[episodeURL], tasks[episodeURL] != nil else { continue }
+            entries.append(
+                TranscriptionQueueEntry(
+                    episodeURL: episodeURL,
+                    episodeTitle: episode.episodeTitle,
+                    podcastTitle: episode.podcastTitle,
+                    state: .queued(position: index + 1)
+                )
+            )
+        }
+        return entries
+    }
+
+    func moveToFrontOfQueue(episodeURL: URL) async {
+        await transcriptionQueue.promote(episodeURL)
     }
 
     func cancelAutomaticTranscriptionsForBackground() async {
@@ -181,6 +336,7 @@ actor TranscriptionManager {
 
         for episodeURL in automaticEpisodeURLs {
             tasks[episodeURL]?.cancel()
+            await transcriptionQueue.cancel(episodeURL)
             if let item = items[episodeURL] {
                 await MainActor.run {
                     item.setState(.cancelled, status: "Deferred until app is active")

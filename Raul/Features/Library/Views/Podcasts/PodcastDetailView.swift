@@ -8,9 +8,11 @@
 import SwiftUI
 import SwiftData
 import RichText
+import ESADesignKit
 
 struct PodcastDetailView: View {
-    
+    private static let episodePageSize = 80
+
     enum EpisodeSortOption: String, CaseIterable, Identifiable {
         case newestFirst
         case oldestFirst
@@ -28,23 +30,10 @@ struct PodcastDetailView: View {
             }
         }
 
-        var comparator: (Episode, Episode) -> Bool {
-            switch self {
-            case .newestFirst:
-                return { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) }
-            case .oldestFirst:
-                return { ($0.publishDate ?? .distantFuture) < ($1.publishDate ?? .distantFuture) }
-            case .titleAZ:
-                return { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            case .titleZA:
-                return { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedDescending }
-            }
-        }
     }
 
     
     @Bindable var podcast: Podcast
-    @State private var backgroundUIImage: UIImage?
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
     @State private var refreshProgress: Double = 0
@@ -57,6 +46,10 @@ struct PodcastDetailView: View {
 
     @State private var showPodroll: Bool = false
     @State private var showDebugMetadata: Bool = false
+    @State private var predictedReleaseFrequencyLabel: String?
+#if DEBUG
+    @State private var predictedReleaseDate: Date?
+#endif
     @State private var liveNotificationMessage: String?
     @State private var hasAttemptedInitialFeedImport = false
     @AppStorage("EpisodeSortOption") private var sortOptionRawValue: String = EpisodeSortOption.newestFirst.rawValue
@@ -71,10 +64,9 @@ struct PodcastDetailView: View {
     @State private var searchInDescription = true
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
-    @State private var displayedEpisodeLimit = Self.episodePageSize
+    @State private var filteredEpisodeDisplayLimit = Self.episodePageSize
+    @State private var episodeFilterTask: Task<Void, Never>?
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
-
-    private static let episodePageSize = 40
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
         podcast.alternativeFeeds.filter { $0.url != podcast.feed }
@@ -92,12 +84,8 @@ struct PodcastDetailView: View {
         podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
     }
 
-    private var displayedEpisodes: ArraySlice<Episode> {
-        filteredEpisodes.prefix(displayedEpisodeLimit)
-    }
-
-    private var hasMoreFilteredEpisodes: Bool {
-        displayedEpisodeLimit < filteredEpisodes.count
+    private var visibleFilteredEpisodes: [Episode] {
+        Array(filteredEpisodes.prefix(filteredEpisodeDisplayLimit))
     }
 
     private var needsInitialFeedImport: Bool {
@@ -107,61 +95,14 @@ struct PodcastDetailView: View {
             && (podcast.episodes?.isEmpty ?? true)
     }
 
-    private var isFeedAbandoned: Bool {
-        podcast.metaData?.isFeedLikelyAbandoned == true
+#if DEBUG
+    private var displayedPredictedReleaseDate: Date? {
+        podcast.metaData?.nextPredictedReleaseDate ?? predictedReleaseDate
     }
+#endif
 
-    @ViewBuilder
     private var abandonedFeedCard: some View {
-        if isFeedAbandoned, let metadata = podcast.metaData {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Podcast feed abandoned", systemImage: "exclamationmark.triangle.fill")
-                    .font(.headline)
-
-                Text("The feed has been unreachable repeatedly for more than seven days.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                LabeledContent("Last visible") {
-                    Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                }
-
-                LabeledContent("Server response") {
-                    Text(metadata.feedFailureStatusDescription ?? "Unknown")
-                }
-
-                LabeledContent("First failed check") {
-                    Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-                }
-
-                LabeledContent("Latest failed check") {
-                    Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-                }
-
-                LabeledContent("Consecutive failures") {
-                    Text("\(metadata.consecutiveFeedFailureCount)")
-                        .monospacedDigit()
-                }
-
-                if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-            .font(.caption)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.secondary.opacity(0.12))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.secondary.opacity(0.3))
-            }
-            .padding(.top, 6)
-        }
+        PodcastAbandonedFeedCard(metadata: podcast.metaData)
     }
 
     private var currentLiveItem: PodcastLiveItem? {
@@ -210,7 +151,7 @@ struct PodcastDetailView: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(2)
                 Spacer()
-                Text("\(Int(refreshProgress * 100))%")
+                Text(refreshProgress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -236,18 +177,13 @@ struct PodcastDetailView: View {
     
   
     var body: some View {
-   
-        
-      
+            List {
 
-            
-            AnyView(List {
-                
-                
-                
+
+
                 Section{
                     VStack(alignment: .leading) {
-                        
+
                         HStack{
                             if let lastBuildDate = podcast.lastBuildDate {
                                 Text("Last updated: \(lastBuildDate.formatted(date: .numeric, time: .shortened))")
@@ -261,6 +197,23 @@ struct PodcastDetailView: View {
                                     .foregroundColor(.secondary)
                             }
                         }
+                        if let predictedReleaseFrequencyLabel {
+                            Label(
+                                "Release schedule: \(predictedReleaseFrequencyLabel)",
+                                systemImage: "calendar"
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        }
+#if DEBUG
+                        Text(
+                            displayedPredictedReleaseDate.map {
+                                "Next predicted release: \($0.formatted(date: .abbreviated, time: .shortened))"
+                            } ?? "Next predicted release: Unavailable"
+                        )
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+#endif
 
                         abandonedFeedCard
 
@@ -376,30 +329,7 @@ struct PodcastDetailView: View {
                             Text(copyright)
                                 .font(.caption)
                         }
-                        SocialView(socials: podcast.social)
-                            .padding()
-                        PeopleView(people: podcast.people)
-                            .padding()
-                        PodcastNamespaceMetadataView(
-                            optionalTags: podcast.optionalTags,
-                            title: "Podcast Metadata",
-                            hidesRenderableValueBlocks: true
-                        )
-                            .padding()
-                        if let desc = podcast.desc {
-#if os(iOS)
-                            RichText(html: desc)
-                                .linkColor(light: Color.secondary, dark: Color.secondary)
-                                .backgroundColor(.transparent)
-                                .padding()
-#else
-                            RichText(html: desc)
-                                .backgroundColor(.transparent)
-                                .padding()
-#endif
-                            
-                            
-                        }
+                        PodcastDetailMetadataSections(podcast: podcast)
 
                         Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {
                             Task {
@@ -481,7 +411,7 @@ struct PodcastDetailView: View {
                 }
                 
                 Section{
-                    ForEach(displayedEpisodes, id: \.id) { episode in
+                    ForEach(visibleFilteredEpisodes, id: \.persistentModelID) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
@@ -497,87 +427,74 @@ struct PodcastDetailView: View {
                                              leading: 0,
                                              bottom: 0,
                                              trailing: 0))
-                        .ignoresSafeArea()
-                        .onAppear {
+                        .task {
+                            await Task.yield()
+                            guard Task.isCancelled == false else { return }
                             loadMoreEpisodesIfNeeded(currentEpisode: episode)
                         }
-                        
-                        
                     }
                     .onDelete { indexSet in
                         Task {
                             for index in indexSet {
                                  let episodeID = filteredEpisodes[index].persistentModelID
                                     try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
-                                
+
                             }
                         }
                     }
-                    if hasMoreFilteredEpisodes {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .onAppear {
-                                loadMoreEpisodes()
-                            }
-                    }
                 }
                 .listRowSeparator(.hidden)
-            })
-            .background{
-                if let backgroundUIImage {
-                    Image(uiImage: backgroundUIImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
-                                        .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                                        
-                        .blur(radius: 20)
-                        .opacity(0.5)
-
-                    
-                } else {
-                    Color.accent.ignoresSafeArea()
-                }
             }
+            .coverHero(image: .url(podcast.imageURL), title: podcast.title)
+            .ESAFullBackground(image: podcast.imageURL)
 
             .listStyle(PlainListStyle())
             .padding(.top, 0)
             .searchable(text: $searchText)
             .task {
+                SystemPressureGate.shared.noteUserInteraction()
                 applyEpisodeFilters()
+                await updatePredictedReleaseInfo()
                 await refreshEpisodesIfNeeded()
-            }
-            .task(id: podcast.imageURL) {
-                await loadBackgroundImage()
+                await updatePredictedReleaseInfo()
             }
             .onChange(of: searchText) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 debounceEpisodeFilters()
             }
             .onChange(of: searchInTitle) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                filteredEpisodeDisplayLimit = Self.episodePageSize
+                applyEpisodeFilters()
             }
             .onChange(of: searchInAuthor) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                filteredEpisodeDisplayLimit = Self.episodePageSize
+                applyEpisodeFilters()
             }
             .onChange(of: searchInDescription) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                filteredEpisodeDisplayLimit = Self.episodePageSize
+                applyEpisodeFilters()
             }
             .onChange(of: searchInTranscript) { _, _ in
+                filteredEpisodeDisplayLimit = Self.episodePageSize
                 debounceEpisodeFilters()
             }
             .onChange(of: hidePlayedAndArchived) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                filteredEpisodeDisplayLimit = Self.episodePageSize
+                applyEpisodeFilters()
             }
             .onChange(of: sortOptionRawValue) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+                filteredEpisodeDisplayLimit = Self.episodePageSize
+                applyEpisodeFilters()
             }
-            .onChange(of: podcast.episodes?.count ?? 0) { _, _ in
-                applyEpisodeFilters(resetDisplayLimit: true)
+            .onChange(of: podcast.metaData?.feedUpdateCheckDate) { _, _ in
+                Task {
+                    await updatePredictedReleaseInfo()
+                }
             }
-            .navigationTitle(podcast.title)
+            .onDisappear {
+                episodeFilterTask?.cancel()
+            }
+      //      .navigationTitle(podcast.title)
             .navigationDestination(isPresented: $showPodroll) {
                 PodcastPodrollView(
                     podcastTitle: podcast.title,
@@ -672,80 +589,70 @@ struct PodcastDetailView: View {
 
     }
 
+    private func updatePredictedReleaseInfo() async {
+        let podcastID = podcast.persistentModelID
+        let predictor = SubscriptionManager(modelContainer: modelContext.container)
+        let releaseInfo = await predictor.predictedReleaseInfo(for: podcastID)
+        predictedReleaseFrequencyLabel = releaseInfo?.cadenceLabel
+#if DEBUG
+        predictedReleaseDate = releaseInfo?.releaseDate ?? podcast.metaData?.nextPredictedReleaseDate
+#endif
+    }
+
     private func debounceEpisodeFilters() {
-        Debounce.shared.perform {
-            applyEpisodeFilters(resetDisplayLimit: true)
+        Debounce.shared.perform(key: "PodcastDetailView.episodeFilters") {
+            applyEpisodeFilters()
         }
-    }
-
-    private func loadBackgroundImage() async {
-        guard let imageURL = podcast.imageURL else {
-            await MainActor.run {
-                backgroundUIImage = nil
-            }
-            return
-        }
-
-        let uiImage = await ImageLoaderAndCache.loadUIImage(from: imageURL)
-        await MainActor.run {
-            backgroundUIImage = uiImage
-        }
-    }
-
-    private func applyEpisodeFilters(resetDisplayLimit: Bool = false) {
-        let episodes = podcast.episodes ?? []
-        if resetDisplayLimit {
-            displayedEpisodeLimit = Self.episodePageSize
-        }
-
-        let visibleEpisodes: [Episode]
-        if hidePlayedAndArchived {
-            visibleEpisodes = episodes.filter { $0.maxPlayProgress < 0.95 }
-        } else {
-            visibleEpisodes = episodes
-        }
-
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else {
-            filteredEpisodes = visibleEpisodes.sorted(by: sortOption.comparator)
-            return
-        }
-
-        filteredEpisodes = visibleEpisodes
-            .filter { episode in
-                if searchInTitle, episode.title.localizedStandardContains(query) {
-                    return true
-                }
-                if searchInAuthor, let author = episode.author, author.localizedStandardContains(query) {
-                    return true
-                }
-                if searchInDescription, let desc = episode.desc, desc.localizedStandardContains(query) {
-                    return true
-                }
-                if searchInTranscript,
-                   let lines = episode.transcriptLines,
-                   lines.contains(where: { $0.text.localizedStandardContains(query) }) {
-                    return true
-                }
-
-                return false
-            }
-            .sorted(by: sortOption.comparator)
     }
 
     private func loadMoreEpisodesIfNeeded(currentEpisode: Episode) {
-        guard hasMoreFilteredEpisodes else { return }
-        guard displayedEpisodes.last?.persistentModelID == currentEpisode.persistentModelID else { return }
-        loadMoreEpisodes()
-    }
-
-    private func loadMoreEpisodes() {
-        displayedEpisodeLimit = min(
-            displayedEpisodeLimit + Self.episodePageSize,
+        guard filteredEpisodeDisplayLimit < filteredEpisodes.count else { return }
+        guard visibleFilteredEpisodes.last?.persistentModelID == currentEpisode.persistentModelID else { return }
+        filteredEpisodeDisplayLimit = min(
+            filteredEpisodeDisplayLimit + Self.episodePageSize,
             filteredEpisodes.count
         )
     }
-    
+
+    private func applyEpisodeFilters() {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let listSort: PodcastEpisodeListSort = switch sortOption {
+        case .newestFirst: .newestFirst
+        case .oldestFirst: .oldestFirst
+        case .titleAZ: .titleAZ
+        case .titleZA: .titleZA
+        }
+        let request = PodcastEpisodeFilterRequest(
+            query: query,
+            searchInTitle: searchInTitle,
+            searchInAuthor: searchInAuthor,
+            searchInDescription: searchInDescription,
+            searchInTranscript: searchInTranscript,
+            hidePlayedAndArchived: hidePlayedAndArchived,
+            sort: listSort
+        )
+        let podcastID = podcast.persistentModelID
+        let actor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
+
+        episodeFilterTask?.cancel()
+        episodeFilterTask = Task {
+            do {
+                let episodeIDs = try await actor.episodeIDs(
+                    podcastID: podcastID,
+                    request: request
+                )
+                guard Task.isCancelled == false else { return }
+                let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
+                    for: episodeIDs
+                )
+                filteredEpisodes = episodeIDs.compactMap { episodesByID[$0] }
+            } catch {
+                guard Task.isCancelled == false else { return }
+                filteredEpisodes = []
+            }
+        }
+    }
+
     private func refreshEpisodes() async {
         guard podcast.isSubscribed else {
             return
@@ -759,15 +666,54 @@ struct PodcastDetailView: View {
             do {
                 let actor = PodcastModelActor(modelContainer: modelContext.container)
                 
-                _ =  try await actor.updatePodcast(feed, force: true) { update in
+                let startedAt = Date()
+                let summary = try await actor.updatePodcastWithSummary(feed, force: true) { update in
                     await MainActor.run {
                         refreshProgress = update.fractionCompleted
                         refreshProgressMessage = update.message
                     }
                 }
+#if DEBUG
+                await RefreshHistoryStore.shared.record(
+                    RefreshHistoryEntry(
+                        startedAt: startedAt,
+                        finishedAt: Date(),
+                        trigger: .userInitiatedSingle,
+                        checkedPodcasts: [
+                            RefreshHistoryPodcastCheck(
+                                title: podcast.title,
+                                feedURL: feed,
+                                result: summary.didUpdateFeed
+                                    ? .refreshed(newEpisodeCount: summary.newEpisodeCount)
+                                    : .feedNotUpdated
+                            )
+                        ]
+                    )
+                )
+#endif
                 podcast.message = nil
+                await MainActor.run {
+                    filteredEpisodeDisplayLimit = Self.episodePageSize
+                    applyEpisodeFilters()
+                }
                 
             } catch {
+#if DEBUG
+                await RefreshHistoryStore.shared.record(
+                    RefreshHistoryEntry(
+                        startedAt: Date(),
+                        finishedAt: Date(),
+                        trigger: .userInitiatedSingle,
+                        checkedPodcasts: [
+                            RefreshHistoryPodcastCheck(
+                                title: podcast.title,
+                                feedURL: feed,
+                                result: .failed(error.localizedDescription)
+                            )
+                        ]
+                    )
+                )
+#endif
                 await MainActor.run {
                     let nsError = error as NSError
                     errorMessage = "Failed to refresh episodes: \(error.localizedDescription) (\(nsError.domain) \(nsError.code))"
@@ -866,6 +812,119 @@ struct PodcastDetailView: View {
         }
     }
 
+}
+
+private struct PodcastAbandonedFeedCard: View {
+    let metadata: PodcastMetaData?
+
+    var body: some View {
+        if let metadata,
+           let assessment = metadata.feedAbandonmentAssessment {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(
+                    assessment.title,
+                    systemImage: assessment.kind == .unavailableFeed
+                        ? "exclamationmark.triangle.fill"
+                        : "calendar.badge.exclamationmark"
+                )
+                    .font(.headline)
+
+                Text(assessment.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                LabeledContent("Last visible") {
+                    Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+                }
+
+                LabeledContent("Last checked") {
+                    Text(metadata.feedUpdateCheckDate?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
+                }
+
+                if let cadence = assessment.predictedCadenceLabel {
+                    LabeledContent("Predicted cadence") {
+                        Text(cadence)
+                    }
+                }
+
+                if let missedReleaseCount = assessment.missedReleaseCount {
+                    LabeledContent("Expected releases missed") {
+                        Text("\(missedReleaseCount)")
+                            .monospacedDigit()
+                    }
+                }
+
+                if assessment.kind == .unavailableFeed {
+                    LabeledContent("Server response") {
+                        Text(metadata.feedFailureStatusDescription ?? "Unknown")
+                    }
+
+                    LabeledContent("First failed check") {
+                        Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                    }
+
+                    LabeledContent("Latest failed check") {
+                        Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
+                    }
+
+                    LabeledContent("Consecutive failures") {
+                        Text("\(metadata.consecutiveFeedFailureCount)")
+                            .monospacedDigit()
+                    }
+                }
+
+                if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .font(.caption)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.secondary.opacity(0.12))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.3))
+            }
+            .padding(.top, 6)
+        }
+    }
+}
+
+// Heavy metadata block (socials, people, namespace tags, HTML description).
+// Extracted so it forms an observation boundary and shrinks the very large
+// PodcastDetailView body type, making re-renders far cheaper.
+private struct PodcastDetailMetadataSections: View {
+    let podcast: Podcast
+
+    var body: some View {
+        SocialView(socials: podcast.social)
+            .padding()
+        PeopleView(people: podcast.people)
+            .padding()
+        PodcastNamespaceMetadataView(
+            optionalTags: podcast.optionalTags,
+            title: "Podcast Metadata",
+            hidesRenderableValueBlocks: true
+        )
+            .padding()
+        if let desc = podcast.desc {
+#if os(iOS)
+            RichText(html: desc)
+                .linkColor(light: Color.secondary, dark: Color.secondary)
+                .backgroundColor(.transparent)
+                .padding()
+#else
+            RichText(html: desc)
+                .backgroundColor(.transparent)
+                .padding()
+#endif
+        }
+    }
 }
 
 private struct PodcastLiveItemControlsView: View {

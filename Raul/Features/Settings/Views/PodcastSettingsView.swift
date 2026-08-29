@@ -4,6 +4,7 @@ import SwiftData
 import UIKit
 #endif
 import BasicLogger
+import ESADesignKit
 
 private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiable {
     case playback
@@ -12,6 +13,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
     case appearance
     case integrations
     case dataAndStorage
+#if DEBUG
+    case refreshHistory
+#endif
     case helpAndAbout
 
     var id: Self { self }
@@ -24,6 +28,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .appearance: "Appearance"
         case .integrations: "Integrations"
         case .dataAndStorage: "Data & Storage"
+#if DEBUG
+        case .refreshHistory: "Refresh History"
+#endif
         case .helpAndAbout: "Help & About"
         }
     }
@@ -42,6 +49,10 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
             "Notifications, Shortcuts, and automations"
         case .dataAndStorage:
             "iCloud sync, sideloading, downloads, and maintenance"
+#if DEBUG
+        case .refreshHistory:
+            "Latest refreshes, triggers, and feed results"
+#endif
         case .helpAndAbout:
             "Guides, onboarding, version, and credits"
         }
@@ -55,6 +66,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .appearance: "paintbrush.fill"
         case .integrations: "puzzlepiece.extension.fill"
         case .dataAndStorage: "internaldrive.fill"
+#if DEBUG
+        case .refreshHistory: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+#endif
         case .helpAndAbout: "questionmark.circle.fill"
         }
     }
@@ -67,6 +81,9 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .appearance: .pink
         case .integrations: .indigo
         case .dataAndStorage: .green
+#if DEBUG
+        case .refreshHistory: .teal
+#endif
         case .helpAndAbout: .gray
         }
     }
@@ -79,12 +96,17 @@ struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
+#if os(macOS)
+    @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
+    private var isMacMenuBarPlayerEnabled = true
+#endif
 
     let podcastID: PersistentIdentifier?
     let embedInNavigationStack: Bool
     let destination: SettingsDestination
     let onOpenAllSettings: (() -> Void)?
 
+    @Bindable private var player = Player.shared
     @State private var useCustomSettings: Bool
     @State private var isApplyingSideloadingChange = false
     @State private var sideloadingAlertMessage: String?
@@ -144,7 +166,7 @@ struct PodcastSettingsView: View {
 
     private var podcast: Podcast? {
         guard let podcastID else { return nil }
-        return context.model(for: podcastID) as? Podcast
+        return context.existingModel(for: podcastID)
     }
 
     private var supportsAlternateAppIcons: Bool {
@@ -196,11 +218,17 @@ struct PodcastSettingsView: View {
     }
 
     private var globalSettingsCategories: [GlobalSettingsCategory] {
-#if os(macOS)
-        GlobalSettingsCategory.allCases.filter { $0 != .appearance }
-#else
         GlobalSettingsCategory.allCases
-#endif
+    }
+
+    private var currentPlaybackPodcastWithCustomSettings: Podcast? {
+        guard podcast == nil,
+              destination == .main,
+              let currentPodcast = player.currentEpisode?.podcast,
+              currentPodcast.settings?.isEnabled == true else {
+            return nil
+        }
+        return currentPodcast
     }
 
     private var viewIdentity: String {
@@ -214,8 +242,7 @@ struct PodcastSettingsView: View {
     var body: some View {
         Group {
             if embedInNavigationStack {
-#if os(macOS)
-                if podcast == nil && destination == .main {
+                if PlatformSupport.usesDesktopLayout && podcast == nil && destination == .main {
                     settingsContent
                         .id(viewIdentity)
                 } else {
@@ -224,12 +251,6 @@ struct PodcastSettingsView: View {
                             .id(viewIdentity)
                     }
                 }
-#else
-                NavigationStack {
-                    settingsContent
-                        .id(viewIdentity)
-                }
-#endif
             } else {
                 settingsContent
                     .id(viewIdentity)
@@ -350,6 +371,20 @@ struct PodcastSettingsView: View {
         .platformInlineNavigationTitle()
     }
 
+    private func podcastSpecificSettingsShortcutSection(podcast: Podcast) -> some View {
+        Section {
+            NavigationLink {
+                PodcastSpecificSettingsScreen(podcastID: podcast.persistentModelID)
+            } label: {
+                PodcastSettingsNavigationRow(podcast: podcast)
+            }
+        } header: {
+            Text("Podcast Settings")
+        } footer: {
+            Text("This show uses podcast-specific settings. Open them to review the full set of overrides.")
+        }
+    }
+
     @ViewBuilder
     private func focusedPlaybackSection(settings: PodcastSettings) -> some View {
         Section("Playback") {
@@ -387,51 +422,56 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func globalSettingsRoot(
         effectiveSettings: PodcastSettings,
         globalSettings: PodcastSettings
     ) -> some View {
-#if os(macOS)
-        NavigationSplitView {
-            List(globalSettingsCategories, selection: $selectedGlobalCategory) { category in
-                Label(category.title, systemImage: category.systemImage)
-                    .tag(category)
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Settings")
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
-        } detail: {
-            NavigationStack {
-                globalCategoryList(
-                    selectedGlobalCategory ?? .playback,
-                    effectiveSettings: effectiveSettings,
-                    globalSettings: globalSettings
-                )
-            }
-        }
-#else
-        List {
-            Section {
-                ForEach(globalSettingsCategories) { category in
-                    NavigationLink(value: category) {
-                        GlobalSettingsCategoryRow(category: category)
+        Group {
+            if PlatformSupport.usesDesktopLayout {
+                NavigationSplitView {
+                    List(globalSettingsCategories, selection: $selectedGlobalCategory) { category in
+                        Label(category.title, systemImage: category.systemImage)
+                            .tag(category)
+                    }
+                    .listStyle(.sidebar)
+                    .navigationTitle("Settings")
+                    .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
+                } detail: {
+                    NavigationStack {
+                        globalCategoryList(
+                            selectedGlobalCategory ?? .playback,
+                            effectiveSettings: effectiveSettings,
+                            globalSettings: globalSettings
+                        )
                     }
                 }
-            } footer: {
-                Text("Podcast-specific choices can be managed from Podcasts.")
+            } else {
+                List {
+                    if let currentPlaybackPodcastWithCustomSettings {
+                        podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
+                    }
+
+                    Section {
+                        ForEach(globalSettingsCategories) { category in
+                            NavigationLink(value: category) {
+                                GlobalSettingsCategoryRow(category: category)
+                            }
+                        }
+                    } footer: {
+                        Text("Podcast-specific choices can be managed from Podcasts.")
+                    }
+                }
+                .navigationTitle("Settings")
+                .platformInlineNavigationTitle()
+                .navigationDestination(for: GlobalSettingsCategory.self) { category in
+                    globalCategoryList(
+                        category,
+                        effectiveSettings: effectiveSettings,
+                        globalSettings: globalSettings
+                    )
+                }
             }
         }
-        .navigationTitle("Settings")
-        .platformInlineNavigationTitle()
-        .navigationDestination(for: GlobalSettingsCategory.self) { category in
-            globalCategoryList(
-                category,
-                effectiveSettings: effectiveSettings,
-                globalSettings: globalSettings
-            )
-        }
-#endif
     }
 
     private func podcastSettingsList(settings: PodcastSettings) -> some View {
@@ -456,6 +496,11 @@ struct PodcastSettingsView: View {
         globalSettings: PodcastSettings
     ) -> some View {
         Form {
+            if PlatformSupport.usesDesktopLayout,
+               let currentPlaybackPodcastWithCustomSettings {
+                podcastSpecificSettingsShortcutSection(podcast: currentPlaybackPodcastWithCustomSettings)
+            }
+
             globalCategorySections(
                 category,
                 effectiveSettings: effectiveSettings,
@@ -490,6 +535,13 @@ struct PodcastSettingsView: View {
         case .dataAndStorage:
             sideloadingSection
             maintenanceSection
+#if DEBUG
+            developmentSection
+#endif
+#if DEBUG
+        case .refreshHistory:
+            refreshHistorySection
+#endif
         case .helpAndAbout:
             helpSection
 #if DEBUG
@@ -559,10 +611,9 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var appearanceSection: some View {
 #if canImport(UIKit)
-        Section("Appearance") {
+        return Section("Appearance") {
             NavigationLink {
                 AppIconSelectionView(
                     selectedAppIconID: $selectedAppIconID,
@@ -584,12 +635,41 @@ struct PodcastSettingsView: View {
         .task {
             selectedAppIconID = AlternateAppIcon.currentIdentifier
         }
+#elseif os(macOS)
+        return Group {
+            if MacMenuBarPlayerSupport.isAvailable {
+                Section("Menu Bar Player") {
+                    Toggle(
+                        isOn: $isMacMenuBarPlayerEnabled
+                    ) {
+                        SettingsControlLabel(
+                            title: "Show menu bar player",
+                            detail: "Keep playback controls and the selected playlist available from the macOS menu bar."
+                        )
+                    }
+
+                    Text("The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                SettingsControlLabel(
+                    title: "Menu bar player unavailable",
+                    detail: "The menu bar player is temporarily disabled on this macOS version to prevent a launch loop."
+                )
+            }
+        }
+#elseif targetEnvironment(macCatalyst)
+        return Section("Desktop Controls") {
+            Text("On Mac Catalyst, Up Next exposes the desktop command menus and separate player/settings windows, but Apple doesn’t provide the macOS-only menu bar extra scene API here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
 #else
-        EmptyView()
+        return EmptyView()
 #endif
     }
 
-    @ViewBuilder
     private func appliedBehaviorSection(effectiveSettings: PodcastSettings, globalSettings: PodcastSettings) -> some View {
         Section("Applied Right Now") {
             SettingsBehaviorRow(
@@ -711,7 +791,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func appControlsSection(settings: PodcastSettings) -> some View {
         Section("Player Controls") {
             Toggle(
@@ -763,7 +842,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func transcriptionSection(settings: PodcastSettings) -> some View {
         Section("Transcriptions") {
             Toggle(
@@ -799,9 +877,6 @@ struct PodcastSettingsView: View {
                     systemImage: "waveform.and.mic"
                 )
             }
-            .simultaneousGesture(TapGesture().onEnded {
-                CrashBreadcrumbs.shared.record("open_transcription_settings")
-            })
 
             Text("When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.")
                 .font(.caption)
@@ -809,7 +884,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func liveNotificationsSection(settings: PodcastSettings, isGlobal: Bool) -> some View {
         Section("Live Notifications") {
             Toggle(
@@ -835,7 +909,6 @@ struct PodcastSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func podcastLiveNotificationsSection(settings: PodcastSettings) -> some View {
         Section("Live Notifications") {
             if podcastSupportsLiveItems {
@@ -1373,6 +1446,67 @@ struct PodcastSettingsView: View {
         }
     }
 
+#if DEBUG
+    private var developmentSection: some View {
+        Section("Development") {
+            NavigationLink {
+                DevelopmentSettingsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Database Development",
+                    summary: "Store selection and CloudKit routing",
+                    detail: "Choose legacy-only or split-store development and configure CloudKit independently for each synchronized store.",
+                    systemImage: "wrench.and.screwdriver"
+                )
+            }
+        }
+    }
+#endif
+
+#if DEBUG
+    private var refreshHistorySection: some View {
+        Section("Development") {
+            NavigationLink {
+                RefreshHistorySettingsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Refresh History",
+                    summary: "Latest refreshes and outcomes",
+                    detail: "Inspect recent refresh runs, what triggered them, which podcasts were checked, and how each feed finished.",
+                    systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+                )
+            }
+            
+                NavigationLink {
+                    PredictedRefreshQueueSettingsView()
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "calendar.badge.clock")
+                            .foregroundStyle(.accent)
+                            .frame(width: 24, height: 24)
+                            .padding(.top, 2)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Next Predicted Refreshes")
+                                .foregroundStyle(.primary)
+
+                            Text("Next \(BackgroundTaskConfiguration.predictedReleaseRefreshPodcastLimit) podcasts")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                            Text("Sorted by predicted release time, with the submitted background task marked.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        
+    }
+#endif
+
     private var helpSection: some View {
         Section("Help") {
             Button {
@@ -1460,8 +1594,10 @@ struct PodcastSettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            CreatedByView()
-                .frame(maxWidth: .infinity)
+            ESADesignKit.CreatedByView(
+                gitURL: URL(string: "https://github.com/holgerkrupp/PodcastClient")
+            )
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -1527,6 +1663,7 @@ struct PodcastSettingsView: View {
         } else {
             disableCustomSettings(for: podcast, in: context)
         }
+        publishPortableSettings()
         markAutoDownloadPolicyReconciliationPending(trigger: "scope-toggle")
     }
 
@@ -1536,6 +1673,7 @@ struct PodcastSettingsView: View {
 
     private func saveAndNotify(autoDownloadPolicyChanged: Bool) {
         context.saveIfNeeded()
+        publishPortableSettings()
         if let podcastFeed = podcast?.feed {
             BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=podcast feed=\(podcastFeed.absoluteString)")
         } else {
@@ -1544,6 +1682,22 @@ struct PodcastSettingsView: View {
         postSettingsDidChange()
         if autoDownloadPolicyChanged {
             markAutoDownloadPolicyReconciliationPending(trigger: "settings-change")
+        }
+    }
+
+    private func publishPortableSettings() {
+        let settings = podcast?.settings ?? globalSettings
+        guard let settings,
+              let userStateContainer = ModelContainerManager.shared
+                  .preparedUserStateContainer else { return }
+        let snapshot = PortablePodcastPreferenceSnapshot.make(
+            settings: settings,
+            feedURL: podcast?.feed
+        )
+        Task {
+            await StoreSplitPreferenceSyncWriter(
+                modelContainer: userStateContainer
+            ).upsert(snapshot)
         }
     }
 
@@ -1978,6 +2132,38 @@ private struct SettingsNavigationRow: View {
     }
 }
 
+private struct PodcastSettingsNavigationRow: View {
+    let podcast: Podcast
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            CoverImageView(podcast: podcast)
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("Podcast-Specific Settings")
+                        .foregroundStyle(.primary)
+
+                    SettingsSourceBadge(source: .podcast)
+                }
+
+                Text(podcast.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+
+                Text("Open this podcast's full settings for queue, downloads, episode handling, and chapter rules.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 private struct GlobalSettingsCategoryRow: View {
     let category: GlobalSettingsCategory
 
@@ -2008,7 +2194,7 @@ struct SettingsHelpView: View {
         List {
             Section("Up Next Basics") {
                 Text("Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"")
-                Text("Inbox is your triage area for fresh episodes. Move important ones into Up Next or archive what you do not want to keep visible.")
+                Text("Inbox is your triage area for fresh episodes. Adding an episode to a playlist removes it from Inbox; removing it from a playlist does not return it.")
                 Text("When an episode finishes, continuous playback can automatically start the next item from Up Next.")
             }
 
@@ -2215,7 +2401,7 @@ private struct ChapterRuleSettingsDetailView: View {
     let onChange: () -> Void
 
     private var settings: PodcastSettings? {
-        context.model(for: settingsID) as? PodcastSettings
+        context.existingModel(for: settingsID)
     }
 
     var body: some View {

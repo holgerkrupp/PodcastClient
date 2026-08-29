@@ -214,10 +214,7 @@ struct PodcastEpisodeShareImporter {
             episode.metaData = metadata
         }
 
-        episode.metaData?.isInbox = true
-        episode.metaData?.isArchived = false
-        episode.metaData?.status = .inbox
-        episode.metaData?.archivedAt = nil
+        episode.metaData?.setInboxMembership(true)
         episode.metaData?.systemSuppressionReason = nil
     }
 

@@ -8,16 +8,20 @@
 import SwiftUI
 
 extension View {
-    @ViewBuilder
     func platformPlayerAccessory() -> some View {
 #if os(iOS)
-        self
+        return self
             .tabBarMinimizeBehavior(.automatic)
             .tabViewBottomAccessory {
                 PlayerTabBarView()
+                    // The iPad regular-width accessory can propose the full
+                    // detail height. Keep the mini player intrinsically compact
+                    // instead of allowing its progress background to fill it.
+                    .frame(height: 48)
+                    .clipped()
             }
 #else
-        VStack(spacing: 0) {
+        return VStack(spacing: 0) {
             self
             Divider()
             PlayerTabBarView()
@@ -30,6 +34,7 @@ extension View {
 struct PlayerTabBarView: View {
 
     @Bindable private var player = Player.shared
+    @Environment(\.openPlayer) private var openPlayer
     
     
     
@@ -100,11 +105,13 @@ struct PlayerTabBarView: View {
             .accessibilityHint("Double tap anywhere on the mini player to open full player controls")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: Text("Open full player")) {
-                player.isPlayerSheetPresented = true
+                openPlayer()
             }
             .onTapGesture {
-                player.isPlayerSheetPresented = true
+                openPlayer()
             }
+            .frame(height: 48)
+            .clipped()
         }
     }
 }

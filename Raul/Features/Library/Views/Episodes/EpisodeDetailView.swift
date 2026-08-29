@@ -7,6 +7,7 @@
 
 import SwiftUI
 import RichText
+import ESADesignKit
 
 private struct IdentifiableURL: Identifiable, Equatable {
     let url: URL
@@ -20,25 +21,26 @@ struct EpisodeDetailView: View {
 
     @Bindable var episode: Episode
     @Bindable private var player = Player.shared
-    @StateObject private var backgroundImageLoader: ImageLoaderAndCache
     @State private var shareURL: IdentifiableURL?
 
     @State private var errorMessage: String? = nil
     @State private var liveTranscriptionItem: TranscriptionItem?
+    @State private var transcriptionQueueEntries: [TranscriptionQueueEntry] = []
     @State private var isLoadingTranscript: Bool = false
     @State private var isStartingTranscription: Bool = false
     @State private var isGeneratingTranscriptChapters: Bool = false
     @State private var chapterGenerationMessage: String?
     @State private var showTranscriptSheet: Bool = false
+#if DEBUG
+    @State private var isDeletingTranscript = false
+    @State private var showDeleteTranscriptConfirmation = false
+#endif
     @ScaledMetric(relativeTo: .title2) private var podcastCardWidth: CGFloat = 300
-    @ScaledMetric(relativeTo: .title2) private var artworkSize: CGFloat = 300
 
 
     
     init(episode: Episode) {
         self._episode = Bindable(wrappedValue: episode)
-        let imageURL = episode.imageURL ?? episode.podcast?.imageURL
-        _backgroundImageLoader = StateObject(wrappedValue: ImageLoaderAndCache(imageURL: imageURL ?? URL(string: "about:blank")!))
     }
     
     var body: some View {
@@ -48,34 +50,7 @@ struct EpisodeDetailView: View {
         let activeTranscriptionItem = liveTranscriptionItem ?? episode.transcriptionItem
         
             ZStack {
-
-
-                AnyView(ScrollView {
-                    if let podcast = episode.podcast {
-                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                            HStack {
-                                CoverImageView(episode: episode)
-                                    .frame(width: 50, height: 50)
-                                Text(podcast.title)
-                                    .font(.title2)
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        .padding()
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(maxWidth: podcastCardWidth)
-                    } else if episode.source == .sideLoaded {
-                        Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
-                            .font(.title2.weight(.semibold))
-                            .padding()
-                            .frame(maxWidth: podcastCardWidth, alignment: .leading)
-                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                    }
-
-                    CoverImageView(episode: episode)
-                        .frame(width: artworkSize, height: artworkSize)
-                        .accessibilityHidden(true)
-                  
+                ScrollView {
                     EpisodeProgressView(episode: episode)
                         .padding()
                         
@@ -163,7 +138,17 @@ struct EpisodeDetailView: View {
                                 .accessibilityHint("Opens episode captions if available")
                                 .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
                             } else if let item = activeTranscriptionItem, item.isTranscribing || isStartingTranscription {
-                                TranscriptionProgressView(item: item)
+                                TranscriptionProgressView(
+                                    item: item,
+                                    queueEntry: transcriptionQueueEntries.first { $0.episodeURL == item.episodeURL },
+                                    activeEpisodeTitle: transcriptionQueueEntries.first {
+                                        if case .active = $0.state { return true }
+                                        return false
+                                    }?.episodeTitle,
+                                    moveToNext: {
+                                        Task { await moveTranscriptionToNext(for: item.episodeURL) }
+                                    }
+                                )
                                     .padding()
                             } else if let url = episode.url {
                                 Button(action: {
@@ -204,6 +189,22 @@ struct EpisodeDetailView: View {
                             .padding(.vertical, 8)
                             .disabled(isGeneratingTranscriptChapters || canGenerateTranscriptChapters == false)
                             
+                        }
+
+                        if hasLoadedTranscript {
+                            Button(role: .destructive) {
+                                showDeleteTranscriptConfirmation = true
+                            } label: {
+                                Label(
+                                    isDeletingTranscript ? "Deleting…" : "Delete Transcript",
+                                    systemImage: "trash"
+                                )
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .disabled(isDeletingTranscript)
+                            .accessibilityHint("Deletes this episode's transcript so it can be generated again")
                         }
 
                             Spacer()
@@ -252,44 +253,35 @@ struct EpisodeDetailView: View {
                         }
                     }
                     .padding()
-                    
-                    SocialView(socials: episode.social)
-                        
-                    PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
-                       
-                    PodcastNamespaceMetadataView(
-                        optionalTags: episode.optionalTags,
-                        title: "Episode Metadata",
-                        hidesRenderableValueBlocks: true
-                    )
-                        
-                    
-#if os(iOS)
-                    RichText(html: episode.content ?? episode.desc ?? "")
-                            .linkColor(light: Color.secondary, dark: Color.secondary)
-                            .backgroundColor(.transparent)
+                    if let podcast = episode.podcast {
+                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                            
+                            PodcastRowView(podcast: podcast)
+                            /*
+                            HStack {
+                                CoverImageView(episode: episode)
+                                    .frame(width: 50, height: 50)
+                                Text(podcast.title)
+                                    .font(.title2)
+                                    .foregroundColor(.primary)
+                            }
+                             */
+                        }
+                     //   .padding()
+                     //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                        .frame(maxWidth: .infinity)
+                    } else if episode.source == .sideLoaded {
+                        Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
+                            .font(.title2.weight(.semibold))
                             .padding()
-#else
-                    RichText(html: episode.content ?? episode.desc ?? "")
-                            .backgroundColor(.transparent)
-                            .padding()
-#endif
-                    
-                    if episode.hasDisplayableChaptersOrSoundbites {
-                        ChapterListView(episode: episode)
+                            .frame(maxWidth: podcastCardWidth, alignment: .leading)
+                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
                     }
-                })
+                    EpisodeDetailMetadataSections(episode: episode)
+                }
+                .coverHero(image: .url(episode.imageURL ?? episode.podcast?.imageURL), title: episode.title)
             }
-            .background{
-                CoverImageView(episode: episode)
-                    .aspectRatio(1, contentMode: .fill)
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity) // Ensure it takes up all available space
-                                    .ignoresSafeArea(.all) // Crucial: extends the image behind safe areas (like under the status bar)
-                                    
-                    .blur(radius: 100)
-                    .opacity(0.5)
-            }
+            .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
             .sheet(item: $shareURL) { identifiable in
                 ShareLink(item: identifiable.url) { Text("Share Episode") }
             }
@@ -310,6 +302,20 @@ struct EpisodeDetailView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+#if DEBUG
+            .confirmationDialog(
+                "Delete this transcript?",
+                isPresented: $showDeleteTranscriptConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Transcript", role: .destructive) {
+                    Task { await deleteTranscript() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the transcript and its transcription history so the episode can be transcribed again.")
+            }
+#endif
             .sheet(isPresented: $showTranscriptSheet) {
                 NavigationStack {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
@@ -322,7 +328,15 @@ struct EpisodeDetailView: View {
                 }
             }
             .task(id: episode.url) {
+                SystemPressureGate.shared.noteUserInteraction()
                 liveTranscriptionItem = await currentTranscriptionItem()
+            }
+            .task(id: activeTranscriptionItem?.id) {
+                repeat {
+                    await refreshTranscriptionQueue()
+                    guard activeTranscriptionItem?.isTranscribing == true else { break }
+                    try? await Task.sleep(for: .seconds(1))
+                } while Task.isCancelled == false
             }
             .onChange(of: activeTranscriptionItem?.state) {
                 if case .finished = activeTranscriptionItem?.state {
@@ -330,23 +344,12 @@ struct EpisodeDetailView: View {
                 }
             }
         
-        .navigationTitle(episode.title)
+        //.navigationTitle(episode.title)
         .platformInlineNavigationTitle()
     }
 
     private var canGenerateTranscriptChapters: Bool {
         episode.transcriptLines?.isEmpty == false
-    }
-
-    private var fallbackAuthor: String? {
-        guard episode.people.isEmpty else { return nil }
-        guard let author = episode.author?.trimmingCharacters(in: .whitespacesAndNewlines),
-              author.isEmpty == false,
-              author != episode.podcast?.author
-        else {
-            return nil
-        }
-        return author
     }
 
     private var isCurrentEpisode: Bool {
@@ -558,6 +561,88 @@ struct EpisodeDetailView: View {
         guard let episodeURL = episode.url else { return nil }
         return await TranscriptionManager.shared.item(for: episodeURL)
     }
+
+    @MainActor
+    private func refreshTranscriptionQueue() async {
+        transcriptionQueueEntries = await TranscriptionManager.shared.queueEntries()
+    }
+
+    @MainActor
+    private func moveTranscriptionToNext(for episodeURL: URL) async {
+        await TranscriptionManager.shared.moveToFrontOfQueue(episodeURL: episodeURL)
+        await refreshTranscriptionQueue()
+    }
+
+#if DEBUG
+    @MainActor
+    private func deleteTranscript() async {
+        guard isDeletingTranscript == false, let episodeURL = episode.url else { return }
+        isDeletingTranscript = true
+        errorMessage = nil
+        defer { isDeletingTranscript = false }
+
+        do {
+            try await EpisodeActor(modelContainer: context.container)
+                .deleteTranscript(for: episodeURL)
+            // The actor deletes through its own ModelContext. Clear this view's
+            // relationship immediately instead of waiting for cross-context merging.
+            episode.transcriptLines = nil
+            episode.refresh.toggle()
+            context.saveIfNeeded()
+            liveTranscriptionItem = nil
+            showTranscriptSheet = false
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+#endif
+}
+
+// Trailing metadata block (socials, people, namespace tags, description, chapters).
+// Extracted into its own view so it forms an observation boundary: it only
+// re-evaluates when the metadata it reads changes, not on every playback-position
+// or import-driven update to the episode. Keeping it small also shrinks the
+// EpisodeDetailView body type, which is far cheaper for SwiftUI to copy/diff.
+private struct EpisodeDetailMetadataSections: View {
+    let episode: Episode
+
+    private var fallbackAuthor: String? {
+        guard episode.people.isEmpty else { return nil }
+        guard let author = episode.author?.trimmingCharacters(in: .whitespacesAndNewlines),
+              author.isEmpty == false,
+              author != episode.podcast?.author
+        else {
+            return nil
+        }
+        return author
+    }
+
+    var body: some View {
+        SocialView(socials: episode.social)
+
+        PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
+
+        PodcastNamespaceMetadataView(
+            optionalTags: episode.optionalTags,
+            title: "Episode Metadata",
+            hidesRenderableValueBlocks: true
+        )
+
+#if os(iOS)
+        RichText(html: episode.content ?? episode.desc ?? "")
+                .linkColor(light: Color.secondary, dark: Color.secondary)
+                .backgroundColor(.transparent)
+                .padding()
+#else
+        RichText(html: episode.content ?? episode.desc ?? "")
+                .backgroundColor(.transparent)
+                .padding()
+#endif
+
+        if episode.hasDisplayableChaptersOrSoundbites {
+            ChapterListView(episode: episode)
+        }
+    }
 }
 
 // A compact progress/status view that fits where the button sits.
@@ -566,6 +651,9 @@ private struct TranscriptionProgressView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var progressCardWidth: CGFloat = 200
     let item: TranscriptionItem
+    let queueEntry: TranscriptionQueueEntry?
+    let activeEpisodeTitle: String?
+    let moveToNext: () -> Void
     
     var body: some View {
         HStack(spacing: 10) {
@@ -607,6 +695,22 @@ private struct TranscriptionProgressView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if case let .queued(position)? = queueEntry?.state {
+                    if let activeEpisodeTitle {
+                        Text("Currently transcribing: \(activeEpisodeTitle)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    if position > 1 {
+                        Button("Move to Next", action: moveToNext)
+                            .font(.caption.weight(.semibold))
+                    } else {
+                        Text("Next in queue")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.accent)
+                    }
+                }
             }
         }
         .frame(width: progressCardWidth, alignment: .leading)

@@ -135,6 +135,8 @@ final class PlaySession: Identifiable {
     // Explicit inverse relationship is required for proper syncing.
     @Relationship(inverse: \Episode.playSessions) var episode: Episode?
     var podcastName: String?
+    var sourceDeviceID: String?
+    var sourceDeviceName: String?
     var deviceModel: String?
     var osVersion: String?
     var appVersion: String?
@@ -152,6 +154,8 @@ final class PlaySession: Identifiable {
     init(
         id: UUID? = nil,
         episode: Episode? = nil,
+        sourceDeviceID: String? = nil,
+        sourceDeviceName: String? = nil,
         deviceModel: String? = nil,
         osVersion: String? = nil,
         appVersion: String? = nil,
@@ -165,6 +169,8 @@ final class PlaySession: Identifiable {
     ) {
         self.id = id
         self.episode = episode
+        self.sourceDeviceID = sourceDeviceID
+        self.sourceDeviceName = sourceDeviceName
         self.deviceModel = deviceModel
         self.osVersion = osVersion
         self.appVersion = appVersion
@@ -186,6 +192,10 @@ actor PlaySessionTrackerActor {
     private let playbackRateSavingsRepairKey = "playbackRateSavingsRepairVersion"
     private let playbackRateSavingsRepairVersion = 2
     private var currentSession: PlaySession?
+    private var cachedListeningHistoryWriter: StoreSplitListeningHistorySyncWriter?
+    private var cachedListeningHistoryWriterStoreID: ObjectIdentifier?
+    private var cachedLocalAnalyticsWriter: StoreSplitLocalAnalyticsWriter?
+    private var cachedLocalAnalyticsWriterStoreID: ObjectIdentifier?
 
     private func fetchEpisode(url episodeURL: URL) -> Episode? {
         let descriptor = FetchDescriptor<Episode>(
@@ -196,7 +206,7 @@ actor PlaySessionTrackerActor {
 
     /// Call this after initialization to kick off recovery.
     func startRecovery() async {
-        recoverIncompleteSessionIfNeeded()
+        await recoverIncompleteSessionIfNeeded()
         backfillListeningStatsIfNeeded()
         backfillSummariesIfNeeded()
         pruneOldSessionsIfNeeded()
@@ -209,19 +219,22 @@ actor PlaySessionTrackerActor {
         let now = Date()
         let deviceModel = await getDeviceModel()
         let osVersion = await getOSVersion()
+        let deviceIdentity = ListeningDeviceIdentity.current()
 
         if let session = currentSession, session.episode?.url == episodeURL {
             // Continue existing session; maybe add new rate segment if rate changed
             if let activeSegment = activeRateSegment(in: session), activeSegment.rate != rate {
                 endCurrentRateSegment(at: now, position: position)
                 addRateSegment(rate: rate, startTime: now, startPosition: position)
+                saveSession()
+                await persistLocalAnalytics(session)
             }
             return
         }
 
         // End previous session if different episode
         if (currentSession != nil) {
-            endSession(at: position, appTerminated: false)
+            await endSession(at: position, appTerminated: false)
         }
 
         // Start new session
@@ -229,6 +242,8 @@ actor PlaySessionTrackerActor {
         currentSession = PlaySession(
             id: id,
             episode: episode,
+            sourceDeviceID: deviceIdentity.id,
+            sourceDeviceName: deviceIdentity.displayName,
             deviceModel: deviceModel,
             osVersion: osVersion,
             appVersion: appVersion,
@@ -239,11 +254,14 @@ actor PlaySessionTrackerActor {
             segments: [RateSegment(rate: rate, startTime: now, startPosition: position)],
             endedCleanly: false
         )
-         saveSession()
+        saveSession()
+        if let currentSession {
+            await persistLocalAnalytics(currentSession)
+        }
     }
 
     func pauseSession(at position: Double) async {
-        endSession(at: position, appTerminated: false)
+        await endSession(at: position, appTerminated: false)
     }
 
     func handlePlaybackRateChange(to rate: Float, at position: Double) async {
@@ -252,7 +270,8 @@ actor PlaySessionTrackerActor {
         if let activeSegment = activeRateSegment(in: session), activeSegment.rate != rate {
             endCurrentRateSegment(at: now, position: position)
             addRateSegment(rate: rate, startTime: now, startPosition: position)
-             saveSession()
+            saveSession()
+            await persistLocalAnalytics(session)
         }
     }
 
@@ -266,9 +285,10 @@ actor PlaySessionTrackerActor {
         session.silenceGapTimeSavedSeconds = (session.silenceGapTimeSavedSeconds ?? 0) + seconds
         currentSession = session
         modelContext.saveIfNeeded()
+        await persistLocalAnalytics(session)
     }
 
-    private func endSession(at position: Double, appTerminated: Bool) {
+    private func endSession(at position: Double, appTerminated: Bool) async {
         guard let session = currentSession else { return }
         let now = Date()
         session.endTime = now
@@ -282,6 +302,124 @@ actor PlaySessionTrackerActor {
         rebuildSummaries(forHourStarts: touchedHours, podcastFeed: session.episode?.podcast?.feed, podcastName: session.podcastName)
         pruneOldSessionsIfNeeded()
         saveSession()
+        await persistLocalAnalytics(session)
+        await publishListeningHistory(session)
+    }
+
+    private func publishListeningHistory(_ session: PlaySession) async {
+        guard let episode = session.episode,
+              let startedAt = session.startTime,
+              let endedAt = session.endTime,
+              endedAt > startedAt else {
+            return
+        }
+        let id = ListeningHistoryIdentity.make(
+            feedURL: episode.stableEpisodeIdentity.feedURL,
+            episodeID: episode.stableEpisodeIdentity.episodeID,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            startPosition: session.startPosition ?? 0,
+            endPosition: session.endPosition ?? 0
+        )
+        let deviceIdentity = ListeningDeviceIdentity.current()
+        let snapshot = StoreSplitListeningHistorySnapshot(
+            id: id,
+            identity: episode.stableEpisodeIdentity,
+            podcastName: session.podcastName ?? episode.displayPodcastTitle ?? "Unknown Podcast",
+            episodeTitle: episode.title,
+            sourceDeviceID: session.sourceDeviceID ?? deviceIdentity.id,
+            sourceDeviceName: session.sourceDeviceName ?? deviceIdentity.displayName,
+            deviceModel: session.deviceModel,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            startPosition: session.startPosition ?? 0,
+            endPosition: session.endPosition ?? 0,
+            listenedSeconds: endedAt.timeIntervalSince(startedAt),
+            silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+            playbackRateTimeSavedSeconds: playbackRateTimeSaved(for: session),
+            endedCleanly: session.endedCleanly == true
+        )
+
+        guard let writer = await listeningHistoryWriter() else { return }
+        await writer.upsert(snapshot)
+    }
+
+    private func listeningHistoryWriter() async -> StoreSplitListeningHistorySyncWriter? {
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else {
+            return nil
+        }
+
+        let storeID = ObjectIdentifier(userStateContainer)
+        if let cachedListeningHistoryWriter,
+           cachedListeningHistoryWriterStoreID == storeID {
+            return cachedListeningHistoryWriter
+        }
+
+        let writer = StoreSplitListeningHistorySyncWriter(
+            modelContainer: userStateContainer
+        )
+        cachedListeningHistoryWriter = writer
+        cachedListeningHistoryWriterStoreID = storeID
+        return writer
+    }
+
+    private func persistLocalAnalytics(_ session: PlaySession) async {
+        guard let id = session.id,
+              let episode = session.episode,
+              let startedAt = session.startTime else { return }
+        let device = ListeningDeviceIdentity.current()
+        let snapshot = StoreSplitLocalAnalyticsSessionSnapshot(
+            sessionID: id.uuidString,
+            identity: episode.stableEpisodeIdentity,
+            podcastName: session.podcastName ?? episode.displayPodcastTitle,
+            episodeTitle: episode.title,
+            sourceDeviceID: session.sourceDeviceID ?? device.id,
+            sourceDeviceName: session.sourceDeviceName ?? device.displayName,
+            deviceModel: session.deviceModel,
+            osVersion: session.osVersion,
+            appVersion: session.appVersion,
+            startedAt: startedAt,
+            endedAt: session.endTime,
+            startPosition: session.startPosition ?? 0,
+            endPosition: session.endPosition,
+            silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+            playbackRateTimeSavedSeconds: playbackRateTimeSaved(for: session),
+            endedCleanly: session.endedCleanly == true,
+            rateSegments: (session.segments ?? [])
+                .sorted {
+                    ($0.startTime ?? .distantPast) < ($1.startTime ?? .distantPast)
+                }
+                .map {
+                    StoreSplitLocalRateSegmentSnapshot(
+                        rate: $0.rate ?? 1,
+                        startTime: $0.startTime,
+                        startPosition: $0.startPosition,
+                        endTime: $0.endTime,
+                        endPosition: $0.endPosition
+                    )
+                }
+        )
+        guard let writer = await localAnalyticsWriter() else { return }
+        await writer.upsert(snapshot)
+    }
+
+    private func localAnalyticsWriter() async -> StoreSplitLocalAnalyticsWriter? {
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let cacheContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedCacheContainer
+        }) else { return nil }
+        let storeID = ObjectIdentifier(cacheContainer)
+        if let cachedLocalAnalyticsWriter,
+           cachedLocalAnalyticsWriterStoreID == storeID {
+            return cachedLocalAnalyticsWriter
+        }
+        let writer = StoreSplitLocalAnalyticsWriter(modelContainer: cacheContainer)
+        cachedLocalAnalyticsWriter = writer
+        cachedLocalAnalyticsWriterStoreID = storeID
+        return writer
     }
 
     private func recordSilenceGapTimeSavedForEpisode(_ session: PlaySession) {
@@ -508,11 +646,25 @@ actor PlaySessionTrackerActor {
         let existing = (try? modelContext.fetch(FetchDescriptor<ListeningStat>())) ?? []
         if !existing.isEmpty { return }
 
-        let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
-        for session in allSessions {
-            recordListeningStats(for: session)
+        var offset = 0
+        while true {
+            var descriptor = FetchDescriptor<PlaySession>(
+                sortBy: [SortDescriptor(\.startTime, order: .forward)]
+            )
+            descriptor.fetchLimit = analyticsBatchSize
+            descriptor.fetchOffset = offset
+
+            let sessions = (try? modelContext.fetch(descriptor)) ?? []
+            guard sessions.isEmpty == false else { break }
+
+            for session in sessions {
+                recordListeningStats(for: session)
+            }
+            modelContext.saveIfNeeded()
+
+            if sessions.count < analyticsBatchSize { break }
+            offset += sessions.count
         }
-        modelContext.saveIfNeeded()
     }
 
     private func backfillSummariesIfNeeded() {
@@ -578,10 +730,40 @@ actor PlaySessionTrackerActor {
     func rebuildListeningStats() {
         let preservedSummaries = playSessionSummarySnapshots()
 
-        backfillMissingListeningStatsFromRawSessions()
+        replaceListeningStatsFromRawSessions()
         rebuildSummariesFromListeningStats(preservedSummaries: preservedSummaries)
         modelContext.saveIfNeeded()
         repairPlaybackRateSavingsIfNeeded()
+    }
+
+    /// The runtime graph is a disposable cache/UserState projection. Replacing
+    /// hourly rows from the deduplicated projected sessions prevents stale cache
+    /// buckets or a previous reconcile from being counted twice.
+    private func replaceListeningStatsFromRawSessions() {
+        while true {
+            var descriptor = FetchDescriptor<ListeningStat>()
+            descriptor.fetchLimit = analyticsBatchSize
+            let page = (try? modelContext.fetch(descriptor)) ?? []
+            guard page.isEmpty == false else { break }
+            for stat in page { modelContext.delete(stat) }
+            modelContext.saveIfNeeded()
+            if page.count < analyticsBatchSize { break }
+        }
+
+        var offset = 0
+        while true {
+            var descriptor = FetchDescriptor<PlaySession>(
+                sortBy: [SortDescriptor(\PlaySession.startTime, order: .forward)]
+            )
+            descriptor.fetchOffset = offset
+            descriptor.fetchLimit = analyticsBatchSize
+            let sessions = (try? modelContext.fetch(descriptor)) ?? []
+            guard sessions.isEmpty == false else { break }
+            for session in sessions { _ = recordListeningStats(for: session) }
+            modelContext.saveIfNeeded()
+            offset += sessions.count
+            if sessions.count < analyticsBatchSize { break }
+        }
     }
 
     private func playSessionSummarySnapshots() -> [PlaySessionSummarySnapshot] {
@@ -972,7 +1154,7 @@ actor PlaySessionTrackerActor {
     }
 
     // Recovery logic: On launch, check if a session was left open, and finalize it
-    private func recoverIncompleteSessionIfNeeded()  {
+    private func recoverIncompleteSessionIfNeeded() async {
         let allSessions = (try? modelContext.fetch(FetchDescriptor<PlaySession>())) ?? []
         guard !allSessions.isEmpty else { return }
         var didMutateSessions = false
@@ -1043,6 +1225,10 @@ actor PlaySessionTrackerActor {
 
         if didMutateSessions {
             modelContext.saveIfNeeded()
+            for session in allSessions where session.endTime != nil {
+                await persistLocalAnalytics(session)
+                await publishListeningHistory(session)
+            }
         }
     }
 
@@ -1113,7 +1299,7 @@ actor PlaySessionTrackerActor {
     private func getDeviceModel() async -> String {
 #if os(iOS)
         return await MainActor.run { UIDevice.current.model }
-#elseif os(macOS)
+#elseif os(macOS) || targetEnvironment(macCatalyst)
         return "Mac"
 #else
         return "Unknown"
@@ -1123,7 +1309,7 @@ actor PlaySessionTrackerActor {
     private func getOSVersion() async -> String {
 #if os(iOS)
         return await MainActor.run { UIDevice.current.systemVersion }
-#elseif os(macOS)
+#elseif os(macOS) || targetEnvironment(macCatalyst)
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
 #else

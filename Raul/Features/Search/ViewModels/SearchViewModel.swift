@@ -1,6 +1,5 @@
 import SwiftUI
 import Combine
-import fyyd_swift
 
 @MainActor
 class PodcastSearchViewModel: ObservableObject {
@@ -8,30 +7,26 @@ class PodcastSearchViewModel: ObservableObject {
     @Published var results: [PodcastFeed] = []
     @Published var isLoading = false
     @Published var hotPodcasts: [PodcastFeed] = []
-    @Published var languages: [String] = [] {
-        didSet {
-            setLanguage()
-        }
-    }
+    @Published var regions: [PodcastRegion] = []
     @Published var singlePodcast: PodcastFeed?
     @Published var searchResults: [PodcastFeed] = []
-    
-    @Published var selectedLanguage: String? {
+
+    @Published var selectedRegion: String? {
         didSet {
+            guard selectedRegion != oldValue else { return }
             Task {
-                await fyydManager.setLanguage(selectedLanguage ?? "")
+                await iTunesActor.setCountry(selectedRegion ?? "us")
                 await loadHotPodcasts()
             }
         }
     }
-    
+
     // Basic auth prompt state
     @Published var shouldPromptForBasicAuth: Bool = false
     @Published var pendingURLForAuth: URL? = nil
     @Published var authErrorMessage: String? = nil
-    
+
     private var cancellables = Set<AnyCancellable>()
-    private let fyydManager = FyydSearchManager()
     private let iTunesActor = ITunesSearchActor()
 
     init() {
@@ -42,18 +37,9 @@ class PodcastSearchViewModel: ObservableObject {
                 self?.performSearch()
             }
             .store(in: &cancellables)
-        
-        Task {
-           // await loadHotPodcasts()
-            await loadLanguages()
-        }
-    }
-    
-    func setLanguage(){
-        let identifier = Locale.autoupdatingCurrent.language.languageCode?.identifier ?? "en"
-        if languages.contains(identifier){
-            selectedLanguage = identifier
-        }
+
+        regions = PodcastRegion.all
+        selectedRegion = PodcastRegion.defaultRegionCode
     }
 
     func performSearch() {
@@ -102,20 +88,13 @@ class PodcastSearchViewModel: ObservableObject {
             }
         } else {
             singlePodcast = nil
-            
-            // Start fyyd search in its own Task
-            Task {
-                let podcasts = await fyydManager.searchPodcasts(query: searchText) ?? []
-                let fyydPodcasts = podcasts.map(PodcastFeed.init)
-                self.searchResults = (self.searchResults + fyydPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
-                self.results = podcasts.map(PodcastFeed.init)
-                self.isLoading = false
-            }
 
-            // Start iTunes search in its own Task
+            let searchedText = searchText
             Task {
-                let iTunesPodcasts = await iTunesActor.search(for: searchText) ?? []
-                self.searchResults = (self.searchResults + iTunesPodcasts).uniqued(by: [ { AnyHashable($0.url) } ])
+                let iTunesPodcasts = await iTunesActor.search(for: searchedText) ?? []
+                guard self.searchText == searchedText else { return }
+                self.searchResults = iTunesPodcasts.uniqued(by: [ { AnyHashable($0.url) } ])
+                self.results = self.searchResults
                 self.isLoading = false
             }
         }
@@ -201,22 +180,10 @@ class PodcastSearchViewModel: ObservableObject {
         return podcastDetails
     }
     
-    func loadLanguages() async {
-        if let fetchedLanguages = await fyydManager.getLanguages() {
-            self.languages = fetchedLanguages
-        }
-    }
-
-    // Fetch hot podcasts
-     func loadHotPodcasts() async {
+    // Fetch the top ("hot") podcasts for the selected region.
+    func loadHotPodcasts() async {
         isLoading = true
-        let hotPodcastsList = await fyydManager.getHotPodcasts(lang: selectedLanguage, count: 30)
-        if let hotPodcastsList{
-            let fyydpodcasts: [PodcastFeed] = hotPodcastsList.map(PodcastFeed.init)
-            hotPodcasts = fyydpodcasts
-        }else{
-            hotPodcasts = []
-        }
+        hotPodcasts = await iTunesActor.getTopPodcasts(limit: 30)
         isLoading = false
     }
 }

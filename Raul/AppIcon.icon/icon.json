@@ -54,10 +54,16 @@
           506.1171875
         ]
       },
+      "refractivity" : {
+        "depth" : 0,
+        "enabled" : false,
+        "strength" : 0.6156640625
+      },
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5
       },
+      "specular" : true,
       "translucency" : {
         "enabled" : true,
         "value" : 0.5
@@ -345,7 +351,7 @@
             "scale" : 1.05,
             "translation-in-points" : [
               -387.4251340983333,
-              386.90327580113126
+              383.5
             ]
           }
         },
@@ -374,8 +380,8 @@
           "position" : {
             "scale" : 1.05,
             "translation-in-points" : [
-              -386.90032960533347,
-              205.38272765305987
+              -387.4251340983333,
+              203.9
             ]
           }
         },
@@ -404,8 +410,8 @@
           "position" : {
             "scale" : 1.05,
             "translation-in-points" : [
-              -386.37552511233343,
-              25.289255685559738
+              -386.3755251123338,
+              24.855054309555953
             ]
           }
         },

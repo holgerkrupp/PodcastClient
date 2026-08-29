@@ -7,9 +7,11 @@ actor AutoDownloadNetworkCoordinator {
     static let shared = AutoDownloadNetworkCoordinator()
 
     private let monitorQueue = DispatchQueue(label: "AutoDownloadNetworkCoordinator")
+    private let minimumResumeInterval: TimeInterval = 60 * 10
     private var monitor: NWPathMonitor?
     private var modelContainer: ModelContainer?
     private var lastCanScheduleWiFiOnlyDownloads: Bool?
+    private var lastResumeAttemptAt: Date?
 
     private func logAutoDownload(_ message: String) async {
         await MainActor.run {
@@ -79,6 +81,14 @@ actor AutoDownloadNetworkCoordinator {
             await logAutoDownload("network-monitor/skip reason=no-model-container")
             return
         }
+
+        let now = Date()
+        if let lastResumeAttemptAt,
+           now.timeIntervalSince(lastResumeAttemptAt) < minimumResumeInterval {
+            await logAutoDownload("network-monitor/skip reason=recently-ran")
+            return
+        }
+        lastResumeAttemptAt = now
 
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         let podcastFeeds = await settingsActor.podcastFeedsRequiringAutoDownloadReconciliationOnWiFi()

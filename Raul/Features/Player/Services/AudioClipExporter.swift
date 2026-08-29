@@ -1,5 +1,8 @@
 import SwiftUI
 import AVFoundation
+#if os(macOS) && !targetEnvironment(macCatalyst)
+import AppKit
+#endif
 
 enum AudioClipExporter {
 
@@ -30,12 +33,15 @@ enum AudioClipExporter {
         coverImage: UIImage,
         startTime: Double,
         endTime: Double,
+        playbackRate: Float,
         fps: Int,
         videoSize: CGSize?,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
-
-        let frameCount = Int(Double(fps) * (endTime - startTime))
+        let sanitizedPlaybackRate = max(Double(playbackRate), 0.1)
+        let clipDuration = max(endTime - startTime, 0)
+        let outputDuration = clipDuration / sanitizedPlaybackRate
+        let frameCount = max(Int(Double(fps) * outputDuration), 1)
         let videoSize = videoSize ?? CGSize(width: 720, height: 720)
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -98,7 +104,15 @@ enum AudioClipExporter {
                 while videoInputBox.value.isReadyForMoreMediaData && state.currentFrame < frameCount {
                     let appendSucceeded = autoreleasepool {
                         let frameProgress = Double(state.currentFrame) / Double(frameCount)
-                        guard let buffer = createPixelBuffer(from: template, size: videoSize, progress: frameProgress, startTime: startTime, endTime: endTime, title: title) else {
+                        guard let buffer = createPixelBuffer(
+                            from: template,
+                            size: videoSize,
+                            progress: frameProgress,
+                            startTime: startTime,
+                            endTime: endTime,
+                            playbackRate: playbackRate,
+                            title: title
+                        ) else {
                             return false
                         }
                         let time = CMTime(seconds: Double(state.currentFrame) / Double(fps), preferredTimescale: 600)
@@ -140,7 +154,14 @@ enum AudioClipExporter {
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("mp4")
 
-        try await mergeAudio(from: audioURL, intoVideo: outputURL, startTime: startTime, endTime: endTime, outputURL: finalURL)
+        try await mergeAudio(
+            from: audioURL,
+            intoVideo: outputURL,
+            startTime: startTime,
+            endTime: endTime,
+            playbackRate: playbackRate,
+            outputURL: finalURL
+        )
         try? FileManager.default.removeItem(at: outputURL)
         return finalURL
     }
@@ -149,15 +170,21 @@ enum AudioClipExporter {
         videoURL: URL,
         startTime: Double,
         endTime: Double,
+        playbackRate: Float,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         progress(0.05)
 
         let asset = AVURLAsset(url: videoURL)
         let composition = AVMutableComposition()
+        let sanitizedPlaybackRate = max(Double(playbackRate), 0.1)
         let start = CMTime(seconds: max(0, startTime), preferredTimescale: 600)
         let end = CMTime(seconds: max(startTime, endTime), preferredTimescale: 600)
         let timeRange = CMTimeRange(start: start, end: end)
+        let scaledDuration = CMTime(
+            seconds: timeRange.duration.seconds / sanitizedPlaybackRate,
+            preferredTimescale: 600
+        )
 
         guard let sourceVideoTrack = try await asset.loadTracks(withMediaType: .video).first,
               let compositionVideoTrack = composition.addMutableTrack(
@@ -168,6 +195,10 @@ enum AudioClipExporter {
         }
 
         try compositionVideoTrack.insertTimeRange(timeRange, of: sourceVideoTrack, at: .zero)
+        compositionVideoTrack.scaleTimeRange(
+            CMTimeRange(start: .zero, duration: timeRange.duration),
+            toDuration: scaledDuration
+        )
         compositionVideoTrack.preferredTransform = try await sourceVideoTrack.load(.preferredTransform)
         progress(0.35)
 
@@ -177,6 +208,10 @@ enum AudioClipExporter {
             preferredTrackID: kCMPersistentTrackID_Invalid
            ) {
             try compositionAudioTrack.insertTimeRange(timeRange, of: sourceAudioTrack, at: .zero)
+            compositionAudioTrack.scaleTimeRange(
+                CMTimeRange(start: .zero, duration: timeRange.duration),
+                toDuration: scaledDuration
+            )
         }
         progress(0.55)
 
@@ -217,7 +252,15 @@ enum AudioClipExporter {
 
 
     // MARK: - Create CVPixelBuffer with blurred background + aspect-fit foreground + progress bar
-    static func createPixelBuffer(from image: UIImage, size: CGSize, progress: Double, startTime: Double, endTime: Double, title:String? = nil) -> CVPixelBuffer? {
+    static func createPixelBuffer(
+        from image: UIImage,
+        size: CGSize,
+        progress: Double,
+        startTime: Double,
+        endTime: Double,
+        playbackRate: Float = 1.0,
+        title: String? = nil
+    ) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true
@@ -246,8 +289,12 @@ enum AudioClipExporter {
         context.clear(CGRect(origin: .zero, size: size))
         
         // Draw blurred background
-        if let ciImage = CIImage(image: image),
-           let filter = CIFilter(name: "CIGaussianBlur") {
+        guard let imageCGImage = image.cgImage else {
+            return nil
+        }
+
+        let ciImage = CIImage(cgImage: imageCGImage)
+        if let filter = CIFilter(name: "CIGaussianBlur") {
             filter.setValue(ciImage, forKey: kCIInputImageKey)
             filter.setValue(80, forKey: kCIInputRadiusKey)
             if let output = filter.outputImage,
@@ -299,25 +346,36 @@ enum AudioClipExporter {
         let capsuleRect = CGRect(x: barMargin, y: barY, width: barWidth, height: barHeight)
 
         // Draw progress bar as a capsule
-        let capsulePath = UIBezierPath(roundedRect: capsuleRect, cornerRadius: barHeight/2).cgPath
-        context.setFillColor(UIColor(white: 1.0, alpha: 0.22).cgColor)
+        let capsulePath = CGPath(
+            roundedRect: capsuleRect,
+            cornerWidth: barHeight / 2,
+            cornerHeight: barHeight / 2,
+            transform: nil
+        )
+        context.setFillColor(platformWhite(alpha: 0.22))
         context.addPath(capsulePath)
         context.fillPath()
         // Fill progress
         let progressWidth = barWidth * CGFloat(max(0, min(1, progress)))
         let progressRect = CGRect(x: barMargin, y: barY, width: progressWidth, height: barHeight)
-        let progressCapsule = UIBezierPath(roundedRect: progressRect, cornerRadius: barHeight/2).cgPath
-        context.setFillColor(UIColor.accent.cgColor)
+        let progressCapsule = CGPath(
+            roundedRect: progressRect,
+            cornerWidth: barHeight / 2,
+            cornerHeight: barHeight / 2,
+            transform: nil
+        )
+        context.setFillColor(platformAccentColor())
         context.addPath(progressCapsule)
         context.fillPath()
 
         // Draw start and end time below bar using UIGraphicsImageRenderer for text + shadow
         let startString = Duration.seconds(startTime).formatted(.units(width: .narrow))
-        let endString = Duration.seconds((endTime-startTime)*(1-progress)).formatted(.units(width: .narrow))
-        let monoFont = UIFont.monospacedSystemFont(ofSize: timeFontSize, weight: .semibold)
+        let remainingDuration = ((endTime - startTime) * (1 - progress)) / max(Double(playbackRate), 0.1)
+        let endString = Duration.seconds(remainingDuration).formatted(.units(width: .narrow))
+        let monoFont = platformMonospacedFont(ofSize: timeFontSize, weight: .semibold)
         let fontattrs: [NSAttributedString.Key: Any] = [
             .font: monoFont,
-            .foregroundColor: UIColor.white
+            .foregroundColor: platformWhiteObject
         ]
         
         var lowerImageBorder = barY + barHeight
@@ -327,32 +385,36 @@ enum AudioClipExporter {
             let titleLowerGap: CGFloat = 8.0
             let titleTextY = barY + barHeight + titleLowerGap
             
-            let Font = UIFont.systemFont(ofSize: titleFontSize, weight: .semibold)
+            let Font = platformSystemFont(ofSize: titleFontSize, weight: .semibold)
             let tittleFontattrs: [NSAttributedString.Key: Any] = [
                 .font: Font,
-                .foregroundColor: UIColor.white
+                .foregroundColor: platformWhiteObject
             ]
             let titleImage = renderTextImage(title, attributes: tittleFontattrs)
-            context.draw(titleImage.cgImage!, in: CGRect(x: barMargin, y: titleTextY, width: titleImage.size.width, height: titleImage.size.height))
+            if let titleCGImage = titleImage.cgImage {
+                context.draw(
+                    titleCGImage,
+                    in: CGRect(x: barMargin, y: titleTextY, width: titleImage.size.width, height: titleImage.size.height)
+                )
+            }
 
             
             lowerImageBorder += titleLowerGap + titleImage.size.height
         }
-
-        func renderTextImage(_ text: String, attributes: [NSAttributedString.Key: Any]) -> UIImage {
-            let textSize = (text as NSString).size(withAttributes: attributes)
-            let renderer = UIGraphicsImageRenderer(size: textSize)
-            return renderer.image { ctx in
-                // Draw shadow
-                let context = ctx.cgContext
-                context.setShadow(offset: CGSize(width: 1, height: 1), blur: 4, color: UIColor.black.withAlphaComponent(0.85).cgColor)
-                (text as NSString).draw(at: .zero, withAttributes: attributes)
-            }
-        }
         let startImage = renderTextImage(startString, attributes: fontattrs)
         let endImage = renderTextImage(endString, attributes: fontattrs)
-        context.draw(startImage.cgImage!, in: CGRect(x: barMargin, y: textY, width: startImage.size.width, height: startImage.size.height))
-        context.draw(endImage.cgImage!, in: CGRect(x: size.width - barMargin - endImage.size.width, y: textY, width: endImage.size.width, height: endImage.size.height))
+        if let startCGImage = startImage.cgImage {
+            context.draw(
+                startCGImage,
+                in: CGRect(x: barMargin, y: textY, width: startImage.size.width, height: startImage.size.height)
+            )
+        }
+        if let endCGImage = endImage.cgImage {
+            context.draw(
+                endCGImage,
+                in: CGRect(x: size.width - barMargin - endImage.size.width, y: textY, width: endImage.size.width, height: endImage.size.height)
+            )
+        }
          
          
          
@@ -367,14 +429,21 @@ enum AudioClipExporter {
          let y = max(lowerImageBorder, (size.height - newHeight) / 2) + upperGap
          
        //  let y = ((size.height - newHeight) / 2) + (barY + barHeight + gapToBar)
-         context.draw(image.cgImage!, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
+         context.draw(imageCGImage, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
 
         return buffer
     }
 
 
     // MARK: - Merge audio into video
-    private static func mergeAudio(from audioURL: URL, intoVideo videoURL: URL, startTime: Double, endTime: Double, outputURL: URL) async throws {
+    private static func mergeAudio(
+        from audioURL: URL,
+        intoVideo videoURL: URL,
+        startTime: Double,
+        endTime: Double,
+        playbackRate: Float,
+        outputURL: URL
+    ) async throws {
         let composition = AVMutableComposition()
         let videoAsset = AVURLAsset(url: videoURL)
         let audioAsset = AVURLAsset(url: audioURL)
@@ -392,6 +461,14 @@ enum AudioClipExporter {
             let range = CMTimeRange(start: CMTime(seconds: startTime, preferredTimescale: 600),
                                     end: CMTime(seconds: endTime, preferredTimescale: 600))
             try audioCompTrack.insertTimeRange(range, of: audioTrack, at: .zero)
+            let scaledDuration = CMTime(
+                seconds: range.duration.seconds / max(Double(playbackRate), 0.1),
+                preferredTimescale: 600
+            )
+            audioCompTrack.scaleTimeRange(
+                CMTimeRange(start: .zero, duration: range.duration),
+                toDuration: scaledDuration
+            )
         }
 
         guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
@@ -399,4 +476,85 @@ enum AudioClipExporter {
         }
         try await exporter.export(to: outputURL, as: .mp4)
     }
+}
+
+private extension AudioClipExporter {
+    static func renderTextImage(_ text: String, attributes: [NSAttributedString.Key: Any]) -> UIImage {
+        let measuredSize = (text as NSString).size(withAttributes: attributes)
+        let textSize = CGSize(width: ceil(measuredSize.width), height: ceil(measuredSize.height))
+
+#if canImport(UIKit)
+        let renderer = UIGraphicsImageRenderer(size: textSize)
+        return renderer.image { rendererContext in
+            let context = rendererContext.cgContext
+            context.setShadow(
+                offset: CGSize(width: 1, height: 1),
+                blur: 4,
+                color: UIColor.black.withAlphaComponent(0.85).cgColor
+            )
+            (text as NSString).draw(at: .zero, withAttributes: attributes)
+        }
+#else
+        let image = NSImage(size: textSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        guard let context = NSGraphicsContext.current?.cgContext else {
+            return UIImage()
+        }
+
+        context.setShadow(
+            offset: CGSize(width: 1, height: 1),
+            blur: 4,
+            color: NSColor.black.withAlphaComponent(0.85).cgColor
+        )
+        (text as NSString).draw(at: .zero, withAttributes: attributes)
+
+        guard let tiffData = image.tiffRepresentation,
+              let imageRep = NSBitmapImageRep(data: tiffData),
+              let cgImage = imageRep.cgImage else {
+            return UIImage()
+        }
+
+        return UIImage(cgImage: cgImage)
+#endif
+    }
+
+#if canImport(UIKit)
+    static let platformWhiteObject = UIColor.white
+
+    static func platformWhite(alpha: CGFloat) -> CGColor {
+        UIColor(white: 1.0, alpha: alpha).cgColor
+    }
+
+    static func platformAccentColor() -> CGColor {
+        UIColor.systemBlue.cgColor
+    }
+
+    static func platformMonospacedFont(ofSize size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        UIFont.monospacedSystemFont(ofSize: size, weight: weight)
+    }
+
+    static func platformSystemFont(ofSize size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        UIFont.systemFont(ofSize: size, weight: weight)
+    }
+#else
+    static let platformWhiteObject = NSColor.white
+
+    static func platformWhite(alpha: CGFloat) -> CGColor {
+        NSColor.white.withAlphaComponent(alpha).cgColor
+    }
+
+    static func platformAccentColor() -> CGColor {
+        NSColor.controlAccentColor.cgColor ?? NSColor.systemBlue.cgColor
+    }
+
+    static func platformMonospacedFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+    }
+
+    static func platformSystemFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
+        NSFont.systemFont(ofSize: size, weight: weight)
+    }
+#endif
 }

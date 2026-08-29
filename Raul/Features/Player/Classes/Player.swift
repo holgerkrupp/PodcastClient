@@ -31,6 +31,21 @@ private enum PlaybackProgressDefaultsStore {
         return (try? JSONDecoder().decode([String: CachedPlaybackProgress].self, from: data)) ?? [:]
     }
 
+    /// Most recently updated cached entry, if any.
+    ///
+    /// An entry only survives here when its write to the store did not land, so
+    /// after a crash this is the episode that was actually playing even though
+    /// nothing in the store records it yet.
+    static func newestCachedProgress() -> (episodeURL: URL, updatedAt: Date)? {
+        allCachedProgress()
+            .lazy
+            .compactMap { key, cached -> (episodeURL: URL, updatedAt: Date)? in
+                guard let url = URL(string: key) else { return nil }
+                return (url, cached.updatedAt)
+            }
+            .max { $0.updatedAt < $1.updatedAt }
+    }
+
     static func update(
         episodeURL: URL,
         playPosition: Double,
@@ -97,7 +112,7 @@ class Player {
 
         var progressSaveInterval: TimeInterval {
             switch self {
-            case .foreground: return 10
+            case .foreground: return 20
             case .background: return 45
             }
         }
@@ -118,6 +133,12 @@ class Player {
         let isHistory: Bool
         let isCompleted: Bool
         let savedAt: Date
+    }
+
+    private struct PlaybackAudioProcessingSettings {
+        let reduceSilenceGapsEnabled: Bool
+        let silenceGapReductionLevel: SilenceGapReductionLevel
+        let voiceEnhancementEnabled: Bool
     }
 
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
@@ -161,9 +182,11 @@ class Player {
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
     private var currentPlaybackUsesAlternateMedia = false
+    private var playbackLoadGeneration: UInt64 = 0
     private var hasStartedRecovery = false
     private var finishingEpisodeURL: URL?
     private var isSkippingChapters = false
+    private let chapterBoundaryTolerance: TimeInterval = 0.35
     private var playbackPowerMode: PlaybackPowerMode = .foreground
     private var reduceSilenceGapsEnabled = false
     private var silenceGapReductionLevel: SilenceGapReductionLevel = .low
@@ -246,7 +269,16 @@ class Player {
     }
     
     
-    var isPlaying: Bool = false
+    var isPlaying: Bool = false {
+        didSet {
+            guard isPlaying != oldValue else { return }
+            Task {
+                await StoreSplitWorkCoordinator.shared.notePlaybackActivityChanged(
+                    isPlaying: isPlaying
+                )
+            }
+        }
+    }
     var isPlayerSheetPresented: Bool = false
     
     var chapterProgress: Double?
@@ -266,10 +298,16 @@ class Player {
         
       //  super.init()
         Task {
+            // Restoring the episode is what makes the player usable, so nothing
+            // else may sit in front of it. The cache reconciliation below used
+            // to run first and walked every leftover entry with a store write
+            // each; `restoreLastPlayedFromPlaylist` reads the same cache
+            // directly, so it no longer needs that pass to have finished.
+            await restoreLastPlayedFromPlaylist()
+
             // Remove legacy UUID-based last-played storage from older builds.
             await migrateLastPlayedFromUserDefaultsIfNeeded()
             await reconcileCachedPlaybackProgress()
-            await restoreLastPlayedFromPlaylist()
         }
         loadPlayBackSpeed()
         listenToEvent()
@@ -287,6 +325,7 @@ class Player {
         guard !hasStartedRecovery else { return }
         hasStartedRecovery = true
 
+        guard StoreDevelopmentConfiguration.newStoreReadsEnabled == false else { return }
         guard shouldRunPlaySessionRecoveryNow() else { return }
 
         Task.detached(priority: .background) { [playSessionTracker] in
@@ -318,23 +357,43 @@ class Player {
     }
 
     private func moveEpisodeToFrontOfActivePlaybackPlaylist(_ episodeURL: URL) async {
+        // `playEpisode` defers this to a background task, so playback may already
+        // have moved on — or finished, and dequeued this episode — by the time it
+        // runs. Re-adding then would put a played episode back at the top of the
+        // queue, which is exactly the state the finish handler just cleared.
+        guard currentEpisodeURL == episodeURL else { return }
         guard let activePlaylistActor = activePlaybackPlaylistActor() else { return }
-        try? await activePlaylistActor.add(episodeURL: episodeURL, to: .front, startDownload: false)
+        try? await activePlaylistActor.add(
+            episodeURL: episodeURL,
+            to: .front,
+            startDownload: false,
+            origin: .automatic
+        )
     }
     
     func restoreLastPlayedFromPlaylist() async {
-        let activePlaylistActor = activePlaybackPlaylistActor()
-        let episodeURLs = (try? await activePlaylistActor?.orderedEpisodeURLs()) ?? []
+        guard let activePlaylistActor = activePlaybackPlaylistActor() else { return }
+        let candidateURL = await launchResumeCandidateURL()
+        guard let resumeURL = try? await activePlaylistActor.launchEpisodeURL(
+            preferring: candidateURL
+        ) else { return }
 
-        if let lastPlayedURL = await episodeActor?.getLastPlayedEpisodeURL(),
-           episodeURLs.contains(lastPlayedURL) {
-            await playEpisode(lastPlayedURL, playDirectly: false)
-            return
-        }
+        await playEpisode(resumeURL, playDirectly: false)
+    }
 
-        if let firstURL = episodeURLs.first {
-            await playEpisode(firstURL, playDirectly: false)
+    /// The episode this device was last playing, according to whichever record
+    /// is newer: the persisted `lastPlayed` stamp or an unreconciled progress
+    /// entry left in the defaults cache by a session that ended before its
+    /// write landed.
+    private func launchResumeCandidateURL() async -> URL? {
+        let persisted = await episodeActor?.lastPlayedEpisodeReference()
+        guard let newestCached = PlaybackProgressDefaultsStore.newestCachedProgress() else {
+            return persisted?.url
         }
+        guard let persisted else { return newestCached.episodeURL }
+        return newestCached.updatedAt > persisted.lastPlayed
+            ? newestCached.episodeURL
+            : persisted.url
     }
     
     func setSleepTimer(minutes: Int) {
@@ -492,10 +551,22 @@ class Player {
     }
 
     private func loadPlaybackAudioProcessingSettings() async {
-        let podcastFeed = currentEpisode?.podcast?.feed
-        reduceSilenceGapsEnabled = await settingsActor?.getReduceSilenceGapsEnabled(for: podcastFeed) ?? false
-        silenceGapReductionLevel = await settingsActor?.getSilenceGapReductionLevel(for: podcastFeed) ?? .low
-        voiceEnhancementEnabled = await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false
+        let settings = await playbackAudioProcessingSettings(for: currentEpisode?.podcast?.feed)
+        applyPlaybackAudioProcessingSettings(settings)
+    }
+
+    private func playbackAudioProcessingSettings(for podcastFeed: URL?) async -> PlaybackAudioProcessingSettings {
+        PlaybackAudioProcessingSettings(
+            reduceSilenceGapsEnabled: await settingsActor?.getReduceSilenceGapsEnabled(for: podcastFeed) ?? false,
+            silenceGapReductionLevel: await settingsActor?.getSilenceGapReductionLevel(for: podcastFeed) ?? .low,
+            voiceEnhancementEnabled: await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false
+        )
+    }
+
+    private func applyPlaybackAudioProcessingSettings(_ settings: PlaybackAudioProcessingSettings) {
+        reduceSilenceGapsEnabled = settings.reduceSilenceGapsEnabled
+        silenceGapReductionLevel = settings.silenceGapReductionLevel
+        voiceEnhancementEnabled = settings.voiceEnhancementEnabled
     }
 
     private func accumulateSilenceGapTimeSaved(upTo date: Date = Date(), normalRate: Float? = nil) {
@@ -523,6 +594,31 @@ class Player {
     private func stopSilenceGapTimeSavedMeasurement() {
         accumulateSilenceGapTimeSaved()
         silenceGapReductionStartedAt = nil
+    }
+
+    @discardableResult
+    private func advancePlaybackLoadGeneration() -> UInt64 {
+        playbackLoadGeneration &+= 1
+        return playbackLoadGeneration
+    }
+
+    private func isCurrentPlaybackLoad(
+        _ generation: UInt64,
+        episodeURL: URL,
+        item: AVPlayerItem
+    ) -> Bool {
+        playbackLoadGeneration == generation &&
+        currentEpisodeURL == episodeURL &&
+        videoPlayer.currentItem === item
+    }
+
+    private func resetPlaybackAudioProcessing(for item: AVPlayerItem? = nil) async {
+        resetSilenceGapReduction(updateEngine: false)
+        await flushSilenceGapTimeSaved()
+#if !os(watchOS)
+        currentAudioPlaybackProcessor = nil
+        item?.audioMix = nil
+#endif
     }
 
     private func flushSilenceGapTimeSaved() async {
@@ -581,13 +677,14 @@ class Player {
         }
     }
 
-    private func configurePlaybackAudioProcessing(for item: AVPlayerItem) async {
-        resetSilenceGapReduction(updateEngine: false)
-        await flushSilenceGapTimeSaved()
+    private func configurePlaybackAudioProcessing(
+        for item: AVPlayerItem,
+        shouldApply: () -> Bool = { true }
+    ) async {
+        guard shouldApply() else { return }
+        await resetPlaybackAudioProcessing(for: item)
+        guard shouldApply() else { return }
 #if !os(watchOS)
-        currentAudioPlaybackProcessor = nil
-        item.audioMix = nil
-
         guard currentPlaybackSource != .liveRemote,
               currentPlaybackUsesAlternateMedia == false,
               currentPlaybackIsVideo == false,
@@ -598,6 +695,7 @@ class Player {
         guard let audioTrack = try? await item.asset.loadTracks(withMediaType: .audio).first else {
             return
         }
+        guard shouldApply() else { return }
 
         let processor = AudioPlaybackProcessor(
             reduceSilenceGapsEnabled: reduceSilenceGapsEnabled,
@@ -619,6 +717,29 @@ class Player {
         item.audioMix = audioMix
         currentAudioPlaybackProcessor = processor
 #endif
+    }
+
+    private func schedulePlaybackAudioProcessing(
+        for item: AVPlayerItem,
+        episodeURL: URL,
+        generation: UInt64
+    ) {
+        let podcastFeed = currentEpisode?.podcast?.feed
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            guard isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else {
+                return
+            }
+            let settings = await playbackAudioProcessingSettings(for: podcastFeed)
+            guard isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else {
+                return
+            }
+            applyPlaybackAudioProcessingSettings(settings)
+            await configurePlaybackAudioProcessing(for: item) { [weak self] in
+                guard let self else { return false }
+                return isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item)
+            }
+        }
     }
     
     func fetchEpisode(with url: URL?) async -> Episode? {
@@ -665,7 +786,7 @@ class Player {
         guard currentPlaybackSource != .liveRemote else { return }
 
         let currentTime = sanitizedPosition(await engine.currentTime())
-        playPosition = currentTime
+        playPosition = chapterEvaluationPosition(for: currentTime, snappingToUpcomingBoundary: true)
 
         guard chapters?.isEmpty == false else { return }
         _ = updateCurrentChapter()
@@ -686,8 +807,10 @@ class Player {
 
         guard currentChapter != playingChapter else { return false }
 
-        if let chapterProgress, let currentChapter {
-            saveChapterProgress(chapter: currentChapter, progress: chapterProgress)
+        if let currentChapter {
+            let progressAtBoundary = chapterProgress(for: currentChapter, at: playPosition)
+            let progressToSave = max(chapterProgress ?? 0.0, progressAtBoundary)
+            saveChapterProgress(chapter: currentChapter, progress: progressToSave)
         }
 
         currentChapter = playingChapter
@@ -703,18 +826,37 @@ class Player {
         }
         return true
     }
+
+    private func chapterEvaluationPosition(
+        for position: Double,
+        snappingToUpcomingBoundary: Bool
+    ) -> Double {
+        guard snappingToUpcomingBoundary,
+              let chapters,
+              let upcomingStart = chapters
+                .compactMap(\.start)
+                .filter({ $0 > position && $0 - position <= chapterBoundaryTolerance })
+                .min() else {
+            return position
+        }
+
+        return upcomingStart
+    }
     
     private func updateChapterProgress(){
         guard let currentChapter = currentChapter else { return }
-        let chapterEnd = currentChapter.end ?? nextChapter?.start ?? currentEpisode?.duration ?? 1.0
-        let chapterStart = currentChapter.start ?? 0
-        let duration = max(chapterEnd - chapterStart, .leastNonzeroMagnitude)
-        chapterProgress = (playPosition - chapterStart) / duration
-        currentChapter.progress = chapterProgress
+        chapterProgress = chapterProgress(for: currentChapter, at: playPosition)
     }
     
     private func saveChapterProgress(chapter: Marker, progress: Double){
-        cacheCurrentPlaybackState(chapterID: chapter.uuid, chapterProgress: progress)
+        let clampedProgress = clampedProgress(progress)
+        chapter.progress = clampedProgress
+        cacheCurrentPlaybackState(chapterID: chapter.uuid, chapterProgress: clampedProgress)
+
+        guard let chapterID = chapter.uuid else { return }
+        Task {
+            await chapterActor?.setChapterProgress(clampedProgress, for: chapterID)
+        }
     }
 
     private func sanitizedPosition(_ value: Double?) -> Double {
@@ -724,6 +866,31 @@ class Player {
         }
 
         return max(0, value)
+    }
+
+    private func clampedProgress(_ value: Double?) -> Double {
+        guard let value,
+              value.isFinite else {
+            return 0
+        }
+
+        return min(max(value, 0), 1)
+    }
+
+    private func chapterProgress(for chapter: Marker, at position: Double) -> Double {
+        guard let chapterStart = chapter.start else { return 0 }
+
+        let chapterEnd = chapter.end
+            ?? chapters?
+                .compactMap(\.start)
+                .filter { $0 > chapterStart }
+                .min()
+            ?? currentEpisode?.duration
+            ?? chapterStart
+        guard chapterEnd > chapterStart else { return 0 }
+
+        let clampedPosition = min(max(position, chapterStart), chapterEnd)
+        return clampedProgress((clampedPosition - chapterStart) / (chapterEnd - chapterStart))
     }
 
     private func resolvedResumePosition(
@@ -789,10 +956,7 @@ class Player {
             currentPlayPosition
         )
         let resolvedChapterID = chapterID ?? currentChapter?.uuid
-        let resolvedChapterProgress = explicitChapterProgress ?? chapterProgress
-
-        currentEpisode?.metaData?.playPosition = currentPlayPosition
-        currentEpisode?.metaData?.maxPlayposition = currentMaxPosition
+        let resolvedChapterProgress = (explicitChapterProgress ?? chapterProgress).map(clampedProgress)
 
         PlaybackProgressDefaultsStore.update(
             episodeURL: currentEpisodeURL,
@@ -809,11 +973,14 @@ class Player {
 
         for (episodeURLString, cached) in cachedProgress {
             guard let episodeURL = URL(string: episodeURLString) else { continue }
+            // The loaded episode's state belongs to the live player now; its
+            // entry is persisted and cleared by the normal save path instead.
+            guard episodeURL != currentEpisodeURL else { continue }
             let didPersist = await episodeActor?.applyCachedPlaybackProgress(
                 episodeURL: episodeURL,
                 playPosition: sanitizedPosition(cached.playPosition),
                 maxPlayPosition: sanitizedPosition(cached.maxPlayPosition),
-                chapterProgresses: cached.chapterProgresses
+                chapterProgresses: cached.chapterProgresses.mapValues(clampedProgress)
             ) ?? false
             if didPersist {
                 PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
@@ -833,11 +1000,9 @@ class Player {
             sanitizedPosition(currentEpisode?.metaData?.maxPlayposition),
             currentPlayPosition
         )
-        let chapterProgresses: [String: Double]
+        var chapterProgresses = cachedPlaybackProgress(for: currentEpisodeURL)?.chapterProgresses ?? [:]
         if let currentChapterID, let currentChapterProgress {
-            chapterProgresses = [currentChapterID.uuidString: currentChapterProgress]
-        } else {
-            chapterProgresses = [:]
+            chapterProgresses[currentChapterID.uuidString] = clampedProgress(currentChapterProgress)
         }
 
         let didPersist = await episodeActor?.applyCachedPlaybackProgress(
@@ -1019,9 +1184,16 @@ class Player {
             force: true
         )
 
+        var chapterProgresses = PlaybackProgressDefaultsStore
+            .cachedProgress(for: snapshot.episodeURL)?
+            .chapterProgresses ?? [:]
         if let chapterID = snapshot.chapterID,
            let chapterProgress = snapshot.chapterProgress {
-            await chapterActor?.setChapterProgress(chapterProgress, for: chapterID)
+            chapterProgresses[chapterID.uuidString] = clampedProgress(chapterProgress)
+        }
+        for (chapterIDString, chapterProgress) in chapterProgresses {
+            guard let chapterID = UUID(uuidString: chapterIDString) else { continue }
+            await chapterActor?.setChapterProgress(clampedProgress(chapterProgress), for: chapterID)
         }
 
         PlaybackProgressDefaultsStore.removeProgress(for: snapshot.episodeURL)
@@ -1052,7 +1224,11 @@ class Player {
             await episodeActor?.setCompletionDate(episodeURL: snapshot.episodeURL)
             await episodeActor?.moveToHistory(episodeURL: snapshot.episodeURL)
         } else if shouldRequeueUnfinishedEpisode {
-            try? await activePlaybackPlaylistActor()?.add(episodeURL: snapshot.episodeURL, to: .front)
+            try? await activePlaybackPlaylistActor()?.add(
+                episodeURL: snapshot.episodeURL,
+                to: .front,
+                origin: .automatic
+            )
         }
 
         WatchSyncCoordinator.refreshSoon(force: true)
@@ -1079,6 +1255,7 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        advancePlaybackLoadGeneration()
         configureChapterBoundaryObserver()
         currentPlaybackSource = nil
         currentPlaybackUsesAlternateMedia = false
@@ -1097,7 +1274,11 @@ class Player {
             await episodeActor?.setCompletionDate(episodeURL: episodeURL)
             await episodeActor?.moveToHistory(episodeURL: episodeURL)
         } else if shouldRequeueUnfinishedEpisode {
-            try? await activePlaybackPlaylistActor()?.add(episodeURL: episodeURL, to: .front)
+            try? await activePlaybackPlaylistActor()?.add(
+                episodeURL: episodeURL,
+                to: .front,
+                origin: .automatic
+            )
         }
     }
     
@@ -1125,8 +1306,6 @@ class Player {
             for: episode
         )
 
-        episode.metaData?.isInbox = false
-
         currentEpisode = episode
         currentEpisodeURL = episodeURL
         finishingEpisodeURL = nil
@@ -1143,13 +1322,12 @@ class Player {
             }
         }
         loadSkipDurations()
-        await loadPlaybackAudioProcessingSettings()
         lastProgressSaveDate = Date()
-        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
         updateChapters()
 
         guard let playback = playbackItem(for: episode, mediaSelection: selectedMedia) else { return }
+        let playbackGeneration = advancePlaybackLoadGeneration()
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
         let item = playback.item
@@ -1188,16 +1366,15 @@ class Player {
             }
         }
 
-        if let fastSwitchUnloadSnapshot {
-            Task {
-                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
-            }
-        }
-
         await engine.pause()
-        await configurePlaybackAudioProcessing(for: item)
+        await resetPlaybackAudioProcessing(for: item)
         await engine.replaceCurrentItem(with: item)
         configureChapterBoundaryObserver()
+        schedulePlaybackAudioProcessing(
+            for: item,
+            episodeURL: episodeURL,
+            generation: playbackGeneration
+        )
 
         BasicLogger.shared.log(
             "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
@@ -1231,6 +1408,12 @@ class Player {
         if playDirectly {
             await playPreparedEpisode()
         }
+        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        if let fastSwitchUnloadSnapshot {
+            Task(priority: .utility) {
+                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
+            }
+        }
 
         Task {
             await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
@@ -1261,13 +1444,20 @@ class Player {
         let preservedRate = playbackRate
         let hadPlaybackUpdates = playbackTask != nil
 
+        let playbackGeneration = advancePlaybackLoadGeneration()
         mediaSelection = nextSelection
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
-        await loadPlaybackAudioProcessingSettings()
-        await configurePlaybackAudioProcessing(for: playback.item)
+        await resetPlaybackAudioProcessing(for: playback.item)
         await engine.replaceCurrentItem(with: playback.item)
         configureChapterBoundaryObserver()
+        if let episodeURL = currentEpisodeURL {
+            schedulePlaybackAudioProcessing(
+                for: playback.item,
+                episodeURL: episodeURL,
+                generation: playbackGeneration
+            )
+        }
         await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
 
         playPosition = preservedPosition
@@ -1316,18 +1506,20 @@ class Player {
         chapterProgress = nil
         nextChapter = nil
         chapters = []
+        advancePlaybackLoadGeneration()
         configureChapterBoundaryObserver()
         playPosition = 0
         lastProgressSaveDate = .distantPast
 
-        await loadPlaybackAudioProcessingSettings()
         let item = AVPlayerItem(url: url)
-        await configurePlaybackAudioProcessing(for: item)
+        await resetPlaybackAudioProcessing(for: item)
         await engine.replaceCurrentItem(with: item)
         setupStaticNowPlayingInfo()
-        await updateNowPlayingCover()
         play()
         isPlayerSheetPresented = true
+        Task {
+            await updateNowPlayingCover(for: url)
+        }
     }
     
     var progress: Double {
@@ -1420,26 +1612,32 @@ class Player {
     }
 
     private func transitionToPlaying(updateEngineRate: Bool, preparePlaybackSource: Bool) {
-        loadSkipDurations()
-        cacheCurrentPlaybackState()
-        startPlaybackUpdates()
-        initRemoteCommandCenter()
-        isPlaying = true
-        updateNowPlayingInfo()
-        WatchSyncCoordinator.refreshSoon(force: true)
-
         let desiredRate = playbackRate
         let desiredEngineRate = silenceGapReductionActive
             ? AudioSilenceGapDetector.silenceReducedRate(for: desiredRate, level: silenceGapReductionLevel)
             : desiredRate
+
+        // Start audio before caching progress or scheduling persistence/sync work.
+        // In particular, MPRemoteCommandCenter invokes this path while the app is
+        // backgrounded, where a queued main-actor task can otherwise be delayed
+        // long enough to make AirPods and CarPlay appear unresponsive.
+        if updateEngineRate {
+            engine.resume(atRate: desiredEngineRate)
+        }
+
+        isPlaying = true
+        updateNowPlayingInfo()
+        loadSkipDurations()
+        startPlaybackUpdates()
+        initRemoteCommandCenter()
+        WatchSyncCoordinator.refreshSoon(force: true)
+
         let position = playPosition
         let currentEpisodeURL = currentEpisode?.url
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         Task {
-            if updateEngineRate, await engine.getRate() != desiredEngineRate {
-                await engine.setRate(desiredEngineRate)
-            }
+            cacheCurrentPlaybackState()
 
             if preparePlaybackSource {
                 await switchCurrentEpisodeToDownloadedCopyIfNeeded()
@@ -1511,8 +1709,8 @@ class Player {
     }
 
     private func playPreparedEpisode() async {
+        engine.resume(atRate: playbackRate)
         transitionToPlaying(updateEngineRate: false, preparePlaybackSource: true)
-        await engine.setRate(playbackRate)
     }
     
     
@@ -1573,6 +1771,7 @@ class Player {
         _ = updateCurrentChapter()
         updateChapterProgress()
         cacheCurrentPlaybackState()
+        await skipOverChapters()
     }
     
     func setRate(_ rate: Float){
@@ -1674,9 +1873,12 @@ class Player {
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
         
-        if playbackPowerMode.keepsContinuousUIProgress, let chapters, chapters.isEmpty == false {
+        if let chapters, chapters.isEmpty == false {
+            playPosition = chapterEvaluationPosition(for: time, snappingToUpcomingBoundary: true)
             let chapterChange = updateCurrentChapter()
-            updateChapterProgress()
+            if playbackPowerMode.keepsContinuousUIProgress {
+                updateChapterProgress()
+            }
             if chapterChange {
                 Task {
                     await skipIfNeeded(chapterChange: chapterChange)
@@ -1701,7 +1903,7 @@ class Player {
         guard isSkippingChapters == false else { return }
         guard let currentChapter else { return }
 
-        if currentChapter.shouldPlay { return }
+        guard await shouldSkip(chapter: currentChapter) else { return }
 
         isSkippingChapters = true
         defer { isSkippingChapters = false }
@@ -1712,7 +1914,7 @@ class Player {
     private func skipOverChaptersContinuing() async {
         guard let currentChapter else { return }
 
-        if currentChapter.shouldPlay { return }
+        guard await shouldSkip(chapter: currentChapter) else { return }
 
         if let id = currentChapter.uuid {
             let chapterActor = self.chapterActor
@@ -1720,7 +1922,8 @@ class Player {
                 await chapterActor?.markChapterAsSkipped(id)
             }
         }
-        guard let nextChapter = chapters?.first(where: { ($0.start ?? 0) > playPosition })
+        let currentChapterStart = currentChapter.start ?? playPosition
+        guard let nextChapter = chapters?.first(where: { ($0.start ?? 0) > currentChapterStart + .ulpOfOne })
         else {
             handlePlaybackFinished()
             return
@@ -1737,6 +1940,19 @@ class Player {
 
         // After the seek, update and re-check
         await skipOverChaptersContinuing()
+    }
+
+    private func shouldSkip(chapter: Marker) async -> Bool {
+        if chapter.shouldPlay == false {
+            return true
+        }
+
+        if let id = chapter.uuid,
+           let persistedShouldPlay = await chapterActor?.shouldPlayChapter(id) {
+            chapter.shouldPlay = persistedShouldPlay
+        }
+
+        return chapter.shouldPlay == false
     }
 
     func chapterPlaybackPreferenceChanged(_ chapter: Marker, shouldPlay: Bool) {
@@ -1825,37 +2041,93 @@ class Player {
         Task {
             let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
             let sleepTimerContinuePlaying = !stopAfterEpisode
-            let nextEpisodeURL: URL?
-            if sleepTimerContinuePlaying == true && continuePlaying == true {
-                if let activePlaylistActor = activePlaybackPlaylistActor() {
-                    nextEpisodeURL = try? await activePlaylistActor.nextEpisodeURL(after: finishedEpisodeURL)
-                } else {
-                    nextEpisodeURL = nil
-                }
-            } else {
-                nextEpisodeURL = nil
+            let activePlaylistActor = activePlaybackPlaylistActor()
+            let queuedSuccessor: URL?
+            do {
+                queuedSuccessor = try await activePlaylistActor?
+                    .dequeueFinishedEpisodeAndReturnNext(after: finishedEpisodeURL)
+            } catch {
+                BasicLogger.shared.log(
+                    "Failed to dequeue finished episode \(finishedEpisodeURL.absoluteString): \(error.localizedDescription)"
+                )
+                queuedSuccessor = try? await activePlaylistActor?
+                    .nextEpisodeURL(after: finishedEpisodeURL)
             }
+            let nextEpisodeURL = sleepTimerContinuePlaying && continuePlaying
+                ? queuedSuccessor
+                : nil
 
-            await episodeActor?.setLastPlayed(episodeURL: finishedEpisodeURL)
-            await episodeActor?.setPlayPosition(
-                episodeURL: finishedEpisodeURL,
-                position: finalPlaybackPosition,
-                force: true
-            )
-            PlaybackProgressDefaultsStore.removeProgress(for: finishedEpisodeURL)
-            await unloadEpisode(episodeURL: finishedEpisodeURL, finishedPlayback: true)
+            // Clear the in-memory playback state of the finished episode so the next episode
+            // can load cleanly (and isn't mistaken for a fast-switch and re-queued). This is
+            // cheap main-actor work only — all persistence for the finished episode is deferred.
+            await resetPlaybackStateForFinishedEpisode(refreshPresentation: nextEpisodeURL == nil)
 
+            // Start the next episode immediately. Persisting the *finished* episode (last-played,
+            // play position, completion, move-to-history, download policy) is bookkeeping the user
+            // is no longer waiting for, so it runs afterwards in the background — mirroring the
+            // fast-switch unload path used when the user manually switches episodes.
             if let nextEpisodeURL {
                 BasicLogger.shared.log("Playing next episode")
                 await playEpisode(nextEpisodeURL, playDirectly: true)
             } else {
                 finishingEpisodeURL = nil
             }
+
+            Task(priority: .utility) { [weak self] in
+                await self?.finalizeFinishedEpisode(
+                    episodeURL: finishedEpisodeURL,
+                    finalPlaybackPosition: finalPlaybackPosition
+                )
+            }
         }
+    }
 
+    /// Resets the in-memory state left behind by the episode that just finished, so the next
+    /// episode can be loaded without inheriting stale chapters/artwork/audio-processing state.
+    /// Deliberately excludes all SwiftData persistence — that is handled by
+    /// `finalizeFinishedEpisode(episodeURL:finalPlaybackPosition:)` off the critical path.
+    private func resetPlaybackStateForFinishedEpisode(refreshPresentation: Bool) async {
+        stopPlaybackUpdates()
+        currentEpisode = nil
+        currentEpisodeURL = nil
+        currentChapter = nil
+        chapterProgress = nil
+        nextChapter = nil
+        chapters = []
+        advancePlaybackLoadGeneration()
+        configureChapterBoundaryObserver()
+        currentPlaybackSource = nil
+        currentPlaybackUsesAlternateMedia = false
+        mediaSelection = .primary
+        resetSilenceGapReduction(updateEngine: false)
+        await flushSilenceGapTimeSaved()
+#if !os(watchOS)
+        currentAudioPlaybackProcessor = nil
+#endif
+        lastProgressSaveDate = .distantPast
+        lastArtworkIdentifier = nil
 
-        
+        // Only refresh the widget/watch for an "empty" state when there is no next episode.
+        // When a next episode follows, `playEpisode` refreshes them with the correct URL.
+        if refreshPresentation {
+            await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+    }
 
+    /// Persists the finished episode: last-played, final position, completion, and move-to-history.
+    /// Runs at utility priority after the next episode has already started playing.
+    private func finalizeFinishedEpisode(episodeURL: URL, finalPlaybackPosition: Double) async {
+        await episodeActor?.setLastPlayed(episodeURL: episodeURL)
+        await episodeActor?.setPlayPosition(
+            episodeURL: episodeURL,
+            position: finalPlaybackPosition,
+            force: true
+        )
+        PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+        await episodeActor?.setCompletionDate(episodeURL: episodeURL)
+        await episodeActor?.moveToHistory(episodeURL: episodeURL)
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     private func ensureDownloadForCurrentEpisodeIfNeeded() async {
@@ -1895,11 +2167,18 @@ class Player {
         let wasPlaying = isPlaying
         let preservedRate = playbackRate
         let hadPlaybackUpdates = playbackTask != nil
+        let playbackGeneration = advancePlaybackLoadGeneration()
 
-        await loadPlaybackAudioProcessingSettings()
-        await configurePlaybackAudioProcessing(for: replacementItem)
+        await resetPlaybackAudioProcessing(for: replacementItem)
         await engine.replaceCurrentItem(with: replacementItem)
         currentPlaybackSource = .local
+        if let episodeURL = currentEpisodeURL {
+            schedulePlaybackAudioProcessing(
+                for: replacementItem,
+                episodeURL: episodeURL,
+                generation: playbackGeneration
+            )
+        }
         await engine.seek(to: CMTime(seconds: preservedPosition, preferredTimescale: 600))
 
         playPosition = preservedPosition

@@ -6,15 +6,16 @@ import SwiftData
 final class DownloadViewModel: ObservableObject {
     @Published var item: DownloadItem? 
     private var cancellables: Set<AnyCancellable> = []
+    private var itemCancellable: AnyCancellable?
 
-    func observeDownload(for episode: Episode) {
+    func observeDownload(for episode: Episode) async {
         guard episode.source != .sideLoaded else { return }
-        Task {
-            if let url = episode.url, let found = await DownloadManager.shared.getItem(for: url) {
-                self.item = found
-            }
+        guard let url = episode.url,
+              let found = await DownloadManager.shared.getItem(for: url),
+              Task.isCancelled == false else {
+            return
         }
-
+        setItem(found)
     }
 
     func startDownload(for episode: Episode) {
@@ -22,10 +23,32 @@ final class DownloadViewModel: ObservableObject {
         Task {
             if let url = episode.url {
                 let item = await DownloadManager.shared.download(from: url, saveTo: episode.localFile)
-                self.item = item
+                self.setItem(item)
             }
            
         }
+    }
+
+    func setItem(_ item: DownloadItem?) {
+        itemCancellable = nil
+        guard item?.isFinished != true else {
+            self.item = nil
+            return
+        }
+
+        self.item = item
+        itemCancellable = item?.$isFinished
+            .sink { [weak self] isFinished in
+                guard isFinished else { return }
+                Task { @MainActor in
+                    self?.item = nil
+                }
+            }
+    }
+
+    func clearFinishedItem(for url: URL) {
+        guard item?.url == url, item?.isFinished == true else { return }
+        setItem(nil)
     }
 
     

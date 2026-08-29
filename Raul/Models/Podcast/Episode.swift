@@ -190,6 +190,14 @@ enum EpisodeSource: String, Codable, CaseIterable, Hashable, Sendable {
     case sideLoaded
 }
 
+extension Notification.Name {
+    static let episodeReferencesDidChange = Notification.Name("episodeReferencesDidChange")
+}
+
+enum EpisodeReferenceNotificationKey {
+    static let episodeURL = "episodeURL"
+}
+
 @Observable
 class EpisodeDownloadStatus{
      var isDownloading: Bool = false
@@ -252,7 +260,19 @@ class EpisodeDownloadStatus{
     @Relationship var playlist: [PlaylistEntry]? = []
     
     // temporary values that don't need to survive an app restart
-    @Transient @Published var refresh: Bool = false
+    @Transient @Published var refresh: Bool = false {
+        didSet {
+            var userInfo: [String: Any] = [:]
+            if let url {
+                userInfo[EpisodeReferenceNotificationKey.episodeURL] = url
+            }
+            NotificationCenter.default.post(
+                name: .episodeReferencesDidChange,
+                object: nil,
+                userInfo: userInfo
+            )
+        }
+    }
     @Transient var downloadItem: DownloadItem? = nil {
         didSet {
             // print("downloadItem changed")
@@ -278,6 +298,22 @@ class EpisodeDownloadStatus{
 
     var remainingTime: Double? {
         return (duration ?? 0.0) - (metaData?.playPosition ?? 0.0)
+    }
+
+    var hasPlaybackHistory: Bool {
+        metaData?.hasPlaybackHistory ?? false
+    }
+
+    var displayRemainingTime: Double? {
+        guard let duration else { return nil }
+        guard hasPlaybackHistory else { return duration }
+
+        let remaining = duration - (metaData?.playPosition ?? 0.0)
+        return remaining > 0 ? remaining : nil
+    }
+
+    var displayProgress: Double {
+        hasPlaybackHistory ? maxPlayProgress : 0
     }
     
     var playProgress: Double {
@@ -305,6 +341,22 @@ class EpisodeDownloadStatus{
         let progress = Double(metaData?.maxPlayposition ?? 0.0) / Double(duration ?? 1)
         
         return  progress > 1 ? 1 : progress
+    }
+
+    /// Share of the episode that has to be heard before it counts as played.
+    /// Mirrors `Player.progressThreshold`.
+    static let playedProgressThreshold: Double = 0.99
+
+    /// Whether the episode counts as listened to.
+    ///
+    /// This is the membership test for playlists: a played episode is not a queue
+    /// member, so automatic paths must never (re-)insert one. Deliberate user
+    /// re-queues are allowed and are distinguished by the entry's `dateAdded`
+    /// being newer than `completionDate`, not by this flag.
+    var isPlayed: Bool {
+        if metaData?.completionDate != nil { return true }
+        if metaData?.isHistory == true || metaData?.status == .history { return true }
+        return maxPlayProgress >= Self.playedProgressThreshold
     }
 
     @Transient var isVideo: Bool {
@@ -457,22 +509,27 @@ class EpisodeDownloadStatus{
         ) != nil
     }
 
+    // Pure read of stored soundbite chapters. Must NOT mutate the model:
+    // this is read during SwiftUI body evaluation, and synthesizing markers
+    // (setting `marker.episode = self`) here mutates the episode's relationship
+    // graph, which invalidates the view, re-triggers the read, and produces a
+    // runaway main-thread update loop. Soundbites from optionalTags are
+    // materialized into `chapters` once via materializeSoundbitesIfNeeded().
     @Transient var soundbitesForDisplay: [Marker] {
-        let storedSoundbites = (chapters ?? [])
+        (chapters ?? [])
             .filter { $0.type == .soundbite }
             .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
 
-        if storedSoundbites.isEmpty == false {
-            return storedSoundbites
-        }
-
-        return (optionalTags?.soundbite ?? [])
-            .compactMap { node -> Marker? in
-                guard let marker = soundbiteMarker(from: node) else { return nil }
-                marker.episode = self
-                return marker
-            }
-            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    /// Materializes `podcast:soundbite` entries from `optionalTags` into stored
+    /// `.soundbite` chapters when they are missing. Idempotent and safe to call
+    /// off the render path (e.g. from a view `.task`); once soundbites are
+    /// stored the guard short-circuits so it never loops.
+    func materializeSoundbitesIfNeeded() {
+        let hasStoredSoundbites = (chapters ?? []).contains { $0.type == .soundbite }
+        guard hasStoredSoundbites == false else { return }
+        guard optionalTags?.soundbite?.isEmpty == false else { return }
+        refreshSoundbitesFromOptionalTags()
     }
 
     @Transient var hasDisplayableChaptersOrSoundbites: Bool {
@@ -679,6 +736,8 @@ class EpisodeDownloadStatus{
             chapters = []
         }
 
+        let shouldPreserveChapterProgress = hasPlaybackHistory
+
         var existingByIdentity: [String: Marker] = [:]
         for chapter in (chapters ?? []) where chapter.type == type {
             let identity = chapterIdentity(for: chapter)
@@ -692,7 +751,7 @@ class EpisodeDownloadStatus{
             chapter.episode = self
             if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
                 chapter.shouldPlay = existing.shouldPlay
-                chapter.progress = existing.progress
+                chapter.progress = shouldPreserveChapterProgress ? existing.progress : 0
                 chapter.imageData = chapter.imageData ?? existing.imageData
             }
         }
@@ -827,6 +886,7 @@ enum EpisodeStatus: String, Codable{
 
 enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
     case backCatalogImport
+    case manualPlaylistRemoval
     case missingSideload
 }
 
@@ -837,6 +897,17 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
         }
         return FileManager.default.fileExists(atPath: url.path)
     }
+
+    var hasPlaybackHistory: Bool {
+        completionDate != nil
+            || firstListenDate != nil
+            || lastPlayed != nil
+            || wasSkipped
+            || totalListenTime > 0
+            || (playbackDurations?.elements.isEmpty == false)
+            || (playbackStartTimes?.elements.isEmpty == false)
+    }
+
     var isAvailableLocally: Bool = false
     
     var lastPlayed: Date?
@@ -858,6 +929,31 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
         set {
             systemSuppressionReasonRawValue = newValue?.rawValue
         }
+    }
+
+    /// Keeps the legacy mutually-exclusive status field aligned with the
+    /// independent inbox, history, and archive flags.
+    func reconcileLegacyStatus() {
+        if isArchived == true {
+            status = .archived
+        } else if isHistory == true {
+            status = .history
+        } else if isInbox == true {
+            status = .inbox
+        } else {
+            status = nil
+        }
+    }
+
+    func setInboxMembership(_ isInInbox: Bool) {
+        isInbox = isInInbox
+        reconcileLegacyStatus()
+    }
+
+    func setArchived(_ archived: Bool, at date: Date = .now) {
+        isArchived = archived
+        archivedAt = archived ? date : nil
+        reconcileLegacyStatus()
     }
    
     
@@ -892,6 +988,22 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
 
     /// Whether the user skipped the episode
     var wasSkipped: Bool = false
+
+    /// When this device last changed the synchronized part of the episode state.
+    ///
+    /// Stamped by the UserState dual-write. It lets the importer tell a genuinely
+    /// newer remote record from a stale one, so a device that was offline — or
+    /// that ran for a while without publishing — cannot have its local playback
+    /// position, history, or archive state rolled back by an older CloudKit row.
+    var stateUpdatedAt: Date?
+
+    /// Best estimate of when the user state last changed, for devices whose rows
+    /// predate `stateUpdatedAt`.
+    var effectiveStateUpdatedAt: Date? {
+        [stateUpdatedAt, lastPlayed, completionDate, archivedAt, firstListenDate]
+            .compactMap { $0 }
+            .max()
+    }
 
     
     init() {

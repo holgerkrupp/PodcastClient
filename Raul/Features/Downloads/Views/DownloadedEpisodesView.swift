@@ -9,6 +9,7 @@ struct DownloadedEpisodesView: View {
     enum Sort: String, CaseIterable, Identifiable { case newestFirst, titleAZ; var id: String { rawValue } }
     @AppStorage("DownloadedEpisodesSort") private var sortRaw: String = Sort.newestFirst.rawValue
     @State private var downloadedEpisodes: [Episode] = []
+    @State private var refreshGeneration = 0
     private var sort: Sort { Sort(rawValue: sortRaw) ?? .newestFirst }
 
     var body: some View {
@@ -17,7 +18,7 @@ struct DownloadedEpisodesView: View {
                 ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle", description: Text("Episodes you download will appear here."))
             } else {
                 Section {
-                    ForEach(downloadedEpisodes, id: \.id) { episode in
+                    ForEach(downloadedEpisodes, id: \.persistentModelID) { episode in
                         ZStack{
                             EpisodeRowView(episode: episode)
 
@@ -56,7 +57,7 @@ struct DownloadedEpisodesView: View {
                     }
                     Button("Rescan") {
                         filesManager.rescanDownloadedFiles()
-                        refreshDownloadedEpisodes()
+                        Task { await refreshDownloadedEpisodes() }
                     }
                     Button(role: .destructive) {
                         Task { await deletePlayedEpisodes() }
@@ -72,68 +73,57 @@ struct DownloadedEpisodesView: View {
             }
         }
         .task {
-            refreshDownloadedEpisodes()
+            await refreshDownloadedEpisodes()
         }
         .onChange(of: sortRaw) { _, _ in
-            refreshDownloadedEpisodes()
+            Task { await refreshDownloadedEpisodes() }
         }
         .onChange(of: filesManager.downloadedFiles) { _, _ in
-            refreshDownloadedEpisodes()
+            Task { await refreshDownloadedEpisodes() }
         }
     }
     
-    private func refreshDownloadedEpisodes() {
+    private func refreshDownloadedEpisodes() async {
+        refreshGeneration += 1
+        let generation = refreshGeneration
         let downloadedFiles = filesManager.downloadedFiles
         guard !downloadedFiles.isEmpty else {
             downloadedEpisodes = []
             return
         }
 
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.metaData?.isAvailableLocally == true }
-        )
+        let querySort: EpisodeListQuerySort = switch sort {
+        case .newestFirst: .newestFirst
+        case .titleAZ: .titleAZ
+        }
+        let actor = EpisodeListQueryActor(modelContainer: modelContext.container)
 
         do {
-            var episodes = try modelContext.fetch(descriptor).filter { episode in
-                guard let localFile = episode.localFile?.standardizedFileURL else { return false }
-                return downloadedFiles.contains(localFile)
+            let episodeIDs = try await actor.downloadedEpisodeIDs(
+                downloadedFiles: downloadedFiles,
+                sort: querySort
+            )
+            guard Task.isCancelled == false, generation == refreshGeneration else {
+                return
             }
-
-            switch sort {
-            case .newestFirst:
-                episodes.sort { ($0.publishDate ?? .distantPast) > ($1.publishDate ?? .distantPast) }
-            case .titleAZ:
-                episodes.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            }
-
-            downloadedEpisodes = episodes
+            let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
+                for: episodeIDs
+            )
+            downloadedEpisodes = episodeIDs.compactMap { episodesByID[$0] }
         } catch {
+            guard generation == refreshGeneration else { return }
             downloadedEpisodes = []
         }
     }
 
 
     private func deleteEpisode(_ episodeURL: URL?, refreshSnapshot: Bool = true) async {
-        // Attempt to remove the file for this episode using the files manager
-        // Perform heavy work off the main actor to keep UI responsive
-       // guard let url = episode.url else { return }
+        let actor = EpisodeActor(modelContainer: modelContext.container)
+        await actor.deleteFile(episodeURL: episodeURL)
 
-        await withTaskCancellationHandler(operation: {
-            // Run file deletion in a detached background task
-            let _ = await Task.detached(priority: .background) { () -> Void in
-                let actor = await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
-                await actor.deleteFile(episodeURL: episodeURL)
-            }.value
-
-            // Refresh the snapshot on the main actor so UI updates
-            if refreshSnapshot {
-                await MainActor.run {
-                    filesManager.rescanDownloadedFiles()
-                }
-            }
-        }, onCancel: {
-            // No-op for now; could add cleanup if needed
-        })
+        if refreshSnapshot {
+            filesManager.rescanDownloadedFiles()
+        }
     }
     
     private func deletePlayedEpisodes() async {
@@ -144,20 +134,18 @@ struct DownloadedEpisodesView: View {
 
         guard !playedURLs.isEmpty else { return }
 
-        // Delete concurrently in the background to avoid blocking UI
+        let modelContainer = modelContext.container
         await withTaskGroup(of: Void.self) { group in
             for url in playedURLs {
                 group.addTask(priority: .background) {
-                    await deleteEpisode(url, refreshSnapshot: false)
+                    await EpisodeActor(modelContainer: modelContainer)
+                        .deleteFile(episodeURL: url)
                 }
             }
             await group.waitForAll()
         }
 
-        // Ensure we refresh once after bulk deletion
-        await MainActor.run {
-            filesManager.rescanDownloadedFiles()
-        }
+        filesManager.rescanDownloadedFiles()
     }
 }
 

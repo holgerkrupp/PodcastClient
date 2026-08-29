@@ -8,6 +8,16 @@
 import Foundation
 
 struct ShownotesChapterExtractor {
+    static func extractTimeCodesAndTitles(fromShownotesCandidates candidates: [String?]) -> [String: String]? {
+        for candidate in candidates {
+            guard let candidate, candidate.isEmpty == false else { continue }
+            if let chapters = extractTimeCodesAndTitles(from: candidate) {
+                return chapters
+            }
+        }
+        return nil
+    }
+
     static func extractTimeCodesAndTitles(from htmlEncodedText: String) -> [String: String]? {
         let normalizedText = normalizedShownotesTextForChapterParsing(from: htmlEncodedText)
         let nsText = normalizedText as NSString
@@ -45,7 +55,39 @@ struct ShownotesChapterExtractor {
     }
 
     private static func normalizedShownotesTextForChapterParsing(from htmlEncodedText: String) -> String {
-        var text = htmlEncodedText.decodeHTML() ?? htmlEncodedText
+        var text = htmlEncodedText
+
+        text = text.replacingOccurrences(
+            of: #"<!\[CDATA\[(.*?)\]\]>"#,
+            with: "$1",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        text = text.replacingOccurrences(
+            of: #"<!--.*?-->"#,
+            with: " ",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        text = text.replacingOccurrences(
+            of: #"<\s*br\s*/?\s*>"#,
+            with: "\n",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        text = text.replacingOccurrences(
+            of: #"</?(?:p|li|div|ul|ol|h[1-6])\b[^>]*>"#,
+            with: "\n",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        text = text.replacingOccurrences(
+            of: #"<[^>]+>"#,
+            with: " ",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        text = text.decodeHTML() ?? text
 
         let replacements: [String: String] = [
             "\r\n": "\n",
@@ -60,24 +102,13 @@ struct ShownotesChapterExtractor {
         }
 
         text = text.replacingOccurrences(
-            of: #"</(?:p|li|div|br|h[1-6])\s*>"#,
-            with: "\n",
-            options: [.regularExpression, .caseInsensitive]
-        )
-
-        text = text.replacingOccurrences(
-            of: #"<br\s*/?>"#,
-            with: "\n",
-            options: [.regularExpression, .caseInsensitive]
-        )
-
-        text = text.replacingOccurrences(
             of: #"(?<=[^\s\d:])(?=\s*(?:(?:\d{1,2}:[0-5]\d:[0-5]\d)|(?:[0-5]?\d:[0-5]\d))\s*(?:[-–—:|•·]|\s+[^\d\s]))"#,
             with: "\n",
             options: .regularExpression
         )
+        text = text.replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
         text = text.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
-        return text
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func canonicalChapterTimeCode(from rawValue: String) -> String? {
