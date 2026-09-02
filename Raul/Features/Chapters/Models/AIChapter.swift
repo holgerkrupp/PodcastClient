@@ -42,7 +42,7 @@ actor AIChapterGenerator{
     }
 
     @Generable(description: "A broad podcast chapter boundary")
-    private struct TranscriptAIChapter {
+    struct TranscriptAIChapter {
         @Guide(description: "A short description of the broad topic, without a chapter number or advertisement prefix")
         var title: String
 
