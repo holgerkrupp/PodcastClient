@@ -26,7 +26,9 @@ private struct TranscriptChunkGenerationResult: Sendable {
 }
 
 actor AIChapterGenerator{
-    private let maxChaptersPerChunk = 4
+    /// This is deliberately low: a chapter should describe a substantial section of
+    /// an episode rather than every conversational turn inside that section.
+    private let maxChaptersPerChunk = 2
     
     
     
@@ -37,6 +39,18 @@ actor AIChapterGenerator{
         
         @Guide(description: "The timecode of the chapter in the format hh:mm:ss")
         var timecode: String
+    }
+
+    @Generable(description: "A broad podcast chapter boundary")
+    private struct TranscriptAIChapter {
+        @Guide(description: "A short description of the broad topic, without a chapter number or advertisement prefix")
+        var title: String
+
+        @Guide(description: "The timecode where this section begins, in the format hh:mm:ss")
+        var timecode: String
+
+        @Guide(description: "True only when this boundary begins paid advertising, a sponsor message, or a self-promotion break")
+        var isAdvertisement: Bool
     }
     
     func extractChaptersFromText(_ text: String) async -> [String:String] {
@@ -111,11 +125,17 @@ actor AIChapterGenerator{
 
         let instructions = """
            You are a podcast chapter generator.
-           Given transcript lines with timestamps, produce a sparse list of chapter boundaries.
-           Create a chapter when the topic clearly changes or an advertisement / sponsor segment begins.
-           Make advertisement sections explicit chapters so they can be skipped later.
-           Return at most 4 chapters for this chunk, ideally 1 to 3.
-           Only keep the strongest topic shifts or ad / sponsor breaks.
+           Understand the transcript in its own language, but produce only a sparse outline of broad topic blocks.
+           Group introductions, examples, questions, tangents, and related subtopics into the surrounding main topic.
+           A normal chapter should usually cover at least 8 to 15 minutes. Do not add a boundary merely because the speaker changes or a new point is made.
+           Return at most 2 boundaries for this chunk and return none when it only continues the current broad topic.
+
+           Advertising is the exception to the minimum duration rule. Recognize paid ads, sponsor reads, promotions, and self-promotion semantically in EVERY language, even when no English advertising words occur.
+           Set isAdvertisement=true at the exact beginning of every advertisement block. Put only the advertiser or a short description in title; the app adds the required "advertisement: " prefix.
+           An advertisement chapter must span the COMPLETE uninterrupted advertisement block. At the exact point editorial content resumes, always add a normal boundary with isAdvertisement=false, even when the prior editorial topic resumes and even when the advertisement crosses a chunk boundary.
+           Do not split one advertisement containing several sponsors or offers into multiple chapters unless editorial content occurs between them.
+
+           Outside advertisement boundaries, keep only unmistakable changes between broad main topics.
            Do not create chapters for every line, do not output continuation entries, and keep titles short (max 8 words).
            Use the timestamp where the new section starts.
            The transcript below is one chunk from a longer episode. Only return chapters that begin inside this chunk.
@@ -126,16 +146,16 @@ actor AIChapterGenerator{
         let usesExactTokenCounting: Bool
         if #available(iOS 26.4, macOS 26.4, *) {
             usesExactTokenCounting = true
-            chunkBudget = 1600
+            chunkBudget = 2400
         } else {
             usesExactTokenCounting = false
-            chunkBudget = 800
+            chunkBudget = 1600
         }
 
         let chunks = await chunkTranscriptLines(orderedTranscriptLines, tokenBudget: chunkBudget, model: model)
 
         #if DEBUG
-        print("AI transcript chapter generation will process \(orderedTranscriptLines.count) transcript line(s) in \(chunks.count) chunk(s) using \(usesExactTokenCounting ? "exact" : "estimated") token counting and will keep up to \(maxChaptersPerChunk) chapter(s) per chunk.")
+        print("AI transcript chapter generation will process \(orderedTranscriptLines.count) transcript line(s) in \(chunks.count) chunk(s) using \(usesExactTokenCounting ? "exact" : "estimated") token counting and will keep up to \(maxChaptersPerChunk) broad chapter boundary/boundaries per chunk.")
         #endif
 
         var mergedChapters: [String: String] = [:]
@@ -465,14 +485,17 @@ actor AIChapterGenerator{
             let continuityPrompt = promptPrefix(for: previousChapterContext)
             let response = try await session.respond(
                 to: continuityPrompt.isEmpty ? chunk.prompt : "\(continuityPrompt)\n\n\(chunk.prompt)",
-                generating: [AIChapter].self,
+                generating: [TranscriptAIChapter].self,
                 includeSchemaInPrompt: false,
                 options: options
             )
 
             let candidates = response.content.compactMap { $0 }
-            let validChapters: [(String, String)] = candidates.compactMap { (chapter: AIChapter) -> (String, String)? in
-                let title = normalizedChapterTitle(chapter.title)
+            let validChapters: [(String, String)] = candidates.compactMap { (chapter: TranscriptAIChapter) -> (String, String)? in
+                let title = normalizedTranscriptChapterTitle(
+                    chapter.title,
+                    isAdvertisement: chapter.isAdvertisement
+                )
                 guard title.isEmpty == false,
                       title.lowercased() != "continuation",
                       chapter.timecode.durationAsSeconds != nil else {
@@ -568,7 +591,25 @@ actor AIChapterGenerator{
         Continuity context from the previous chunk:
         - Previous chunk ended with chapter "\(previousChapterContext.title)" at \(previousChapterContext.timecode).
         - If this chunk continues that same topic, keep it as the same chapter until there is a clear topic change or ad break.
+        - A title beginning with "advertisement:" means the chunk may begin inside an advertisement. Do not add another ad boundary; add a normal boundary exactly when the complete advertisement ends.
         """
+    }
+
+    private func normalizedTranscriptChapterTitle(_ title: String, isAdvertisement: Bool) -> String {
+        var normalizedTitle = normalizedChapterTitle(title)
+        guard isAdvertisement else { return normalizedTitle }
+
+        // The model classifies ads independently of the transcript language. Enforce
+        // one stable prefix here so skip detection never depends on a translation.
+        normalizedTitle = normalizedTitle.replacingOccurrences(
+            of: #"(?i)^\s*(?:advertisement|advert|ad|sponsor(?:ed)?)\s*:\s*"#,
+            with: "",
+            options: .regularExpression
+        )
+        if normalizedTitle.isEmpty {
+            normalizedTitle = "sponsor message"
+        }
+        return "advertisement: \(normalizedTitle)"
     }
     
 
