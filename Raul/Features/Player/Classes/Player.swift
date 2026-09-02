@@ -186,6 +186,7 @@ class Player {
     private var hasStartedRecovery = false
     private var finishingEpisodeURL: URL?
     private var isSkippingChapters = false
+    private var chapterSkipPlan = ChapterSkipPlan(entries: [])
     private let chapterBoundaryTolerance: TimeInterval = 0.35
     private var playbackPowerMode: PlaybackPowerMode = .foreground
     private var reduceSilenceGapsEnabled = false
@@ -754,6 +755,7 @@ class Player {
     private func updateChapters() {
         guard let currentEpisode else {
             chapters = []
+            chapterSkipPlan = ChapterSkipPlan(entries: [])
             currentChapter = nil
             nextChapter = nil
             configureChapterBoundaryObserver()
@@ -761,15 +763,14 @@ class Player {
         }
 
         chapters = currentEpisode.preferredChapters
+        rebuildChapterSkipPlan()
         configureChapterBoundaryObserver()
         RemoteCommandCenter.shared.updateSkipIntervals()
     }
 
     private func configureChapterBoundaryObserver() {
-        let chapterStartTimes = (chapters ?? [])
-            .compactMap(\.start)
-            .filter { $0.isFinite && $0 > 0 }
-            .sorted()
+        let chapterStartTimes = chapterSkipPlan.boundaryTimes
+            .filter { $0 > 0 }
             .map { CMTime(seconds: $0, preferredTimescale: 600) }
 
         Task { [weak self] in
@@ -780,6 +781,17 @@ class Player {
                 }
             }
         }
+    }
+
+    private func rebuildChapterSkipPlan() {
+        chapterSkipPlan = ChapterSkipPlan(entries: (chapters ?? []).compactMap { chapter in
+            guard let start = chapter.start else { return nil }
+            return ChapterSkipPlan.Entry(
+                id: chapter.uuid,
+                start: start,
+                shouldPlay: chapter.shouldPlay
+            )
+        })
     }
 
     private func handleChapterBoundary() async {
@@ -814,11 +826,6 @@ class Player {
         }
 
         currentChapter = playingChapter
-        if let currentChapterID = currentChapter?.uuid {
-            Task {
-                currentChapter?.shouldPlay = await chapterActor?.shouldPlayChapter(currentChapterID) ?? true
-            }
-        }
         chapterProgress = 0.0
         updateChapterProgress()
         Task {
@@ -1901,62 +1908,34 @@ class Player {
 
     private func skipOverChapters() async {
         guard isSkippingChapters == false else { return }
-        guard let currentChapter else { return }
-
-        guard await shouldSkip(chapter: currentChapter) else { return }
+        guard let segment = chapterSkipPlan.segment(at: playPosition) else { return }
 
         isSkippingChapters = true
         defer { isSkippingChapters = false }
 
-        await skipOverChaptersContinuing()
-    }
-
-    private func skipOverChaptersContinuing() async {
-        guard let currentChapter else { return }
-
-        guard await shouldSkip(chapter: currentChapter) else { return }
-
-        if let id = currentChapter.uuid {
-            let chapterActor = self.chapterActor
+        let chapterActor = self.chapterActor
+        for id in segment.chapterIDs {
             Task.detached(priority: .background) {
                 await chapterActor?.markChapterAsSkipped(id)
             }
         }
-        let currentChapterStart = currentChapter.start ?? playPosition
-        guard let nextChapter = chapters?.first(where: { ($0.start ?? 0) > currentChapterStart + .ulpOfOne })
-        else {
+
+        guard let resumeAt = segment.resumeAt else {
             handlePlaybackFinished()
             return
         }
 
-        let start = nextChapter.start ?? 0
-        guard start < (currentEpisode?.duration ?? .greatestFiniteMagnitude) else {
+        guard resumeAt < (currentEpisode?.duration ?? .greatestFiniteMagnitude) else {
             handlePlaybackFinished()
             return
         }
 
-        // Await the seek
-        await jumpTo(time: start)
-
-        // After the seek, update and re-check
-        await skipOverChaptersContinuing()
-    }
-
-    private func shouldSkip(chapter: Marker) async -> Bool {
-        if chapter.shouldPlay == false {
-            return true
-        }
-
-        if let id = chapter.uuid,
-           let persistedShouldPlay = await chapterActor?.shouldPlayChapter(id) {
-            chapter.shouldPlay = persistedShouldPlay
-        }
-
-        return chapter.shouldPlay == false
+        await jumpTo(time: resumeAt)
     }
 
     func chapterPlaybackPreferenceChanged(_ chapter: Marker, shouldPlay: Bool) {
         chapter.shouldPlay = shouldPlay
+        rebuildChapterSkipPlan()
         configureChapterBoundaryObserver()
 
         if let id = chapter.uuid {
