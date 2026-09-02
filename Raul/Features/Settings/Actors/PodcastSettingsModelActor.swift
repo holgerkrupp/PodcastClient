@@ -448,6 +448,14 @@ actor PodcastSettingsModelActor {
 
     }
 
+    func getSkipProtectionEnabled() async -> Bool {
+        await standardSettings().enableSkipProtection
+    }
+
+    func getSkipProtectionNotificationsEnabled() async -> Bool {
+        await standardSettings().enableSkipProtectionNotifications
+    }
+
     func getTranscriptionsEnabled() async -> Bool {
         await standardSettings().enableTranscriptions
     }

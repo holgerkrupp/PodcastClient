@@ -10,6 +10,29 @@ import Combine
 import SwiftUI
 import BasicLogger
 
+enum SkipProtectionNotification {
+    static let categoryIdentifier = "SKIP_PROTECTION_UNDO"
+    static let undoActionIdentifier = "SKIP_PROTECTION_UNDO_ACTION"
+    static let requestIdentifier = "skip-protection-undo"
+    static let undoIDUserInfoKey = "skipProtectionUndoID"
+    static let expiresAtUserInfoKey = "skipProtectionExpiresAt"
+
+    static func registerCategory() {
+        let undoAction = UNNotificationAction(
+            identifier: undoActionIdentifier,
+            title: String(localized: "Undo"),
+            options: [.foreground]
+        )
+        let category = UNNotificationCategory(
+            identifier: categoryIdentifier,
+            actions: [undoAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+}
+
 enum NotificationSchedulingError: LocalizedError {
     case denied
     case invalidDate
@@ -50,7 +73,10 @@ class NotificationPermissionViewModel: ObservableObject {
 }
 
 actor NotificationManager {
+    static let shared = NotificationManager()
+
     private static let liveNotificationPrefix = "podcast-live-"
+    private var skipProtectionCleanupTask: Task<Void, Never>?
     
     func requestAuthorizationIfUndetermined() async {
         if await getAuthorizationStatus() == .notDetermined {
@@ -74,6 +100,68 @@ actor NotificationManager {
             // print("Notification permission error: \(error)")
             return false
         }
+    }
+
+    func sendSkipProtectionUndoNotification(
+        undoID: UUID,
+        episodeTitle: String,
+        positionDescription: String,
+        expiresAt: Date
+    ) async {
+        let authorizationStatus = await getAuthorizationStatus()
+        let canDeliver: Bool
+#if os(macOS)
+        canDeliver = authorizationStatus == .authorized
+            || authorizationStatus == .provisional
+#else
+        canDeliver = authorizationStatus == .authorized
+            || authorizationStatus == .provisional
+            || authorizationStatus == .ephemeral
+#endif
+        guard canDeliver else {
+            return
+        }
+
+        await removeSkipProtectionUndoNotification()
+
+        let content = UNMutableNotificationContent()
+        content.title = String(localized: "Playback moved")
+        content.body = String(
+            localized: "Undo to return to \(episodeTitle) at \(positionDescription)."
+        )
+        content.sound = .default
+        content.categoryIdentifier = SkipProtectionNotification.categoryIdentifier
+        content.threadIdentifier = SkipProtectionNotification.requestIdentifier
+        content.userInfo = [
+            SkipProtectionNotification.undoIDUserInfoKey: undoID.uuidString,
+            SkipProtectionNotification.expiresAtUserInfoKey: expiresAt.timeIntervalSince1970
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: SkipProtectionNotification.requestIdentifier,
+            content: content,
+            trigger: nil
+        )
+        try? await UNUserNotificationCenter.current().add(request)
+
+        let delay = max(0, expiresAt.timeIntervalSinceNow)
+        skipProtectionCleanupTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard Task.isCancelled == false else { return }
+            await self?.removeSkipProtectionUndoNotification()
+        }
+    }
+
+    func removeSkipProtectionUndoNotification() async {
+        skipProtectionCleanupTask?.cancel()
+        skipProtectionCleanupTask = nil
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(
+            withIdentifiers: [SkipProtectionNotification.requestIdentifier]
+        )
+        center.removeDeliveredNotifications(
+            withIdentifiers: [SkipProtectionNotification.requestIdentifier]
+        )
     }
     
     private func getAuthorizationStatus() async -> UNAuthorizationStatus {

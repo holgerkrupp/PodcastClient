@@ -707,6 +707,13 @@ struct PodcastSettingsView: View {
                 source: .global
             )
 
+            SettingsBehaviorRow(
+                title: "Skip protection",
+                value: globalSettings.enableSkipProtection.enabledLabel,
+                detail: "Offers a one-minute undo after a large seek or an episode change.",
+                source: .global
+            )
+
 #if canImport(UIKit)
             SettingsBehaviorRow(
                 title: "Lock screen scrubbing",
@@ -822,6 +829,48 @@ struct PodcastSettingsView: View {
                     detail: "Allow playback-position scrubbing in the app."
                 )
             }
+
+            Toggle(
+                isOn: Binding(
+                    get: { settings.enableSkipProtection },
+                    set: {
+                        settings.enableSkipProtection = $0
+                        if $0 == false {
+                            settings.enableSkipProtectionNotifications = false
+                        }
+                        saveAndNotify()
+                    }
+                )
+            ) {
+                SettingsControlLabel(
+                    title: "Skip protection",
+                    detail: "Show Undo for one minute after a seek of 90 seconds or more, or after changing episodes."
+                )
+            }
+
+#if canImport(UIKit)
+            if settings.enableSkipProtection {
+                Toggle(
+                    isOn: Binding(
+                        get: { settings.enableSkipProtectionNotifications },
+                        set: {
+                            settings.enableSkipProtectionNotifications = $0
+                            saveAndNotify()
+                            if $0 {
+                                Task {
+                                    await NotificationManager.shared.requestAuthorizationIfUndetermined()
+                                }
+                            }
+                        }
+                    )
+                ) {
+                    SettingsControlLabel(
+                        title: "Undo notification",
+                        detail: "Also send a local notification with an Undo action. It is removed after one minute."
+                    )
+                }
+            }
+#endif
 
 #if canImport(UIKit)
             Toggle(
@@ -2735,6 +2784,48 @@ private struct AppControlsSettingsDetailView: View {
                     )
                 }
 
+                Toggle(
+                    isOn: Binding(
+                        get: { settings.enableSkipProtection },
+                        set: {
+                            settings.enableSkipProtection = $0
+                            if $0 == false {
+                                settings.enableSkipProtectionNotifications = false
+                            }
+                            onChange()
+                        }
+                    )
+                ) {
+                    SettingsControlLabel(
+                        title: "Skip protection",
+                        detail: "Show Undo for one minute after a seek of 90 seconds or more, or after changing episodes."
+                    )
+                }
+
+#if canImport(UIKit)
+                if settings.enableSkipProtection {
+                    Toggle(
+                        isOn: Binding(
+                            get: { settings.enableSkipProtectionNotifications },
+                            set: {
+                                settings.enableSkipProtectionNotifications = $0
+                                onChange()
+                                if $0 {
+                                    Task {
+                                        await NotificationManager.shared.requestAuthorizationIfUndetermined()
+                                    }
+                                }
+                            }
+                        )
+                    ) {
+                        SettingsControlLabel(
+                            title: "Undo notification",
+                            detail: "Also send a local notification with an Undo action. It is removed after one minute."
+                        )
+                    }
+                }
+#endif
+
 #if canImport(UIKit)
                 Toggle(
                     isOn: Binding(
@@ -2973,7 +3064,8 @@ private extension PodcastSettings {
     var appControlsSummary: String {
         let playback = getContinuousPlay ? "Continuous play on" : "Continuous play off"
         let sliders = enableInAppSlider || enableLockscreenSlider ? "scrubbing available" : "scrubbing off"
-        return "\(playback) • \(sliders)"
+        let protection = enableSkipProtection ? "skip protection on" : "skip protection off"
+        return "\(playback) • \(sliders) • \(protection)"
     }
 
     var transcriptionSummary: String {

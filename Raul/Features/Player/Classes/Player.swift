@@ -5,9 +5,51 @@ import MediaPlayer
 import SwiftData
 import BasicLogger
 
-enum PlaybackMediaSelection: String, Sendable {
+enum PlaybackMediaSelection: String, Codable, Sendable {
     case primary
     case alternateVideo
+}
+
+enum SkipProtectionBehavior: Sendable {
+    case protect
+    case ignore
+}
+
+struct SkipProtectionPolicy {
+    static let significantSeekThreshold: TimeInterval = 90
+    static let undoLifetime: TimeInterval = 60
+
+    static func shouldOfferUndo(
+        from originEpisodeURL: URL,
+        position originPosition: TimeInterval,
+        to destinationEpisodeURL: URL,
+        position destinationPosition: TimeInterval
+    ) -> Bool {
+        if originEpisodeURL != destinationEpisodeURL {
+            return true
+        }
+
+        return abs(destinationPosition - originPosition) >= significantSeekThreshold
+    }
+}
+
+struct SkipProtectionUndo: Identifiable, Codable, Sendable {
+    let id: UUID
+    let episodeURL: URL
+    let episodeTitle: String
+    let position: TimeInterval
+    let mediaSelection: PlaybackMediaSelection
+    let wasPlaying: Bool
+    let createdAt: Date
+    let expiresAt: Date
+}
+
+private struct SkipProtectionOrigin {
+    let episodeURL: URL
+    let episodeTitle: String
+    let position: TimeInterval
+    let mediaSelection: PlaybackMediaSelection
+    let wasPlaying: Bool
 }
 
 private struct CachedPlaybackProgress: Codable {
@@ -144,6 +186,7 @@ class Player {
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
     private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
     private static let playSessionRecoveryStartupDelayNanoseconds: UInt64 = 15_000_000_000
+    private static let skipProtectionUndoDefaultsKey = "Player.skipProtectionUndo.v1"
     
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
@@ -184,6 +227,7 @@ class Player {
     private var currentPlaybackUsesAlternateMedia = false
     private var playbackLoadGeneration: UInt64 = 0
     private var hasStartedRecovery = false
+    private var wasPlayingBeforeInterruption = false
     private var finishingEpisodeURL: URL?
     private var isSkippingChapters = false
     private let chapterBoundaryTolerance: TimeInterval = 0.35
@@ -194,6 +238,8 @@ class Player {
     private var silenceGapReductionActive = false
     private var silenceGapReductionStartedAt: Date?
     private var pendingSilenceGapTimeSavedSeconds: TimeInterval = 0
+    private var pendingSkipProtectionOrigin: SkipProtectionOrigin?
+    private var skipProtectionExpirationTask: Task<Void, Never>?
 #if !os(watchOS)
     private var currentAudioPlaybackProcessor: AudioPlaybackProcessor?
 #endif
@@ -287,6 +333,9 @@ class Player {
     var chapters: [Marker]?
     
     var allowScrubbing:Bool?
+    private(set) var skipProtectionEnabled = false
+    private(set) var skipProtectionNotificationsEnabled = false
+    private(set) var skipProtectionUndo: SkipProtectionUndo?
 
     
     private var nowPlayingArtwork: MPMediaItemArtwork?
@@ -297,6 +346,7 @@ class Player {
       //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
         
       //  super.init()
+        restorePersistedSkipProtectionUndo()
         Task {
             // Restoring the episode is what makes the player usable, so nothing
             // else may sit in front of it. The cache reconciliation below used
@@ -317,6 +367,7 @@ class Player {
         addDownloadObserver()
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
+            await loadSkipProtectionSettings()
         }
         
     }
@@ -352,6 +403,193 @@ class Player {
         }
     }
 
+    private func loadSkipProtectionSettings() async {
+        let isEnabled = await settingsActor?.getSkipProtectionEnabled() ?? false
+        let notificationsEnabled = await settingsActor?.getSkipProtectionNotificationsEnabled() ?? false
+        skipProtectionEnabled = isEnabled
+        skipProtectionNotificationsEnabled = isEnabled && notificationsEnabled
+
+        if isEnabled == false {
+            clearSkipProtectionUndo()
+        } else if notificationsEnabled == false {
+            Task {
+                await NotificationManager.shared.removeSkipProtectionUndoNotification()
+            }
+        }
+    }
+
+    private func restorePersistedSkipProtectionUndo() {
+        guard let data = UserDefaults.standard.data(forKey: Self.skipProtectionUndoDefaultsKey),
+              let undo = try? JSONDecoder().decode(SkipProtectionUndo.self, from: data),
+              undo.expiresAt > Date() else {
+            UserDefaults.standard.removeObject(forKey: Self.skipProtectionUndoDefaultsKey)
+            return
+        }
+
+        skipProtectionUndo = undo
+        scheduleSkipProtectionExpiration(for: undo)
+    }
+
+    private func persistSkipProtectionUndo(_ undo: SkipProtectionUndo?) {
+        guard let undo,
+              let data = try? JSONEncoder().encode(undo) else {
+            UserDefaults.standard.removeObject(forKey: Self.skipProtectionUndoDefaultsKey)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: Self.skipProtectionUndoDefaultsKey)
+    }
+
+    private func scheduleSkipProtectionExpiration(for undo: SkipProtectionUndo) {
+        skipProtectionExpirationTask?.cancel()
+        let delay = max(0, undo.expiresAt.timeIntervalSinceNow)
+        skipProtectionExpirationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard Task.isCancelled == false,
+                  self?.skipProtectionUndo?.id == undo.id else {
+                return
+            }
+            self?.clearSkipProtectionUndo()
+        }
+    }
+
+    private func currentSkipProtectionOrigin(position: TimeInterval? = nil) -> SkipProtectionOrigin? {
+        guard currentPlaybackSource != .liveRemote,
+              let episodeURL = currentEpisodeURL else {
+            return nil
+        }
+
+        return SkipProtectionOrigin(
+            episodeURL: episodeURL,
+            episodeTitle: currentEpisode?.title ?? String(localized: "Previous episode"),
+            position: sanitizedPosition(position ?? playPosition),
+            mediaSelection: mediaSelection,
+            wasPlaying: isPlaying
+        )
+    }
+
+    private func offerSkipProtectionUndo(from origin: SkipProtectionOrigin) {
+        guard skipProtectionEnabled else { return }
+
+        if let existingUndo = skipProtectionUndo {
+            if existingUndo.expiresAt > Date() {
+                pendingSkipProtectionOrigin = nil
+                return
+            }
+            clearSkipProtectionUndo()
+        }
+
+        let createdAt = Date()
+        let undo = SkipProtectionUndo(
+            id: UUID(),
+            episodeURL: origin.episodeURL,
+            episodeTitle: origin.episodeTitle,
+            position: origin.position,
+            mediaSelection: origin.mediaSelection,
+            wasPlaying: origin.wasPlaying,
+            createdAt: createdAt,
+            expiresAt: createdAt.addingTimeInterval(SkipProtectionPolicy.undoLifetime)
+        )
+        skipProtectionUndo = undo
+        pendingSkipProtectionOrigin = nil
+        persistSkipProtectionUndo(undo)
+        scheduleSkipProtectionExpiration(for: undo)
+
+        guard skipProtectionNotificationsEnabled else { return }
+        Task { [weak self] in
+            guard self?.skipProtectionUndo?.id == undo.id,
+                  self?.skipProtectionNotificationsEnabled == true else {
+                return
+            }
+            await NotificationManager.shared.sendSkipProtectionUndoNotification(
+                undoID: undo.id,
+                episodeTitle: undo.episodeTitle,
+                positionDescription: Self.positionDescription(undo.position),
+                expiresAt: undo.expiresAt
+            )
+        }
+    }
+
+    func beginSkipProtectionSeek() {
+        guard skipProtectionEnabled,
+              skipProtectionUndo == nil,
+              pendingSkipProtectionOrigin == nil else {
+            return
+        }
+        pendingSkipProtectionOrigin = currentSkipProtectionOrigin()
+    }
+
+    func endSkipProtectionSeek(at progress: Double) {
+        guard let origin = pendingSkipProtectionOrigin else { return }
+        pendingSkipProtectionOrigin = nil
+        guard let duration = currentEpisode?.duration,
+              duration.isFinite,
+              duration > 0 else {
+            return
+        }
+
+        let destinationPosition = min(max(progress, 0), 1) * duration
+        guard let destinationURL = currentEpisodeURL,
+              SkipProtectionPolicy.shouldOfferUndo(
+                from: origin.episodeURL,
+                position: origin.position,
+                to: destinationURL,
+                position: destinationPosition
+              ) else {
+            return
+        }
+        offerSkipProtectionUndo(from: origin)
+    }
+
+    func dismissSkipProtectionUndo() {
+        clearSkipProtectionUndo()
+    }
+
+    func undoSkipProtection(undoID: UUID? = nil) async {
+        guard let undo = skipProtectionUndo,
+              undoID == nil || undo.id == undoID,
+              undo.expiresAt > Date() else {
+            clearSkipProtectionUndo()
+            return
+        }
+
+        if currentEpisodeURL == undo.episodeURL,
+           mediaSelection == undo.mediaSelection {
+            await jumpTo(time: undo.position, protectLargeSeek: false)
+            if undo.wasPlaying {
+                play()
+            } else {
+                pause()
+            }
+        } else {
+            await playEpisode(
+                undo.episodeURL,
+                playDirectly: undo.wasPlaying,
+                startingAt: undo.position,
+                mediaSelection: undo.mediaSelection,
+                skipProtectionBehavior: .ignore
+            )
+        }
+
+        clearSkipProtectionUndo()
+    }
+
+    private func clearSkipProtectionUndo() {
+        skipProtectionExpirationTask?.cancel()
+        skipProtectionExpirationTask = nil
+        pendingSkipProtectionOrigin = nil
+        skipProtectionUndo = nil
+        persistSkipProtectionUndo(nil)
+        Task {
+            await NotificationManager.shared.removeSkipProtectionUndoNotification()
+        }
+    }
+
+    private static func positionDescription(_ position: TimeInterval) -> String {
+        Duration.seconds(max(0, position)).formatted(
+            .time(pattern: .minuteSecond(padMinuteToLength: 1))
+        )
+    }
+
     private func activePlaybackPlaylistActor() -> PlaylistModelActor? {
         try? PlaylistModelActor(activePlaybackPlaylistIn: ModelContainerManager.shared.container)
     }
@@ -378,7 +616,11 @@ class Player {
             preferring: candidateURL
         ) else { return }
 
-        await playEpisode(resumeURL, playDirectly: false)
+        await playEpisode(
+            resumeURL,
+            playDirectly: false,
+            skipProtectionBehavior: .ignore
+        )
     }
 
     /// The episode this device was last playing, according to whichever record
@@ -458,6 +700,7 @@ class Player {
                 self?.loadPlayBackSpeed()
                 self?.loadSkipDurations()
                 self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
+                await self?.loadSkipProtectionSettings()
                 await self?.loadPlaybackAudioProcessingSettings()
                 if let currentItem = self?.videoPlayer.currentItem {
                     await self?.configurePlaybackAudioProcessing(for: currentItem)
@@ -1288,18 +1531,50 @@ class Player {
         _ episodeURL: URL?,
         playDirectly: Bool = true,
         startingAt time: Double? = nil,
-        mediaSelection requestedMediaSelection: PlaybackMediaSelection? = nil
+        mediaSelection requestedMediaSelection: PlaybackMediaSelection? = nil,
+        skipProtectionBehavior: SkipProtectionBehavior = .protect
     ) async {
         guard let episodeURL,
               let episode = await fetchEpisode(with: episodeURL) else { return }
 
         let previousEpisodeURL = currentEpisodeURL
+        let previousProtectionOrigin = pendingSkipProtectionOrigin
+            ?? currentSkipProtectionOrigin()
         let fastSwitchUnloadSnapshot: EpisodeUnloadSnapshot?
         if let currentEpisodeURL, currentEpisodeURL != episodeURL {
             fastSwitchUnloadSnapshot = await snapshotCurrentEpisodeForFastSwitch(episodeURL: currentEpisodeURL)
         } else {
             fastSwitchUnloadSnapshot = nil
         }
+
+        if skipProtectionBehavior == .protect,
+           previousEpisodeURL != episodeURL || time != nil,
+           let previousProtectionOrigin {
+            let origin: SkipProtectionOrigin
+            if let fastSwitchUnloadSnapshot,
+               pendingSkipProtectionOrigin == nil {
+                origin = SkipProtectionOrigin(
+                    episodeURL: previousProtectionOrigin.episodeURL,
+                    episodeTitle: previousProtectionOrigin.episodeTitle,
+                    position: fastSwitchUnloadSnapshot.playPosition,
+                    mediaSelection: previousProtectionOrigin.mediaSelection,
+                    wasPlaying: previousProtectionOrigin.wasPlaying
+                )
+            } else {
+                origin = previousProtectionOrigin
+            }
+
+            let destinationPosition = sanitizedPosition(time)
+            if SkipProtectionPolicy.shouldOfferUndo(
+                from: origin.episodeURL,
+                position: origin.position,
+                to: episodeURL,
+                position: destinationPosition
+            ) {
+                offerSkipProtectionUndo(from: origin)
+            }
+        }
+        pendingSkipProtectionOrigin = nil
 
         let selectedMedia = normalizedMediaSelection(
             requestedMediaSelection ?? (previousEpisodeURL == episodeURL ? mediaSelection : .primary),
@@ -1394,7 +1669,7 @@ class Player {
         )
 
         if targetStartTime > 0.5 {
-            await jumpTo(time: targetStartTime)
+            await jumpTo(time: targetStartTime, protectLargeSeek: false)
         } else {
             playPosition = 0
             updateNowPlayingInfo()
@@ -1532,7 +1807,9 @@ class Player {
                 guard let duration = currentEpisode?.duration, duration > 0 else { return }
                 let seconds = newValue * duration
                 let newTime = CMTime(seconds: seconds, preferredTimescale: 1)
-                await jumpTo(time: newTime.seconds)
+                // Slider gestures record their origin and final value explicitly,
+                // so intermediate drag updates must not create competing undo snapshots.
+                await jumpTo(time: newTime.seconds, protectLargeSeek: false)
             }
         }
     }
@@ -1681,10 +1958,25 @@ class Player {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     switch event {
-                    case .began, .pause:
+                    case .began:
+                        self.wasPlayingBeforeInterruption = self.isPlaying
                         self.handleInterruptionBegan()
-                    case .ended, .resume:
-                        self.resumeAfterInterruption()
+                    case .pause:
+                        self.pause()
+                    case .ended:
+                        self.wasPlayingBeforeInterruption = false
+                        BasicLogger.shared.log("Interruption Ended Without Resume")
+                    case .resume:
+                        let shouldResume = self.wasPlayingBeforeInterruption
+                        self.wasPlayingBeforeInterruption = false
+                        if shouldResume {
+                            self.resumeAfterInterruption()
+                        }
+                    case .activationFailed(let description):
+                        BasicLogger.shared.log("Audio Session Activation Failed: \(description)")
+                        if self.isPlaying {
+                            self.transitionToPaused(pauseEngine: true)
+                        }
                     case .finished:
                         self.handlePlaybackEndedEvent(source: "interruption_finished_event")
                     }
@@ -1720,48 +2012,62 @@ class Player {
     }
     
     func skipback(){
-        jumpPlaypostion(by: -skipBackStep.seconds)
+        jumpPlaypostion(by: -skipBackStep.seconds, protectLargeSeek: false)
         
     }
     
     func skipforward(){
-        jumpPlaypostion(by: skipForwardStep.seconds)
+        jumpPlaypostion(by: skipForwardStep.seconds, protectLargeSeek: false)
     }
 
     func remoteSkipBack() {
         if remoteSkipBackUsesChapter {
             Task {
-                await skipToPreviousChapter()
+                await skipToPreviousChapter(protectLargeSeek: false)
             }
             return
         }
 
-        jumpPlaypostion(by: -skipBackStep.seconds)
+        jumpPlaypostion(by: -skipBackStep.seconds, protectLargeSeek: false)
     }
 
     func remoteSkipForward() {
         if remoteSkipForwardUsesChapter {
             Task {
-                await skipToNextChapter()
+                await skipToNextChapter(protectLargeSeek: false)
             }
             return
         }
 
-        jumpPlaypostion(by: skipForwardStep.seconds)
+        jumpPlaypostion(by: skipForwardStep.seconds, protectLargeSeek: false)
     }
     
-     func jumpPlaypostion(by seconds:Double){
+     func jumpPlaypostion(by seconds: Double, protectLargeSeek: Bool = true) {
          Task{
              let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
              
              let now = CMTimeMakeWithSeconds(playPosition,preferredTimescale: 1)
              let jumpToTime = CMTimeAdd(now, secondsToAdd).seconds
-             await jumpTo(time: jumpToTime)
+             await jumpTo(time: jumpToTime, protectLargeSeek: protectLargeSeek)
          }
     }
 
-    func jumpTo(time: Double) async {
+    func jumpTo(time: Double, protectLargeSeek: Bool = true) async {
         let safeTime = max(0, time)
+        if protectLargeSeek,
+           pendingSkipProtectionOrigin == nil,
+           let episodeURL = currentEpisodeURL {
+            let enginePosition = sanitizedPosition(await engine.currentTime())
+            if let origin = currentSkipProtectionOrigin(position: enginePosition),
+               SkipProtectionPolicy.shouldOfferUndo(
+                from: origin.episodeURL,
+                position: origin.position,
+                to: episodeURL,
+                position: safeTime
+               ) {
+                offerSkipProtectionUndo(from: origin)
+            }
+        }
         let cmTime = CMTime(seconds: safeTime, preferredTimescale: 600)
 
         await engine.seek(to: cmTime)
@@ -1936,7 +2242,7 @@ class Player {
         }
 
         // Await the seek
-        await jumpTo(time: start)
+        await jumpTo(time: start, protectLargeSeek: false)
 
         // After the seek, update and re-check
         await skipOverChaptersContinuing()
@@ -1990,17 +2296,17 @@ class Player {
         }
     }
     
-    func skipToNextChapter() async{
+    func skipToNextChapter(protectLargeSeek: Bool = true) async {
         let nextChapter = chapters?.first(where: { ($0.start ?? 0) > playPosition + 0.5 })
 
         if let start = nextChapter?.start{
-             await jumpTo(time: start)
+             await jumpTo(time: start, protectLargeSeek: protectLargeSeek)
         }else if let end = currentChapter?.end{
-            await jumpTo(time: end)
+            await jumpTo(time: end, protectLargeSeek: protectLargeSeek)
         }
     }
 
-    func skipToPreviousChapter() async {
+    func skipToPreviousChapter(protectLargeSeek: Bool = true) async {
         let preferredChapters = chapters ?? currentEpisode?.preferredChapters ?? []
         guard preferredChapters.isEmpty == false else { return }
 
@@ -2010,15 +2316,18 @@ class Player {
             return
         }
 
-        await jumpTo(time: targetChapter.start ?? 0)
+        await jumpTo(
+            time: targetChapter.start ?? 0,
+            protectLargeSeek: protectLargeSeek
+        )
     }
     
-    func skipToChapterStart() async{
+    func skipToChapterStart(protectLargeSeek: Bool = true) async {
         guard let currentChapter else {
             return
         }
         if let start = currentChapter.start{
-             await jumpTo(time: start)
+             await jumpTo(time: start, protectLargeSeek: protectLargeSeek)
         }
     }
 
@@ -2068,7 +2377,11 @@ class Player {
             // fast-switch unload path used when the user manually switches episodes.
             if let nextEpisodeURL {
                 BasicLogger.shared.log("Playing next episode")
-                await playEpisode(nextEpisodeURL, playDirectly: true)
+                await playEpisode(
+                    nextEpisodeURL,
+                    playDirectly: true,
+                    skipProtectionBehavior: .ignore
+                )
             } else {
                 finishingEpisodeURL = nil
             }

@@ -12,8 +12,11 @@ struct PlayerProgressSliderView: View {
     @Binding var markers: [Marker]?
     @State var allowTouch: Bool = true
     var chapterTimelineDuration: Double?
+    var onEditingChanged: ((Bool, Double) -> Void)?
     
     @State var lastCoordinateValue: CGFloat = 0.0
+    @State private var isEditing = false
+    @State private var editingValue: Double?
     var sliderRange: ClosedRange<Double> = 1...100
     var thumbColor: Color = .yellow
     var minTrackColor: Color = .blue
@@ -80,20 +83,35 @@ struct PlayerProgressSliderView: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
                         if allowTouch{
+                            if isEditing == false {
+                                isEditing = true
+                                onEditingChanged?(true, value)
+                            }
                             if (abs(v.translation.width) < 0.1) {
                                 self.lastCoordinateValue = sliderVal
                             }
                             if v.translation.width > 0 {
                                 let nextCoordinateValue = min(maxValue, self.lastCoordinateValue + v.translation.width)
 
-                                self.value = ((nextCoordinateValue - minValue) / scaleFactor)  + lower
+                                let nextValue = ((nextCoordinateValue - minValue) / scaleFactor) + lower
+                                editingValue = nextValue
+                                self.value = nextValue
                             } else {
                                 let nextCoordinateValue = max(minValue, self.lastCoordinateValue + v.translation.width)
-                                self.value = ((nextCoordinateValue - minValue) / scaleFactor) + lower
+                                let nextValue = ((nextCoordinateValue - minValue) / scaleFactor) + lower
+                                editingValue = nextValue
+                                self.value = nextValue
                             }
                         }else{
                             // print("not allowed")
                         }
+                    }
+                    .onEnded { _ in
+                        guard allowTouch, isEditing else { return }
+                        let finalValue = editingValue ?? value
+                        isEditing = false
+                        editingValue = nil
+                        onEditingChanged?(false, finalValue)
                     }
             )
             .accessibilityElement(children: .ignore)
@@ -103,14 +121,18 @@ struct PlayerProgressSliderView: View {
             .accessibilityAdjustableAction { direction in
                 guard allowTouch else { return }
                 let step = max((sliderRange.upperBound - sliderRange.lowerBound) / 20, 0.01)
+                let adjustedValue: Double
                 switch direction {
                 case .increment:
-                    self.value = min(sliderRange.upperBound, self.value + step)
+                    adjustedValue = min(sliderRange.upperBound, self.value + step)
                 case .decrement:
-                    self.value = max(sliderRange.lowerBound, self.value - step)
+                    adjustedValue = max(sliderRange.lowerBound, self.value - step)
                 @unknown default:
-                    break
+                    return
                 }
+                onEditingChanged?(true, value)
+                self.value = adjustedValue
+                onEditingChanged?(false, adjustedValue)
             }
         }
     }

@@ -1,16 +1,13 @@
 import Foundation
 import AVFoundation
 
-enum PlaybackInterruptionEvent {
+enum PlaybackInterruptionEvent: Sendable {
     case began
     case ended
-    
     case finished
-    
     case pause
     case resume
-
-     
+    case activationFailed(String)
 }
 
 #if os(iOS)
@@ -22,27 +19,30 @@ enum PlaybackInterruptionEvent {
 /// unresponsiveness"). `AVAudioSession` is thread-safe, so the work just moves
 /// to a dedicated queue.
 ///
-/// The queue is serial on purpose. Activation and deactivation are ordered
-/// against each other — an interruption that deactivates and then reactivates
-/// must not land inverted — and the category has to be applied before the
-/// first activation. iOS 27 adds a non-blocking `activate(options:)`, but its
-/// completion is independent of the calls queued behind it, so it would give up
-/// exactly that ordering.
+/// The queue is serial on purpose so category configuration and activation
+/// cannot land out of order. Playback only starts from the completion handler:
+/// starting `AVPlayer` while activation is still queued can leave the player
+/// advancing without an output route after an interruption.
 private enum AudioSessionConfigurator {
     private static let queue = DispatchQueue(
         label: "de.holgerkrupp.upnext.audio-session",
         qos: .userInitiated
     )
 
-    static func configureForPlayback() {
+    static func activateForPlayback(
+        completion: @escaping @Sendable (String?) -> Void
+    ) {
         queue.async {
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        }
-    }
-
-    static func setActive(_ active: Bool) {
-        queue.async {
-            try? AVAudioSession.sharedInstance().setActive(active)
+            let session = AVAudioSession.sharedInstance()
+            do {
+                // Reapply the category because media-services resets and some
+                // interruption paths can discard the previous configuration.
+                try session.setCategory(.playback, mode: .spokenAudio)
+                try session.setActive(true)
+                completion(nil)
+            } catch {
+                completion(String(describing: error))
+            }
         }
     }
 }
@@ -58,13 +58,10 @@ final class PlayerEngine {
     private var boundaryTimeObserver: Any?
     private var periodicTimeObserver: Any?
     private var activePlaybackStreamID: UInt64 = 0
+    private var playbackRequestID: UInt64 = 0
 
 
      init() {
-#if os(iOS)
-        AudioSessionConfigurator.configureForPlayback()
-#endif
-
          avPlayer.automaticallyWaitsToMinimizeStalling = false
 
 #if os(iOS)
@@ -133,7 +130,7 @@ final class PlayerEngine {
             
             if reason == .oldDeviceUnavailable {
                 // Headphones unplugged, pause playback
-                Task { await self.sendInterrupt(type: .began) }
+                Task { await self.sendInterrupt(type: .pause) }
             }
         }
 #endif
@@ -143,18 +140,14 @@ final class PlayerEngine {
         // print("sendInterrupt type: \(type)")
         switch type {
         case .began:
-            deactiveSession()
             self.interruptionHandler?(.began)
         case .ended:
-            activateSession()
             self.interruptionHandler?(.ended)
         case .pause:
-                deactiveSession()
-               self.interruptionHandler?(.pause)
+            self.interruptionHandler?(.pause)
         case .resume:
-            activateSession()
             self.interruptionHandler?(.resume)
-        case .finished:
+        case .finished, .activationFailed:
             break
         }
     }
@@ -170,6 +163,7 @@ final class PlayerEngine {
         guard  avPlayer.currentItem != item else {
             return
         }
+        invalidatePendingPlaybackRequests()
         removeBoundaryTimeObserver()
         removeEndObserver()
         avPlayer.replaceCurrentItem(with: item)
@@ -200,20 +194,34 @@ final class PlayerEngine {
 
 
     func play() {
-        activateSession()
-        avPlayer.play()
+        resume(atRate: 1)
     }
 
-    /// Starts playback synchronously so hardware and CarPlay play commands are not
-    /// delayed behind unrelated work queued on the main actor.
+    /// Starts session activation immediately, then begins playback only after
+    /// iOS confirms that the session owns an output route.
     func resume(atRate rate: Float) {
         guard rate > 0 else {
-            avPlayer.pause()
+            pause()
             return
         }
 
-        activateSession()
+#if os(iOS)
+        playbackRequestID &+= 1
+        let requestID = playbackRequestID
+        AudioSessionConfigurator.activateForPlayback { [weak self] failureDescription in
+            Task { @MainActor [weak self] in
+                guard let self, self.playbackRequestID == requestID else { return }
+                guard let failureDescription else {
+                    self.avPlayer.playImmediately(atRate: rate)
+                    return
+                }
+
+                self.interruptionHandler?(.activationFailed(failureDescription))
+            }
+        }
+#else
         avPlayer.playImmediately(atRate: rate)
+#endif
     }
 
     func setRate(_ newRate: Float) async {
@@ -221,8 +229,8 @@ final class PlayerEngine {
     }
 
     func pause() {
+        invalidatePendingPlaybackRequests()
         avPlayer.pause()
-     //   deactiveSession()
     }
 
     func seek(to time: CMTime) async {
@@ -238,21 +246,8 @@ final class PlayerEngine {
          return avPlayer.rate != 0
      }
     
-    private func deactiveSession()  {
-#if os(iOS)
-        AudioSessionConfigurator.setActive(false)
-#endif
-    }
-
-    /// Requests activation and returns immediately.
-    ///
-    /// Callers start playback right after this, which is safe: `AVPlayer`
-    /// activates the session itself when it begins playing, so the explicit
-    /// request only needs to be ordered, not awaited.
-    private func activateSession()  {
-#if os(iOS)
-        AudioSessionConfigurator.setActive(true)
-#endif
+    private func invalidatePendingPlaybackRequests() {
+        playbackRequestID &+= 1
     }
 
     func currentTime() -> Double {

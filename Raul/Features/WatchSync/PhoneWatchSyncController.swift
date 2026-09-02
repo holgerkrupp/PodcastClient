@@ -594,11 +594,11 @@ final class PhoneWatchSyncController: NSObject {
             await refreshSnapshotAndTransfers()
 
         case .remoteSkipToChapterStart:
-            await Player.shared.skipToChapterStart()
+            await Player.shared.skipToChapterStart(protectLargeSeek: false)
             await refreshSnapshotAndTransfers()
 
         case .remoteSkipToNextChapter:
-            await Player.shared.skipToNextChapter()
+            await Player.shared.skipToNextChapter(protectLargeSeek: false)
             await refreshSnapshotAndTransfers()
 
         case .remoteSetPlaybackRate:

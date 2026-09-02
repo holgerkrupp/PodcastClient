@@ -54,6 +54,8 @@ class PodcastSettings {
     var playSumAdjustedbyPlayspeed: Bool = false
     var enableLockscreenSlider:Bool = true
     var enableInAppSlider:Bool = true
+    var enableSkipProtection: Bool = false
+    var enableSkipProtectionNotifications: Bool = false
     var getContinuousPlay:Bool = true
     var enableTranscriptions: Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true

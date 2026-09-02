@@ -40,6 +40,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         CrashBreadcrumbs.shared.record("app_delegate_did_finish_launching")
         UNUserNotificationCenter.current().delegate = self
+        SkipProtectionNotification.registerCategory()
 
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier,
@@ -373,6 +374,28 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        if response.actionIdentifier == SkipProtectionNotification.undoActionIdentifier {
+            let userInfo = response.notification.request.content.userInfo
+            let undoID = (userInfo[SkipProtectionNotification.undoIDUserInfoKey] as? String)
+                .flatMap(UUID.init(uuidString:))
+            let expiresAt = (userInfo[SkipProtectionNotification.expiresAtUserInfoKey] as? Double)
+                .map(Date.init(timeIntervalSince1970:))
+
+            guard let undoID, let expiresAt, expiresAt > Date() else {
+                Task {
+                    await NotificationManager.shared.removeSkipProtectionUndoNotification()
+                }
+                completionHandler()
+                return
+            }
+
+            Task { @MainActor in
+                await Player.shared.undoSkipProtection(undoID: undoID)
+            }
+            completionHandler()
+            return
+        }
+
         defer { completionHandler() }
 
         let userInfo = response.notification.request.content.userInfo

@@ -186,6 +186,13 @@ struct PlayerControllView: View {
                         markers: $player.chapters,
                         allowTouch: globalSettings.first?.enableInAppSlider ?? true,
                         chapterTimelineDuration: player.currentEpisode?.duration,
+                        onEditingChanged: { isEditing, progress in
+                            if isEditing {
+                                player.beginSkipProtectionSeek()
+                            } else {
+                                player.endSkipProtectionSeek(at: progress)
+                            }
+                        },
                         sliderRange: 0...1
                     )
                         .frame(height: 30)
@@ -203,6 +210,21 @@ struct PlayerControllView: View {
                             .font(.caption)
                     }
                 }
+
+                if let undo = player.skipProtectionUndo {
+                    Button {
+                        Task {
+                            await player.undoSkipProtection(undoID: undo.id)
+                        }
+                    } label: {
+                        Label("Undo skip", systemImage: "arrow.uturn.backward.circle.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityHint("Returns to \(undo.episodeTitle) at the previous playback position")
+                    .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
+                }
+
                 HStack{
 
                     
@@ -396,6 +418,7 @@ struct PlayerPrimaryTransportControlsView: View {
     @Bindable private var player = Player.shared
     var includeBookmark: Bool = false
     @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var skipIconOpticalOffset: CGFloat = 2
     @State private var showClipExport = false
 
     var body: some View {
@@ -408,6 +431,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         Image(systemName: player.skipBackStep.triangleBackString)
                             .resizable()
                             .scaledToFit()
+                            .offset(y: skipIconOpticalOffset)
                     }
                     .labelStyle(.iconOnly)
                 }
@@ -446,6 +470,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         Image(systemName: player.skipForwardStep.triangleForwardString)
                             .resizable()
                             .scaledToFit()
+                            .offset(y: skipIconOpticalOffset)
                     }
                     .labelStyle(.iconOnly)
                 }

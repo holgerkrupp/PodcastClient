@@ -18,6 +18,7 @@ struct EpisodeRowView: View {
 
     @Bindable var episode: Episode
     let showsRemoveFromInboxAction: Bool
+    let usesLivePlaybackProgress: Bool
     @State private var referenceAvailability = EpisodeReferenceAvailability()
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
@@ -25,9 +26,14 @@ struct EpisodeRowView: View {
     @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeWidth: CGFloat = 300
     @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeHeight: CGFloat = 120
 
-    init(episode: Episode, showsRemoveFromInboxAction: Bool = false) {
+    init(
+        episode: Episode,
+        showsRemoveFromInboxAction: Bool = false,
+        usesLivePlaybackProgress: Bool = false
+    ) {
         self._episode = Bindable(wrappedValue: episode)
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
+        self.usesLivePlaybackProgress = usesLivePlaybackProgress
     }
   
     
@@ -46,7 +52,6 @@ struct EpisodeRowView: View {
         let hasChapters = referenceAvailability.hasChapters
         let hasTranscript = referenceAvailability.hasTranscript
         let hasBookmarks = referenceAvailability.hasBookmarks
-        let progress = max(0.0, min(1.0, episode.displayProgress))
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
         VStack(alignment: .leading, spacing: 12) {
@@ -160,13 +165,10 @@ struct EpisodeRowView: View {
             .accessibilityHidden(true)
         }
         .overlay(alignment: .bottomLeading) {
-            Rectangle()
-                .fill(Color.accent)
-                .scaleEffect(x: progress, y: 1, anchor: .leading)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .frame(height: 4)
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .accessibilityHidden(true)
+            EpisodeRowPlaybackProgressView(
+                episode: episode,
+                usesLivePlaybackProgress: usesLivePlaybackProgress
+            )
         }
             .overlay{
 
@@ -229,6 +231,36 @@ struct EpisodeRowView: View {
                 }
             }
 
+    }
+
+    private struct EpisodeRowPlaybackProgressView: View {
+        @Bindable var episode: Episode
+        let usesLivePlaybackProgress: Bool
+
+        private var progress: Double {
+            let storedProgress = episode.displayProgress
+            guard usesLivePlaybackProgress,
+                  Player.shared.currentEpisodeURL == episode.url else {
+                return clamped(storedProgress)
+            }
+
+            return clamped(Player.shared.progress)
+        }
+
+        var body: some View {
+            Rectangle()
+                .fill(Color.accent)
+                .scaleEffect(x: progress, y: 1, anchor: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: 4)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .accessibilityHidden(true)
+        }
+
+        private func clamped(_ value: Double) -> Double {
+            guard value.isFinite else { return 0 }
+            return min(max(value, 0), 1)
+        }
     }
 
     private func badgeText(for type: EpisodeType?) -> String? {

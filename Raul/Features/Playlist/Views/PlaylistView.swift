@@ -270,10 +270,13 @@ private struct ManualPlaylistPageView: View {
                 TipView(reorderTip, arrowEdge: .none)
                                     .listRowSeparator(.hidden)
                 
-                ForEach(episodes, id: \.persistentModelID) { episode in
+                ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                     if episode.url != nil {
                         ZStack {
-                            EpisodeRowView(episode: episode)
+                            EpisodeRowView(
+                                episode: episode,
+                                usesLivePlaybackProgress: index == 0
+                            )
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
                             }

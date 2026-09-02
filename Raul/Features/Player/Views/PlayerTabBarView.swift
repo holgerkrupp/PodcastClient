@@ -78,6 +78,21 @@ struct PlayerTabBarView: View {
 
                     Spacer(minLength: 8)
 
+                    if let undo = player.skipProtectionUndo {
+                        Button {
+                            Task {
+                                await player.undoSkipProtection(undoID: undo.id)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward")
+                                .font(.headline)
+                        }
+                        .buttonStyle(.borderless)
+                        .frame(width: 32, height: 32)
+                        .accessibilityLabel("Undo skip")
+                        .accessibilityHint("Returns to the previous playback position")
+                    }
+
                     Button(action: {
                         if player.isPlaying {
                             player.pause()
