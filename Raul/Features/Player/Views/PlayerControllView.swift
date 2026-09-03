@@ -419,6 +419,7 @@ struct PlayerPrimaryTransportControlsView: View {
     var includeBookmark: Bool = false
     @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 20
     @ScaledMetric(relativeTo: .body) private var skipIconOpticalOffset: CGFloat = 2
+    @ScaledMetric(relativeTo: .body) private var playIconOpticalOffset: CGFloat = 2
     @State private var showClipExport = false
 
     var body: some View {
@@ -431,7 +432,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         Image(systemName: player.skipBackStep.triangleBackString)
                             .resizable()
                             .scaledToFit()
-                            .offset(y: skipIconOpticalOffset)
+                            .offset(y: -skipIconOpticalOffset)
                     }
                     .labelStyle(.iconOnly)
                 }
@@ -454,6 +455,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         .resizable()
                         .scaledToFit()
                         .padding(5)
+                        .offset(x: player.isPlaying ? 0 : playIconOpticalOffset )
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
@@ -470,7 +472,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         Image(systemName: player.skipForwardStep.triangleForwardString)
                             .resizable()
                             .scaledToFit()
-                            .offset(y: skipIconOpticalOffset)
+                            .offset(y: -skipIconOpticalOffset)
                     }
                     .labelStyle(.iconOnly)
                 }
