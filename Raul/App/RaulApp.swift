@@ -26,7 +26,19 @@ enum BackgroundTaskConfiguration {
     static let feedProcessingInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
-    static let automaticTranscriptionInterval: TimeInterval = 60 * 15
+    /// Floor for the automatic transcription pass. The request is a floor, not a
+    /// schedule — iOS still picks the moment — so a short one just makes the task
+    /// eligible sooner and gets more episodes transcribed per day.
+    static let automaticTranscriptionInterval: TimeInterval = 60 * 5
+    /// Wall-clock budget for one background transcription pass. Checked before
+    /// starting another episode, never mid-analysis.
+    static let automaticTranscriptionBackgroundBudget: TimeInterval = 60 * 20
+    /// Upper bound on episodes handled in one background pass.
+    static let automaticTranscriptionBackgroundEpisodeLimit = 6
+    /// Feed processing rides along by importing published transcripts for
+    /// playlist episodes. Cheap downloads only — it never starts the analyzer.
+    static let feedProcessingTranscriptImportBudget: TimeInterval = 60
+    static let feedProcessingTranscriptImportLimit = 8
     static let lastStorageCleanupKey = "LastStorageCleanup"
     static let lastForegroundDownloadCleanupKey = "LastForegroundDownloadCleanup"
     static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
@@ -697,7 +709,8 @@ struct RaulApp: App {
             return
         }
         CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started", details: reason)
-        let startedEpisodeURL = await TranscriptionManager.shared.processNextAutomaticTranscriptionFromUpNext()
+        let startedEpisodeURL = await TranscriptionManager.shared
+            .processNextAutomaticTranscriptionFromPlaylists()
         if let startedEpisodeURL {
             CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started_episode", details: startedEpisodeURL.absoluteString)
             BasicLogger.shared.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.absoluteString)")
@@ -870,6 +883,12 @@ private struct RootWindowView: View {
                         try? await Task.sleep(for: .seconds(8))
                         guard Task.isCancelled == false else { return }
                         await RaulApp.runAutomaticTranscriptionSweep(reason: "launch")
+#if canImport(UIKit)
+                        // Arm the background pass at launch instead of waiting
+                        // for the first background transition. It leaves an
+                        // already pending request alone.
+                        await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
+#endif
                     }
                 }
                 .task {
