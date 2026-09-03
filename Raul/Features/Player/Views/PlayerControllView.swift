@@ -99,22 +99,18 @@ struct PlayerControllView: View {
 
                     if let transcriptLines = player.currentEpisode?.transcriptLines,
                        showTranscripts {
-                        Button {
-                            openFullTranscriptFollowingPlayback = true
-                            showFullTranscripts = true
-                        } label: {
-                            TranscriptView(
-                                transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
-                                currentTime: $player.playPosition
-                            )
-                            .frame(maxWidth: .infinity, minHeight: transcriptCardHeight, maxHeight: transcriptCardHeight, alignment: .topLeading)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .accessibilityLabel("Open full transcript")
-                        .accessibilityHint("Opens the transcript list and jumps to the current playback line")
-                        .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
+                        TranscriptView(
+                            transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
+                            currentTime: $player.playPosition,
+                            onOpenFullTranscript: {
+                                openFullTranscriptFollowingPlayback = true
+                                showFullTranscripts = true
+                            }
+                        )
+                        .frame(maxWidth: .infinity, minHeight: transcriptCardHeight, maxHeight: transcriptCardHeight, alignment: .topLeading)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .accessibilityHint("Scroll to read along. Tap a caption to open the full transcript.")
                         .transition(reduceMotion ? .identity : .move(edge: .bottom).combined(with: .opacity))
                     }
                 }

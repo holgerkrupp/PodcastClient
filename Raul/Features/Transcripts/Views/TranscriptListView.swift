@@ -2,7 +2,8 @@ import SwiftUI
 
 private struct TranscriptDisplayRow: Identifiable {
     let id: UUID
-    let lineID: UUID
+    /// Every transcript line merged into this row, so playback highlighting keeps working.
+    let lineIDs: [UUID]
     let speaker: String?
     let showsSpeaker: Bool
     let text: String
@@ -295,34 +296,38 @@ struct TranscriptListView: View {
     }
 
     private static func makeDisplayRows(from lines: [TranscriptLineAndTime], matching searchText: String) -> [TranscriptDisplayRow] {
-        let filteredLines: [TranscriptLineAndTime]
+        // Automatic transcriptions deliver very short lines. Merge them into
+        // paragraphs before displaying, but keep them short enough to stay readable.
+        let segments = TranscriptSegmentBuilder.makeSegments(from: lines, options: .full)
+
+        let filteredSegments: [TranscriptSegment]
         if searchText.isEmpty {
-            filteredLines = lines
+            filteredSegments = segments
         } else {
-            filteredLines = lines.filter { line in
-                line.text.localizedCaseInsensitiveContains(searchText) ||
-                (line.speaker?.localizedCaseInsensitiveContains(searchText) ?? false)
+            filteredSegments = segments.filter { segment in
+                segment.text.localizedCaseInsensitiveContains(searchText) ||
+                (segment.speaker?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
 
         var rows: [TranscriptDisplayRow] = []
-        rows.reserveCapacity(filteredLines.count)
+        rows.reserveCapacity(filteredSegments.count)
 
         var previousSpeaker: String?
-        for line in filteredLines {
+        for segment in filteredSegments {
             rows.append(
                 TranscriptDisplayRow(
-                    id: line.id,
-                    lineID: line.id,
-                    speaker: line.speaker,
-                    showsSpeaker: line.speaker != previousSpeaker,
-                    text: line.text,
-                    startTime: line.startTime,
-                    endTime: line.endTime
+                    id: segment.id,
+                    lineIDs: segment.lineIDs,
+                    speaker: segment.speaker,
+                    showsSpeaker: segment.speaker != previousSpeaker,
+                    text: segment.text,
+                    startTime: segment.startTime,
+                    endTime: segment.endTime
                 )
             )
 
-            previousSpeaker = line.speaker
+            previousSpeaker = segment.speaker
         }
 
         return rows
@@ -340,7 +345,15 @@ struct TranscriptListView: View {
     }
 
     private static func makeLineToDisplayRowID(from rows: [TranscriptDisplayRow]) -> [UUID: UUID] {
-        Dictionary(uniqueKeysWithValues: rows.map { ($0.lineID, $0.id) })
+        var mapping: [UUID: UUID] = [:]
+
+        for row in rows {
+            for lineID in row.lineIDs {
+                mapping[lineID] = row.id
+            }
+        }
+
+        return mapping
     }
 }
 
