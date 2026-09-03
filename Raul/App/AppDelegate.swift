@@ -232,31 +232,72 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         playbackStateBackgroundTaskID = .invalid
     }
 
+    /// Keeps the automatic transcription pass armed.
+    ///
+    /// The task used to be scheduled only when the user had switched on "only
+    /// while charging" — the default is off, so on most devices it was never
+    /// scheduled at all. It is now armed whenever transcriptions are on, and the
+    /// charging setting decides the request's power requirement instead.
     static func scheduleAutomaticTranscriptionProcessingIfNeeded() async {
         let settingsActor = PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
-        let automaticTranscriptionsEnabled = await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled()
-        let requiresCharging = await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
+        let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
 
-        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier)
-
-        guard automaticTranscriptionsEnabled, requiresCharging else {
+        guard transcriptionsEnabled else {
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier
+            )
             CrashBreadcrumbs.shared.record(
                 "automatic_transcription_background_task_not_scheduled",
-                details: "enabled=\(automaticTranscriptionsEnabled),requires_charging=\(requiresCharging)"
+                details: "transcriptions_enabled=false"
             )
             return
+        }
+
+        let automaticTranscriptionsEnabled = await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled()
+        // Without the analyzer the pass only imports feed-provided transcripts,
+        // which is a small download and does not need external power.
+        let requiresCharging = automaticTranscriptionsEnabled
+            && await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
+
+        // Never cancel-and-resubmit a pending request. The app backgrounds many
+        // times a day and every resubmit pushed `earliestBeginDate` out again, so
+        // on a phone that gets picked up regularly the task kept sliding and
+        // never became eligible.
+        let pendingRequest = await BGTaskScheduler.shared.pendingTaskRequests().first {
+            $0.identifier == BackgroundTaskConfiguration.automaticTranscriptionIdentifier
+        }
+        if let pendingRequest {
+            let pendingRequiresExternalPower = (pendingRequest as? BGProcessingTaskRequest)?
+                .requiresExternalPower
+            guard pendingRequiresExternalPower != nil,
+                  pendingRequiresExternalPower != requiresCharging else {
+                CrashBreadcrumbs.shared.record(
+                    "automatic_transcription_background_task_already_scheduled"
+                )
+                return
+            }
+            // The charging setting changed since the request was submitted, so
+            // replace it with one that matches.
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier
+            )
         }
 
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_schedule_requested")
         BasicLogger.shared.log("schedule automaticTranscriptionProcessing")
         let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier)
-        request.requiresExternalPower = true
+        request.requiresExternalPower = requiresCharging
+        // Feed-provided transcripts are downloaded when a connection happens to
+        // be there; the analyzer works offline, so this must not be required.
         request.requiresNetworkConnectivity = false
         request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.automaticTranscriptionInterval)
 
         do {
             try BGTaskScheduler.shared.submit(request)
-            CrashBreadcrumbs.shared.record("automatic_transcription_background_task_scheduled")
+            CrashBreadcrumbs.shared.record(
+                "automatic_transcription_background_task_scheduled",
+                details: "requires_external_power=\(requiresCharging)"
+            )
         } catch {
             CrashBreadcrumbs.shared.record(
                 "automatic_transcription_background_task_schedule_failed",
@@ -297,7 +338,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 task.setTaskCompleted(success: false)
                 return
             }
-            CrashBreadcrumbs.shared.record("feed_processing_background_task_completed")
+
+            // Feeds were just refreshed, so any transcript a podcast published
+            // is known now. Importing those here costs a few small downloads and
+            // spares the analyzer the episodes it never needed to run on.
+            // `TranscriptionManager.shared` builds itself on the main actor, so
+            // reach it from there: this task can be the first thing to touch it
+            // in a background launch of the process.
+            let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+            let importedTranscriptCount = await transcriptionManager
+                .runAutomaticTranscriptionsFromPlaylists(
+                    allowOnDeviceFallback: false,
+                    episodeLimit: BackgroundTaskConfiguration.feedProcessingTranscriptImportLimit,
+                    budget: BackgroundTaskConfiguration.feedProcessingTranscriptImportBudget
+                )
+            guard Task.isCancelled == false else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            CrashBreadcrumbs.shared.record(
+                "feed_processing_background_task_completed",
+                details: "imported_transcripts=\(importedTranscriptCount)"
+            )
             task.setTaskCompleted(success: true)
         }
 
@@ -322,17 +384,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
 
-            let didProcess = await TranscriptionManager.shared.runAutomaticTranscriptionsFromUpNextUntilIdle(
-                allowOnDeviceFallback: true
-            )
+            // Work through several episodes per launch instead of one: iOS hands
+            // out these windows sparingly, and a single episode left most of the
+            // granted time unused.
+            let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+            let processedCount = await transcriptionManager
+                .runAutomaticTranscriptionsFromPlaylists(
+                    allowOnDeviceFallback: true,
+                    episodeLimit: BackgroundTaskConfiguration.automaticTranscriptionBackgroundEpisodeLimit,
+                    budget: BackgroundTaskConfiguration.automaticTranscriptionBackgroundBudget
+                )
             CrashBreadcrumbs.shared.record(
                 "automatic_transcription_background_task_completed",
-                details: "did_process=\(didProcess)"
+                details: "processed_count=\(processedCount)"
             )
             guard Task.isCancelled == false else {
                 task.setTaskCompleted(success: false)
                 return
             }
+
+            // Re-arm again now that the launched request is definitely consumed.
+            // No-ops when the request submitted at the start of the pass is still
+            // pending, so this only covers the case where it was not.
+            await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
             task.setTaskCompleted(success: true)
         }
 

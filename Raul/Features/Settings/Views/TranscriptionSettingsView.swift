@@ -19,6 +19,16 @@ struct TranscriptionSettingsView: View {
         defaultSettings.first
     }
 
+    /// Re-arms the background transcription pass so a changed setting takes
+    /// effect now instead of at the next background transition.
+    private func rescheduleAutomaticTranscriptionProcessing() {
+#if canImport(UIKit)
+        Task {
+            await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
+        }
+#endif
+    }
+
     var body: some View {
         List {
             Section("On-Device Transcription") {
@@ -31,6 +41,7 @@ struct TranscriptionSettingsView: View {
                                 globalSettings.enableAutomaticOnDeviceTranscriptions = newValue
                                 context.saveIfNeeded()
                                 NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                rescheduleAutomaticTranscriptionProcessing()
                             }
                         )
                     )
@@ -44,6 +55,7 @@ struct TranscriptionSettingsView: View {
                                 globalSettings.limitAutomaticOnDeviceTranscriptionsToCharging = newValue
                                 context.saveIfNeeded()
                                 NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                rescheduleAutomaticTranscriptionProcessing()
                             }
                         )
                     )
@@ -80,10 +92,10 @@ struct TranscriptionSettingsView: View {
                 LabeledContent("Supported Models") {
                     Text(supportedLocales.isEmpty ? "Loading…" : "\(supportedLocales.count)")
                 }
-                Text("When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available.")
+                Text("When enabled, the app can start on-device transcription automatically after downloads finish. Podcasts that publish their own transcripts are never transcribed on device — their transcript is imported instead.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available.")
+                Text("Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it works through your playlists whenever the device has a free moment.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale.")

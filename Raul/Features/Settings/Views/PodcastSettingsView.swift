@@ -851,6 +851,13 @@ struct PodcastSettingsView: View {
                     set: {
                         settings.enableTranscriptions = $0
                         saveAndNotify()
+#if canImport(UIKit)
+                        // Switching transcriptions on or off decides whether the
+                        // background pass stays armed at all.
+                        Task {
+                            await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
+                        }
+#endif
                     }
                 )
             )
