@@ -87,10 +87,13 @@ actor TranscriptionManager {
     private var tasks: [URL: Task<Void, Never>] = [:]
     private var taskOrigins: [URL: TranscriptionStartOrigin] = [:]
     private var episodeSnapshots: [URL: TranscriptionEpisodeSnapshot] = [:]
-    private var automaticScanCursor = 0
     private var lastAutomaticSweepAt: Date?
-    private let automaticScanLimit = 12
+    /// Episodes an automatic attempt could not start, with the time they may be
+    /// tried again. Without it a single broken episode swallows every sweep.
+    private var automaticRetryBlockedUntil: [URL: Date] = [:]
+    private let automaticScanLimit = AutomaticTranscriptionCandidateProvider.defaultLimit
     private let automaticSweepCooldown: TimeInterval = 30
+    private let automaticRetryCooldown: TimeInterval = 60 * 60 * 6
 
     // Serializes the heavy transcription work so at most one Speech analyzer runs at a
     // time. Two concurrent analyzers double the e-core pressure, memory, and the odds of
@@ -347,92 +350,137 @@ actor TranscriptionManager {
         }
     }
 
-    func processNextAutomaticTranscriptionFromUpNext(
-        allowOnDeviceFallback: Bool = true
+    /// Starts the next automatic transcription picked from the user's playlists.
+    ///
+    /// - Parameters:
+    ///   - allowOnDeviceFallback: When `false`, only feed-provided transcripts
+    ///     are imported and the analyzer is never started.
+    ///   - respectSweepCooldown: Foreground sweeps fire on app activation and on
+    ///     every power-state change, so they throttle each other. A background
+    ///     pass is a rare, deliberate opportunity and passes `false`.
+    ///   - deadline: Stops the search for a startable episode. Skipping a
+    ///     candidate can mean a failed transcript download, so a long candidate
+    ///     list must not be allowed to outlive the caller's window.
+    /// - Returns: The episode that was handled, or `nil` when nothing was left
+    ///   to do.
+    func processNextAutomaticTranscriptionFromPlaylists(
+        allowOnDeviceFallback: Bool = true,
+        respectSweepCooldown: Bool = true,
+        deadline: Date? = nil
     ) async -> URL? {
         guard tasks.isEmpty else { return nil }
         let now = Date()
-        if let lastAutomaticSweepAt,
+        if respectSweepCooldown,
+           let lastAutomaticSweepAt,
            now.timeIntervalSince(lastAutomaticSweepAt) < automaticSweepCooldown {
             return nil
         }
         lastAutomaticSweepAt = now
 
         let settingsActor = PodcastSettingsModelActor(modelContainer: container)
-        guard await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled() else {
+        guard await settingsActor.getTranscriptionsEnabled() else {
             return nil
         }
 
-        let requiresCharging = await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
-        let isConnectedToPower = requiresCharging ? await isDeviceConnectedToPower() : true
-        if isConnectedToPower == false {
-            return nil
+        // Importing a published transcript is a small download and stays allowed
+        // even when the user switched the on-device analyzer off or is off power.
+        var allowsAnalyzer = allowOnDeviceFallback
+        if allowsAnalyzer {
+            allowsAnalyzer = await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled()
+        }
+        if allowsAnalyzer, await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging() {
+            allowsAnalyzer = await isDeviceConnectedToPower()
         }
 
-        let playlistActor: PlaylistModelActor
-        do {
-            playlistActor = try PlaylistModelActor(modelContainer: container)
-        } catch {
-            return nil
-        }
+        automaticRetryBlockedUntil = automaticRetryBlockedUntil.filter { $0.value > now }
 
-        let upNextEpisodeURLs: [URL]
-        do {
-            upNextEpisodeURLs = try await playlistActor.orderedEpisodeURLs()
-        } catch {
-            return nil
-        }
-        guard upNextEpisodeURLs.isEmpty == false else { return nil }
+        let provider = AutomaticTranscriptionCandidateProvider(modelContainer: container)
+        let candidates = await provider.candidates(
+            limit: automaticScanLimit,
+            allowOnDeviceFallback: allowsAnalyzer,
+            excluding: Set(items.keys).union(automaticRetryBlockedUntil.keys)
+        )
+        guard candidates.isEmpty == false else { return nil }
 
         let episodeActor = EpisodeActor(modelContainer: container)
-        let scanCount = min(automaticScanLimit, upNextEpisodeURLs.count)
 
-        for offset in 0..<scanCount {
-            let index = (automaticScanCursor + offset) % upNextEpisodeURLs.count
-            let episodeURL = upNextEpisodeURLs[index]
-            guard items[episodeURL] == nil else { continue }
-            let wasReady = await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL)
-            guard wasReady else { continue }
+        for candidate in candidates {
+            if Task.isCancelled { return nil }
+            if let deadline, Date() >= deadline { return nil }
+            let episodeURL = candidate.episodeURL
 
             try? await episodeActor.transcribe(
                 episodeURL,
-                allowOnDeviceFallback: allowOnDeviceFallback,
+                allowOnDeviceFallback: candidate.source == .onDevice,
                 origin: .automatic
             )
-
-            automaticScanCursor = (index + 1) % upNextEpisodeURLs.count
 
             if tasks[episodeURL] != nil {
                 return episodeURL
             }
 
-            // If the episode stopped being "ready" after transcribe(), we likely imported
-            // a feed-provided transcript without spawning an on-device task.
-            let isStillReady = await episodeActor.isReadyForAutomaticTranscription(episodeURL: episodeURL)
-            if isStillReady == false {
+            // No analyzer job means the episode either got its transcript from
+            // the feed just now, or the attempt produced nothing. Re-read it in a
+            // fresh context: a stale one would still report the pre-import state.
+            let verifier = AutomaticTranscriptionCandidateProvider(modelContainer: container)
+            let remainingSource = await verifier.transcriptionSource(
+                for: episodeURL,
+                allowOnDeviceFallback: allowsAnalyzer
+            )
+            if remainingSource == nil {
                 return episodeURL
             }
+
+            // Still waiting. Park it so the next sweep spends its window on the
+            // following episode instead of retrying this one immediately.
+            automaticRetryBlockedUntil[episodeURL] = now.addingTimeInterval(automaticRetryCooldown)
         }
 
-        automaticScanCursor = (automaticScanCursor + scanCount) % upNextEpisodeURLs.count
         return nil
     }
 
-    func runAutomaticTranscriptionsFromUpNextUntilIdle(
-        allowOnDeviceFallback: Bool = true
-    ) async -> Bool {
-        guard let startedEpisodeURL = await processNextAutomaticTranscriptionFromUpNext(
-            allowOnDeviceFallback: allowOnDeviceFallback
-        ) else {
-            return false
+    /// Works through the playlists until the budget is spent, the episode limit
+    /// is reached, or nothing is left to transcribe.
+    ///
+    /// The budget is only checked before starting another episode: a running
+    /// analyzer is left alone so its transcript still gets written, and the
+    /// background task's expiration handler cancels it if iOS reclaims the time.
+    ///
+    /// - Returns: How many episodes were handled.
+    @discardableResult
+    func runAutomaticTranscriptionsFromPlaylists(
+        allowOnDeviceFallback: Bool = true,
+        episodeLimit: Int = 1,
+        budget: TimeInterval? = nil
+    ) async -> Int {
+        guard episodeLimit > 0 else { return 0 }
+        let deadline = budget.map { Date(timeIntervalSinceNow: $0) }
+        var processedCount = 0
+
+        while processedCount < episodeLimit {
+            if Task.isCancelled { break }
+            if let deadline, Date() >= deadline { break }
+            // Back-to-back analyzer runs heat the device up. Stop handing out
+            // more work once the system says it is under pressure; the next
+            // background pass picks up where this one stopped.
+            if processedCount > 0, SystemPressureGate.shared.isUnderPressure { break }
+
+            guard let episodeURL = await processNextAutomaticTranscriptionFromPlaylists(
+                allowOnDeviceFallback: allowOnDeviceFallback,
+                respectSweepCooldown: false,
+                deadline: deadline
+            ) else { break }
+
+            processedCount += 1
+
+            // Wait for the analyzer to finish before picking the next episode:
+            // two of them at once double e-core pressure and memory.
+            if let runningTask = tasks[episodeURL] {
+                await runningTask.value
+            }
         }
 
-        // Process at most one automatic job per invocation to keep background CPU bounded.
-        if let runningTask = tasks[startedEpisodeURL] {
-            await runningTask.value
-        }
-
-        return true
+        return processedCount
     }
 
     private func finish(episodeURL: URL, error: String) async {

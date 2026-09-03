@@ -1253,11 +1253,28 @@ actor EpisodeActor {
             return
         }
 
+        // A podcast that publishes transcripts for its other episodes publishes
+        // one for this episode too, usually within a day of release. Running the
+        // analyzer automatically would spend minutes of CPU and battery on a
+        // transcript the next feed refresh imports for free. A transcription the
+        // user asked for still goes ahead.
+        if origin == .automatic, podcastPublishesTranscripts(for: episode) {
+            return
+        }
+
         let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
         _ = await transcriptionManager.enqueueTranscription(
             episodeURL: episodeURL,
             origin: origin
         )
+    }
+
+    /// Whether the episode's podcast ships transcript files with its feed.
+    func podcastPublishesTranscripts(for episode: Episode) -> Bool {
+        guard let podcast = episode.podcast else { return false }
+        return (podcast.episodes ?? []).contains { candidate in
+            candidate.externalFiles.contains { $0.category == .transcript }
+        }
     }
 
     private func isDeviceConnectedToPower() async -> Bool {
@@ -1290,14 +1307,6 @@ actor EpisodeActor {
 #endif
     }
 
-    func isReadyForAutomaticTranscription(episodeURL: URL) async -> Bool {
-        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        guard await settingsActor.getTranscriptionsEnabled() else { return false }
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
-        guard episode.url != nil else { return false }
-        guard episode.hasLoadedTranscript == false else { return false }
-        return episode.metaData?.calculatedIsAvailableLocally == true
-    }
     
     func decodeTranscription(_ transcription: String) -> [TranscriptLineAndTime] {
         print("decodeTranscription")

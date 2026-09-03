@@ -8743,12 +8743,12 @@
         }
       }
     },
-    "Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it can pick up eligible Up Next episodes once power is available." : {
+    "Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it works through your playlists whenever the device has a free moment." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verwende „Nur während des Ladevorgangs“, wenn die automatische lokale Transkription auf externe Stromversorgung warten soll. Während die App geöffnet ist, reagiert sie auf Ladeänderungen. Im Hintergrund kann sie geeignete „Als Nächstes“-Episoden aufnehmen, sobald Strom verfügbar ist."
+            "value" : "Verwende „Nur während des Ladevorgangs“, wenn die automatische lokale Transkription auf externe Stromversorgung warten soll. Während die App geöffnet ist, reagiert sie auf Ladeänderungen. Im Hintergrund arbeitet sie deine Playlists ab, sobald das Gerät einen freien Moment hat."
           }
         }
       }
@@ -9014,12 +9014,12 @@
         }
       }
     },
-    "When enabled, the app can start on-device transcription automatically after downloads finish. Feed-provided transcripts are still preferred when available." : {
+    "When enabled, the app can start on-device transcription automatically after downloads finish. Podcasts that publish their own transcripts are never transcribed on device — their transcript is imported instead." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn diese Option aktiviert ist, kann die App die Transkription auf dem Gerät automatisch starten, nachdem Downloads abgeschlossen sind. Vom Feed bereitgestellte Transkripte werden weiterhin bevorzugt, wenn sie verfügbar sind."
+            "value" : "Wenn diese Option aktiviert ist, kann die App die Transkription auf dem Gerät automatisch starten, nachdem Downloads abgeschlossen sind. Podcasts, die eigene Transkripte veröffentlichen, werden nie auf dem Gerät transkribiert — ihr Transkript wird stattdessen importiert."
           }
         }
       }
