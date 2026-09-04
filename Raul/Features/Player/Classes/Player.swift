@@ -2236,7 +2236,10 @@ class Player {
             return
         }
 
-        await jumpTo(time: resumeAt)
+        // This seek is app-directed: the listener explicitly marked these
+        // chapters as "don't play". It must never create skip-protection UI or
+        // an undo notification, regardless of the skipped segment's length.
+        await jumpTo(time: resumeAt, protectLargeSeek: false)
     }
 
     func chapterPlaybackPreferenceChanged(_ chapter: Marker, shouldPlay: Bool) {

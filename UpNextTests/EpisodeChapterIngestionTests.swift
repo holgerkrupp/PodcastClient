@@ -217,6 +217,25 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertTrue(extracted.contains { $0.start == 3_631 && $0.title == "Elon Musk muss unter Eid aussagen" })
     }
 
+    func testValidShownoteChaptersPreventTranscriptAIReplacement() {
+        let shownoteChapters = [
+            Marker(start: 0, title: "Intro", type: .extracted),
+            Marker(start: 60, title: "Topic", type: .extracted)
+        ]
+
+        XCTAssertFalse(
+            ChapterSourcePolicy.shouldGenerateTranscriptChapters(from: shownoteChapters)
+        )
+        XCTAssertTrue(
+            ChapterSourcePolicy.shouldExtractShownotes(
+                from: [
+                    Marker(start: 0, title: "AI Intro", type: .ai),
+                    Marker(start: 900, title: "AI Topic", type: .ai)
+                ]
+            )
+        )
+    }
+
     func testRefreshingLocalMP3ChaptersPreservesExistingStateAndDoesNotDuplicateMarkers() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "mp3")

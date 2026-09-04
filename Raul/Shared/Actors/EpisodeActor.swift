@@ -139,11 +139,7 @@ actor EpisodeActor {
     }
 
     private func shouldExtractShownotesChapters(for episode: Episode) -> Bool {
-        guard let chapters = episode.chapters, chapters.isEmpty == false else { return true }
-        guard chapters.allSatisfy({ $0.type == .extracted }) else { return false }
-
-        let uniqueStartTimes = Set(chapters.compactMap(\.start))
-        return uniqueStartTimes.count < 2
+        ChapterSourcePolicy.shouldExtractShownotes(from: episode.chapters ?? [])
     }
 
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
@@ -2038,11 +2034,16 @@ actor EpisodeActor {
         guard let text = shownotesCandidates.compactMap({ $0 }).first(where: { $0.isEmpty == false }) else {
             return false
         }
-        var extractedData = ShownotesChapterExtractor.extractTimeCodesAndTitles(
+        let parsedShownotes = ShownotesChapterExtractor.extractTimeCodesAndTitles(
             fromShownotesCandidates: shownotesCandidates
         )
-        
-        if  extractedData == nil || extractedData?.count == 0{
+        var extractedData = parsedShownotes
+
+        // Keep an existing transcript-derived result when there are no actual
+        // timestamps in the shownotes. The AI fallback below is only useful when
+        // no better generated chapter set already exists.
+        if extractedData == nil,
+           (episode.chapters ?? []).contains(where: { $0.type == .ai }) == false {
             extractedData = await generateAIChapters(from: text)
         }
        
@@ -2055,7 +2056,10 @@ actor EpisodeActor {
                 }
             }
             guard Set(newchapters.compactMap(\.start)).count >= 2 else { return false }
-            replaceChapters(on: episode, replacingTypes: [.extracted], with: newchapters)
+            let replacedTypes: Set<MarkerType> = parsedShownotes == nil
+                ? [.extracted]
+                : [.extracted, .ai]
+            replaceChapters(on: episode, replacingTypes: replacedTypes, with: newchapters)
             episode.refresh.toggle()
             modelContext.saveIfNeeded()
             return true
@@ -2096,10 +2100,7 @@ actor EpisodeActor {
     
     private func shouldGenerateTranscriptChapters(for episode: Episode) -> Bool {
         guard episode.transcriptLines?.isEmpty == false else { return false }
-
-        let chapters = episode.chapters ?? []
-        guard chapters.isEmpty == false else { return true }
-        return chapters.allSatisfy { $0.type == .extracted }
+        return ChapterSourcePolicy.shouldGenerateTranscriptChapters(from: episode.chapters ?? [])
     }
 
     @discardableResult
@@ -2733,6 +2734,40 @@ fileprivate func firstNonEmptyString(in value: Any?) -> String? {
     }
 
     return nil
+}
+
+enum ChapterSourcePolicy {
+    static func shouldExtractShownotes(from chapters: [Marker]) -> Bool {
+        let timelineChapters = chapters.filter { $0.type != .soundbite }
+        guard timelineChapters.isEmpty == false else { return true }
+
+        // Publisher timestamps in the shownotes are preferable to locally
+        // generated transcript chapters. Re-check shownotes when AI is the only
+        // timeline source so a later feed refresh can promote those timestamps.
+        if timelineChapters.allSatisfy({ $0.type == .ai || $0.type == .extracted }),
+           timelineChapters.contains(where: { $0.type == .ai }) {
+            return true
+        }
+
+        guard timelineChapters.allSatisfy({ $0.type == .extracted }) else { return false }
+        return Set(timelineChapters.compactMap(\.start)).count < 2
+    }
+
+    static func shouldGenerateTranscriptChapters(from chapters: [Marker]) -> Bool {
+        let timelineChapters = chapters.filter { $0.type != .soundbite }
+        guard timelineChapters.isEmpty == false else { return true }
+
+        // Do not overwrite a valid publisher timestamp list with a usually
+        // smaller, locally generated set. Invalid legacy extractions still fall
+        // through so transcript generation can repair them.
+        let extractedStartTimes = Set(
+            timelineChapters
+                .filter { $0.type == .extracted }
+                .compactMap(\.start)
+        )
+        return extractedStartTimes.count < 2
+            && timelineChapters.allSatisfy { $0.type == .extracted }
+    }
 }
 
 enum ChapterExtractionHooks {

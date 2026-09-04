@@ -430,7 +430,9 @@ class EpisodeDownloadStatus{
                 .sortedByStartTime()
         }
 
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .ai, .extracted]
+        // Feed-authored shownote timestamps are deterministic and generally more
+        // complete than the locally generated transcript fallback.
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
 
         // Pick a single type for the whole list based on availability and preference order.
         let availableTypes = Set(chapters.map { $0.type })

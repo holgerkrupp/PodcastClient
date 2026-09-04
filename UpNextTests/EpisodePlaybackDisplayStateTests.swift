@@ -65,6 +65,23 @@ final class EpisodePlaybackDisplayStateTests: XCTestCase {
         XCTAssertTrue(refreshed.hasPlaybackHistory)
         XCTAssertEqual(refreshed.displayProgress, 0.05, accuracy: 0.0001)
     }
+
+    func testShownoteChaptersArePreferredOverTranscriptAIChapters() {
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let episode = Episode(
+            title: "Chapter sources",
+            url: URL(string: "https://example.com/chapter-sources.mp3")!,
+            podcast: podcast,
+            duration: 100
+        )
+        let aiChapter = Marker(start: 0, title: "Generated summary", type: .ai)
+        let shownoteIntro = Marker(start: 0, title: "Publisher intro", type: .extracted)
+        let shownoteTopic = Marker(start: 30, title: "Publisher topic", type: .extracted)
+        episode.chapters = [aiChapter, shownoteIntro, shownoteTopic]
+
+        XCTAssertEqual(episode.preferredChapters.map(\.type), [.extracted, .extracted])
+        XCTAssertEqual(episode.preferredChapters.map(\.title), ["Publisher intro", "Publisher topic"])
+    }
 }
 
 private extension EpisodePlaybackDisplayStateTests {

@@ -178,6 +178,40 @@ final class ShownotesChapterExtractorTests: XCTestCase {
         XCTAssertEqual(extracted?["00:34:02"], "Metas Automatisierung der Content-Moderation durch KI")
         XCTAssertEqual(extracted?["00:54:16"], "Funktionen und Emotionen")
     }
+
+    func testExtractsLatestHakenDranChaptersWithoutAbsorbingSponsorText() {
+        let shownotes = """
+        <![CDATA[Der Staat liest jetzt WhatsApp-Nachrichten mit?!
+        <p>Wie kann man optimistisch in die USA blicken? Wir fragen die Hausoptimistin Elisabeth L’Orange.</p>
+        <p>💡 12 Wochen heise+ mit 50 % Rabatt: <a href="http://heiseplus.de/haken-dran">http://heiseplus.de/haken-dran</a>, vierwöchentlich kündbar mit einem Klick!</p>
+        <p>Kapitelmarken, KI-unterstützt
+        00:00:00 - Hallo Elisabeth!
+        00:06:23 - Musk gibt 120 Millionen Dollar für die Midterms
+        00:09:26 - SpaceX baut jetzt selbst Gasturbinen
+        00:12:01 - Wahlbestechung in Wisconsin bleibt ungesühnt
+        00:14:12 - US-Regierung will rechte Medien in Europa stärken
+        00:18:11 - Sachsens Innenminister will die Chatkontrolle ausweiten
+        00:20:10 - Wie Zoll und BKA in WhatsApp-Chats schauen
+        00:24:19 - DSA-Transparenzbericht: X verliert leicht in der EU
+        00:35:45 - Lake America jetzt auch bei Apple Maps – MapQuest auf Platz eins
+        00:36:20 - X zahlt nur noch über X Money
+        00:37:38 - RTLs &quot;Strafgericht” aus der KI
+        00:41:31 - Die US-Regierung stellt sich hinter OpenAI
+        00:49:57 - Neinhorn, Sony und Warner
+        00:52:49 - Bilibili öffnet sich global</p>
+        <p>ℹ️ Hinweis: Dieser Podcast wird von einem Sponsor unterstützt.</p>]]>
+        """
+
+        let extracted = ShownotesChapterExtractor.extractTimeCodesAndTitles(from: shownotes)
+
+        XCTAssertEqual(extracted?.count, 14)
+        XCTAssertEqual(extracted?["00:00:00"], "Hallo Elisabeth!")
+        XCTAssertEqual(extracted?["00:24:19"], "DSA-Transparenzbericht: X verliert leicht in der EU")
+        XCTAssertEqual(extracted?["00:37:38"], "RTLs \"Strafgericht” aus der KI")
+        XCTAssertEqual(extracted?["00:52:49"], "Bilibili öffnet sich global")
+        XCTAssertFalse(extracted?.values.contains(where: { $0.contains("Sponsor") }) ?? true)
+        XCTAssertFalse(extracted?.values.contains(where: { $0.contains("]]>") }) ?? true)
+    }
 }
 
 private struct ChapterExtractionCase {
