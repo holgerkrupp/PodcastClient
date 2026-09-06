@@ -219,7 +219,21 @@ actor StoreSplitWorkCoordinator {
     }
 
     private func nextRunnableJob() async -> Job? {
-        if await MainActor.run(body: { Player.shared.isPlaying }) {
+        let appState = await MainActor.run {
+            (
+                isPlaying: Player.shared.isPlaying,
+                mayRunHeavyWork: ModelContainerManager.shared
+                    .heavyStoreWorkMayRunInCurrentAppState
+            )
+        }
+        if appState.isPlaying {
+            await publishPendingState()
+            return nil
+        }
+        // Backgrounded without a metered `BGProcessingTask`. Leave the queue
+        // intact and stop the runner: the work is re-armed on the next `.active`
+        // transition rather than spending the process's background CPU budget.
+        guard appState.mayRunHeavyWork else {
             await publishPendingState()
             return nil
         }

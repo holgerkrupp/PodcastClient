@@ -253,6 +253,8 @@ actor PodcastSettingsModelActor {
             newSettings.reduceSilenceGapsEnabled = standardSettings.reduceSilenceGapsEnabled
             newSettings.silenceGapReductionLevel = standardSettings.silenceGapReductionLevel
             newSettings.voiceEnhancementEnabled = standardSettings.voiceEnhancementEnabled
+            newSettings.cutFront = standardSettings.cutFront ?? 0
+            newSettings.cutEnd = standardSettings.cutEnd ?? 0
             newSettings.skipForward = standardSettings.skipForward
             newSettings.skipBack = standardSettings.skipBack
             newSettings.skipForwardBehavior = standardSettings.skipForwardBehavior
@@ -356,6 +358,21 @@ actor PodcastSettingsModelActor {
         }
 
         return await standardSettings().voiceEnhancementEnabled
+    }
+
+    func getPlaybackTrim(for podcastFeed: URL?) async -> PodcastPlaybackTrim {
+        let settings: PodcastSettings
+        if let podcastFeed,
+           let customSettings = await fetchPodcastSettings(for: podcastFeed) {
+            settings = customSettings
+        } else {
+            settings = await standardSettings()
+        }
+
+        return PodcastPlaybackTrim(
+            introSkipSeconds: Double(settings.cutFront ?? 0),
+            outroSkipSeconds: Double(settings.cutEnd ?? 0)
+        )
     }
 
     func getSkipForwardStep(for podcastFeed: URL?) async -> SkipSteps {

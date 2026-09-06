@@ -27,7 +27,29 @@ actor StoreSplitUserStateImporter {
     private var legacyContext: ModelContext
     private var userStateContext: ModelContext
     private var podcastsByComparisonKey: [String: PersistentIdentifier] = [:]
-    private var resolvedEpisodeIDsByIdentity: [String: PersistentIdentifier?] = [:]
+    private var resolvedEpisodeIDsByIdentity: [String: PersistentIdentifier] = [:]
+    /// Identities this run has already tried and failed to resolve.
+    ///
+    /// Deliberately a separate set rather than a `nil` value in the map above:
+    /// with an optional value type, `map[key] = nil` *removes* the key instead of
+    /// recording the miss, so the negative cache the resolver was written around
+    /// never actually held anything.
+    private var unresolvableEpisodeIdentities: Set<String> = []
+    /// Feeds whose episodes have all been walked by the last-resort scan, so
+    /// every identity they can produce is already in the map above.
+    ///
+    /// A negative cache keyed on the identity alone cannot bound the scan: each
+    /// page of synced state brings *new* unresolvable identities for the same
+    /// feed, so the scan re-ran per page and paged the whole feed every time.
+    /// Rescanning a feed already walked end to end cannot find anything new.
+    private var fullyScannedFeeds: Set<String> = []
+#if DEBUG
+    /// Test hook: how many last-resort whole-feed scans have run in this process.
+    /// The negative cache above is the only thing that keeps this bounded, so a
+    /// regression in it shows up here and nowhere else — the import's output is
+    /// identical either way, just orders of magnitude more expensive.
+    nonisolated(unsafe) static var debugFeedScanCount = 0
+#endif
 
     private init(
         legacyContainer: ModelContainer,
@@ -1366,7 +1388,7 @@ actor StoreSplitUserStateImporter {
         await resolveEpisodeIDsIfNeeded(for: uniqueKeys)
 
         let episodeIDsByIdentity = uniqueKeys.reduce(into: [String: PersistentIdentifier]()) { result, identityKey in
-            guard let episodeID = resolvedEpisodeIDsByIdentity[identityKey] ?? nil else { return }
+            guard let episodeID = resolvedEpisodeIDsByIdentity[identityKey] else { return }
             result[identityKey] = episodeID
         }
         // Resolved identifiers are cached across pages, so some of them name
@@ -1382,7 +1404,10 @@ actor StoreSplitUserStateImporter {
     }
 
     private func resolveEpisodeIDsIfNeeded(for identityKeys: Set<String>) async {
-        let unresolvedKeys = identityKeys.filter { resolvedEpisodeIDsByIdentity[$0] == nil }
+        let unresolvedKeys = identityKeys.filter {
+            resolvedEpisodeIDsByIdentity[$0] == nil
+                && unresolvableEpisodeIdentities.contains($0) == false
+        }
         guard unresolvedKeys.isEmpty == false else { return }
 
         var guidCandidates: [String] = []
@@ -1392,7 +1417,7 @@ actor StoreSplitUserStateImporter {
 
         for identityKey in unresolvedKeys {
             guard let components = decodeStableIdentityKey(identityKey) else {
-                resolvedEpisodeIDsByIdentity[identityKey] = nil
+                unresolvableEpisodeIdentities.insert(identityKey)
                 continue
             }
 
@@ -1428,15 +1453,23 @@ actor StoreSplitUserStateImporter {
         let stillUnresolved = unresolvedKeys.filter { resolvedEpisodeIDsByIdentity[$0] == nil }
         guard stillUnresolved.isEmpty == false else { return }
 
-        let unresolvedFeeds = Set(stillUnresolved.compactMap { decodeStableIdentityKey($0)?.feedURL })
-        for feedURL in unresolvedFeeds {
+        // Scan each feed for its own keys only. Handing every feed the whole
+        // cross-feed set left `remaining` non-empty no matter what that feed
+        // contained, so the scan always paged the feed's episodes to the very
+        // end instead of stopping once its keys were accounted for.
+        for (feedURL, feedKeys) in unresolvedByFeed {
+            let outstanding = feedKeys.intersection(stillUnresolved)
+            guard outstanding.isEmpty == false else { continue }
+            // Already walked end to end: anything it could resolve is cached, so
+            // these keys are misses and a second pass would only cost CPU.
+            guard fullyScannedFeeds.contains(feedURL) == false else { continue }
             if Task.isCancelled { return }
             await awaitIdleWindow()
-            await resolveEpisodesByScanningFeed(feedURL, expectedKeys: Set(stillUnresolved))
+            await resolveEpisodesByScanningFeed(feedURL, expectedKeys: outstanding)
         }
 
         for identityKey in stillUnresolved where resolvedEpisodeIDsByIdentity[identityKey] == nil {
-            resolvedEpisodeIDsByIdentity[identityKey] = nil
+            unresolvableEpisodeIdentities.insert(identityKey)
         }
     }
 
@@ -1494,6 +1527,9 @@ actor StoreSplitUserStateImporter {
               let feed = podcast.feed else {
             return
         }
+#if DEBUG
+        Self.debugFeedScanCount += 1
+#endif
 
         // Last-resort fallback after the targeted GUID/URL/link fetches missed.
         //
@@ -1503,6 +1539,10 @@ actor StoreSplitUserStateImporter {
         // retains) the entire episode library. Instead we page episodes for the
         // feed with a fetch so each batch is released before the next one loads,
         // and stop as soon as every expected key is resolved or the app backgrounds.
+        //
+        // Every identity the walk passes is cached, not just the ones asked for:
+        // the expensive part is the walk, and a later page asking about a
+        // different episode of the same feed must not pay for it again.
         var remaining = expectedKeys
         var offset = 0
         while remaining.isEmpty == false {
@@ -1510,7 +1550,16 @@ actor StoreSplitUserStateImporter {
             await awaitIdleWindow()
             let reachedEnd = autoreleasepool { () -> Bool in
                 var descriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
+                    predicate: #Predicate<Episode> { $0.podcast?.feed == feed },
+                    // Offset paging over an unordered fetch can repeat or skip
+                    // rows between pages. A missed episode now sticks as an
+                    // unresolvable identity for the rest of the run, so the
+                    // order has to be deterministic. Title plus GUID is
+                    // effectively unique within one feed.
+                    sortBy: [
+                        SortDescriptor(\Episode.title),
+                        SortDescriptor(\Episode.guid)
+                    ]
                 )
                 descriptor.fetchOffset = offset
                 descriptor.fetchLimit = episodeScanPageSize
@@ -1525,16 +1574,19 @@ actor StoreSplitUserStateImporter {
                         feedURL: identity.feedURL,
                         episodeID: identity.episodeID
                     )
-                    if remaining.remove(key) != nil {
-                        resolvedEpisodeIDsByIdentity[key] = episode.persistentModelID
-                    }
-                    if remaining.isEmpty { break }
+                    resolvedEpisodeIDsByIdentity[key] = episode.persistentModelID
+                    remaining.remove(key)
                 }
 
                 offset += batch.count
                 return batch.count < episodeScanPageSize
             }
-            if reachedEnd { return }
+            if reachedEnd {
+                // Walked to the end of the feed, so the map now holds every
+                // identity it can offer.
+                fullyScannedFeeds.insert(normalizedFeedURL)
+                return
+            }
         }
     }
 

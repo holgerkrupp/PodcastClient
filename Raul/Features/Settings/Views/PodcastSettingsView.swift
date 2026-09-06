@@ -399,6 +399,12 @@ struct PodcastSettingsView: View {
             skipDurationPickers(settings: settings)
         }
 
+        if podcast != nil, isPodcastCustomSettingsActive {
+            Section("Automatic Episode Skips") {
+                automaticEpisodeSkipRows(settings: settings)
+            }
+        }
+
         Section("Episode Handling") {
             NavigationLink {
                 ChapterRuleSettingsDetailView(
@@ -1011,6 +1017,10 @@ struct PodcastSettingsView: View {
             skipDurationPickers(settings: settings)
         }
 
+        Section("Automatic Episode Skips") {
+            automaticEpisodeSkipRows(settings: settings)
+        }
+
         Section("Episode Files") {
             archiveRetentionRow(settings: settings)
         }
@@ -1270,6 +1280,65 @@ struct PodcastSettingsView: View {
                 detail: "Used when playback starts; the player speed control updates this value."
             )
         }
+    }
+
+    @ViewBuilder
+    private func automaticEpisodeSkipRows(settings: PodcastSettings) -> some View {
+        LabeledContent {
+            HStack(spacing: 8) {
+                Text(settings.introSkipSummary)
+                    .monospacedDigit()
+
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { settings.introSkipSecondsClamped },
+                        set: {
+                            settings.cutFront = Float($0)
+                            saveAndNotify()
+                        }
+                    ),
+                    in: 0...3_600,
+                    step: 1
+                )
+                .labelsHidden()
+            }
+        } label: {
+            SettingsControlLabel(
+                title: "Skip at beginning",
+                detail: "Start new episodes after this many seconds to bypass recurring intros."
+            )
+        }
+
+        LabeledContent {
+            HStack(spacing: 8) {
+                Text(settings.outroSkipSummary)
+                    .monospacedDigit()
+
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { settings.outroSkipSecondsClamped },
+                        set: {
+                            settings.cutEnd = Float($0)
+                            saveAndNotify()
+                        }
+                    ),
+                    in: 0...3_600,
+                    step: 1
+                )
+                .labelsHidden()
+            }
+        } label: {
+            SettingsControlLabel(
+                title: "Skip at end",
+                detail: "Finish episodes this many seconds early to bypass recurring outros."
+            )
+        }
+
+        Text("Each value is saved separately for this podcast. Set either value to 0 to disable that skip.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private func archiveRetentionRow(settings: PodcastSettings) -> some View {
@@ -2968,6 +3037,8 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         settings.reduceSilenceGapsEnabled = globalSettings.reduceSilenceGapsEnabled
         settings.silenceGapReductionLevel = globalSettings.silenceGapReductionLevel
         settings.voiceEnhancementEnabled = globalSettings.voiceEnhancementEnabled
+        settings.cutFront = globalSettings.cutFront ?? 0
+        settings.cutEnd = globalSettings.cutEnd ?? 0
         settings.skipForward = globalSettings.skipForward
         settings.skipBack = globalSettings.skipBack
         settings.skipForwardBehavior = globalSettings.skipForwardBehavior
@@ -3093,6 +3164,22 @@ private extension PodcastSettings {
             return "1 day"
         }
         return "\(archiveFileRetentionDaysClamped) days"
+    }
+
+    var introSkipSecondsClamped: Int {
+        max(Int((cutFront ?? 0).rounded()), 0)
+    }
+
+    var outroSkipSecondsClamped: Int {
+        max(Int((cutEnd ?? 0).rounded()), 0)
+    }
+
+    var introSkipSummary: String {
+        introSkipSecondsClamped == 1 ? "1 second" : "\(introSkipSecondsClamped) seconds"
+    }
+
+    var outroSkipSummary: String {
+        outroSkipSecondsClamped == 1 ? "1 second" : "\(outroSkipSecondsClamped) seconds"
     }
 }
 

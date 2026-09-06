@@ -118,9 +118,13 @@ struct ChapterListView: View {
         return episode.metaData?.playPosition
     }
 
-    private var currentDisplayedChapter: Marker? {
-        guard let displayedPlayPosition else { return nil }
-        return displayedMarkers.last(where: { ($0.start ?? 0) <= displayedPlayPosition })
+    private func displayedChapterRows() -> [ChapterRowLayout] {
+        ChapterRowLayout.rows(
+            markers: displayedMarkers,
+            playPosition: displayedPlayPosition,
+            hasPlaybackHistory: episode.hasPlaybackHistory,
+            episodeDuration: episode.duration
+        )
     }
 
     private var emptyStateText: String {
@@ -136,7 +140,13 @@ struct ChapterListView: View {
     }
 
     var body: some View {
-        ScrollView {
+        // Computed once per update and threaded through the whole body. Reading
+        // any of the marker-derived properties inside the `ForEach` closure is
+        // what made this view quadratic.
+        let rows = displayedChapterRows()
+        let showsTabPicker = hasSoundbites
+
+        return ScrollView {
             LazyVStack(spacing: 0) {
                 HStack {
                     Spacer()
@@ -150,7 +160,7 @@ struct ChapterListView: View {
                 debugControls
 #endif
 
-                if hasSoundbites {
+                if showsTabPicker {
                     Picker("Marker type", selection: $selectedTab) {
                         ForEach(ChapterListTab.allCases) { tab in
                             Text(tab.title)
@@ -163,32 +173,29 @@ struct ChapterListView: View {
                     .accessibilityLabel("Chapter list tab")
                 }
 
-                if displayedMarkers.isEmpty {
+                if rows.isEmpty {
                     Text(emptyStateText)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding()
                 } else {
-                    ForEach(displayedMarkers, id: \.id) { chapter in
-                        let isCurrentChapter = chapter.id == currentDisplayedChapter?.id
-                        let backgroundProgress = chapterBackgroundProgress(for: chapter)
-
+                    ForEach(rows) { row in
                         ZStack {
                             Rectangle()
                                 .fill(Color.accent.opacity(0.1))
-                                .scaleEffect(x: backgroundProgress, y: 1, anchor: .leading)
+                                .scaleEffect(x: row.backgroundProgress, y: 1, anchor: .leading)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .animation(reduceMotion ? nil : .easeInOut, value: backgroundProgress)
+                                .animation(reduceMotion ? nil : .easeInOut, value: row.backgroundProgress)
 
                             VStack {
                                 ChapterRowView(
-                                    chapter: chapter,
-                                    isCurrentChapter: isCurrentChapter,
+                                    chapter: row.marker,
+                                    isCurrentChapter: row.isCurrent,
                                     markerLabel: selectedTab == .soundbites ? "soundbite" : "chapter",
                                     showsPlayToggle: selectedTab != .soundbites
                                 )
                                     .padding()
-                                if chapter.id != displayedMarkers.last?.id {
+                                if row.isLast == false {
                                     Divider()
                                 }
                             }
@@ -196,7 +203,7 @@ struct ChapterListView: View {
                     }
                 }
 
-                if let chapterInfo = displayedMarkers.first?.type.desc {
+                if let chapterInfo = rows.first?.marker.type.desc {
                     Spacer()
                     Text(chapterInfo)
                         .font(.caption)
@@ -238,40 +245,4 @@ struct ChapterListView: View {
     }
 #endif
 
-    private func chapterBackgroundProgress(for chapter: Marker) -> Double {
-        guard chapter.id == currentDisplayedChapter?.id else {
-            guard episode.hasPlaybackHistory else { return 0.0 }
-            return clampedProgress(chapter.progress)
-        }
-
-        guard let displayedPlayPosition,
-              let chapterStart = chapter.start else { return 0.0 }
-        let chapterEnd = endTime(for: chapter)
-        guard chapterEnd > chapterStart else { return 0.0 }
-
-        let clampedPosition = min(max(displayedPlayPosition, chapterStart), chapterEnd)
-        return (clampedPosition - chapterStart) / (chapterEnd - chapterStart)
-    }
-
-    private func clampedProgress(_ progress: Double?) -> Double {
-        guard let progress, progress.isFinite else { return 0.0 }
-        return min(max(progress, 0.0), 1.0)
-    }
-
-    private func endTime(for chapter: Marker) -> Double {
-        if let end = chapter.end {
-            return end
-        }
-
-        guard let chapterIndex = displayedMarkers.firstIndex(where: { $0.id == chapter.id }) else {
-            return episode.duration ?? chapter.start ?? 0
-        }
-
-        if let nextChapter = displayedMarkers.dropFirst(chapterIndex + 1).first,
-           let nextStart = nextChapter.start {
-            return nextStart
-        }
-
-        return episode.duration ?? chapter.start ?? 0
-    }
 }

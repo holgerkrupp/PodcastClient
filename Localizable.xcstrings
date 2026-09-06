@@ -1023,6 +1023,9 @@
         }
       }
     },
+    "Automatic Episode Skips" : {
+
+    },
     "Automatic for Period" : {
       "localizations" : {
         "de" : {
@@ -2293,6 +2296,9 @@
         }
       }
     },
+    "Each value is saved separately for this podcast. Set either value to 0 to disable that skip." : {
+
+    },
     "Easter" : {
       "localizations" : {
         "de" : {
@@ -2712,6 +2718,9 @@
           }
         }
       }
+    },
+    "Finish episodes this many seconds early to bypass recurring outros." : {
+
     },
     "First failed check" : {
       "localizations" : {
@@ -6989,6 +6998,9 @@
         }
       }
     },
+    "Remove episode from playlist" : {
+
+    },
     "Remove from Inbox" : {
       "localizations" : {
         "de" : {
@@ -7058,6 +7070,9 @@
           }
         }
       }
+    },
+    "Removes this episode from the playlist without changing archive or inbox membership" : {
+
     },
     "Rescan" : {
       "localizations" : {
@@ -7849,6 +7864,12 @@
         }
       }
     },
+    "Skip at beginning" : {
+
+    },
+    "Skip at end" : {
+
+    },
     "Skip back" : {
       "localizations" : {
         "de" : {
@@ -8148,6 +8169,9 @@
           }
         }
       }
+    },
+    "Start new episodes after this many seconds to bypass recurring intros." : {
+
     },
     "Start playback" : {
       "localizations" : {

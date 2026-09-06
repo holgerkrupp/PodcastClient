@@ -998,15 +998,17 @@ class ModelContainerManager: ObservableObject {
         CrashBreadcrumbs.shared.record("store_split_work_background_cancel_requested")
     }
 
-    /// Whether the slice loop may keep going given where the app currently is.
+    /// Whether heavy split-store work may run given where the app currently is.
     /// Backgrounded without playback means the process can be suspended at any
-    /// moment, so the loop stops at its last committed checkpoint.
+    /// moment — and is metered against the 80%-of-60s background CPU limit — so
+    /// queued work waits for the foreground instead of spending the process's
+    /// budget where nobody is watching.
     ///
     /// A `BGProcessingTask` is the exception: the app is backgrounded but iOS has
     /// granted an explicit time budget and will call the expiration handler
     /// before reclaiming it. Without this the overnight pass would break out of
     /// the loop on its very first check and do nothing at all.
-    private func migrationMayContinueInCurrentAppState() -> Bool {
+    var heavyStoreWorkMayRunInCurrentAppState: Bool {
         if isRunningBackgroundProcessingTask { return true }
 #if canImport(UIKit)
         guard UIApplication.shared.applicationState == .background else { return true }
@@ -1014,6 +1016,12 @@ class ModelContainerManager: ObservableObject {
 #else
         return true
 #endif
+    }
+
+    /// Whether the slice loop may keep going. Same rule as every other heavy
+    /// split-store pass.
+    private func migrationMayContinueInCurrentAppState() -> Bool {
+        heavyStoreWorkMayRunInCurrentAppState
     }
 
     /// Runs `body` inside a declared background-processing window, so the slice
@@ -1149,6 +1157,19 @@ class ModelContainerManager: ObservableObject {
             lastSplitStoreReconcileSummary = "Paused for stability"
             pendingSplitStoreWorkReason = "paused for stability"
             currentSplitStoreJobDescription = nil
+            return .skipped
+        }
+        // The importer walks the whole library. Running it while the app is
+        // backgrounded without a granted budget is what the background CPU limit
+        // kills the process for, so it waits for the foreground — every caller
+        // re-arms on the next `.active` transition.
+        guard heavyStoreWorkMayRunInCurrentAppState else {
+            lastSplitStoreReconcileSummary = "Deferred until the app is in the foreground"
+            pendingSplitStoreWorkReason = "waiting for the foreground"
+            CrashBreadcrumbs.shared.record(
+                "store_split_reconcile_deferred_for_background",
+                details: "reason=\(reason)"
+            )
             return .skipped
         }
         await prepareSplitStores()

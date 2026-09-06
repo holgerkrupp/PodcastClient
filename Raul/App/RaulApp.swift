@@ -217,6 +217,11 @@ struct RaulApp: App {
                 deferredStoreSplitTask = nil
                 deferredForegroundFeedRefreshTask?.cancel()
                 deferredForegroundFeedRefreshTask = nil
+                // Armed by a CloudKit import that succeeded shortly before this
+                // transition. Left running it fired 30s into the background and
+                // started the full reconcile with no granted budget.
+                cloudImportReconciliationTask?.cancel()
+                cloudImportReconciliationTask = nil
                 Task {
                     await scheduleFeedRefresh()
                     await schedulePredictedReleaseRefresh()

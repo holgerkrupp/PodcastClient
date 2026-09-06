@@ -37,6 +37,7 @@ extension EnvironmentValues {
 struct EpisodeControlView: View {
     let episode: Episode
     let showsRemoveFromInboxAction: Bool
+    let showsRemoveFromPlaylistAction: Bool
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.episodeControlPlaylists) private var manualPlaylists
@@ -45,9 +46,14 @@ struct EpisodeControlView: View {
     @State private var isSelectingFrontPlaylist = false
     @State private var isSelectingEndPlaylist = false
 
-    init(episode: Episode, showsRemoveFromInboxAction: Bool = false) {
+    init(
+        episode: Episode,
+        showsRemoveFromInboxAction: Bool = false,
+        showsRemoveFromPlaylistAction: Bool = false
+    ) {
         self.episode = episode
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
+        self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
     }
 
     private var resolvedPlaylistID: UUID? {
@@ -181,6 +187,10 @@ struct EpisodeControlView: View {
                         let actor = EpisodeActor(modelContainer: modelContext.container)
                         if showsRemoveFromInboxAction {
                             await actor.removeFromInbox(episode.url)
+                        } else if showsRemoveFromPlaylistAction {
+                            if let episodeURL = episode.url {
+                                await actor.removeFromPlaylist(episodeURL)
+                            }
                         } else if episode.metaData?.isArchived == true {
                             await actor.unarchiveEpisode(episode.url)
                         } else {
@@ -191,10 +201,14 @@ struct EpisodeControlView: View {
                     Label(
                         showsRemoveFromInboxAction
                             ? "Remove from Inbox"
-                            : (episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive"),
+                            : (showsRemoveFromPlaylistAction
+                                ? "Remove from Playlist"
+                                : (episode.metaData?.isArchived ?? false ? "Unarchive" : "Archive")),
                         systemImage: showsRemoveFromInboxAction
                             ? "tray.and.arrow.up.fill"
-                            : (episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox")
+                            : (showsRemoveFromPlaylistAction
+                                ? "minus.circle"
+                                : (episode.metaData?.isArchived ?? false ? "archivebox.fill" : "archivebox"))
                     )
                     .symbolRenderingMode(.hierarchical)
                     .scaledToFit()
@@ -208,12 +222,16 @@ struct EpisodeControlView: View {
                 .accessibilityLabel(
                     showsRemoveFromInboxAction
                         ? "Remove episode from Inbox"
-                        : (episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode")
+                        : (showsRemoveFromPlaylistAction
+                            ? "Remove episode from playlist"
+                            : (episode.metaData?.isArchived ?? false ? "Unarchive episode" : "Archive episode"))
                 )
                 .accessibilityHint(
                     showsRemoveFromInboxAction
                         ? "Removes this episode from Inbox without changing archive or playlist membership"
-                        : "Changes archive state without changing inbox or playlist membership"
+                        : (showsRemoveFromPlaylistAction
+                            ? "Removes this episode from the playlist without changing archive or inbox membership"
+                            : "Changes archive state without changing inbox or playlist membership")
                 )
             }
         }

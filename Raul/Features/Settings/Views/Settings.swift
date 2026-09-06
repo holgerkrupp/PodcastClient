@@ -37,8 +37,12 @@ class PodcastSettings {
     var silenceGapReductionLevelRawValue: String? = SilenceGapReductionLevel.low.rawValue
     var voiceEnhancementEnabled: Bool = false
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
-    var cutFront:Float? // how much to cut from the front / Intro
-    var cutEnd:Float? // how much to cut from the end / Outro
+    /// Seconds automatically skipped when an episode starts from its beginning.
+    /// Optional storage is retained for compatibility with existing SwiftData stores;
+    /// a missing value is treated as zero everywhere.
+    var cutFront:Float? = 0
+    /// Seconds before the media end at which an episode is treated as finished.
+    var cutEnd:Float? = 0
     
     var skipForward:SkipSteps = SkipSteps.thirty
     var skipBack: SkipSteps = SkipSteps.fifteen
@@ -137,6 +141,21 @@ class PodcastSettings {
         set {
             silenceGapReductionLevelRawValue = newValue.rawValue
         }
+    }
+}
+
+struct PodcastPlaybackTrim: Equatable, Sendable {
+    let introSkipSeconds: TimeInterval
+    let outroSkipSeconds: TimeInterval
+
+    init(introSkipSeconds: TimeInterval = 0, outroSkipSeconds: TimeInterval = 0) {
+        self.introSkipSeconds = Self.sanitized(introSkipSeconds)
+        self.outroSkipSeconds = Self.sanitized(outroSkipSeconds)
+    }
+
+    private static func sanitized(_ value: TimeInterval) -> TimeInterval {
+        guard value.isFinite else { return 0 }
+        return max(value, 0)
     }
 }
 

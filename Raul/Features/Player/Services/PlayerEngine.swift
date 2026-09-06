@@ -56,6 +56,7 @@ final class PlayerEngine {
     private var routeChangeObserver: NSObjectProtocol?
     private var endObserver: NSObjectProtocol?
     private var boundaryTimeObserver: Any?
+    private var outroBoundaryTimeObserver: Any?
     private var periodicTimeObserver: Any?
     private var activePlaybackStreamID: UInt64 = 0
     private var playbackRequestID: UInt64 = 0
@@ -165,6 +166,7 @@ final class PlayerEngine {
         }
         invalidatePendingPlaybackRequests()
         removeBoundaryTimeObserver()
+        removeOutroBoundaryTimeObserver()
         removeEndObserver()
         avPlayer.replaceCurrentItem(with: item)
     }
@@ -188,6 +190,28 @@ final class PlayerEngine {
         if let boundaryTimeObserver {
             avPlayer.removeTimeObserver(boundaryTimeObserver)
             self.boundaryTimeObserver = nil
+        }
+    }
+
+    func setOutroBoundaryTimeObserver(
+        at time: CMTime?,
+        handler: @escaping @Sendable () -> Void
+    ) {
+        removeOutroBoundaryTimeObserver()
+        guard let time, time.isNumeric, time.seconds > 0 else { return }
+
+        outroBoundaryTimeObserver = avPlayer.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: time)],
+            queue: .main
+        ) {
+            handler()
+        }
+    }
+
+    func removeOutroBoundaryTimeObserver() {
+        if let outroBoundaryTimeObserver {
+            avPlayer.removeTimeObserver(outroBoundaryTimeObserver)
+            self.outroBoundaryTimeObserver = nil
         }
     }
     

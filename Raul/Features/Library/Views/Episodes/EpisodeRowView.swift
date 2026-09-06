@@ -18,6 +18,7 @@ struct EpisodeRowView: View {
 
     @Bindable var episode: Episode
     let showsRemoveFromInboxAction: Bool
+    let showsRemoveFromPlaylistAction: Bool
     let usesLivePlaybackProgress: Bool
     @State private var referenceAvailability = EpisodeReferenceAvailability()
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
@@ -29,10 +30,12 @@ struct EpisodeRowView: View {
     init(
         episode: Episode,
         showsRemoveFromInboxAction: Bool = false,
+        showsRemoveFromPlaylistAction: Bool = false,
         usesLivePlaybackProgress: Bool = false
     ) {
         self._episode = Bindable(wrappedValue: episode)
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
+        self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
         self.usesLivePlaybackProgress = usesLivePlaybackProgress
     }
   
@@ -143,7 +146,8 @@ struct EpisodeRowView: View {
                 if Player.shared.currentEpisodeURL != episode.url {
                     EpisodeControlView(
                         episode: episode,
-                        showsRemoveFromInboxAction: showsRemoveFromInboxAction
+                        showsRemoveFromInboxAction: showsRemoveFromInboxAction,
+                        showsRemoveFromPlaylistAction: showsRemoveFromPlaylistAction
                     )
                         .frame(minHeight: controlsHeight)
                 }

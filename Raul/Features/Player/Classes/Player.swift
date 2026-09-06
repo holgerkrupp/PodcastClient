@@ -236,6 +236,8 @@ class Player {
     private var reduceSilenceGapsEnabled = false
     private var silenceGapReductionLevel: SilenceGapReductionLevel = .low
     private var voiceEnhancementEnabled = false
+    private var introSkipSeconds: TimeInterval = 0
+    private var outroSkipSeconds: TimeInterval = 0
     private var silenceGapReductionActive = false
     private var silenceGapReductionStartedAt: Date?
     private var pendingSilenceGapTimeSavedSeconds: TimeInterval = 0
@@ -703,6 +705,7 @@ class Player {
                 self?.allowScrubbing = await self?.settingsActor?.getAppSliderEnable()
                 await self?.loadSkipProtectionSettings()
                 await self?.loadPlaybackAudioProcessingSettings()
+                await self?.loadPlaybackTrimSettings(applyToCurrentPlayback: true)
                 if let currentItem = self?.videoPlayer.currentItem {
                     await self?.configurePlaybackAudioProcessing(for: currentItem)
                 }
@@ -811,6 +814,83 @@ class Player {
         reduceSilenceGapsEnabled = settings.reduceSilenceGapsEnabled
         silenceGapReductionLevel = settings.silenceGapReductionLevel
         voiceEnhancementEnabled = settings.voiceEnhancementEnabled
+    }
+
+    @discardableResult
+    private func loadPlaybackTrimSettings(
+        for podcastFeed: URL? = nil,
+        applyToCurrentPlayback: Bool
+    ) async -> PodcastPlaybackTrim {
+        let resolvedFeed = podcastFeed ?? currentEpisode?.podcast?.feed
+        let trim = await settingsActor?.getPlaybackTrim(for: resolvedFeed) ?? PodcastPlaybackTrim()
+        introSkipSeconds = trim.introSkipSeconds
+        outroSkipSeconds = trim.outroSkipSeconds
+        configureOutroBoundaryObserver()
+
+        guard applyToCurrentPlayback,
+              currentPlaybackSource != .liveRemote,
+              currentEpisode != nil else {
+            return trim
+        }
+
+        if playPosition < trim.introSkipSeconds {
+            await jumpTo(time: trim.introSkipSeconds, protectLargeSeek: false)
+        }
+        _ = finishAtOutroIfNeeded(position: playPosition, source: "settings_change")
+        return trim
+    }
+
+    private func currentPlaybackDuration() -> TimeInterval? {
+        let itemDuration = engine.currentItemDuration()
+        if let itemDuration, itemDuration > 0 {
+            return itemDuration
+        }
+        guard let episodeDuration = currentEpisode?.duration,
+              episodeDuration.isFinite,
+              episodeDuration > 0 else {
+            return nil
+        }
+        return episodeDuration
+    }
+
+    private func configureOutroBoundaryObserver() {
+        let boundary = PlaybackTrimPolicy.outroBoundary(
+            duration: currentPlaybackDuration(),
+            outroSkipSeconds: outroSkipSeconds
+        )
+        let boundaryTime = boundary.map {
+            CMTime(seconds: $0, preferredTimescale: 600)
+        }
+
+        engine.setOutroBoundaryTimeObserver(at: boundaryTime) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let position = self.sanitizedPosition(self.engine.currentTime())
+                _ = self.finishAtOutroIfNeeded(position: position, source: "outro_boundary")
+            }
+        }
+    }
+
+    @discardableResult
+    private func finishAtOutroIfNeeded(position: TimeInterval, source: String) -> Bool {
+        guard currentPlaybackSource != .liveRemote,
+              isPlaying,
+              let duration = currentPlaybackDuration(),
+              PlaybackTrimPolicy.hasReachedOutro(
+                position: position,
+                duration: duration,
+                outroSkipSeconds: outroSkipSeconds
+              ) else {
+            return false
+        }
+
+        engine.pause()
+        playPosition = duration
+        updateEpisodeProgress(to: duration)
+        updateNowPlayingInfo()
+        BasicLogger.shared.log("Skipping podcast outro (\(source)): \(outroSkipSeconds) seconds")
+        handlePlaybackFinished()
+        return true
     }
 
     private func accumulateSilenceGapTimeSaved(upTo date: Date = Date(), normalRate: Float? = nil) {
@@ -1507,9 +1587,12 @@ class Player {
         chapters = []
         advancePlaybackLoadGeneration()
         configureChapterBoundaryObserver()
+        engine.removeOutroBoundaryTimeObserver()
         currentPlaybackSource = nil
         currentPlaybackUsesAlternateMedia = false
         mediaSelection = .primary
+        introSkipSeconds = 0
+        outroSkipSeconds = 0
         resetSilenceGapReduction(updateEngine: false)
         await flushSilenceGapTimeSaved()
 #if !os(watchOS)
@@ -1592,6 +1675,10 @@ class Player {
         currentEpisodeURL = episodeURL
         finishingEpisodeURL = nil
         mediaSelection = selectedMedia
+        let playbackTrim = await loadPlaybackTrimSettings(
+            for: episode.podcast?.feed,
+            applyToCurrentPlayback: false
+        )
         if playDirectly {
             if currentEpisode?.metaData == nil {
                 let metadata = EpisodeMetaData()
@@ -1652,6 +1739,7 @@ class Player {
         await resetPlaybackAudioProcessing(for: item)
         await engine.replaceCurrentItem(with: item)
         configureChapterBoundaryObserver()
+        configureOutroBoundaryObserver()
         schedulePlaybackAudioProcessing(
             for: item,
             episodeURL: episodeURL,
@@ -1662,7 +1750,7 @@ class Player {
             "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
         )
         let inMemoryResumePosition = (previousEpisodeURL == episodeURL) ? playPosition : nil
-        let targetStartTime = resolvedResumePosition(
+        let resumePosition = resolvedResumePosition(
             explicitTime: time,
             episodeDuration: currentEpisode?.duration,
             persistedPosition: cachedProgress?.playPosition ?? snapshot?.playPosition,
@@ -1674,8 +1762,13 @@ class Player {
             metadataMaxPosition: currentEpisode?.metaData?.maxPlayposition,
             inMemoryPosition: inMemoryResumePosition
         )
+        let targetStartTime = PlaybackTrimPolicy.initialPosition(
+            resumePosition: resumePosition,
+            introSkipSeconds: playbackTrim.introSkipSeconds,
+            duration: currentPlaybackDuration()
+        )
 
-        if targetStartTime > 0.5 {
+        if targetStartTime > 0 {
             await jumpTo(time: targetStartTime, protectLargeSeek: false)
         } else {
             playPosition = 0
@@ -2121,6 +2214,12 @@ class Player {
                     let sanitizedTime = self.sanitizedPosition(time)
                     self.playPosition = sanitizedTime
                     self.updateEpisodeProgress(to: sanitizedTime)
+                    if self.finishAtOutroIfNeeded(
+                        position: sanitizedTime,
+                        source: "progress_update"
+                    ) {
+                        break
+                    }
                 case .ended:
                     let finalPosition = await engine.currentTime()
                     let itemDuration = await engine.currentItemDuration()

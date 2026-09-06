@@ -275,6 +275,7 @@ private struct ManualPlaylistPageView: View {
                         ZStack {
                             EpisodeRowView(
                                 episode: episode,
+                                showsRemoveFromPlaylistAction: true,
                                 usesLivePlaybackProgress: index == 0
                             )
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {

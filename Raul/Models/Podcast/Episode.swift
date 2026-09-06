@@ -876,9 +876,37 @@ class EpisodeDownloadStatus{
     }
 }
 
+/// Sort key for `sortedByStartTime()`, hoisted out because a generic extension
+/// method cannot nest a type.
+private struct MarkerStartKey {
+    let start: Double
+    let offset: Int
+    let marker: Marker
+}
+
 private extension Array where Element == Marker {
+    /// Reads each marker's `start` once, rather than once per comparison.
+    ///
+    /// `Marker` is a `@Model`, so `start` is a SwiftData accessor rather than a
+    /// stored-property read: it boxes through `Any` and does a dynamic cast whose
+    /// protocol-conformance lookup can miss the in-memory cache and fall through
+    /// to dyld's on-disk table. Inside a comparator that is O(n log n) of them,
+    /// and it showed up as the hot frame under a scene-update watchdog kill.
+    ///
+    /// The recorded offset also makes ties deterministic, so two sorts of the
+    /// same chapters cannot disagree about their order.
     func sortedByStartTime() -> [Marker] {
-        sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        var keyed: [MarkerStartKey] = []
+        keyed.reserveCapacity(count)
+        for (offset, marker) in enumerated() {
+            keyed.append(
+                MarkerStartKey(start: marker.start ?? 0, offset: offset, marker: marker)
+            )
+        }
+        keyed.sort { lhs, rhs in
+            lhs.start == rhs.start ? lhs.offset < rhs.offset : lhs.start < rhs.start
+        }
+        return keyed.map(\.marker)
     }
 }
 

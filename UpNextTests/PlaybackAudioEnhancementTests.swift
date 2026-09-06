@@ -132,6 +132,32 @@ final class PlaybackAudioEnhancementTests: XCTestCase {
         XCTAssertEqual(reductionLevel, .high)
     }
 
+    func testPlaybackTrimFallsBackToGlobalZeroDefaults() async throws {
+        let fixture = try makeSettingsFixture()
+        let actor = PodcastSettingsModelActor(modelContainer: fixture.container)
+
+        let trim = await actor.getPlaybackTrim(for: fixture.podcast.feed)
+
+        XCTAssertEqual(trim, PodcastPlaybackTrim())
+    }
+
+    func testPlaybackTrimUsesEnabledPodcastOverridesIndependently() async throws {
+        let fixture = try makeSettingsFixture()
+        let customSettings = PodcastSettings(podcast: fixture.podcast)
+        customSettings.isEnabled = true
+        customSettings.cutFront = 42
+        customSettings.cutEnd = 75
+        fixture.context.insert(customSettings)
+        fixture.podcast.settings = customSettings
+        try fixture.context.save()
+
+        let actor = PodcastSettingsModelActor(modelContainer: fixture.container)
+        let trim = await actor.getPlaybackTrim(for: fixture.podcast.feed)
+
+        XCTAssertEqual(trim.introSkipSeconds, 42)
+        XCTAssertEqual(trim.outroSkipSeconds, 75)
+    }
+
     func testSilenceGapTimeSavedPersistsForSessionEpisodeAndStats() async throws {
         let fixture = try makeSettingsFixture()
         let episodeURL = URL(string: "https://example.com/episode.mp3")!
