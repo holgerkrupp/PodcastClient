@@ -10,6 +10,18 @@ enum PlaybackInterruptionEvent: Sendable {
     case activationFailed(String)
 }
 
+enum AudioSessionActivationRetryPolicy {
+    /// Audio-session ownership can lag slightly behind the app becoming active
+    /// again. Keep the retry window short so a genuine higher-priority session
+    /// still returns the player to its paused state promptly.
+    private static let retryDelays: [TimeInterval] = [0.15, 0.35, 0.75]
+
+    static func delay(afterFailedAttempt failedAttempt: Int) -> TimeInterval? {
+        guard failedAttempt > 0, failedAttempt <= retryDelays.count else { return nil }
+        return retryDelays[failedAttempt - 1]
+    }
+}
+
 #if os(iOS)
 /// Serializes `AVAudioSession` configuration off the main thread.
 ///
@@ -60,6 +72,7 @@ final class PlayerEngine {
     private var periodicTimeObserver: Any?
     private var activePlaybackStreamID: UInt64 = 0
     private var playbackRequestID: UInt64 = 0
+    private var activationRetryTask: Task<Void, Never>?
 
 
      init() {
@@ -230,23 +243,50 @@ final class PlayerEngine {
         }
 
 #if os(iOS)
-        playbackRequestID &+= 1
+        invalidatePendingPlaybackRequests()
         let requestID = playbackRequestID
-        AudioSessionConfigurator.activateForPlayback { [weak self] failureDescription in
-            Task { @MainActor [weak self] in
-                guard let self, self.playbackRequestID == requestID else { return }
-                guard let failureDescription else {
-                    self.avPlayer.playImmediately(atRate: rate)
-                    return
-                }
-
-                self.interruptionHandler?(.activationFailed(failureDescription))
-            }
-        }
+        attemptPlaybackActivation(requestID: requestID, rate: rate, attempt: 1)
 #else
         avPlayer.playImmediately(atRate: rate)
 #endif
     }
+
+#if os(iOS)
+    private func attemptPlaybackActivation(requestID: UInt64, rate: Float, attempt: Int) {
+        AudioSessionConfigurator.activateForPlayback { [weak self] failureDescription in
+            Task { @MainActor [weak self] in
+                guard let self, self.playbackRequestID == requestID else { return }
+                guard let failureDescription else {
+                    self.activationRetryTask = nil
+                    self.avPlayer.playImmediately(atRate: rate)
+                    return
+                }
+
+                guard let retryDelay = AudioSessionActivationRetryPolicy.delay(
+                    afterFailedAttempt: attempt
+                ) else {
+                    self.activationRetryTask = nil
+                    self.interruptionHandler?(.activationFailed(failureDescription))
+                    return
+                }
+
+                self.activationRetryTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(retryDelay))
+                    guard let self,
+                          Task.isCancelled == false,
+                          self.playbackRequestID == requestID else {
+                        return
+                    }
+                    self.attemptPlaybackActivation(
+                        requestID: requestID,
+                        rate: rate,
+                        attempt: attempt + 1
+                    )
+                }
+            }
+        }
+    }
+#endif
 
     func setRate(_ newRate: Float) async {
         resume(atRate: newRate)
@@ -271,6 +311,8 @@ final class PlayerEngine {
      }
     
     private func invalidatePendingPlaybackRequests() {
+        activationRetryTask?.cancel()
+        activationRetryTask = nil
         playbackRequestID &+= 1
     }
 

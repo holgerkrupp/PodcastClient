@@ -1964,7 +1964,7 @@ class Player {
     }
 
     func enterForegroundPlaybackMode() async {
-        guard playbackPowerMode != .foreground else { return }
+        let powerModeChanged = playbackPowerMode != .foreground
         playbackPowerMode = .foreground
         restartSleepTimerIfNeeded()
 
@@ -1975,7 +1975,23 @@ class Player {
             updateChapterProgress()
         }
         updateNowPlayingInfo()
-        restartPlaybackUpdatesIfNeeded()
+        if powerModeChanged {
+            restartPlaybackUpdatesIfNeeded()
+        }
+
+        // Becoming active can race the system releasing a higher-priority audio
+        // session, or expose a player that kept advancing after its route was
+        // lost. Reassert the listener's existing play intent so the engine
+        // reacquires an output route even when SwiftUI already shows Pause.
+        if isPlaying {
+            let effectiveRate = silenceGapReductionActive
+                ? AudioSilenceGapDetector.silenceReducedRate(
+                    for: playbackRate,
+                    level: silenceGapReductionLevel
+                )
+                : playbackRate
+            engine.resume(atRate: effectiveRate)
+        }
     }
 
     private func restartPlaybackUpdatesIfNeeded() {

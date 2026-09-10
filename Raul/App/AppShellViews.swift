@@ -27,6 +27,7 @@ struct CompactAppShell: View {
                 AppSectionHost(section: .search, navigation: navigation, search: $search)
             }
         }
+        .searchable(text: $search, prompt: "URL or Search")
         .platformPlayerAccessory()
     }
 }
@@ -145,7 +146,6 @@ private struct AppSectionDestinationView: View {
             LibraryView()
         case .search:
             AddPodcastView(search: $search)
-                .searchable(text: $search, prompt: "URL or Search")
         case .downloads:
             DownloadedEpisodesView()
         case .bookmarks:
