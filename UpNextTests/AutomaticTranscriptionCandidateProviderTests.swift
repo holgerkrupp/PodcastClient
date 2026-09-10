@@ -32,7 +32,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates()
 
@@ -53,7 +53,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates()
 
@@ -74,7 +74,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates(allowOnDeviceFallback: false)
 
@@ -97,7 +97,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates()
 
@@ -114,7 +114,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates()
 
@@ -133,7 +133,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates()
 
@@ -153,7 +153,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: fixture.secondPlaylist.id
         )
         let candidates = await provider.candidates()
 
@@ -172,7 +172,7 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
 
         let provider = AutomaticTranscriptionCandidateProvider(
             modelContainer: fixture.container,
-            defaults: fixture.defaults
+            selectedPlaylistID: nil
         )
         let candidates = await provider.candidates(
             excluding: [try XCTUnwrap(first.url)]

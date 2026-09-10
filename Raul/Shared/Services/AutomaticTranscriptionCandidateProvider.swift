@@ -44,14 +44,21 @@ actor AutomaticTranscriptionCandidateProvider {
     static let maximumEpisodesScannedPerPlaylist = 200
 
     private let modelContext: ModelContext
-    private let defaults: UserDefaults
+    private let selectedPlaylistID: UUID?
     /// `podcast.episodes` is a fault; resolving it once per podcast keeps a scan
     /// over several playlists from faulting the same back catalog repeatedly.
     private var podcastPublishesTranscriptsCache: [PersistentIdentifier: Bool] = [:]
 
-    init(modelContainer: ModelContainer, defaults: UserDefaults = .standard) {
+    init(modelContainer: ModelContainer) {
         self.modelContext = ModelContext(modelContainer)
-        self.defaults = defaults
+        self.selectedPlaylistID = Playlist.resolvePlaylistID(
+            from: UserDefaults.standard.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
+        )
+    }
+
+    init(modelContainer: ModelContainer, selectedPlaylistID: UUID?) {
+        self.modelContext = ModelContext(modelContainer)
+        self.selectedPlaylistID = selectedPlaylistID
     }
 
     /// Ordered transcription candidates across every visible playlist.
@@ -184,10 +191,6 @@ actor AutomaticTranscriptionCandidateProvider {
         guard allPlaylists.isEmpty == false else { return [] }
 
         var ordered = Playlist.visibleSorted(allPlaylists)
-        let selectedPlaylistID = Playlist.resolvePlaylistID(
-            from: defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
-        )
-
         if let selectedPlaylistID,
            let selectedIndex = ordered.firstIndex(where: { $0.id == selectedPlaylistID }),
            selectedIndex > 0 {

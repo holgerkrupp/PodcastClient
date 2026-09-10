@@ -257,8 +257,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let automaticTranscriptionsEnabled = await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled()
         // Without the analyzer the pass only imports feed-provided transcripts,
         // which is a small download and does not need external power.
+        let chargingRequiredForOnDeviceTranscriptions =
+            await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
         let requiresCharging = automaticTranscriptionsEnabled
-            && await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
+            && chargingRequiredForOnDeviceTranscriptions
 
         // Never cancel-and-resubmit a pending request. The app backgrounds many
         // times a day and every resubmit pushed `earliestBeginDate` out again, so
