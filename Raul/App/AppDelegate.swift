@@ -41,6 +41,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         CrashBreadcrumbs.shared.record("app_delegate_did_finish_launching")
         UNUserNotificationCenter.current().delegate = self
         SkipProtectionNotification.registerCategory()
+        ListenTogetherController.shared.startListening()
 
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier,

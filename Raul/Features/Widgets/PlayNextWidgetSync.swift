@@ -130,6 +130,9 @@ enum PlayNextWidgetSync {
            let playlistActor = try? PlaylistModelActor(modelContainer: resolvedContainer, playlistID: defaultPlaylistID) {
             let episodes = (try? await playlistActor.orderedEpisodeSummaries(limit: snapshotItemLimit)) ?? []
             await writeLegacySnapshot(episodes: episodes, currentEpisodeURL: resolvedCurrentURL)
+            if #available(iOS 27.0, macOS 27.0, *) {
+                await UpNextRelevantEntitiesPublisher.shared.publish(episodes)
+            }
         }
 
         reloadWidgets()

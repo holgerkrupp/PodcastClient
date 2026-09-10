@@ -25,12 +25,12 @@ struct PlayerIntentsExtension: AppIntent {
 */
 
 #if canImport(UIKit)
-struct FastExportClipIntent: AppIntent {
+struct FastExportClipIntent: ProgressReportingIntent {
     static let title: LocalizedStringResource = "Export Podcast Clip"
     static let description = IntentDescription("Directly exports an audio clip from the currently playing episode without opening the app.")
 
     // Run entirely in the background
-    static let openAppWhenRun: Bool = false
+    static let supportedModes: IntentModes = .background
 
     // Parameter 1: Configurable offset backward (Defaults to 15 seconds ago)
     @Parameter(
@@ -53,7 +53,7 @@ struct FastExportClipIntent: AppIntent {
         // 1. Gather live playback data from your Player coordinator
         guard let currentEpisode = Player.shared.currentEpisode,
               let audioURL = Player.shared.currentEpisode?.localFile else {
-            throw NSError(domain: "ExportClipIntent", code: 404, userInfo: [NSLocalizedDescriptionKey: "No active episode found to clip."])
+            throw intentError("No active episode found to clip.")
         }
         
         let playPosition = Player.shared.playPosition
@@ -67,7 +67,7 @@ struct FastExportClipIntent: AppIntent {
         
         // Ensure we have a valid slicing range
         guard trimEnd > trimStart else {
-            throw NSError(domain: "ExportClipIntent", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid clip durations calculated."])
+            throw intentError("Invalid clip durations calculated.")
         }
 
         // 3. Background Audio Export
@@ -78,20 +78,32 @@ struct FastExportClipIntent: AppIntent {
         }  else {
             coverImage = UIImage() // Fallback empty layout canvas
         }
-        do {
-            // Trigger your asynchronous export logic immediately
-            let generatedURL = try await AudioClipExporter.exportClipAsync(
+        let title = currentEpisode.title
+        let playbackRate = Player.shared.playbackRate
+        let progress = self.progress
+        progress.totalUnitCount = 100
+        let renderClip: @Sendable () async throws -> URL = {
+            try await AudioClipExporter.exportClipAsync(
                 audioURL: audioURL,
-                title: currentEpisode.title,
+                title: title,
                 coverImage: coverImage,
                 startTime: trimStart,
                 endTime: trimEnd,
-                playbackRate: Player.shared.playbackRate,
+                playbackRate: playbackRate,
                 fps: 30,
                 videoSize: CGSize(width: 720, height: 720)
-            ) { _ in
-                // Progress callback unneeded for instant background executions,
-                // but required by your method signature
+            ) { fraction in
+                progress.completedUnitCount = Int64(fraction * 100)
+            }
+        }
+
+        do {
+            let generatedURL: URL
+            if #available(iOS 27.0, *) {
+                // Rendering a video can outlast the normal intent time limit.
+                generatedURL = try await performBackgroundTask(operation: renderClip)
+            } else {
+                generatedURL = try await renderClip()
             }
 
             // 4. Wrap the generated media asset into an IntentFile
@@ -104,11 +116,13 @@ struct FastExportClipIntent: AppIntent {
             return .result(value: intentFile, dialog: dialog)
 
         } catch {
-         
-            throw NSError(domain: "ExportClipIntent", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed rendering clip background process: \(error.localizedDescription)"])
+            throw intentError("Failed rendering clip background process: \(error.localizedDescription)")
         }
     }
 }
+
+@available(iOS 27.0, *)
+extension FastExportClipIntent: LongRunningIntent {}
 #endif
 
 
@@ -307,7 +321,7 @@ struct SiriEpisodeRequestQuery: EntityStringQuery {
 struct PlayPodcastEpisodeIntent: AudioPlaybackIntent {
     static let title: LocalizedStringResource = "Play Podcast Episode"
     static let description = IntentDescription("Play a numbered episode from a podcast in your library.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = .background
 
     @Parameter(
         title: "Podcast and Episode",
@@ -388,37 +402,60 @@ struct PlayPodcastEpisodeIntent: AudioPlaybackIntent {
     }
 }
 
-struct MoveCurrentEpisodeToEndIntent: AppIntent {
+struct MoveCurrentEpisodeToEndIntent: UndoableIntent {
     static let title: LocalizedStringResource = "Move Current To End"
     static let description = IntentDescription("Move the current episode to the end of your Up Next queue.")
 
+    @MainActor
     func perform() async throws -> some IntentResult {
-        guard let playlistActor = await Player.shared.playlistActor else {
+        guard let playlistActor = Player.shared.playlistActor else {
             return .result()
         }
-        guard let currentEpisodeURL = await Player.shared.currentEpisodeURL else {
+        guard let currentEpisodeURL = Player.shared.currentEpisodeURL else {
             return .result()
         }
 
+        let originalIndex = try? await playlistActor.orderedEpisodeURLs().firstIndex(of: currentEpisodeURL)
         try? await playlistActor.add(episodeURL: currentEpisodeURL, to: .end)
+        registerQueueRestore(of: currentEpisodeURL, at: originalIndex, in: playlistActor, undoManager: undoManager)
         return .result()
     }
 }
 
-struct RemoveCurrentFromUpNextIntent: AppIntent {
+struct RemoveCurrentFromUpNextIntent: UndoableIntent {
     static let title: LocalizedStringResource = "Remove Current From Up Next"
     static let description = IntentDescription("Remove the current episode from your Up Next queue.")
 
+    @MainActor
     func perform() async throws -> some IntentResult {
-        guard let playlistActor = await Player.shared.playlistActor else {
+        guard let playlistActor = Player.shared.playlistActor else {
             return .result()
         }
-        guard let currentEpisodeURL = await Player.shared.currentEpisodeURL else {
+        guard let currentEpisodeURL = Player.shared.currentEpisodeURL else {
             return .result()
         }
 
+        let originalIndex = try? await playlistActor.orderedEpisodeURLs().firstIndex(of: currentEpisodeURL)
         try? await playlistActor.remove(episodeURL: currentEpisodeURL)
+        registerQueueRestore(of: currentEpisodeURL, at: originalIndex, in: playlistActor, undoManager: undoManager)
         return .result()
+    }
+}
+
+/// Registers an undo that puts the episode back at the queue index it had
+/// before the intent ran. Does nothing if it wasn't queued to begin with.
+@MainActor
+private func registerQueueRestore(
+    of episodeURL: URL,
+    at originalIndex: Int?,
+    in playlistActor: PlaylistModelActor,
+    undoManager: UndoManager?
+) {
+    guard let originalIndex else { return }
+    undoManager?.registerUndo(withTarget: Player.shared) { _ in
+        Task {
+            try? await playlistActor.add(episodeURL: episodeURL, to: .end, index: originalIndex)
+        }
     }
 }
 
@@ -516,7 +553,7 @@ struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
 struct RefreshPodcastFeedsIntent: AppIntent {
     static let title: LocalizedStringResource = "Refresh podcasts"
     static let description = IntentDescription("Check subscribed podcast feeds for new episodes.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = .background
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -529,7 +566,7 @@ struct RefreshPodcastFeedsIntent: AppIntent {
 struct GeneratePodcastShareImageIntent: AppIntent {
     static let title: LocalizedStringResource = "Generate Podcast Share Image"
     static let description = IntentDescription("Create a podcast listening statistics share image and return it as a PNG file.")
-    static let openAppWhenRun = false
+    static let supportedModes: IntentModes = .background
 
     @Parameter(title: "Period")
     var period: PodcastShareShortcutPeriod
@@ -1367,7 +1404,7 @@ private struct PodcastShareShortcutRenderer {
 }
 
 @MainActor
-private func preparedIntentModelContainer() async throws -> ModelContainer {
+func preparedIntentModelContainer() async throws -> ModelContainer {
     let manager = ModelContainerManager.shared
     if let container = manager.preparedContainer {
         return container
@@ -1386,6 +1423,19 @@ private func preparedIntentModelContainer() async throws -> ModelContainer {
         )
     }
     return container
+}
+
+/// Uses `AppIntentError(description:)` where available so Siri and Shortcuts
+/// show the localized message.
+private func intentError(_ description: LocalizedStringResource) -> any Error {
+    if #available(iOS 27.0, macOS 27.0, *) {
+        return AppIntentError(description: description)
+    }
+    return NSError(
+        domain: "UpNextIntent",
+        code: 0,
+        userInfo: [NSLocalizedDescriptionKey: String(localized: description)]
+    )
 }
 
 private enum IntentModelContainerError: LocalizedError {

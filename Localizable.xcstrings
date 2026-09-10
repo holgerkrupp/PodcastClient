@@ -9905,6 +9905,286 @@
           }
         }
       }
+    },
+    "Add ${episodes} to Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episodes} zu „Als Nächstes“ hinzufügen"
+          }
+        }
+      }
+    },
+    "Add Episodes to Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden zu „Als Nächstes“ hinzufügen"
+          }
+        }
+      }
+    },
+    "Add one or more episodes to your Up Next queue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge eine oder mehrere Episoden zu deiner „Als Nächstes“-Warteschlange hinzu."
+          }
+        }
+      }
+    },
+    "Added %lld episodes to Up Next." : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Episode zu „Als Nächstes“ hinzugefügt."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Episoden zu „Als Nächstes“ hinzugefügt."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added %lld episode to Up Next."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added %lld episodes to Up Next."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Episode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode"
+          }
+        }
+      }
+    },
+    "Failed rendering clip background process: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Clip konnte nicht erstellt werden: %@"
+          }
+        }
+      }
+    },
+    "Invalid clip durations calculated." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige Clip-Dauer berechnet."
+          }
+        }
+      }
+    },
+    "No active episode found to clip." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine aktive Episode für einen Clip gefunden."
+          }
+        }
+      }
+    },
+    "Play ${episode}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episode} abspielen"
+          }
+        }
+      }
+    },
+    "Play an episode from your library." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spielt eine Episode aus deiner Mediathek ab."
+          }
+        }
+      }
+    },
+    "Play Episode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode abspielen"
+          }
+        }
+      }
+    },
+    "Play Latest Episode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Episode abspielen"
+          }
+        }
+      }
+    },
+    "Play the latest episode of ${podcast}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Episode von ${podcast} abspielen"
+          }
+        }
+      }
+    },
+    "Play the newest episode of a podcast." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spielt die neueste Episode eines Podcasts ab."
+          }
+        }
+      }
+    },
+    "Playing %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird abgespielt."
+          }
+        }
+      }
+    },
+    "Position" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position"
+          }
+        }
+      }
+    },
+    "Queue Position" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position in der Warteschlange"
+          }
+        }
+      }
+    },
+    "Up Next is unavailable." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Als Nächstes“ ist nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Which podcast?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welcher Podcast?"
+          }
+        }
+      }
+    },
+    "Repeat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederholen"
+          }
+        }
+      }
+    },
+    "Shuffle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zufällige Wiedergabe"
+          }
+        }
+      }
+    },
+    "Leave SharePlay" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SharePlay verlassen"
+          }
+        }
+      }
+    },
+    "Listen to this episode with others using SharePlay" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Episode mit anderen über SharePlay hören"
+          }
+        }
+      }
+    },
+    "Listen Together" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinsam hören"
+          }
+        }
+      }
+    },
+    "Stops listening together" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet das gemeinsame Hören"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

@@ -70,6 +70,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSSupportsGroupActivities</key>
+	<true/>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.de.holgerkrupp.PodcastClient</key>

@@ -23,11 +23,15 @@ struct CompactAppShell: View {
                 AppSectionHost(section: .library, navigation: navigation, search: $search)
             }
 
-            Tab("Add", systemImage: "plus", value: AppSection.search, role: .search) {
+            // No custom label: the system draws the search role's own glyph and
+            // splits it off at the trailing end of the tab bar (HIG tab bars).
+            Tab(value: AppSection.search, role: .search) {
                 AppSectionHost(section: .search, navigation: navigation, search: $search)
             }
         }
-        .searchable(text: $search, prompt: "URL or Search")
+        // Selecting the search tab turns it into the search field instead of
+        // just switching to the Add page with a collapsed field.
+        .tabViewSearchActivation(.searchTabSelection)
         .platformPlayerAccessory()
     }
 }
@@ -145,7 +149,11 @@ private struct AppSectionDestinationView: View {
         case .library:
             LibraryView()
         case .search:
+            // Keep .searchable scoped to the search-role tab's own stack. On
+            // the TabView it propagates into every tab's NavigationStack, and
+            // the Add tab stops morphing into the tab bar's search field.
             AddPodcastView(search: $search)
+                .searchable(text: $search, prompt: "URL or Search")
         case .downloads:
             DownloadedEpisodesView()
         case .bookmarks:

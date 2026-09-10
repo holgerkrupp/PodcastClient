@@ -102,6 +102,8 @@ struct PlayerView: View {
 
                                                     }
 
+                                                    ListenTogetherButton(episode: episode)
+
 
                                                 }
                                                 .padding()

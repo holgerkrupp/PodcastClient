@@ -24,6 +24,20 @@ struct PodcastEpisodeShareImporter {
         return try upsert(resolved, sharedURL: sharedURL, modelContext: modelContext)
     }
 
+    /// Imports an episode someone shared by its enclosure URL, e.g. over
+    /// SharePlay. Looks it up in its own feed first so it arrives with full
+    /// metadata; otherwise imports the bare audio file.
+    @MainActor
+    @discardableResult
+    func importEpisode(episodeURL: URL, feedURL: URL?, modelContext: ModelContext) async throws -> URL {
+        if let feedURL,
+           let page = try? await PodcastParser.fetchPage(from: feedURL),
+           let draft = matchingEpisode(in: page.episodes, sharedURL: episodeURL) {
+            return try upsert(.feed(draft: draft, feed: page.feed), sharedURL: episodeURL, modelContext: modelContext)
+        }
+        return try await importEpisode(from: episodeURL, modelContext: modelContext)
+    }
+
     private func resolveEpisode(from sharedURL: URL) async throws -> ResolvedSharedEpisode {
         guard sharedURL.scheme?.isEmpty == false else {
             throw PodcastEpisodeShareImportError.unsupportedURL

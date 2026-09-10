@@ -16,6 +16,7 @@ import AppKit
 @MainActor
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
+        ListenTogetherController.shared.startListening()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(applicationDidFinishRestoringWindows(_:)),

@@ -262,6 +262,16 @@ class Player {
     var endDate: Date? // when playback should pause
     var remainingTime: TimeInterval?
     var stopAfterEpisode: Bool = false
+
+    /// While listening together over SharePlay, features that seek, change
+    /// the rate or switch episodes on their own are off: the playback
+    /// coordinator would apply them to everyone in the session.
+    var isInSharedListeningSession = false {
+        didSet {
+            guard isInSharedListeningSession, oldValue == false else { return }
+            setSilenceGapReductionActive(false)
+        }
+    }
     
     
     
@@ -828,6 +838,7 @@ class Player {
         configureOutroBoundaryObserver()
 
         guard applyToCurrentPlayback,
+              isInSharedListeningSession == false,
               currentPlaybackSource != .liveRemote,
               currentEpisode != nil else {
             return trim
@@ -873,7 +884,8 @@ class Player {
 
     @discardableResult
     private func finishAtOutroIfNeeded(position: TimeInterval, source: String) -> Bool {
-        guard currentPlaybackSource != .liveRemote,
+        guard isInSharedListeningSession == false,
+              currentPlaybackSource != .liveRemote,
               isPlaying,
               let duration = currentPlaybackDuration(),
               PlaybackTrimPolicy.hasReachedOutro(
@@ -971,6 +983,7 @@ class Player {
 
     private func setSilenceGapReductionActive(_ isActive: Bool) {
         guard reduceSilenceGapsEnabled,
+              isInSharedListeningSession == false,
               currentEpisode != nil,
               currentPlaybackSource != .liveRemote,
               currentPlaybackUsesAlternateMedia == false,
@@ -1768,7 +1781,11 @@ class Player {
             duration: currentPlaybackDuration()
         )
 
-        if targetStartTime > 0 {
+        // When SharePlay loads an episode for this participant (without
+        // playing it), the coordinator moves us to the group's position;
+        // seeking to our own resume position would move the group instead.
+        let loadingForSharedSession = isInSharedListeningSession && playDirectly == false
+        if targetStartTime > 0, loadingForSharedSession == false {
             await jumpTo(time: targetStartTime, protectLargeSeek: false)
         } else {
             playPosition = 0
@@ -1946,8 +1963,18 @@ class Player {
     private func syncPlaybackStateFromObservedPlayer(_ observedPlayer: AVPlayer) {
         if observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing {
             if isPlaying == false {
-                transitionToPlaying(updateEngineRate: true, preparePlaybackSource: false)
+                // In SharePlay the coordinator has already applied the group's
+                // rate; re-applying ours would change it for everyone.
+                transitionToPlaying(
+                    updateEngineRate: isInSharedListeningSession == false,
+                    preparePlaybackSource: false
+                )
             }
+        } else if isInSharedListeningSession,
+                  isPlaying,
+                  observedPlayer.timeControlStatus == .paused {
+            // Another SharePlay participant paused.
+            transitionToPaused(pauseEngine: false)
         }
     }
 
@@ -2328,7 +2355,7 @@ class Player {
     }
 
     private func skipOverChapters() async {
-        guard isSkippingChapters == false else { return }
+        guard isSkippingChapters == false, isInSharedListeningSession == false else { return }
         guard let segment = chapterSkipPlan.segment(at: playPosition) else { return }
 
         isSkippingChapters = true
@@ -2459,7 +2486,9 @@ class Player {
                 queuedSuccessor = try? await activePlaylistActor?
                     .nextEpisodeURL(after: finishedEpisodeURL)
             }
-            let nextEpisodeURL = sleepTimerContinuePlaying && continuePlaying
+            // In a SharePlay session each participant's queue differs, so
+            // auto-advancing would split the group; stop at the end instead.
+            let nextEpisodeURL = sleepTimerContinuePlaying && continuePlaying && isInSharedListeningSession == false
                 ? queuedSuccessor
                 : nil
 
