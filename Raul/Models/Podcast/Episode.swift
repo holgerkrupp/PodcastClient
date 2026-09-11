@@ -749,17 +749,32 @@ class EpisodeDownloadStatus{
         }
 
         let replacementChapters = uniqueChapters(newChapters)
+        var retainedChapters: [Marker] = []
+        var chaptersToInsert: [Marker] = []
         for chapter in replacementChapters {
-            chapter.episode = self
             if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
-                chapter.shouldPlay = existing.shouldPlay
-                chapter.progress = shouldPreserveChapterProgress ? existing.progress : 0
-                chapter.imageData = chapter.imageData ?? existing.imageData
+                // Feed refreshes must not replace a matching Marker just because
+                // its user-controlled `shouldPlay` value changed locally.
+                existing.title = chapter.title
+                existing.start = chapter.start
+                existing.endTime = chapter.endTime
+                existing.duration = chapter.duration
+                existing.link = chapter.link
+                existing.image = chapter.image
+                existing.imageData = chapter.imageData ?? existing.imageData
+                existing.progress = shouldPreserveChapterProgress ? existing.progress : 0
+                retainedChapters.append(existing)
+            } else {
+                chapter.episode = self
+                chaptersToInsert.append(chapter)
             }
         }
 
-        chapters?.removeAll { $0.type == type }
-        chapters?.append(contentsOf: replacementChapters)
+        chapters?.removeAll { chapter in
+            chapter.type == type
+                && retainedChapters.contains(where: { $0 === chapter }) == false
+        }
+        chapters?.append(contentsOf: chaptersToInsert)
         chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
     }
 

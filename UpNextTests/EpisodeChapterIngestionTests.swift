@@ -250,6 +250,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         existingChapter.shouldPlay = false
         existingChapter.progress = 0.42
         existingChapter.imageData = Data([0x01, 0x02, 0x03])
+        let existingChapterID = existingChapter.uuid
         existingChapter.episode = episode
         episode.chapters = [existingChapter]
         episode.metaData?.lastPlayed = Date(timeIntervalSince1970: 1_000)
@@ -270,6 +271,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertEqual(chapters.count, 1)
         XCTAssertEqual(chapters.first?.type, .mp3)
         XCTAssertEqual(chapters.first?.title, "Shared Chapter")
+        XCTAssertEqual(chapters.first?.uuid, existingChapterID)
         XCTAssertEqual(chapters.first?.shouldPlay, false)
         XCTAssertEqual(chapters.first?.progress ?? -1, 0.42, accuracy: 0.0001)
         XCTAssertEqual(chapters.first?.imageData ?? Data(), Data([0x01, 0x02, 0x03]))

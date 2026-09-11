@@ -104,19 +104,33 @@ actor EpisodeActor {
         }
 
         let replacementChapters = uniqueChapters(newChapters)
+        var retainedChapters: [Marker] = []
+        var chaptersToInsert: [Marker] = []
         for chapter in replacementChapters {
-            chapter.episode = episode
             if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
-                chapter.shouldPlay = existing.shouldPlay
-                chapter.progress = shouldPreserveChapterProgress ? existing.progress : 0
-                chapter.image = chapter.image ?? existing.image
-                chapter.imageData = chapter.imageData ?? existing.imageData
-                chapter.link = chapter.link ?? existing.link
+                // `shouldPlay` is user-controlled state, not source metadata. Keep
+                // the persisted Marker (and its preference) when a downloaded file
+                // contains the same chapter that was already read remotely.
+                existing.title = chapter.title
+                existing.start = chapter.start
+                existing.endTime = chapter.endTime
+                existing.duration = chapter.duration
+                existing.image = chapter.image ?? existing.image
+                existing.imageData = chapter.imageData ?? existing.imageData
+                existing.link = chapter.link ?? existing.link
+                existing.progress = shouldPreserveChapterProgress ? existing.progress : 0
+                retainedChapters.append(existing)
+            } else {
+                chapter.episode = episode
+                chaptersToInsert.append(chapter)
             }
         }
 
-        episode.chapters?.removeAll { types.contains($0.type) }
-        episode.chapters?.append(contentsOf: replacementChapters)
+        episode.chapters?.removeAll { chapter in
+            types.contains(chapter.type)
+                && retainedChapters.contains(where: { $0 === chapter }) == false
+        }
+        episode.chapters?.append(contentsOf: chaptersToInsert)
         episode.chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
     }
 
