@@ -35,21 +35,22 @@ struct StoreSplitMigrationLogView: View {
         .navigationTitle("Migration Log")
         .platformInlineNavigationTitle()
         .toolbar {
-            // Declared first so it sits furthest from the trailing edge: it is
-            // destructive and this log is often the only record of what the
-            // background pass did overnight.
-            Button(role: .destructive) {
-                StoreSplitMigrationDebugLog.clear()
-                entries = []
-            } label: {
-                Label("Clear Log", systemImage: "trash")
+            ToolbarItem(placement: .secondaryAction) {
+                Button(role: .destructive) {
+                    StoreSplitMigrationDebugLog.clear()
+                    entries = []
+                } label: {
+                    Label("Clear Log", systemImage: "trash")
+                }
+                .disabled(entries.isEmpty)
             }
-            .disabled(entries.isEmpty)
 
-            Button {
-                reload()
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    reload()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
             }
         }
         .refreshable {

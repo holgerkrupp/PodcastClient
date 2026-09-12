@@ -613,7 +613,7 @@ struct StatisticsView: View {
         .navigationTitle("Listening History")
         .listStyle(.inset)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button {
                     rebuildAnalytics()
                 } label: {
@@ -621,7 +621,7 @@ struct StatisticsView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Image(systemName: "arrow.clockwise.circle")
+                        Label("Rebuild Analytics", systemImage: "arrow.clockwise.circle")
                     }
                 }
                 .disabled(isRebuildingAnalytics)

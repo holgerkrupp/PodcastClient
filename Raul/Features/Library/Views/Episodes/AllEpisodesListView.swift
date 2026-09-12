@@ -71,8 +71,8 @@ struct AllEpisodesListView: View {
         }
         .toolbar {
 
-            ToolbarItem(placement: .primaryAction) {
-                Button {
+            ToolbarItem(placement: .secondaryAction) {
+                Button(role: .destructive) {
                     Task { await deleteFiles() }
                 } label: {
                     Label("Delete Files", systemImage: "trash")

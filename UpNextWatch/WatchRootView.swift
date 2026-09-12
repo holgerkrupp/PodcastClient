@@ -57,7 +57,7 @@ struct WatchRootView: View {
                         Button {
                             isShowingSettings = true
                         } label: {
-                            Image(systemName: "gearshape.fill")
+                            Label("Settings", systemImage: "gearshape.fill")
                                 .foregroundStyle(.white)
                         }
                         .accessibilityLabel("Settings")
@@ -86,7 +86,7 @@ struct WatchRootView: View {
                                 ProgressView()
                                     .tint(.white)
                             } else {
-                                Image(systemName: "arrow.clockwise")
+                                Label("Refresh Inbox", systemImage: "arrow.clockwise")
                                     .foregroundStyle(.white)
                             }
                         }

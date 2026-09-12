@@ -78,7 +78,7 @@ struct StorageManagementView: View {
                     if isLoading {
                         ProgressView()
                     } else {
-                        Image(systemName: "arrow.clockwise")
+                        Label("Refresh storage report", systemImage: "arrow.clockwise")
                     }
                 }
                 .disabled(isLoading || isDeleting)

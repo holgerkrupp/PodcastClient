@@ -148,7 +148,7 @@ struct InboxListView: View {
                             ProgressView()
                         }
                     }else{
-                        Image(systemName: "arrow.clockwise")
+                        Label("Refresh Inbox", systemImage: "arrow.clockwise")
                     }
                 }
                 .disabled(refreshProgress.isRefreshing)
@@ -158,7 +158,7 @@ struct InboxListView: View {
             }
 
             if !episodes.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .secondaryAction) {
                     Button(action: {
                         Task {
                             await clearInbox()
@@ -168,7 +168,7 @@ struct InboxListView: View {
                         if isClearingInbox {
                             ProgressView()
                         }else{
-                            Image(systemName: "tray.and.arrow.up")
+                            Label("Clear inbox", systemImage: "tray.and.arrow.up")
                         }
                     }
                     .disabled(isClearingInbox)

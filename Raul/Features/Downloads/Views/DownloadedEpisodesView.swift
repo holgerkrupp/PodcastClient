@@ -49,7 +49,7 @@ struct DownloadedEpisodesView: View {
         .listStyle(.plain)
         .navigationTitle("Downloads")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Menu {
                     Picker("Sort", selection: Binding(get: { sortRaw }, set: { sortRaw = $0 })) {
                         Text("Newest First").tag(Sort.newestFirst.rawValue)
@@ -65,7 +65,7 @@ struct DownloadedEpisodesView: View {
                         Label("Delete Played", systemImage: "trash.fill")
                     }
                 } label: {
-                    Image(systemName: "arrow.up.arrow.down")
+                    Label("More", systemImage: "ellipsis")
                 }
                 .accessibilityLabel("Download actions and sort")
                 .accessibilityHint("Sort downloads, rescan files, or delete played episodes")

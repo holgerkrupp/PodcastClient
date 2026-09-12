@@ -512,7 +512,7 @@ struct PodcastDetailView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .secondaryAction) {
                     Menu {
                         Picker("Sort by", selection: Binding(
                             get: { sortOptionRawValue },
@@ -526,23 +526,25 @@ struct PodcastDetailView: View {
                         Toggle(isOn: $hidePlayedAndArchived) {
                             Label("Hide played Episodes", systemImage: "eye.slash")
                         }
+                        Divider()
+                        Button(action: {
+                            openSettings(.podcast(podcast))
+                        }) {
+                            Label("Podcast Settings", systemImage: "gear")
+                        }
+                        Button(action: {
+                            Task {
+                                try? await PodcastModelActor(modelContainer: modelContext.container)
+                                    .archiveEpisodes(of: podcast.persistentModelID)
+                            }
+                        }) {
+                            Label("Archive all episodes", systemImage: "archivebox")
+                        }
                     } label: {
-                        Image(systemName: "arrow.up.arrow.down")
+                        Label("More", systemImage: "ellipsis")
                     }
-                    .accessibilityLabel("Episode sort and visibility")
-                    .accessibilityHint("Choose episode sort order and hide played episodes")
-                    .accessibilityInputLabels([Text("Sort episodes"), Text("Episode sort")])
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: {
-                        openSettings(.podcast(podcast))
-                    }) {
-                        Image(systemName: "gear")
-                    }
-                    .accessibilityLabel("Podcast settings")
-                    .accessibilityHint("Open settings for this podcast")
-                    .accessibilityInputLabels([Text("Podcast settings"), Text("Open settings")])
-                    
+                    .accessibilityLabel("More podcast actions")
+                    .accessibilityHint("Sort episodes, change visibility, open settings, or archive episodes")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {
@@ -556,29 +558,14 @@ struct PodcastDetailView: View {
                                 total: 1.0
                             )
                         } else {
-                            Image(systemName: "arrow.clockwise")
+                            Label("Refresh podcast", systemImage: "arrow.clockwise")
                         }
                     }
                     .disabled(podcast.isSubscribed == false || isLoading)
                     .accessibilityLabel(isLoading ? "Refreshing podcast" : "Refresh podcast")
                     .accessibilityHint("Downloads the latest episodes from this podcast feed")
                     .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast")])
-                    
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: {
-                        Task {
-                            try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)
-                        }
-                    }) {
-                        Image(systemName: "archivebox")
-                    }
-                    .accessibilityLabel("Archive all episodes")
-                    .accessibilityHint("Marks all episodes in this podcast as archived")
-                    .accessibilityInputLabels([Text("Archive all episodes"), Text("Archive podcast episodes")])
-                }
-                
-                
             }
         .alert("Live notification", isPresented: isLiveNotificationPresented) {
             Button("OK", role: .cancel) { }

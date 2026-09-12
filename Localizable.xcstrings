@@ -493,6 +493,16 @@
         }
       }
     },
+    "Add ${episodes} to Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episodes} zu „Als Nächstes“ hinzufügen"
+          }
+        }
+      }
+    },
     "Add a rule to skip recurring chapters like ads, intros, or credits." : {
       "localizations" : {
         "de" : {
@@ -533,6 +543,26 @@
         }
       }
     },
+    "Add Episodes to Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden zu „Als Nächstes“ hinzufügen"
+          }
+        }
+      }
+    },
+    "Add one or more episodes to your Up Next queue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge eine oder mehrere Episoden zu deiner „Als Nächstes“-Warteschlange hinzu."
+          }
+        }
+      }
+    },
     "Add Podcast" : {
       "localizations" : {
         "de" : {
@@ -562,6 +592,9 @@
           }
         }
       }
+    },
+    "Add to Another Playlist" : {
+
     },
     "Add to End" : {
       "localizations" : {
@@ -603,12 +636,58 @@
         }
       }
     },
+    "Add to the end of %@" : {
+
+    },
+    "Add to the front of %@" : {
+
+    },
     "Add to Up Next" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zu „Als Nächstes“ hinzufügen"
+          }
+        }
+      }
+    },
+    "Added %lld episodes to Up Next." : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Episode zu „Als Nächstes“ hinzugefügt."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Episoden zu „Als Nächstes“ hinzugefügt."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added %lld episode to Up Next."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added %lld episodes to Up Next."
+                }
+              }
+            }
           }
         }
       }
@@ -632,6 +711,9 @@
           }
         }
       }
+    },
+    "Adjust playback options for this podcast" : {
+
     },
     "Adjusts the current playback position" : {
       "localizations" : {
@@ -914,6 +996,7 @@
       }
     },
     "Archive podcast episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1316,6 +1399,9 @@
         }
       }
     },
+    "Change how fast episodes play" : {
+
+    },
     "Changes archive state without changing inbox or playlist membership" : {
       "localizations" : {
         "de" : {
@@ -1335,6 +1421,9 @@
           }
         }
       }
+    },
+    "Changes the landscape player layout for left- or right-handed use" : {
+
     },
     "Changes this episode between the audio enclosure and alternate video stream" : {
       "localizations" : {
@@ -1477,6 +1566,7 @@
       }
     },
     "Choose episode sort order and hide played episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1495,6 +1585,9 @@
           }
         }
       }
+    },
+    "Choose where audio plays" : {
+
     },
     "Choose which playlist appears on the watch" : {
       "localizations" : {
@@ -2276,6 +2369,9 @@
         }
       }
     },
+    "Drag the waveform to move through the episode, and pinch to zoom in for a precise cut." : {
+
+    },
     "Duration: %@" : {
       "localizations" : {
         "de" : {
@@ -2389,6 +2485,16 @@
         }
       }
     },
+    "Episode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode"
+          }
+        }
+      }
+    },
     "Episode Cover" : {
       "localizations" : {
         "de" : {
@@ -2450,6 +2556,7 @@
       }
     },
     "Episode sort" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2460,6 +2567,7 @@
       }
     },
     "Episode sort and visibility" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2619,6 +2727,16 @@
         }
       }
     },
+    "Failed rendering clip background process: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Clip konnte nicht erstellt werden: %@"
+          }
+        }
+      }
+    },
     "February" : {
       "localizations" : {
         "de" : {
@@ -2718,6 +2836,9 @@
           }
         }
       }
+    },
+    "Find the Exact Moment" : {
+
     },
     "Finish episodes this many seconds early to bypass recurring outros." : {
 
@@ -2978,6 +3099,12 @@
         }
       }
     },
+    "Go back %lld seconds" : {
+
+    },
+    "Go forward %lld seconds" : {
+
+    },
     "Halloween" : {
       "localizations" : {
         "de" : {
@@ -3139,6 +3266,9 @@
           }
         }
       }
+    },
+    "Hide the transcript below the artwork" : {
+
     },
     "Hide transcript" : {
       "localizations" : {
@@ -3430,6 +3560,16 @@
         }
       }
     },
+    "Invalid clip durations calculated." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige Clip-Dauer berechnet."
+          }
+        }
+      }
+    },
     "iPhone remote" : {
       "localizations" : {
         "de" : {
@@ -3495,6 +3635,9 @@
           }
         }
       }
+    },
+    "Jump to the furthest point you've listened to" : {
+
     },
     "Jumps to the furthest point you have listened to in this episode" : {
       "localizations" : {
@@ -3656,6 +3799,16 @@
         }
       }
     },
+    "Leave SharePlay" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SharePlay verlassen"
+          }
+        }
+      }
+    },
     "Less" : {
       "localizations" : {
         "de" : {
@@ -3712,6 +3865,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Limit"
+          }
+        }
+      }
+    },
+    "Listen to this episode with others using SharePlay" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Episode mit anderen über SharePlay hören"
+          }
+        }
+      }
+    },
+    "Listen Together" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinsam hören"
           }
         }
       }
@@ -4057,6 +4230,7 @@
       }
     },
     "Marks all episodes in this podcast as archived" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4246,6 +4420,22 @@
         }
       }
     },
+    "More podcast actions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Podcast-Aktionen"
+          }
+        }
+      }
+    },
+    "Move controls to left" : {
+
+    },
+    "Move controls to right" : {
+
+    },
     "Move Current To End" : {
       "localizations" : {
         "de" : {
@@ -4265,6 +4455,12 @@
           }
         }
       }
+    },
+    "Move playback controls to left" : {
+
+    },
+    "Move playback controls to right" : {
+
     },
     "Move Subscriptions in Minutes" : {
       "localizations" : {
@@ -4577,6 +4773,16 @@
         }
       }
     },
+    "No active episode found to clip." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine aktive Episode für einen Clip gefunden."
+          }
+        }
+      }
+    },
     "No Bookmarks saved for this podcast." : {
       "localizations" : {
         "de" : {
@@ -4876,6 +5082,9 @@
           }
         }
       }
+    },
+    "No Transcript" : {
+
     },
     "No Transcriptions Yet" : {
       "localizations" : {
@@ -5318,6 +5527,7 @@
       }
     },
     "Open settings for this podcast" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5733,6 +5943,16 @@
         }
       }
     },
+    "Play ${episode}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episode} abspielen"
+          }
+        }
+      }
+    },
     "Play ${request}" : {
       "localizations" : {
         "de" : {
@@ -5749,6 +5969,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Spielt eine nummerierte Episode aus einem Podcast in deiner Mediathek ab."
+          }
+        }
+      }
+    },
+    "Play an episode from your library." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spielt eine Episode aus deiner Mediathek ab."
           }
         }
       }
@@ -5793,6 +6023,16 @@
         }
       }
     },
+    "Play Episode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episode abspielen"
+          }
+        }
+      }
+    },
     "Play from %@" : {
       "localizations" : {
         "de" : {
@@ -5819,6 +6059,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Als Letztes abspielen"
+          }
+        }
+      }
+    },
+    "Play Latest Episode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Episode abspielen"
           }
         }
       }
@@ -5883,6 +6133,26 @@
         }
       }
     },
+    "Play the latest episode of ${podcast}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Episode von ${podcast} abspielen"
+          }
+        }
+      }
+    },
+    "Play the newest episode of a podcast." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spielt die neueste Episode eines Podcasts ab."
+          }
+        }
+      }
+    },
     "Play the next episode from your Up Next queue." : {
       "localizations" : {
         "de" : {
@@ -5932,6 +6202,9 @@
           }
         }
       }
+    },
+    "Playback controls for %@" : {
+
     },
     "Playback controls manage the iPhone app." : {
       "localizations" : {
@@ -6053,6 +6326,9 @@
         }
       }
     },
+    "Player content" : {
+
+    },
     "Player Controls" : {
       "localizations" : {
         "de" : {
@@ -6079,6 +6355,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft"
+          }
+        }
+      }
+    },
+    "Playing %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird abgespielt."
           }
         }
       }
@@ -6240,6 +6526,7 @@
       }
     },
     "Podcast settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6419,6 +6706,16 @@
         }
       }
     },
+    "Position" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position"
+          }
+        }
+      }
+    },
     "Predicted cadence" : {
       "localizations" : {
         "de" : {
@@ -6579,6 +6876,16 @@
         }
       }
     },
+    "Queue Position" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position in der Warteschlange"
+          }
+        }
+      }
+    },
     "Queue settings" : {
       "localizations" : {
         "de" : {
@@ -6608,6 +6915,12 @@
           }
         }
       }
+    },
+    "Read along below the artwork" : {
+
+    },
+    "Read the whole episode as text" : {
+
     },
     "Ready to Subscribe (%lld)" : {
       "localizations" : {
@@ -7075,6 +7388,16 @@
     "Removes this episode from the playlist without changing archive or inbox membership" : {
 
     },
+    "Repeat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederholen"
+          }
+        }
+      }
+    },
     "Rescan" : {
       "localizations" : {
         "de" : {
@@ -7124,6 +7447,9 @@
           }
         }
       }
+    },
+    "Return to Where You Were" : {
+
     },
     "Returns to %@ at the previous playback position" : {
       "localizations" : {
@@ -7204,6 +7530,9 @@
           }
         }
       }
+    },
+    "Save this moment to your bookmarks" : {
+
     },
     "Saves the current playback position as a bookmark" : {
       "localizations" : {
@@ -7835,6 +8164,16 @@
         }
       }
     },
+    "Shuffle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zufällige Wiedergabe"
+          }
+        }
+      }
+    },
     "Side loaded" : {
       "localizations" : {
         "de" : {
@@ -8112,11 +8451,22 @@
       }
     },
     "Sort episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Episoden sortieren"
+          }
+        }
+      }
+    },
+    "Sort episodes, change visibility, open settings, or archive episodes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden sortieren, Sichtbarkeit ändern, Einstellungen öffnen oder Episoden archivieren"
           }
         }
       }
@@ -8294,12 +8644,25 @@
         }
       }
     },
+    "Stop playback after a set time or at the end of the episode" : {
+
+    },
     "Stops and removes this download" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stoppt und entfernt diesen Download"
+          }
+        }
+      }
+    },
+    "Stops listening together" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet das gemeinsame Hören"
           }
         }
       }
@@ -8535,6 +8898,7 @@
       }
     },
     "Tap and hold an episode, then drag it up or down to change the playback order." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8543,6 +8907,9 @@
           }
         }
       }
+    },
+    "Tap to jump ahead to the furthest point you've listened to in this episode." : {
+
     },
     "That episode could not be found." : {
       "localizations" : {
@@ -8990,6 +9357,12 @@
         }
       }
     },
+    "Touch and hold an episode, then drag it up or down to change the playback order." : {
+
+    },
+    "Touch and hold Play Next or Play Last to choose which playlist gets the episode." : {
+
+    },
     "Trailers" : {
       "localizations" : {
         "de" : {
@@ -9312,6 +9685,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„Als Nächstes“ wird gestartet"
+          }
+        }
+      }
+    },
+    "Up Next is unavailable." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Als Nächstes“ ist nicht verfügbar."
           }
         }
       }
@@ -9776,6 +10159,16 @@
         }
       }
     },
+    "Which podcast?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welcher Podcast?"
+          }
+        }
+      }
+    },
     "White" : {
       "localizations" : {
         "de" : {
@@ -9902,286 +10295,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Sideloading-Ordner ist leer"
-          }
-        }
-      }
-    },
-    "Add ${episodes} to Up Next" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${episodes} zu „Als Nächstes“ hinzufügen"
-          }
-        }
-      }
-    },
-    "Add Episodes to Up Next" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episoden zu „Als Nächstes“ hinzufügen"
-          }
-        }
-      }
-    },
-    "Add one or more episodes to your Up Next queue." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Füge eine oder mehrere Episoden zu deiner „Als Nächstes“-Warteschlange hinzu."
-          }
-        }
-      }
-    },
-    "Added %lld episodes to Up Next." : {
-      "localizations" : {
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Episode zu „Als Nächstes“ hinzugefügt."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Episoden zu „Als Nächstes“ hinzugefügt."
-                }
-              }
-            }
-          }
-        },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Added %lld episode to Up Next."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Added %lld episodes to Up Next."
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Episode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episode"
-          }
-        }
-      }
-    },
-    "Failed rendering clip background process: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Clip konnte nicht erstellt werden: %@"
-          }
-        }
-      }
-    },
-    "Invalid clip durations calculated." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ungültige Clip-Dauer berechnet."
-          }
-        }
-      }
-    },
-    "No active episode found to clip." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine aktive Episode für einen Clip gefunden."
-          }
-        }
-      }
-    },
-    "Play ${episode}" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${episode} abspielen"
-          }
-        }
-      }
-    },
-    "Play an episode from your library." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spielt eine Episode aus deiner Mediathek ab."
-          }
-        }
-      }
-    },
-    "Play Episode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episode abspielen"
-          }
-        }
-      }
-    },
-    "Play Latest Episode" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neueste Episode abspielen"
-          }
-        }
-      }
-    },
-    "Play the latest episode of ${podcast}" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neueste Episode von ${podcast} abspielen"
-          }
-        }
-      }
-    },
-    "Play the newest episode of a podcast." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spielt die neueste Episode eines Podcasts ab."
-          }
-        }
-      }
-    },
-    "Playing %@." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ wird abgespielt."
-          }
-        }
-      }
-    },
-    "Position" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Position"
-          }
-        }
-      }
-    },
-    "Queue Position" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Position in der Warteschlange"
-          }
-        }
-      }
-    },
-    "Up Next is unavailable." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Als Nächstes“ ist nicht verfügbar."
-          }
-        }
-      }
-    },
-    "Which podcast?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Welcher Podcast?"
-          }
-        }
-      }
-    },
-    "Repeat" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiederholen"
-          }
-        }
-      }
-    },
-    "Shuffle" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zufällige Wiedergabe"
-          }
-        }
-      }
-    },
-    "Leave SharePlay" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SharePlay verlassen"
-          }
-        }
-      }
-    },
-    "Listen to this episode with others using SharePlay" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Episode mit anderen über SharePlay hören"
-          }
-        }
-      }
-    },
-    "Listen Together" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemeinsam hören"
-          }
-        }
-      }
-    },
-    "Stops listening together" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beendet das gemeinsame Hören"
           }
         }
       }

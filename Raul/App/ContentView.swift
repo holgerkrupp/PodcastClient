@@ -205,7 +205,8 @@ struct ContentView: View {
     }
 
     private var usesSidebarLayout: Bool {
-        PlatformSupport.usesDesktopLayout || horizontalSizeClass == .regular
+        PlatformSupport.usesDesktopLayout
+            || (PlatformSupport.isPhone == false && horizontalSizeClass == .regular)
     }
     
     func setGoingToBackgroundDate() {

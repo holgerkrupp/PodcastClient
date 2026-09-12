@@ -165,7 +165,7 @@ struct PodcastListView: View {
             refreshProgress = PodcastRefreshCoordinator.shared.progress
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .secondaryAction) {
                 Menu {
                     Picker("Podcast Scope", selection: $selectedScope) {
                         ForEach(LibraryScope.allCases) { scope in
@@ -173,23 +173,15 @@ struct PodcastListView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: selectedScope == .unsubscribed ? "pause.circle" : "line.3.horizontal.decrease.circle")
+                    Label(
+                        "Podcast Scope",
+                        systemImage: selectedScope == .unsubscribed ? "pause.circle" : "line.3.horizontal.decrease.circle"
+                    )
                 }
                 .accessibilityLabel("Podcast scope")
                 .accessibilityHint("Filter library by subscribed, not subscribed, or all podcasts")
                 .accessibilityInputLabels([Text("Podcast scope"), Text("Library scope")])
-            }
 
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink(destination: LibrarySearchView()) {
-                    Image(systemName: "magnifyingglass")
-                }
-                .accessibilityLabel("Search library")
-                .accessibilityHint("Search podcasts, episodes, chapters, and transcripts")
-                .accessibilityInputLabels([Text("Search library"), Text("Library search")])
-            }
-
-            ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task {
                         await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
@@ -207,13 +199,22 @@ struct PodcastListView: View {
                             ProgressView()
                         }
                     } else {
-                        Image(systemName: "arrow.clockwise")
+                        Label("Refresh podcasts", systemImage: "arrow.clockwise")
                     }
                 }
                 .disabled(refreshProgress.isRefreshing)
                 .accessibilityLabel(refreshProgress.isRefreshing ? "Refreshing podcasts" : "Refresh podcasts")
                 .accessibilityHint("Updates all podcast feeds in your library")
                 .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink(destination: LibrarySearchView()) {
+                    Label("Search Library", systemImage: "magnifyingglass")
+                }
+                .accessibilityLabel("Search library")
+                .accessibilityHint("Search podcasts, episodes, chapters, and transcripts")
+                .accessibilityInputLabels([Text("Search library"), Text("Library search")])
             }
         }
     }
@@ -267,7 +268,7 @@ private struct LibraryPlaylistsView: View {
                 Button {
                     showCreatePlaylistSheet = true
                 } label: {
-                    Image(systemName: "plus")
+                    Label("New Playlist", systemImage: "plus")
                 }
                 .accessibilityLabel("Create playlist")
                 .accessibilityHint("Adds a new playlist")
@@ -613,7 +614,7 @@ struct SideLoadedEpisodesView: View {
                 Text(importErrorMessage ?? "The file could not be imported.")
             }
             .toolbar {
-                ToolbarItemGroup(placement: .navigation) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         isImportingFile = true
                     }) {
@@ -622,7 +623,7 @@ struct SideLoadedEpisodesView: View {
                     .accessibilityLabel("Import sideloading file")
                     .accessibilityHint("Opens a file picker and copies the selected audio file into the sideloading folder")
                 }
-                ToolbarItemGroup(placement: .primaryAction) {
+                ToolbarItem(placement: .secondaryAction) {
                     Button(action: {
                         Task {
                             await refreshSideLoadedContent()
@@ -632,7 +633,7 @@ struct SideLoadedEpisodesView: View {
                         if isRefreshing {
                             ProgressView()
                         } else {
-                            Image(systemName: "arrow.clockwise")
+                            Label("Refresh sideloading", systemImage: "arrow.clockwise")
                         }
                     }
                     .disabled(isRefreshing)

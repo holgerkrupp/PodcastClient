@@ -52,7 +52,7 @@ struct PlaylistView: View {
         .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
         .platformInlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItem(placement: .principal) {
                 PlaylistTitleMenu(
                     currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
                     currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
@@ -69,11 +69,11 @@ struct PlaylistView: View {
 
 
 
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button(action: {
                     openSettings()
                 }) {
-                    Image(systemName: "gear")
+                    Label("Queue settings", systemImage: "gear")
                 }
                 .accessibilityLabel("Queue settings")
                 .accessibilityHint("Open playback and queue settings")
@@ -319,10 +319,11 @@ private struct ManualPlaylistPageView: View {
                     ReorderPlaylistTip.hasUserReorderedBefore = true
                     reorderTip.invalidate(reason: .actionPerformed)
                 }
-                .onChange(of: episodes.count) { oldCount, newCount in
-                                // 3. Keep the tip parameter synced with app state
-                                ReorderPlaylistTip.playlistItemCount = newCount
-                            }
+                // `initial: true` so the rule sees the current count, not just later changes;
+                // otherwise a playlist that never changes size never becomes eligible.
+                .onChange(of: episodes.count, initial: true) { _, newCount in
+                    ReorderPlaylistTip.playlistItemCount = newCount
+                }
             }
             .listStyle(.plain)
         }

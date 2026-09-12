@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import AVKit
 import CoreImage
+import TipKit
 
 struct AudioClipExportView: View {
     private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
@@ -33,6 +34,7 @@ struct AudioClipExportView: View {
     @State private var isWaveformLoading = false
     @State private var waveformLoadTask: Task<Void, Never>?
     @State private var previewUpdateTask: Task<Void, Never>?
+    private let waveformGesturesTip = ClipWaveformGesturesTip()
     var title: String? = nil
 
     let audioURL: URL // The audio file URL to trim
@@ -138,10 +140,14 @@ struct AudioClipExportView: View {
                                     },
                                     progress: $playbackProgress,
                                     onWindowChanged: { newWindow in
+                                        // Only a pan or pinch changes the window, so the tip has been acted on.
+                                        waveformGesturesTip.invalidate(reason: .actionPerformed)
                                         reloadWaveform(for: newWindow)
                                     }
                                 )
                                 .frame(height: 70)
+                                // A popover keeps the sheet's layout stable on small screens.
+                                .popoverTip(waveformGesturesTip, arrowEdge: .bottom)
                                 .background{
                                     RoundedRectangle(cornerRadius:  8.0)
                                         .fill(.black.opacity(0.5))

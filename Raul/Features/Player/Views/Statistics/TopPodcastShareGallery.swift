@@ -138,7 +138,7 @@ struct TopPodcastShareGalleryView: View {
                 Button {
                     share(designs: Array(selectedDesigns))
                 } label: {
-                    Image(systemName: "square.and.arrow.up")
+                    Label("Share Selected Images", systemImage: "square.and.arrow.up")
                 }
                 .disabled(canShareSelectedDesigns == false)
                 .accessibilityLabel(selectedDesigns.count <= 1 ? "Share Selected Image" : "Share Selected Images")

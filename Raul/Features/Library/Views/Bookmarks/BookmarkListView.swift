@@ -157,7 +157,7 @@ struct BookmarkListView: View {
                 .navigationTitle(navigationTitleText)
                 .searchable(text: $searchText, prompt: "Search bookmarks")
                 .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
+                    ToolbarItem(placement: .secondaryAction) {
                         Menu {
                             Picker("Sort", selection: $sortRaw) {
                                 ForEach(Sort.allCases) { option in
@@ -165,7 +165,7 @@ struct BookmarkListView: View {
                                 }
                             }
                         } label: {
-                            Image(systemName: "arrow.up.arrow.down")
+                            Label("Sort bookmarks", systemImage: "arrow.up.arrow.down")
                         }
                         .accessibilityLabel("Sort bookmarks")
                     }

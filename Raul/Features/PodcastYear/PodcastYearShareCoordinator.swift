@@ -526,8 +526,10 @@ struct PodcastYearShareSheet: View {
             .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
+                    Button {
                         dismiss()
+                    } label: {
+                        Label("Close", systemImage: "xmark")
                     }
                 }
             }

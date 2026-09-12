@@ -63,7 +63,7 @@ struct EpisodeDetailView: View {
                     }
                     
                    
-                        EpisodeControlView(episode: episode)
+                        EpisodeControlView(episode: episode, showsPlaylistPickerTip: true)
                             .modelContainer(context.container)
                             .frame(height: 50)
                             .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))

@@ -168,7 +168,7 @@ struct LibrarySearchView: View {
             searchTask?.cancel()
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .secondaryAction) {
                 Menu {
                     Picker("Podcast Scope", selection: $selectedScope) {
                         ForEach(LibraryScope.allCases) { scope in
@@ -176,19 +176,20 @@ struct LibrarySearchView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: selectedScope == .unsubscribed ? "pause.circle" : "line.3.horizontal.decrease.circle")
+                    Label(
+                        "Podcast Scope",
+                        systemImage: selectedScope == .unsubscribed ? "pause.circle" : "line.3.horizontal.decrease.circle"
+                    )
                 }
                 .accessibilityLabel("Podcast scope")
-            }
 
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Toggle("Titles", isOn: $searchInTitle)
                     Toggle("Authors", isOn: $searchInAuthor)
                     Toggle("Descriptions", isOn: $searchInDescription)
                     Toggle("Episodes", isOn: $searchInEpisodes)
                 } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    Label("Search filters", systemImage: "slider.horizontal.3")
                 }
                 .accessibilityLabel("Search filters")
             }

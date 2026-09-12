@@ -22,7 +22,7 @@ struct ReorderPlaylistTip: Tip {
     }
     
     var message: Text? {
-        Text("Tap and hold an episode, then drag it up or down to change the playback order.")
+        Text("Touch and hold an episode, then drag it up or down to change the playback order.")
     }
     
     var image: Image? {
@@ -32,7 +32,7 @@ struct ReorderPlaylistTip: Tip {
     // 3. Rules to prevent annoying the user
     var rules: [Rule] {
         [
-            // Only show if the playlist isn't empty
+            // Only show once there's enough in the playlist to be worth reordering
             #Rule(Self.$playlistItemCount) { $0 > 4 },
             // Only show if they've never done it before
             #Rule(Self.$hasUserReorderedBefore) { $0 == false }

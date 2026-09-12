@@ -74,6 +74,7 @@ struct ChapterListView: View {
     var player = Player.shared
 
     @Bindable var episode: Episode
+    var showsTitle = true
     @State private var selectedTab: ChapterListTab = .chapters
 
 #if DEBUG
@@ -148,13 +149,15 @@ struct ChapterListView: View {
 
         return ScrollView {
             LazyVStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    Text("Chapters")
-                        .font(.title)
-                    Spacer()
+                if showsTitle {
+                    HStack {
+                        Spacer()
+                        Text("Chapters")
+                            .font(.title)
+                        Spacer()
+                    }
+                    .padding()
                 }
-                .padding()
 
 #if DEBUG
                 debugControls

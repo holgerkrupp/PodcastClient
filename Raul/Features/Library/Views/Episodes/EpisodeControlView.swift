@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
 
 struct EpisodeControlPlaylist: Identifiable, Equatable, Sendable {
     let id: UUID
@@ -38,6 +39,9 @@ struct EpisodeControlView: View {
     let episode: Episode
     let showsRemoveFromInboxAction: Bool
     let showsRemoveFromPlaylistAction: Bool
+    /// Only one screen should anchor the playlist picker tip; list rows would
+    /// otherwise compete to present the same popover.
+    let showsPlaylistPickerTip: Bool
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.episodeControlPlaylists) private var manualPlaylists
@@ -45,15 +49,18 @@ struct EpisodeControlView: View {
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var preferredPlaylistID: String = ""
     @State private var isSelectingFrontPlaylist = false
     @State private var isSelectingEndPlaylist = false
+    private let choosePlaylistTip = ChoosePlaylistTip()
 
     init(
         episode: Episode,
         showsRemoveFromInboxAction: Bool = false,
-        showsRemoveFromPlaylistAction: Bool = false
+        showsRemoveFromPlaylistAction: Bool = false,
+        showsPlaylistPickerTip: Bool = false
     ) {
         self.episode = episode
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
         self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
+        self.showsPlaylistPickerTip = showsPlaylistPickerTip
     }
 
     private var resolvedPlaylistID: UUID? {
@@ -126,6 +133,7 @@ struct EpisodeControlView: View {
                             LongPressGesture(minimumDuration: 0.4)
                                 .onEnded { _ in
                                     isSelectingFrontPlaylist = true
+                                    choosePlaylistTip.invalidate(reason: .actionPerformed)
                                 }
                         )
                         .confirmationDialog("Add to front of playlist", isPresented: $isSelectingFrontPlaylist, titleVisibility: .visible) {
@@ -140,7 +148,13 @@ struct EpisodeControlView: View {
                         }
                         .accessibilityLabel("Add to playlist")
                         .accessibilityHint("Places this episode at the front of \(resolvedPlaylistTitle)")
-                        
+                        .help("Add to the front of \(resolvedPlaylistTitle)")
+                        .popoverTip(showsPlaylistPickerTip ? choosePlaylistTip : nil)
+                        .task(id: manualPlaylists.count) {
+                            guard showsPlaylistPickerTip else { return }
+                            ChoosePlaylistTip.manualPlaylistCount = manualPlaylists.count
+                        }
+
                         Button {
                             Task {
                                 await addEpisode(to: resolvedPlaylistID, position: .end)
@@ -163,6 +177,7 @@ struct EpisodeControlView: View {
                             LongPressGesture(minimumDuration: 0.4)
                                 .onEnded { _ in
                                     isSelectingEndPlaylist = true
+                                    choosePlaylistTip.invalidate(reason: .actionPerformed)
                                 }
                         )
                         .confirmationDialog("Add to end of playlist", isPresented: $isSelectingEndPlaylist, titleVisibility: .visible) {
@@ -177,6 +192,7 @@ struct EpisodeControlView: View {
                         }
                         .accessibilityLabel("Add to end of playlist")
                         .accessibilityHint("Places this episode at the end of \(resolvedPlaylistTitle)")
+                        .help("Add to the end of \(resolvedPlaylistTitle)")
                     }
                 }
                 
