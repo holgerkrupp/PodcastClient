@@ -414,6 +414,11 @@ class Playlist {
 
 @Model
 class PlaylistEntry: Equatable, Identifiable {
+    /// Queue and playlist reads are all ordered by `order`, as is the
+    /// `playlist_entries` migration phase. See the note on
+    /// `Episode.publishDate`.
+    #Index<PlaylistEntry>([\.order])
+
     var id: UUID = UUID()
     @Relationship var episode: Episode?
     var dateAdded: Date?

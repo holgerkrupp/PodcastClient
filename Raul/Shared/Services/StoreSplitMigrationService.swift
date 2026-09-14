@@ -94,6 +94,30 @@ actor StoreSplitMigrationService {
     // record from another device.
     nonisolated static let migrationVersion = 8
 
+    /// Per-phase paging revision. Bumping one restarts just that phase on the
+    /// next run, leaving the phases whose paging did not change on their
+    /// existing checkpoints — much cheaper than bumping `migrationVersion`,
+    /// which restarts everything.
+    ///
+    /// `bookmarks` is at revision 1 because its cursor used to count rows in the
+    /// `Marker` base table (every chapter of every episode) and now counts
+    /// bookmarks, so the old offsets mean nothing in the new coordinate space.
+    private static let phaseRevisions: [String: Int] = [
+        Phase.bookmarks: 1
+    ]
+
+    /// The checkpoint row identity for a phase at its current revision. Rows
+    /// left behind by an older revision keep a different id and are ignored.
+    ///
+    /// The single place this format is spelled out — build ids from here rather
+    /// than interpolating the format again.
+    nonisolated static func checkpointID(for phase: String) -> String {
+        guard let revision = phaseRevisions[phase] else {
+            return "v\(migrationVersion).\(phase)"
+        }
+        return "v\(migrationVersion).\(phase).r\(revision)"
+    }
+
     /// Per-slice record budget for the light phases. Heavier phases override this
     /// with smaller pages because each record faults a larger object graph.
     private static let defaultPageSize = 100
@@ -139,7 +163,6 @@ actor StoreSplitMigrationService {
             SortDescriptor(\Playlist.title)
         ]
         static let playlistEntries = [SortDescriptor(\PlaylistEntry.order)]
-        static let markers = [SortDescriptor(\Marker.creationtime)]
         static let preferences = [SortDescriptor(\PodcastSettings.title)]
         static let episodes = [SortDescriptor(\Episode.publishDate, order: .reverse)]
         static let playSessions = [SortDescriptor(\PlaySession.startTime)]
@@ -688,11 +711,7 @@ actor StoreSplitMigrationService {
                 pageSize: defaultPageSize, context: legacyContext
             )
         case Phase.bookmarks:
-            return relocate(
-                FetchDescriptor<Marker>(sortBy: SourceOrder.markers),
-                boundaryKey: boundaryKey, offset: offset,
-                pageSize: defaultPageSize, context: legacyContext
-            )
+            return relocateBookmark(boundaryKey: boundaryKey, context: legacyContext)
         case Phase.preferences:
             return relocate(
                 FetchDescriptor<PodcastSettings>(sortBy: SourceOrder.preferences),
@@ -724,6 +743,27 @@ actor StoreSplitMigrationService {
     /// whenever the store has uncommitted changes, which the live legacy store
     /// routinely does. It is bounded to a couple of pages and released
     /// immediately, so it stays inside the same memory budget as a page.
+    /// The position right after the boundary bookmark in the ordering
+    /// `orderedBookmarks` produces, or `nil` when that row is gone.
+    ///
+    /// The whole (small) list is searched rather than a window, so a bookmark
+    /// deleted between slices restarts the phase instead of silently shifting
+    /// every later offset by one. Cursors from before the paging change are not
+    /// a concern here: that change carries a phase revision, so those
+    /// checkpoints are ignored and the phase starts fresh.
+    private static func relocateBookmark(
+        boundaryKey: String,
+        context: ModelContext
+    ) -> Int? {
+        guard let rows = try? orderedBookmarks(in: context) else { return nil }
+        guard let index = rows.firstIndex(
+            where: { rowKey($0.persistentModelID) == boundaryKey }
+        ) else {
+            return nil
+        }
+        return index + 1
+    }
+
     private static func relocate<T: PersistentModel>(
         _ descriptor: FetchDescriptor<T>,
         boundaryKey: String,
@@ -1099,29 +1139,25 @@ actor StoreSplitMigrationService {
     ) -> PageOutcome {
         var outcome = PageOutcome()
 
-        // Bookmark inherits every scalar from Marker. Sorting Bookmark directly
-        // by an inherited key path crashes SwiftData on supported OS versions,
-        // so page the base table and retain Bookmark subclasses. This keeps the
-        // legacy read bounded without relying on the broken subclass key path.
-        var descriptor = FetchDescriptor<Marker>(sortBy: SourceOrder.markers)
-        descriptor.fetchOffset = offset
-        descriptor.fetchLimit = defaultPageSize
-        let markerPage: [Marker]
+        let ordered: [Bookmark]
         do {
-            markerPage = try legacyContext.fetch(descriptor)
+            ordered = try orderedBookmarks(in: legacyContext)
         } catch {
             outcome.error = error.localizedDescription
             outcome.reachedEnd = false
             return outcome
         }
 
-        for marker in markerPage {
+        let start = min(max(0, offset), ordered.count)
+        let end = min(start + defaultPageSize, ordered.count)
+        let bookmarkPage = Array(ordered[start..<end])
+
+        for bookmark in bookmarkPage {
             guard shouldContinue() else {
                 outcome.reachedEnd = false
                 break
             }
             outcome.processed += 1
-            guard let bookmark = marker as? Bookmark else { continue }
             outcome.delta.scanned += 1
 
             guard let episode = bookmark.bookmarkEpisode,
@@ -1179,11 +1215,38 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
-        outcome.boundaryKey = boundaryKey(of: markerPage, processed: outcome.processed)
+        outcome.boundaryKey = boundaryKey(of: bookmarkPage, processed: outcome.processed)
         if outcome.reachedEnd {
-            outcome.reachedEnd = markerPage.count < defaultPageSize
+            outcome.reachedEnd = end >= ordered.count
         }
         return outcome
+    }
+
+    /// Every legacy bookmark, in a stable order.
+    ///
+    /// `Bookmark` inherits all of its stored properties from `Marker`, and a
+    /// `FetchDescriptor` that sorts or filters a `@Model` subclass by an
+    /// inherited key path trips a SwiftData assertion, so the fetch is unsorted
+    /// and the ordering is applied here.
+    ///
+    /// The previous workaround paged the `Marker` base table and cast each row
+    /// to `Bookmark`. `Marker` is also the chapter model, so that walked every
+    /// chapter of every episode — an unindexed sorted fetch with a growing
+    /// offset, which makes SQLite spill a temp B-tree to disk on every slice.
+    /// Two of those per slice, every 0.75s, dirtied gigabytes per run (68GB in
+    /// one report) to migrate a handful of bookmarks.
+    private static func orderedBookmarks(in context: ModelContext) throws -> [Bookmark] {
+        try context.fetch(FetchDescriptor<Bookmark>())
+            .sorted { lhs, rhs in
+                let lhsCreated = lhs.creationtime ?? .distantPast
+                let rhsCreated = rhs.creationtime ?? .distantPast
+                if lhsCreated != rhsCreated {
+                    return lhsCreated < rhsCreated
+                }
+                // Stable tiebreaker: the cursor has to mean the same thing on
+                // the next slice.
+                return (lhs.uuid?.uuidString ?? "") < (rhs.uuid?.uuidString ?? "")
+            }
     }
 
     // MARK: - Episode playback state (recent first)
@@ -2114,7 +2177,10 @@ actor StoreSplitMigrationService {
     /// the whole slice migration is finished.
     private static func currentPhase(cache: ModelContext) -> String? {
         let checkpoints = ((try? cache.fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>())) ?? [])
-            .filter { $0.migrationVersion == migrationVersion }
+            .filter {
+                $0.migrationVersion == migrationVersion
+                    && $0.id == checkpointID(for: $0.phase)
+            }
             .reduce(into: [String: StoreSplitMigrationCheckpoint]()) { $0[$1.phase] = $1 }
         for phase in slicePhaseOrder {
             let checkpoint = checkpoints[phase]
@@ -2216,7 +2282,7 @@ actor StoreSplitMigrationService {
         error: String? = nil,
         context: ModelContext
     ) {
-        let checkpointID = "v\(migrationVersion).\(phase)"
+        let checkpointID = checkpointID(for: phase)
         let descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
             predicate: #Predicate { $0.id == checkpointID }
         )
@@ -2247,7 +2313,7 @@ actor StoreSplitMigrationService {
         phase: String,
         context: ModelContext
     ) -> (cursor: SliceCursor, result: StoreSplitMigrationPhaseResult) {
-        let checkpointID = "v\(migrationVersion).\(phase)"
+        let checkpointID = checkpointID(for: phase)
         let descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
             predicate: #Predicate { $0.id == checkpointID }
         )

@@ -250,9 +250,26 @@ actor StoreSplitWorkCoordinator {
         return nil
     }
 
+    /// Waits for the queue to drain, but only while a runner is actually
+    /// draining it.
+    ///
+    /// `nextRunnableJob()` deliberately stops the runner with the queue intact
+    /// when playback is running or the app is backgrounded, so the wait
+    /// condition can stay true forever. Combined with `try?` swallowing the
+    /// `CancellationError` from `Task.sleep` — which makes the sleep return
+    /// instantly once the caller's task is cancelled, e.g. when the view that
+    /// asked for the reconcile goes away — this spun the actor's executor at
+    /// 100% CPU until iOS killed the process on the 80%-over-60s limit.
     private func waitForIdle() async {
         while currentJob != nil || pendingReconcile != nil || pendingAIImport || pendingMigration {
-            try? await Task.sleep(for: .milliseconds(100))
+            // Nobody left to drain the queue: the work stays queued for the
+            // next `.active` transition, and this caller stops waiting.
+            guard runnerTask != nil else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                return
+            }
         }
     }
 

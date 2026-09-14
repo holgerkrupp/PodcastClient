@@ -48,13 +48,29 @@ struct PlaylistEmptyView: View {
             }
         }
         .task {
-            while Task.isCancelled == false {
+            // A bounded probe, not a poll. The split stores can still be
+            // preparing when this view first appears, so the counts are
+            // re-read a few times; once the silent recovery has been requested
+            // (or the window lapses) there is nothing left to watch. The old
+            // `while` loop kept re-running these main-actor SwiftData counts
+            // for as long as the playlist tab existed.
+            for attempt in 0..<Self.recoveryProbeLimit {
                 await refreshCloudStatus()
-                await reconcilePendingPlaylistOnceIfNeeded()
-                try? await Task.sleep(for: .seconds(2))
+                if await reconcilePendingPlaylistOnceIfNeeded() { return }
+                guard attempt + 1 < Self.recoveryProbeLimit else { return }
+                do {
+                    try await Task.sleep(for: Self.recoveryProbeInterval)
+                } catch {
+                    return
+                }
             }
         }
     }
+
+    /// Roughly 30s of probing, which comfortably covers store preparation on a
+    /// cold launch.
+    private static let recoveryProbeLimit = 15
+    private static let recoveryProbeInterval: Duration = .seconds(2)
 
     @MainActor
     private func refreshCloudStatus() async {
@@ -80,15 +96,18 @@ struct PlaylistEmptyView: View {
         }
     }
 
+    /// Returns `true` once the silent recovery has been requested, so the
+    /// caller can stop probing.
     @MainActor
-    private func reconcilePendingPlaylistOnceIfNeeded() async {
+    @discardableResult
+    private func reconcilePendingPlaylistOnceIfNeeded() async -> Bool {
         guard PlaylistSilentRecoveryDecision.shouldReconcile(
             initializationError: modelContainerManager.userStateInitializationError,
             localRecordCount: localSplitRecordCount,
             cloudReferenceCount: cloudReferenceCount,
             didRequestAutomaticReconcile: didRequestAutomaticReconcile
         ) else {
-            return
+            return didRequestAutomaticReconcile
         }
         didRequestAutomaticReconcile = true
         await modelContainerManager.prepareSplitStores()
@@ -96,6 +115,7 @@ struct PlaylistEmptyView: View {
             authoritativePlaylists: false
         )
         await refreshCloudStatus()
+        return true
     }
 
     private var emptyTitle: String {

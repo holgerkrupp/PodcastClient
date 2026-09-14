@@ -3029,6 +3029,12 @@
         }
       }
     },
+    "Generate a transcript and use it to create chapter markers." : {
+
+    },
+    "Generate a transcript to read along with this episode." : {
+
+    },
     "Generate captions" : {
       "localizations" : {
         "de" : {
@@ -3058,6 +3064,12 @@
           }
         }
       }
+    },
+    "Generate Transcript" : {
+
+    },
+    "Generate Transcript and Chapters" : {
+
     },
     "Gentle preserves more pauses; stronger levels shorten more silence." : {
       "localizations" : {
@@ -4733,7 +4745,6 @@
       }
     },
     "Next predicted release: Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4792,6 +4803,9 @@
           }
         }
       }
+    },
+    "No Chapters" : {
+
     },
     "No Downloads" : {
       "localizations" : {

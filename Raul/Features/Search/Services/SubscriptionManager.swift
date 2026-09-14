@@ -696,9 +696,19 @@ actor SubscriptionManager:NSObject{
         fetchData()
         let predictedRefreshDates = podcasts
             .filter { $0.metaData?.isSubscribed != false }
-            .compactMap {
-                PodcastReleasePredictor
-                    .updateCachedPrediction(for: $0, after: now)?
+            .compactMap { podcast -> Date? in
+                // Reuse the persisted window where it is still valid. This pass
+                // runs on every background transition; recomputing it per
+                // podcast used to fault the episode table for the whole library.
+                if let cached = PodcastReleasePredictor.cachedRefreshWindow(
+                    for: podcast,
+                    now: now
+                ) {
+                    return cached.refreshStart
+                }
+
+                return PodcastReleasePredictor
+                    .updateCachedPrediction(for: podcast, after: now)?
                     .refreshStart
             }
 
@@ -834,27 +844,35 @@ actor SubscriptionManager:NSObject{
         podcasts
             .filter { $0.metaData?.isSubscribed != false }
             .compactMap { podcast -> PredictedReleaseRefreshTarget? in
-                guard let feed = podcast.feed,
-                      let prediction = PodcastReleasePredictor
-                        .updateCachedPrediction(
-                            for: podcast,
-                            after: now,
-                            allowRelationshipFallback: true
-                        ) else {
+                guard let feed = podcast.feed else { return nil }
+
+                let window: PodcastReleasePredictor.RefreshWindow
+                if let cached = PodcastReleasePredictor.cachedRefreshWindow(
+                    for: podcast,
+                    now: now
+                ) {
+                    window = cached
+                } else if let prediction = PodcastReleasePredictor.updateCachedPrediction(
+                    for: podcast,
+                    after: now,
+                    allowRelationshipFallback: true
+                ) {
+                    window = prediction.window
+                } else {
                     return nil
                 }
 
                 return PredictedReleaseRefreshTarget(
                     title: podcast.title,
                     feed: feed,
-                    releaseDate: prediction.releaseDate,
-                    refreshStart: prediction.refreshStart,
-                    refreshEnd: prediction.refreshEnd,
+                    releaseDate: window.releaseDate,
+                    refreshStart: window.refreshStart,
+                    refreshEnd: window.refreshEnd,
                     lastCheck: podcast.metaData?.feedUpdateCheckDate,
                     lastRefresh: podcast.metaData?.lastRefresh,
                     score: backgroundRefreshScore(
                         for: podcast,
-                        prediction: prediction,
+                        window: window,
                         now: now
                     )
                 )
@@ -1116,8 +1134,16 @@ actor SubscriptionManager:NSObject{
         prediction: PodcastReleasePredictor.Prediction?,
         now: Date
     ) -> Int {
+        backgroundRefreshScore(for: podcast, window: prediction?.window, now: now)
+    }
+
+    private func backgroundRefreshScore(
+        for podcast: Podcast,
+        window: PodcastReleasePredictor.RefreshWindow?,
+        now: Date
+    ) -> Int {
         PodcastBackgroundRefreshPriority.score(
-            prediction: prediction,
+            window: window,
             now: now,
             lastRefresh: podcast.metaData?.lastRefresh
         )
@@ -1369,6 +1395,22 @@ struct PodcastReleasePredictor {
         let refreshStart: Date
         let refreshEnd: Date
         let cadence: ReleaseCadence
+
+        var window: RefreshWindow {
+            RefreshWindow(
+                releaseDate: releaseDate,
+                refreshStart: refreshStart,
+                refreshEnd: refreshEnd
+            )
+        }
+    }
+
+    /// The scheduling-relevant part of a `Prediction`, which is all the
+    /// background-refresh passes need and all that is persisted.
+    struct RefreshWindow {
+        let releaseDate: Date
+        let refreshStart: Date
+        let refreshEnd: Date
     }
 
     struct ReleasePattern {
@@ -1564,6 +1606,47 @@ struct PodcastReleasePredictor {
             latestReleaseDate: latestRelease,
             cadence: cadence,
             estimatedInterval: estimatedInterval
+        )
+    }
+
+    /// How long a persisted prediction stays usable without recomputing.
+    static let cachedWindowLifetime: TimeInterval = 6 * 60 * 60
+
+    /// The refresh window `updateCachedPrediction` last persisted, read straight
+    /// off the metadata.
+    ///
+    /// The scheduling passes run over every subscribed podcast on every
+    /// background transition and on every background-task launch. Recomputing
+    /// each one fetches that podcast's episode rows, and CoreData populates the
+    /// inverse to-many relationship while it does — with a large library that
+    /// held the main thread past the 5s suspension deadline and tripped the
+    /// launch watchdog. Only the dates are cached: `cadence` is display-only, so
+    /// the display paths keep recomputing.
+    static func cachedRefreshWindow(
+        for podcast: Podcast,
+        now: Date,
+        maxAge: TimeInterval = cachedWindowLifetime
+    ) -> RefreshWindow? {
+        guard let metaData = podcast.metaData,
+              let updatedAt = metaData.releasePredictionUpdatedAt,
+              updatedAt <= now,
+              now.timeIntervalSince(updatedAt) < maxAge,
+              // A feed parsed since the cache was written may have landed the
+              // episode this prediction was anchored on.
+              (metaData.lastRefresh ?? .distantPast) <= updatedAt,
+              let releaseDate = metaData.nextPredictedReleaseDate,
+              let refreshStart = metaData.nextPredictedRefreshStartDate,
+              let refreshEnd = metaData.nextPredictedRefreshEndDate,
+              // A window that has already lapsed needs a fresh prediction.
+              now < refreshEnd
+        else {
+            return nil
+        }
+
+        return RefreshWindow(
+            releaseDate: releaseDate,
+            refreshStart: refreshStart,
+            refreshEnd: refreshEnd
         )
     }
 
@@ -1945,6 +2028,22 @@ struct PodcastBackgroundRefreshPriority {
     /// is needed (and using one would mis-handle stale `Last-Modified` headers).
     static func score(
         prediction: PodcastReleasePredictor.Prediction?,
+        now: Date,
+        lastRefresh: Date?,
+        retryDelay: TimeInterval = postReleaseRetryInterval
+    ) -> Int {
+        score(
+            window: prediction?.window,
+            now: now,
+            lastRefresh: lastRefresh,
+            retryDelay: retryDelay
+        )
+    }
+
+    /// Same scoring from the persisted window alone, so a pass that reuses the
+    /// cached prediction never has to recompute one just to rank a feed.
+    static func score(
+        window prediction: PodcastReleasePredictor.RefreshWindow?,
         now: Date,
         lastRefresh: Date?,
         retryDelay: TimeInterval = postReleaseRetryInterval

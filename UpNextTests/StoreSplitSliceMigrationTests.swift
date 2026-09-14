@@ -171,6 +171,76 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     // MARK: - Tests
 
     @MainActor
+    func testBookmarkPhasePagesBookmarksNotTheChapterTable() async throws {
+        let containers = try makeContainers()
+        try populate(containers.legacy, episodeCount: 3)
+
+        let context = containers.legacy.mainContext
+        let firstEpisode = try XCTUnwrap(
+            try context.fetch(FetchDescriptor<Episode>())
+                .first { $0.bookmarks?.isEmpty == false }
+        )
+
+        // `Bookmark` is a subclass of `Marker`, and `Marker` is also the chapter
+        // model. A real library holds orders of magnitude more chapters than
+        // bookmarks, and the bookmarks phase must not walk them: paging the
+        // base table made every slice re-sort the whole chapter table.
+        var chapters = firstEpisode.chapters ?? []
+        for index in 0..<500 {
+            let chapter = Marker(
+                start: Double(index),
+                title: "Chapter \(index)",
+                type: .podlove
+            )
+            chapter.creationtime = Date(timeIntervalSince1970: Double(index))
+            chapter.episode = firstEpisode
+            chapters.append(chapter)
+            context.insert(chapter)
+        }
+        firstEpisode.chapters = chapters
+
+        // Two more bookmarks on top of the one `populate` creates.
+        var bookmarks = firstEpisode.bookmarks ?? []
+        for index in 0..<2 {
+            let bookmark = Bookmark(
+                start: Double(index),
+                title: "Mark \(index)",
+                type: .bookmark
+            )
+            bookmark.uuid = UUID()
+            bookmark.creationtime = Date(timeIntervalSince1970: Double(6_000 + index))
+            bookmark.bookmarkEpisode = firstEpisode
+            bookmarks.append(bookmark)
+            context.insert(bookmark)
+        }
+        firstEpisode.bookmarks = bookmarks
+        try context.save()
+
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<Marker>()), 503)
+
+        let reports = await drainSlices(containers, shouldContinue: { true })
+        XCTAssertEqual(reports.last?.status, .completed)
+
+        let bookmarkSlices = reports.filter {
+            $0.phase == "bookmarks"
+                && ($0.status == .advanced || $0.status == .phaseCompleted)
+        }
+        XCTAssertEqual(
+            bookmarkSlices.reduce(0) { $0 + $1.processed },
+            3,
+            "the phase must page the 3 bookmarks, not the 503-row Marker table"
+        )
+        XCTAssertEqual(
+            bookmarkSlices.count,
+            1,
+            "3 bookmarks fit in a single page"
+        )
+
+        let counts = try destinationCounts(containers.userState)
+        XCTAssertEqual(counts["bookmarks"], 3)
+    }
+
+    @MainActor
     func testSliceNeverProcessesEntireDatasetAtOnce() async throws {
         let containers = try makeContainers()
         try populate(containers.legacy, episodeCount: 130)
@@ -333,7 +403,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         for phase in StoreSplitMigrationService.slicePhaseOrder {
             context.insert(
                 StoreSplitMigrationCheckpoint(
-                    id: "v\(StoreSplitMigrationService.migrationVersion).\(phase)",
+                    id: StoreSplitMigrationService.checkpointID(for: phase),
                     migrationVersion: StoreSplitMigrationService.migrationVersion,
                     phase: phase,
                     completedAt: Date(timeIntervalSince1970: 1_000),
@@ -375,7 +445,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         for phase in StoreSplitMigrationService.slicePhaseOrder.dropLast() {
             context.insert(
                 StoreSplitMigrationCheckpoint(
-                    id: "v\(StoreSplitMigrationService.migrationVersion).\(phase)",
+                    id: StoreSplitMigrationService.checkpointID(for: phase),
                     migrationVersion: StoreSplitMigrationService.migrationVersion,
                     phase: phase,
                     completedAt: Date(timeIntervalSince1970: 1_000),

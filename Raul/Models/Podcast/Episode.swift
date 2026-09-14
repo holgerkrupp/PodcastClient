@@ -220,6 +220,23 @@ class EpisodeDownloadStatus{
 }
 
 @Model final class Episode {
+    /// `publishDate` is the library's default ordering and the column the
+    /// store-split slice engine pages `episode_states` by. Without an index
+    /// SQLite answers every `ORDER BY ZPUBLISHDATE` with a full table scan into
+    /// a temp B-tree, which it spills to disk — the slice engine issues one per
+    /// slice with a growing `fetchOffset`, so the cost grows as the phase
+    /// advances. CoreData only indexes relationship foreign keys on its own.
+    ///
+    /// The compound `(podcast, publishDate)` index serves the
+    /// "latest episodes of this one podcast" query that the release predictor
+    /// runs for every subscribed podcast; on the FK index alone SQLite still had
+    /// to sort, which is what blocked the main thread through the suspension
+    /// deadline.
+    ///
+    /// Existing stores do not get these from SwiftData — see
+    /// `LegacyStoreIndexBackfill`.
+    #Index<Episode>([\.publishDate], [\.podcast, \.publishDate])
+
     var guid: String?
     var title: String = ""
     var author: String?

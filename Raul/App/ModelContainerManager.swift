@@ -1957,9 +1957,17 @@ class ModelContainerManager: ObservableObject {
             let legacyCloudSyncApplied =
                 StoreDevelopmentConfiguration.legacyCloudSyncEnabled
             legacyCloudSyncToRecord = legacyCloudSyncApplied
+            let storeURL = sharedContainerURL
+                .appendingPathComponent("SharedDatabase.sqlite")
+            // Must run before the container opens: SwiftData applies `#Index`
+            // only when it creates a store, so every install that predates the
+            // index declarations needs them created directly.
+            if allowsSave {
+                LegacyStoreIndexBackfill.run(storeURL: storeURL)
+            }
             configuration = ModelConfiguration(
                 "Legacy",
-                url: sharedContainerURL.appendingPathComponent("SharedDatabase.sqlite"),
+                url: storeURL,
                 allowsSave: allowsSave,
                 cloudKitDatabase: legacyCloudSyncApplied ? .automatic : .none
             )

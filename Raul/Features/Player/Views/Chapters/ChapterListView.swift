@@ -75,6 +75,7 @@ struct ChapterListView: View {
 
     @Bindable var episode: Episode
     var showsTitle = true
+    var markersOverride: [Marker]? = nil
     @State private var selectedTab: ChapterListTab = .chapters
 
 #if DEBUG
@@ -90,11 +91,32 @@ struct ChapterListView: View {
     }
 
     private var sortedChapters: [Marker] {
-        episode.chaptersForDisplay(preferredType: selectedChapterSource.markerType)
+        guard let markersOverride else {
+            return episode.chaptersForDisplay(preferredType: selectedChapterSource.markerType)
+        }
+
+        if let markerType = selectedChapterSource.markerType {
+            return markersOverride
+                .filter { $0.type == markerType }
+                .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        }
+
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let availableTypes = Set(markersOverride.map(\.type))
+        if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
+            return markersOverride
+                .filter { $0.type == chosenType }
+                .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        }
+
+        return markersOverride.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
     }
 
     private var sortedSoundbites: [Marker] {
-        episode.soundbitesForDisplay
+        guard let markersOverride else { return episode.soundbitesForDisplay }
+        return markersOverride
+            .filter { $0.type == .soundbite }
+            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
     }
 
     private var displayedMarkers: [Marker] {

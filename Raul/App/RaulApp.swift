@@ -44,6 +44,56 @@ enum BackgroundTaskConfiguration {
     static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
 }
 
+/// Submits the general feed-refresh background task.
+///
+/// Free-standing (rather than a method on `RaulApp`) so it can run off the main
+/// actor: it reads the predicted refresh window for every subscribed podcast,
+/// and doing that on the main actor during the `.background` transition held the
+/// main thread past the 5s suspension deadline and got the app killed.
+enum FeedRefreshScheduler {
+    static func schedule(using container: ModelContainer?) async -> Date? {
+#if os(iOS)
+        CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
+        await BasicLogger.shared.log("schedule checkFeedUpdates")
+
+        let earliestBeginDate = await predictedBeginDate(using: container)
+        let request = BGAppRefreshTaskRequest(
+            identifier: BackgroundTaskConfiguration.feedRefreshIdentifier
+        )
+        request.earliestBeginDate = earliestBeginDate
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record(
+                "schedule_feed_refresh_submitted",
+                details: earliestBeginDate.map { "earliest=\($0)" }
+            )
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "schedule_feed_refresh_failed",
+                details: error.localizedDescription
+            )
+            await BasicLogger.shared.log(error.localizedDescription)
+        }
+        return earliestBeginDate
+#else
+        return nil
+#endif
+    }
+
+    private static func predictedBeginDate(using container: ModelContainer?) async -> Date? {
+        let fallback = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
+        guard let container else { return fallback }
+        guard let predicted = await SubscriptionManager(modelContainer: container)
+            .nextPredictedFeedRefreshDate() else {
+            return fallback
+        }
+
+        let minimumDelay = Date(timeIntervalSinceNow: 15 * 60)
+        return min(max(predicted, minimumDelay), fallback)
+    }
+}
+
 enum PredictedReleaseRefreshScheduler {
     static func schedule(using container: ModelContainer?) async {
 #if os(iOS)
@@ -234,9 +284,14 @@ struct RaulApp: App {
                 // started the full reconcile with no granted budget.
                 cloudImportReconciliationTask?.cancel()
                 cloudImportReconciliationTask = nil
-                Task {
-                    await scheduleFeedRefresh()
-                    await schedulePredictedReleaseRefresh()
+                // Detached on purpose: both schedulers read the predicted
+                // refresh window for every subscribed podcast, and running that
+                // on the main actor during the suspension hand-off held the main
+                // thread past the 5s deadline and got the app killed.
+                let containerForScheduling = modelContainerManager.preparedContainer
+                Task.detached(priority: .utility) {
+                    _ = await FeedRefreshScheduler.schedule(using: containerForScheduling)
+                    await PredictedReleaseRefreshScheduler.schedule(using: containerForScheduling)
                 }
                 scheduleFeedProcessing()
                 scheduleStorageCleanup()
@@ -617,40 +672,10 @@ struct RaulApp: App {
     }
     
 
-    private func predictedFeedRefreshBeginDate() async -> Date? {
-        let fallback = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
-        guard let container = await MainActor.run(body: { modelContainerManager.preparedContainer }) else {
-            return fallback
-        }
-
-        guard let predicted = await SubscriptionManager(modelContainer: container).nextPredictedFeedRefreshDate() else {
-            return fallback
-        }
-
-        let minimumDelay = Date(timeIntervalSinceNow: 15 * 60)
-        let maximumDelay = fallback
-        return min(max(predicted, minimumDelay), maximumDelay)
-    }
-
     func scheduleFeedRefresh() async {
 #if os(iOS)
-        // this should replace scheduleAppRefresh
-        CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
-        BasicLogger.shared.log("schedule checkFeedUpdates")
-        let earliestBeginDate = await predictedFeedRefreshBeginDate()
-        let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.feedRefreshIdentifier)
-        request.earliestBeginDate = earliestBeginDate
-
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            CrashBreadcrumbs.shared.record(
-                "schedule_feed_refresh_submitted",
-                details: earliestBeginDate.map { "earliest=\($0)" }
-            )
-        } catch {
-            CrashBreadcrumbs.shared.record("schedule_feed_refresh_failed", details: error.localizedDescription)
-            BasicLogger.shared.log(error.localizedDescription)
-        }
+        let container = modelContainerManager.preparedContainer
+        _ = await FeedRefreshScheduler.schedule(using: container)
 #endif
     }
 

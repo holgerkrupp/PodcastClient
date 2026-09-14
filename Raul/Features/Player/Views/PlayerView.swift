@@ -1,18 +1,30 @@
 import SwiftUI
+import SwiftData
 import RichText
 import ESADesignKit
 
 struct PlayerView: View {
     @Bindable private var player = Player.shared
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @AppStorage(PlayerLandscapePreference.controlsSideKey)
     private var landscapeControlsSideRawValue = LandscapePlayerControlsSide.trailing.rawValue
     @State private var landscapeTab: LandscapePlayerTab = .shownotes
+    @State private var transcriptionItem: TranscriptionItem?
+    @State private var isStartingTranscription = false
+    @State private var isGeneratingChapters = false
+    @State private var transcriptGenerationMessage: String?
+    @State private var chapterGenerationMessage: String?
+    @State private var refreshedContentEpisodeURL: URL?
+    @State private var refreshedTranscriptLines: [TranscriptLineAndTime] = []
+    @State private var refreshedChapterMarkers: [Marker] = []
 
     let fullSize: Bool
 
     var body: some View {
         if let episode = player.currentEpisode {
+            let _ = episode.refresh
+
             GeometryReader { geometry in
                 Group {
                     if fullSize && isPhoneLandscape(in: geometry.size) {
@@ -24,6 +36,21 @@ struct PlayerView: View {
                     }
                 }
                 .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
+            }
+            .task(id: episode.url) {
+                await refreshGenerationState(for: episode)
+            }
+            .task(id: transcriptionItem?.id) {
+                await followTranscription(for: episode)
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(for: .episodeReferencesDidChange)
+                    .receive(on: DispatchQueue.main)
+            ) { notification in
+                guard notificationMatchesEpisode(notification, episode: episode) else { return }
+                Task { @MainActor in
+                    await refreshGenerationState(for: episode)
+                }
             }
         } else {
             PlayerEmptyView()
@@ -105,7 +132,10 @@ struct PlayerView: View {
     }
 
     private func landscapeContent(episode: Episode) -> some View {
-        VStack(spacing: 0) {
+        let transcriptLines = availableTranscriptLines(for: episode)
+        let chapterMarkers = availableChapterMarkers(for: episode)
+
+        return VStack(spacing: 0) {
             Picker("Player content", selection: $landscapeTab) {
                 ForEach(LandscapePlayerTab.allCases) { tab in
                     Text(tab.title)
@@ -127,23 +157,97 @@ struct PlayerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 case .transcript:
-                    if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
+                    if transcriptLines.isEmpty == false {
                         TranscriptListView(
                             transcriptLines: transcriptLines,
                             episode: episode,
                             startFollowingPlayback: true
                         )
                     } else {
-                        ContentUnavailableView("No Transcript", systemImage: "quote.bubble")
+                        missingTranscriptView(episode: episode)
                     }
                 case .chapters:
-                    ChapterListView(episode: episode, showsTitle: false)
+                    if hasDisplayableChapters(in: chapterMarkers) {
+                        ChapterListView(
+                            episode: episode,
+                            showsTitle: false,
+                            markersOverride: chapterMarkers
+                        )
+                    } else {
+                        missingChaptersView(episode: episode)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func missingTranscriptView(episode: Episode) -> some View {
+        ContentUnavailableView {
+            Label("No Transcript", systemImage: "quote.bubble")
+        } description: {
+            Text("Generate a transcript to read along with this episode.")
+        } actions: {
+            generationAction(
+                title: "Generate Transcript",
+                isBusy: isTranscriptionBusy(for: episode),
+                progressMessage: transcriptionProgressMessage(for: episode),
+                resultMessage: refreshedContentEpisodeURL == episode.url ? transcriptGenerationMessage : nil
+            ) {
+                Task { await generateTranscript(for: episode, includeChapters: false) }
+            }
+        }
+    }
+
+    private func missingChaptersView(episode: Episode) -> some View {
+        ContentUnavailableView {
+            Label("No Chapters", systemImage: "list.bullet.rectangle")
+        } description: {
+            Text("Generate a transcript and use it to create chapter markers.")
+        } actions: {
+            generationAction(
+                title: "Generate Transcript and Chapters",
+                isBusy: isTranscriptionBusy(for: episode) || isGeneratingChapters,
+                progressMessage: isGeneratingChapters ? "Generating chapters…" : transcriptionProgressMessage(for: episode),
+                resultMessage: refreshedContentEpisodeURL == episode.url ? chapterGenerationMessage : nil
+            ) {
+                Task { await generateTranscript(for: episode, includeChapters: true) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func generationAction(
+        title: LocalizedStringKey,
+        isBusy: Bool,
+        progressMessage: String?,
+        resultMessage: String?,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 8) {
+            Button(action: action) {
+                if isBusy {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(progressMessage ?? "Starting…")
+                    }
+                } else {
+                    Label(title, systemImage: "sparkles")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isBusy)
+
+            if let resultMessage {
+                Text(resultMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
     }
 
     private func portraitFullPlayer(episode: Episode) -> some View {
@@ -241,6 +345,195 @@ struct PlayerView: View {
             .accessibilityLabel("Episode debug metadata")
 #endif
         }
+    }
+
+    private func isTranscriptionBusy(for episode: Episode) -> Bool {
+        isStartingTranscription
+            || (transcriptionItem?.episodeURL == episode.url && transcriptionItem?.isTranscribing == true)
+    }
+
+    private func transcriptionProgressMessage(for episode: Episode) -> String? {
+        if isStartingTranscription {
+            return "Starting transcript…"
+        }
+
+        guard let transcriptionItem,
+              transcriptionItem.episodeURL == episode.url,
+              transcriptionItem.isTranscribing else { return nil }
+        return transcriptionItem.statusText.isEmpty ? "Generating transcript…" : transcriptionItem.statusText
+    }
+
+    private func availableTranscriptLines(for episode: Episode) -> [TranscriptLineAndTime] {
+        if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
+            return transcriptLines
+        }
+        guard refreshedContentEpisodeURL == episode.url else { return [] }
+        return refreshedTranscriptLines
+    }
+
+    private func availableChapterMarkers(for episode: Episode) -> [Marker] {
+        if refreshedContentEpisodeURL == episode.url, refreshedChapterMarkers.isEmpty == false {
+            return refreshedChapterMarkers
+        }
+        return episode.chapters ?? []
+    }
+
+    private func hasDisplayableChapters(in markers: [Marker]) -> Bool {
+        if markers.contains(where: { $0.type == .soundbite }) {
+            return true
+        }
+
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let availableTypes = Set(markers.map(\.type))
+        if let selectedType = preferredOrder.first(where: { availableTypes.contains($0) }) {
+            return markers.lazy.filter { $0.type == selectedType }.prefix(2).count > 1
+        }
+
+        return markers.lazy
+            .filter { $0.type != .bookmark && $0.type != .soundbite }
+            .prefix(2)
+            .count > 1
+    }
+
+    @MainActor
+    private func generateTranscript(for episode: Episode, includeChapters: Bool) async {
+        guard isTranscriptionBusy(for: episode) == false, isGeneratingChapters == false else { return }
+        guard let episodeURL = episode.url else {
+            setGenerationMessage("This episode does not have an audio URL.", includeChapters: includeChapters)
+            return
+        }
+
+        if includeChapters, availableTranscriptLines(for: episode).isEmpty == false {
+            await generateChapters(for: episodeURL, episode: episode)
+            return
+        }
+
+        let settingsActor = PodcastSettingsModelActor(modelContainer: modelContext.container)
+        guard await settingsActor.getTranscriptionsEnabled() else {
+            setGenerationMessage(
+                "Enable episode transcriptions in Settings before generating one.",
+                includeChapters: includeChapters
+            )
+            return
+        }
+
+        isStartingTranscription = true
+        setGenerationMessage(nil, includeChapters: includeChapters)
+        defer { isStartingTranscription = false }
+
+        let manager = TranscriptionManager.shared
+        if let existingItem = await manager.item(for: episodeURL), existingItem.isTranscribing == false {
+            await manager.clearTranscriptionState(for: episodeURL)
+        }
+
+        do {
+            try await EpisodeActor(modelContainer: modelContext.container).transcribe(episodeURL)
+            transcriptionItem = await manager.item(for: episodeURL)
+            if transcriptionItem?.isTranscribing == true {
+                await manager.moveToFrontOfQueue(episodeURL: episodeURL)
+            }
+            await refreshGenerationState(for: episode)
+
+            if transcriptionItem == nil, availableTranscriptLines(for: episode).isEmpty {
+                setGenerationMessage(
+                    "The transcript could not be started. Download the episode and try again.",
+                    includeChapters: includeChapters
+                )
+            } else if includeChapters, transcriptionItem?.isTranscribing == true {
+                chapterGenerationMessage = "Chapters will be generated when the transcript is ready."
+            }
+        } catch {
+            setGenerationMessage(error.localizedDescription, includeChapters: includeChapters)
+        }
+    }
+
+    @MainActor
+    private func generateChapters(for episodeURL: URL, episode: Episode) async {
+        guard isGeneratingChapters == false else { return }
+        isGeneratingChapters = true
+        chapterGenerationMessage = nil
+        defer { isGeneratingChapters = false }
+
+        let didGenerate = await EpisodeActor(modelContainer: modelContext.container)
+            .regenerateTranscriptChapters(for: episodeURL)
+        await refreshGenerationState(for: episode)
+
+        if didGenerate == false {
+            chapterGenerationMessage = "No chapters could be generated from this transcript."
+        }
+    }
+
+    @MainActor
+    private func followTranscription(for episode: Episode) async {
+        guard let item = transcriptionItem else { return }
+
+        while item.isTranscribing && Task.isCancelled == false {
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
+            await refreshGenerationState(for: episode)
+        }
+
+        await refreshGenerationState(for: episode)
+        switch item.state {
+        case .failed(let error):
+            transcriptGenerationMessage = error
+            if chapterGenerationMessage != nil {
+                chapterGenerationMessage = error
+            }
+        case .cancelled:
+            transcriptGenerationMessage = "Transcript generation was cancelled."
+        case .finished:
+            transcriptGenerationMessage = nil
+        default:
+            break
+        }
+    }
+
+    @MainActor
+    private func refreshGenerationState(for episode: Episode) async {
+        guard let episodeURL = episode.url else { return }
+        if refreshedContentEpisodeURL != episodeURL {
+            refreshedContentEpisodeURL = episodeURL
+            refreshedTranscriptLines = []
+            refreshedChapterMarkers = []
+            transcriptGenerationMessage = nil
+            chapterGenerationMessage = nil
+        }
+        transcriptionItem = await TranscriptionManager.shared.item(for: episodeURL)
+
+        let transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { line in
+                line.episode?.url == episodeURL
+            },
+            sortBy: [SortDescriptor(\.startTime)]
+        )
+        refreshedTranscriptLines = (try? modelContext.fetch(transcriptDescriptor)) ?? []
+
+        let chapterDescriptor = FetchDescriptor<Marker>(
+            predicate: #Predicate { marker in
+                marker.episode?.url == episodeURL
+            }
+        )
+        refreshedChapterMarkers = ((try? modelContext.fetch(chapterDescriptor)) ?? [])
+            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+
+    private func setGenerationMessage(_ message: String?, includeChapters: Bool) {
+        if includeChapters {
+            chapterGenerationMessage = message
+        } else {
+            transcriptGenerationMessage = message
+        }
+    }
+
+    private func notificationMatchesEpisode(_ notification: Notification, episode: Episode) -> Bool {
+        guard let changedURL = notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL else {
+            return true
+        }
+        return changedURL == episode.url
     }
 
     private func positionedURL(for url: URL) -> URL {

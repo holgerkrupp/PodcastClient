@@ -723,7 +723,7 @@ final class StableIdentityTests: XCTestCase {
         let context = container.mainContext
         context.insert(
             StoreSplitMigrationCheckpoint(
-                id: "v\(StoreSplitMigrationService.migrationVersion).subscriptions",
+                id: StoreSplitMigrationService.checkpointID(for: "subscriptions"),
                 migrationVersion: StoreSplitMigrationService.migrationVersion,
                 phase: "subscriptions",
                 completedAt: Date(timeIntervalSince1970: 1_000),
@@ -732,7 +732,7 @@ final class StableIdentityTests: XCTestCase {
         )
         context.insert(
             StoreSplitMigrationCheckpoint(
-                id: "v\(StoreSplitMigrationService.migrationVersion).episode_states",
+                id: StoreSplitMigrationService.checkpointID(for: "episode_states"),
                 migrationVersion: StoreSplitMigrationService.migrationVersion,
                 phase: "episode_states",
                 cursor: "250",
@@ -783,7 +783,7 @@ final class StableIdentityTests: XCTestCase {
         for phase in phases {
             context.insert(
                 StoreSplitMigrationCheckpoint(
-                    id: "v\(StoreSplitMigrationService.migrationVersion).\(phase)",
+                    id: StoreSplitMigrationService.checkpointID(for: phase),
                     migrationVersion: StoreSplitMigrationService.migrationVersion,
                     phase: phase,
                     completedAt: Date(timeIntervalSince1970: 1_000),

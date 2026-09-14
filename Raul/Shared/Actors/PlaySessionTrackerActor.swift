@@ -127,6 +127,12 @@ final class RateSegment: Identifiable {
 
 @Model
 final class PlaySession: Identifiable {
+    /// Play sessions are always read in time order — statistics, the resume
+    /// logic, and the `listening_history` migration phase, which pages ten rows
+    /// at a time and so issues the most sorted fetches of any phase. See the
+    /// note on `Episode.publishDate` for why the index is needed.
+    #Index<PlaySession>([\.startTime])
+
     // Properties made optional for CloudKit compatibility
     
     var id: UUID?
