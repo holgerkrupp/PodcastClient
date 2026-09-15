@@ -6,10 +6,11 @@
 //
 import SwiftUI
 import SwiftData
-import ESADesignKit
 
 struct PodcastRowView: View {
     let podcast: Podcast
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
 
@@ -26,41 +27,69 @@ struct PodcastRowView: View {
         let abandonmentAssessment = podcast.metaData?.feedAbandonmentAssessment
         let isAbandoned = abandonmentAssessment != nil
 
-        HStack(spacing: 14) {
-            CoverImageView(podcast: podcast)
-                .frame(width: artworkSize, height: artworkSize)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(podcast.title)
-                    .font(.headline)
-                    .lineLimit(2)
-
-                if let author = podcast.author, author.isEmpty == false {
-                    Text(author)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                if let desc = podcast.desc, desc.isEmpty == false {
-                    Text(desc)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
-
-                if podcast.isSubscribed == false {
-                    Label("Not Subscribed", systemImage: "pause.circle")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                }
-
-                Spacer(minLength: 0)
+        ZStack {
+            if colorSchemeContrast == .increased {
+                Rectangle()
+                    .fill(Color(white: colorScheme == .dark ? 0 : 1))
+                    .accessibilityHidden(true)
+            } else {
+                BlurredCoverImageView(
+                    podcast: podcast,
+                    maxPixelSize: 512,
+                    loadDelay: .milliseconds(200)
+                )
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
+                    .clipped()
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 14) {
+                CoverImageView(
+                    podcast: podcast,
+                    loadDelay: .milliseconds(200)
+                )
+                    .frame(width: artworkSize, height: artworkSize)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(podcast.title)
+                        .font(.headline)
+                        .lineLimit(2)
+
+                    if let author = podcast.author, author.isEmpty == false {
+                        Text(author)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    if let desc = podcast.desc, desc.isEmpty == false {
+                        Text(desc)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+
+                    if podcast.isSubscribed == false {
+                        Label("Not Subscribed", systemImage: "pause.circle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+            .background {
+                if colorSchemeContrast == .standard {
+                    Rectangle().fill(.thinMaterial)
+                }
+            }
         }
-        .ESA_RowView(image: podcast.imageURL, minHeight: rowHeight)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .grayscale(isAbandoned ? 1 : 0)
         .overlay(alignment: .topLeading) {
             if let abandonmentAssessment {

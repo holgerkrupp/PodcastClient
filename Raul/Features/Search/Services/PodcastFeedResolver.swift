@@ -284,7 +284,11 @@ private extension PodcastFeedResolver {
     static func looksLikeOPML(_ data: Data) -> Bool {
         String(decoding: data.prefix(4096), as: UTF8.self).lowercased().contains("<opml")
     }
+}
 
+// Feed discovery from an HTML page. Shared with public-broadcaster discovery,
+// whose directory-backed providers reach a feed the same way.
+extension PodcastFeedResolver {
     static func extractFeedURL(fromHTML html: String, baseURL: URL) -> URL? {
         let tagPattern = #"<link\b[^>]*>"#
 

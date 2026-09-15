@@ -17,6 +17,7 @@ struct CoverImageView: View {
     // timecode remains as input to determine the active chapter,
     // but we will NOT key the async task directly off this Double.
     var timecode: Double? = nil
+    var loadDelay: Duration = .zero
 
     @State private var loadedImage: Image? = nil
     @State private var lastAppliedKey: String = ""
@@ -38,7 +39,12 @@ struct CoverImageView: View {
         }
         // Only run the task when the imageKey changes (i.e., at chapter boundaries
         // or when the underlying image source changes), not on every playback tick.
-        .task(id: imageKey) {
+        .task(id: imageKey, priority: .utility) {
+            do {
+                try await Task.sleep(for: loadDelay)
+            } catch {
+                return
+            }
             seedFromCacheIfPossible(for: imageKey)
             await loadImage(for: imageKey)
         }
@@ -207,6 +213,8 @@ struct BlurredCoverImageView: View {
     var podcast: Podcast? = nil
     var imageURL: URL? = nil
     var radius: CGFloat = 8
+    var maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
+    var loadDelay: Duration = .zero
 
     @State private var loadedImage: Image?
     @State private var lastAppliedKey = ""
@@ -224,7 +232,12 @@ struct BlurredCoverImageView: View {
                     .fill(Color.accent)
             }
         }
-        .task(id: imageKey) {
+        .task(id: imageKey, priority: .utility) {
+            do {
+                try await Task.sleep(for: loadDelay)
+            } catch {
+                return
+            }
             seedFromCacheIfPossible(for: imageKey)
             await loadImage(for: imageKey)
         }
@@ -244,7 +257,11 @@ struct BlurredCoverImageView: View {
 
     private var imageKey: String {
         guard let resolvedURL else { return "none" }
-        return SharedImageRepository.blurredCacheKey(for: resolvedURL, radius: radius)
+        return SharedImageRepository.blurredCacheKey(
+            for: resolvedURL,
+            radius: radius,
+            maxPixelSize: maxPixelSize
+        )
     }
 
     private var cachedImage: Image? {
@@ -269,7 +286,11 @@ struct BlurredCoverImageView: View {
             return
         }
 
-        if let uiImage = await ImageLoaderAndCache.loadBlurredUIImage(from: resolvedURL, radius: radius),
+        if let uiImage = await ImageLoaderAndCache.loadBlurredUIImage(
+            from: resolvedURL,
+            radius: radius,
+            maxPixelSize: maxPixelSize
+        ),
            key == imageKey {
             loadedImage = Image(uiImage: uiImage)
             lastAppliedKey = key

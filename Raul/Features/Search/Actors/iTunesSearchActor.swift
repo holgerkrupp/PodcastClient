@@ -193,13 +193,17 @@ actor ITunesSearchActor {
 
     // MARK: - Search
 
-    func search(for term: String) async -> [PodcastFeed]? {
+    /// - Parameter limit: Maximum number of results, or `nil` for Apple's default.
+    func search(for term: String, limit: Int? = nil) async -> [PodcastFeed]? {
         guard term.isEmpty == false else { return nil }
         guard let encodedTerm = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             return nil
         }
 
-        let urlString = "https://itunes.apple.com/search?term=\(encodedTerm)&media=podcast&country=\(country)"
+        var urlString = "https://itunes.apple.com/search?term=\(encodedTerm)&media=podcast&country=\(country)"
+        if let limit {
+            urlString += "&limit=\(limit)"
+        }
         guard let requestURL = URL(string: urlString) else { return nil }
 
         guard let json = await fetchJSON(from: requestURL) as? [String: Any],
@@ -208,6 +212,29 @@ actor ITunesSearchActor {
         }
 
         return results.compactMap { feed(from: $0) }
+    }
+
+    // MARK: - Lookup by Apple id
+
+    /// Resolves the RSS feed of a single Apple Podcasts collection id.
+    ///
+    /// Used by public-broadcaster discovery: several broadcaster webpages link
+    /// their shows to Apple Podcasts but do not publish the RSS URL themselves,
+    /// so the Apple id is the exact, non-guessing way to reach the feed.
+    func feedURL(forCollectionID collectionID: String) async -> URL? {
+        let trimmed = collectionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false,
+              trimmed.allSatisfy(\.isNumber),
+              let requestURL = URL(string: "https://itunes.apple.com/lookup?id=\(trimmed)&entity=podcast") else {
+            return nil
+        }
+
+        guard let json = await fetchJSON(from: requestURL) as? [String: Any],
+              let results = json["results"] as? [[String: Any]] else {
+            return nil
+        }
+
+        return results.compactMap { feed(from: $0)?.url }.first
     }
 
     // MARK: - Categories / genres

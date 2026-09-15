@@ -75,8 +75,13 @@ actor SharedImageRepository {
         return image
     }
 
-    func blurredImage(for url: URL, radius: CGFloat, saveTo: URL? = nil) async -> UIImage? {
-        let key = Self.blurredCacheKey(for: url, radius: radius)
+    func blurredImage(
+        for url: URL,
+        radius: CGFloat,
+        maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize,
+        saveTo: URL? = nil
+    ) async -> UIImage? {
+        let key = Self.blurredCacheKey(for: url, radius: radius, maxPixelSize: maxPixelSize)
         if let cached = Self.cachedBlurredImage(for: key) {
             return cached
         }
@@ -87,7 +92,11 @@ actor SharedImageRepository {
 
         let task = Task<UIImage?, Never> {
             guard let sourceImage = await self.image(for: url, saveTo: saveTo),
-                  let blurredImage = Self.makeBlurredImage(from: sourceImage, radius: radius) else {
+                  let blurredImage = Self.makeBlurredImage(
+                    from: sourceImage,
+                    radius: radius,
+                    maxPixelSize: maxPixelSize
+                  ) else {
                 return nil
             }
 
@@ -101,11 +110,19 @@ actor SharedImageRepository {
         return image
     }
 
-    nonisolated static func blurredCacheKey(for url: URL, radius: CGFloat) -> String {
-        "\(url.absoluteString)|blur:\(Int(radius.rounded()))"
+    nonisolated static func blurredCacheKey(
+        for url: URL,
+        radius: CGFloat,
+        maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
+    ) -> String {
+        "\(url.absoluteString)|blur:\(Int(radius.rounded()))|max:\(Int(maxPixelSize.rounded()))"
     }
 
-    nonisolated private static func makeBlurredImage(from image: UIImage, radius: CGFloat) -> UIImage? {
+    nonisolated private static func makeBlurredImage(
+        from image: UIImage,
+        radius: CGFloat,
+        maxPixelSize: CGFloat
+    ) -> UIImage? {
 #if canImport(UIKit)
         guard let inputImage = CIImage(image: image) else { return nil }
 #else
@@ -113,12 +130,17 @@ actor SharedImageRepository {
         let inputImage = CIImage(cgImage: sourceImage)
 #endif
 
-        let clampedImage = inputImage.clampedToExtent()
+        let longestEdge = max(inputImage.extent.width, inputImage.extent.height)
+        let scale = longestEdge > 0 ? min(1, max(maxPixelSize, 1) / longestEdge) : 1
+        let scaledImage = scale < 1
+            ? inputImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            : inputImage
+        let clampedImage = scaledImage.clampedToExtent()
         let blurredImage = clampedImage
             .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: radius])
-            .cropped(to: inputImage.extent)
+            .cropped(to: scaledImage.extent)
 
-        guard let cgImage = ciContext.createCGImage(blurredImage, from: inputImage.extent) else {
+        guard let cgImage = ciContext.createCGImage(blurredImage, from: scaledImage.extent) else {
             return nil
         }
 
@@ -221,8 +243,18 @@ class ImageLoaderAndCache: ObservableObject {
         await SharedImageRepository.shared.image(for: url, saveTo: saveTo)
     }
 
-    nonisolated static func loadBlurredUIImage(from url: URL, radius: CGFloat, saveTo: URL? = nil) async -> UIImage? {
-        await SharedImageRepository.shared.blurredImage(for: url, radius: radius, saveTo: saveTo)
+    nonisolated static func loadBlurredUIImage(
+        from url: URL,
+        radius: CGFloat,
+        maxPixelSize: CGFloat = defaultMaxPixelSize,
+        saveTo: URL? = nil
+    ) async -> UIImage? {
+        await SharedImageRepository.shared.blurredImage(
+            for: url,
+            radius: radius,
+            maxPixelSize: maxPixelSize,
+            saveTo: saveTo
+        )
     }
 }
 

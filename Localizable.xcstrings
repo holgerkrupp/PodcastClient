@@ -77,6 +77,16 @@
         }
       }
     },
+    "%@ · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@"
+          }
+        }
+      }
+    },
     "%@ %@" : {
       "localizations" : {
         "de" : {
@@ -187,6 +197,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Sessions"
+          }
+        }
+      }
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
           }
         }
       }
@@ -373,6 +393,16 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld of %2$lld podcasts checked"
+          }
+        }
+      }
+    },
+    "%lld podcasts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Podcasts"
           }
         }
       }
@@ -725,6 +755,16 @@
         }
       }
     },
+    "Africa" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afrika"
+          }
+        }
+      }
+    },
     "AirPlay" : {
       "localizations" : {
         "de" : {
@@ -861,6 +901,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alternative Feeds"
+          }
+        }
+      }
+    },
+    "Americas" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amerika"
           }
         }
       }
@@ -1002,6 +1052,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcast-Episoden archivieren"
+          }
+        }
+      }
+    },
+    "Asia-Pacific" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asien-Pazifik"
           }
         }
       }
@@ -1299,12 +1359,32 @@
         }
       }
     },
+    "Browse" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stöbern"
+          }
+        }
+      }
+    },
     "Browse by Category" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nach Kategorie durchsuchen"
+          }
+        }
+      }
+    },
+    "Browse public-service podcasts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts öffentlich-rechtlicher Sender entdecken"
           }
         }
       }
@@ -1395,6 +1475,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Karneval"
+          }
+        }
+      }
+    },
+    "Categories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategorien"
           }
         }
       }
@@ -1658,6 +1748,9 @@
           }
         }
       }
+    },
+    "Clip selection" : {
+
     },
     "Close" : {
       "localizations" : {
@@ -1925,6 +2018,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird gerade transkribiert: %@"
+          }
+        }
+      }
+    },
+    "Currently unavailable. Try again later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurzeit nicht verfügbar. Versuch es später noch einmal."
           }
         }
       }
@@ -2219,6 +2322,26 @@
         }
       }
     },
+    "Discover" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entdecken"
+          }
+        }
+      }
+    },
+    "Discover podcasts from public-service media around the world." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entdecke Podcasts öffentlich-rechtlicher Medien aus aller Welt."
+          }
+        }
+      }
+    },
     "Diwali" : {
       "localizations" : {
         "de" : {
@@ -2445,7 +2568,11 @@
         }
       }
     },
+    "End" : {
+
+    },
     "End: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2647,6 +2774,16 @@
         }
       }
     },
+    "Europe" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Europa"
+          }
+        }
+      }
+    },
     "Expected releases missed" : {
       "localizations" : {
         "de" : {
@@ -2698,6 +2835,7 @@
       }
     },
     "Exporting... %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2706,6 +2844,9 @@
           }
         }
       }
+    },
+    "Exporting… %@" : {
+
     },
     "extremely" : {
       "localizations" : {
@@ -2737,12 +2878,32 @@
         }
       }
     },
+    "Featured" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen"
+          }
+        }
+      }
+    },
     "February" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Februar"
+          }
+        }
+      }
+    },
+    "Feed unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed nicht verfügbar"
           }
         }
       }
@@ -3013,6 +3174,26 @@
         }
       }
     },
+    "Found in the Apple Podcasts catalogue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gefunden im Apple-Podcasts-Katalog."
+          }
+        }
+      }
+    },
+    "French-language radio and podcasts from SRG SSR." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Französischsprachiges Radio und Podcasts der SRG SSR."
+          }
+        }
+      }
+    },
     "From %@ to %@" : {
       "localizations" : {
         "de" : {
@@ -3077,6 +3258,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sanft erhält mehr Pausen; stärkere Stufen kürzen mehr Stille."
+          }
+        }
+      }
+    },
+    "German-language radio and podcasts from SRG SSR." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutschsprachiges Radio und Podcasts der SRG SSR."
           }
         }
       }
@@ -3602,6 +3793,16 @@
         }
       }
     },
+    "Italian-language radio and podcasts from SRG SSR." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Italienischsprachiges Radio und Podcasts der SRG SSR."
+          }
+        }
+      }
+    },
     "January" : {
       "localizations" : {
         "de" : {
@@ -3751,6 +3952,17 @@
         }
       }
     },
+    "Language" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache"
+          }
+        }
+      }
+    },
     "Last checked" : {
       "localizations" : {
         "de" : {
@@ -3820,6 +4032,9 @@
           }
         }
       }
+    },
+    "Length" : {
+
     },
     "Less" : {
       "localizations" : {
@@ -4342,6 +4557,16 @@
         }
       }
     },
+    "Middle East" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naher Osten"
+          }
+        }
+      }
+    },
     "Midsummer" : {
       "localizations" : {
         "de" : {
@@ -4468,6 +4693,12 @@
         }
       }
     },
+    "Move earlier" : {
+
+    },
+    "Move later" : {
+
+    },
     "Move playback controls to left" : {
 
     },
@@ -4480,6 +4711,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abonnements in wenigen Minuten umziehen"
+          }
+        }
+      }
+    },
+    "Move subscriptions with OPML files" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abos per OPML-Datei übertragen"
           }
         }
       }
@@ -5346,6 +5587,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffnet alle Einstellungen für Warteschlangenverhalten, Podcasts, Transkriptionen, Erscheinungsbild, Integrationen und Speicher."
+          }
+        }
+      }
+    },
+    "Open Broadcaster Website" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website des Senders öffnen"
           }
         }
       }
@@ -6670,6 +6921,186 @@
         }
       }
     },
+    "Podcasts from Austria's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Österreich."
+          }
+        }
+      }
+    },
+    "Podcasts from Canada's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Kanada."
+          }
+        }
+      }
+    },
+    "Podcasts from Finland's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Finnland."
+          }
+        }
+      }
+    },
+    "Podcasts from Flanders' public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Flandern."
+          }
+        }
+      }
+    },
+    "Podcasts from France's public radio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Radios in Frankreich."
+          }
+        }
+      }
+    },
+    "Podcasts from Germany's public broadcasters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts der öffentlich-rechtlichen Sender in Deutschland."
+          }
+        }
+      }
+    },
+    "Podcasts from Germany's public television broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Fernsehens in Deutschland."
+          }
+        }
+      }
+    },
+    "Podcasts from Ireland's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Irland."
+          }
+        }
+      }
+    },
+    "Podcasts from Italy's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Italien."
+          }
+        }
+      }
+    },
+    "Podcasts from National Public Radio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts von National Public Radio."
+          }
+        }
+      }
+    },
+    "Podcasts from Portugal's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Portugal."
+          }
+        }
+      }
+    },
+    "Podcasts from Radio New Zealand." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts von Radio New Zealand."
+          }
+        }
+      }
+    },
+    "Podcasts from Spain's public broadcaster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Rundfunks in Spanien."
+          }
+        }
+      }
+    },
+    "Podcasts from Sweden's public radio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des öffentlich-rechtlichen Radios in Schweden."
+          }
+        }
+      }
+    },
+    "Podcasts from the Australian Broadcasting Corporation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts der Australian Broadcasting Corporation."
+          }
+        }
+      }
+    },
+    "Podcasts from the British Broadcasting Corporation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts der British Broadcasting Corporation."
+          }
+        }
+      }
+    },
+    "Podcasts from the Dutch public broadcasters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts der öffentlich-rechtlichen Sender in den Niederlanden."
+          }
+        }
+      }
+    },
+    "Podcasts from the Public Broadcasting Service." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts des Public Broadcasting Service."
+          }
+        }
+      }
+    },
     "Podcasts kept in the database but excluded from refresh will appear here." : {
       "localizations" : {
         "de" : {
@@ -6726,6 +7157,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Position"
+          }
+        }
+      }
+    },
+    "Powered by the Apple Podcasts catalog" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dem Apple-Podcasts-Katalog"
           }
         }
       }
@@ -6826,6 +7267,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorherige Woche"
+          }
+        }
+      }
+    },
+    "Public Broadcasters" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffentlich-rechtliche Sender"
           }
         }
       }
@@ -7495,6 +7946,16 @@
         }
       }
     },
+    "Romansh-language radio and podcasts from SRG SSR." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rätoromanisches Radio und Podcasts der SRG SSR."
+          }
+        }
+      }
+    },
     "Rule %lld" : {
       "localizations" : {
         "de" : {
@@ -7608,6 +8069,16 @@
         }
       }
     },
+    "Search" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suchen"
+          }
+        }
+      }
+    },
     "Search bookmarks" : {
       "localizations" : {
         "de" : {
@@ -7684,6 +8155,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Durchsuche Podcasts, Episoden, Kapitel und Transkripte direkt in SwiftData."
+          }
+        }
+      }
+    },
+    "Search Public Broadcasters" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffentlich-rechtliche Sender durchsuchen"
           }
         }
       }
@@ -7994,6 +8475,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Menüleisten-Player anzeigen"
+          }
+        }
+      }
+    },
+    "Show Podcast" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast anzeigen"
           }
         }
       }
@@ -8485,6 +8977,16 @@
         }
       }
     },
+    "Source" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quelle"
+          }
+        }
+      }
+    },
     "Speed" : {
       "localizations" : {
         "de" : {
@@ -8514,6 +9016,9 @@
           }
         }
       }
+    },
+    "Start" : {
+
     },
     "Start Listening" : {
       "localizations" : {
@@ -8559,6 +9064,7 @@
       }
     },
     "Start: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9085,6 +9591,26 @@
         }
       }
     },
+    "This broadcaster does not offer that." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Sender bietet das nicht an."
+          }
+        }
+      }
+    },
+    "This broadcaster is not available in this build." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Sender ist in dieser Version nicht verfügbar."
+          }
+        }
+      }
+    },
     "This episode could not be loaded." : {
       "localizations" : {
         "de" : {
@@ -9121,6 +9647,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Playlist enthält keine weiteren Episoden."
+          }
+        }
+      }
+    },
+    "This podcast cannot be opened right now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast lässt sich gerade nicht öffnen."
           }
         }
       }
@@ -9307,6 +9843,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Um mehrere Designs zu erstellen, füge die Aktion „Podcast-Teilen-Bild erstellen“ mehrfach mit unterschiedlichen Designwerten hinzu."
+          }
+        }
+      }
+    },
+    "Top charts in your region" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Charts in deiner Region"
           }
         }
       }
@@ -10289,6 +10835,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dein Eingang ist leer"
+          }
+        }
+      }
+    },
+    "Your Library" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Mediathek"
           }
         }
       }

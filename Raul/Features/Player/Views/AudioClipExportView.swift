@@ -111,16 +111,15 @@ struct AudioClipExportView: View {
                         
                         if waveformSamples.isEmpty {
                             ZStack {
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.3))
-                                    .frame(height: 70)
-                                    .cornerRadius(8)
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.black.opacity(0.55))
+                                    .frame(height: Self.waveformHeight)
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .accent))
                             }
                             .padding(.vertical)
                         } else {
-                            VStack(spacing: 6) {
+                            VStack(spacing: 10) {
                                 WaveformView(
                                     samples: waveformSamples.map { max($0, 0.05) },
                                     windowStart: $windowStart,
@@ -129,13 +128,14 @@ struct AudioClipExportView: View {
                                     trimStart: trimStart,
                                     trimEnd: trimEnd,
                                     onTrimStartChanged: { newStart in
-                                        trimStart = newStart
-                                        if trimStart > trimEnd { trimStart = trimEnd }
-                                        stopAudioPlayer()
+                                        setTrimStart(newStart)
                                     },
                                     onTrimEndChanged: { newEnd in
-                                        trimEnd = newEnd
-                                        if trimEnd < trimStart { trimEnd = trimStart }
+                                        setTrimEnd(newEnd)
+                                    },
+                                    onTrimRangeChanged: { newStart, newEnd in
+                                        trimStart = newStart
+                                        trimEnd = max(newEnd, newStart)
                                         stopAudioPlayer()
                                     },
                                     progress: $playbackProgress,
@@ -145,13 +145,9 @@ struct AudioClipExportView: View {
                                         reloadWaveform(for: newWindow)
                                     }
                                 )
-                                .frame(height: 70)
+                                .frame(height: Self.waveformHeight)
                                 // A popover keeps the sheet's layout stable on small screens.
                                 .popoverTip(waveformGesturesTip, arrowEdge: .bottom)
-                                .background{
-                                    RoundedRectangle(cornerRadius:  8.0)
-                                        .fill(.black.opacity(0.5))
-                                }
                                 .overlay(alignment: .topTrailing) {
                                     if isWaveformLoading {
                                         ProgressView()
@@ -160,31 +156,22 @@ struct AudioClipExportView: View {
                                     }
                                 }
 
+                                trimReadout
 
-
-                                    Button {
-                                        togglePreview()
-                                    } label: {
-                                        Label(
-                                            isPreviewPlaying ? "Pause" : "Preview",
-                                            systemImage: isPreviewPlaying ? "pause.fill" : "play.fill"
-                                        )
-                                        .frame(maxWidth: .infinity)
-                                    }
-                                    .buttonStyle(.glass(.clear))
-                                
+                                Button {
+                                    togglePreview()
+                                } label: {
+                                    Label(
+                                        isPreviewPlaying ? "Pause" : "Preview",
+                                        systemImage: isPreviewPlaying ? "pause.fill" : "play.fill"
+                                    )
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.glass)
                             }
                             .padding(.vertical)
                         }
-                        
-                        HStack {
-                            Text("Start: \(formatTime(trimStart))")
-                            Spacer()
-                            Text("End: \(formatTime(trimEnd))")
-                        }
-                        .font(.caption)
-                        .padding(.horizontal)
-                        
+
                         HStack {
                             Button("Cancel") {
                                 stopAudioPlayer()
@@ -261,39 +248,15 @@ struct AudioClipExportView: View {
                 
                 
                 .overlay {
-                    if isExporting == true{
-                        
-                        Group{
-                            // Color.black.opacity(0.3).ignoresSafeArea()
-                            VStack(spacing: 12) {
-                                if exportProgress > 0 {
-                                    ProgressView(value: exportProgress, total: 1.0)
-                                        .progressViewStyle(LinearProgressViewStyle())
-                                        .padding()
-                                    Text("Exporting... \(exportProgress, format: .percent.precision(.fractionLength(0)))")
-                                        .foregroundColor(.primary)
-                                        .bold()
-                                } else {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        .padding()
-                                    Text("Exporting…")
-                                        .foregroundColor(.primary)
-                                        .bold()
-                                }
-                            }
+                    ZStack {
+                        if isExporting {
+                            exportingOverlay
+                                .transition(.opacity)
                         }
-                        .padding()
-                        .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-                        .background{
-                            RoundedRectangle(cornerRadius:  8.0)
-                                .fill(.background.opacity(0.3))
-                        }
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        
-                        
                     }
-                    
+                    // Scoped to the overlay: animating the whole sheet on `isExporting`
+                    // would also animate every control that the export disables.
+                    .animation(.easeInOut(duration: 0.2), value: isExporting)
                 }
             }
 
@@ -303,9 +266,145 @@ struct AudioClipExportView: View {
     }
     
     func formatTime(_ time: Double) -> String {
-        let minutes = Int(time) / 60
-        let seconds = Int(time) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+        let total = Int(time.rounded())
+        if total >= 3600 {
+            return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+        }
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    // MARK: - Trim editing
+
+    /// Smallest clip worth exporting; also what the waveform handles enforce.
+    private static let minClipLength: Double = 1.0
+    /// One tap on a nudge button. Small enough to land on a word, large enough to feel.
+    private static let nudgeStep: Double = 0.5
+    private static let waveformHeight: CGFloat = 92
+
+    private func setTrimStart(_ newValue: Double) {
+        let upper = max(0, trimEnd - Self.minClipLength)
+        trimStart = newValue.clamped(to: 0...upper)
+        stopAudioPlayer()
+    }
+
+    private func setTrimEnd(_ newValue: Double) {
+        let lower = min(trimStart + Self.minClipLength, duration)
+        trimEnd = newValue.clamped(to: lower...duration)
+        stopAudioPlayer()
+    }
+
+    /// Start / length / end, on a material so the numbers stay legible over the cover art,
+    /// with nudge buttons for the last half second that a finger on the waveform can't reach.
+    private var trimReadout: some View {
+        HStack(spacing: 8) {
+            nudgeControl(
+                title: Text("Start"),
+                time: trimStart,
+                canDecrease: trimStart > 0,
+                canIncrease: trimStart < trimEnd - Self.minClipLength,
+                onChange: setTrimStart
+            )
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: 1) {
+                Text(formatTime(trimEnd - trimStart))
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                Text("Length")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: 0)
+
+            nudgeControl(
+                title: Text("End"),
+                time: trimEnd,
+                canDecrease: trimEnd > trimStart + Self.minClipLength,
+                canIncrease: trimEnd < duration,
+                onChange: setTrimEnd
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func nudgeControl(
+        title: Text,
+        time: Double,
+        canDecrease: Bool,
+        canIncrease: Bool,
+        onChange: @escaping (Double) -> Void
+    ) -> some View {
+        VStack(spacing: 1) {
+            title
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Button {
+                    onChange(time - Self.nudgeStep)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(canDecrease ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                }
+                .disabled(canDecrease == false)
+                .accessibilityLabel(Text("Move earlier"))
+
+                Text(formatTime(time))
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+
+                Button {
+                    onChange(time + Self.nudgeStep)
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(canIncrease ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                }
+                .disabled(canIncrease == false)
+                .accessibilityLabel(Text("Move later"))
+            }
+            .buttonStyle(.plain)
+            .imageScale(.medium)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Opaque material rather than clear glass: over a bright blurred cover, `.primary`
+    /// text on clear glass was washing out to the point of being unreadable.
+    private var exportingOverlay: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.45))
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                if exportProgress > 0 {
+                    ProgressView(value: exportProgress, total: 1.0)
+                        .progressViewStyle(.linear)
+                        .tint(.accent)
+                    Text("Exporting… \(exportProgress, format: .percent.precision(.fractionLength(0)))")
+                } else {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Exporting…")
+                }
+            }
+            .font(.headline)
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.center)
+            .padding(24)
+            .frame(width: 260)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(.white.opacity(0.15), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private func previewWidth(for containerSize: CGSize) -> CGFloat {

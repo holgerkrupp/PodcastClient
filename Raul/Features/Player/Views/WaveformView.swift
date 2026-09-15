@@ -1,13 +1,27 @@
 import SwiftUI
 import AVFoundation
 
-/// A view that draws the waveform for a segment of audio.
-/// The visible time span can be panned and pinch-zoomed by the user to scrub through and
-/// precisely select any part of `fullDuration`. `windowStart`/`windowEnd` reflect the range
-/// that `samples` was actually decoded for (it lags slightly behind the live gesture while a
-/// reload is in flight); the view tracks the user's live intent separately so panning/zooming
-/// always feels immediate, and cross-fades to the freshly decoded samples once they arrive.
+/// A view that draws the waveform for a segment of audio and lets the user place the
+/// clip's in/out markers on it.
+///
+/// The visible time span can be panned and pinch-zoomed to scrub through and precisely
+/// select any part of `fullDuration`. `windowStart`/`windowEnd` reflect the range that
+/// `samples` was actually decoded for (it lags slightly behind the live gesture while a
+/// reload is in flight); the view tracks the user's live intent separately so
+/// panning/zooming always feels immediate, and cross-fades to the freshly decoded
+/// samples once they arrive.
+///
+/// Interaction model, in decreasing gesture priority:
+/// * dragging a handle moves that marker (with a generous invisible hit area, and the
+///   window auto-scrolls when the finger reaches an edge, so a marker can be placed
+///   outside the currently visible span without letting go),
+/// * dragging the selected band moves the whole selection, keeping its length,
+/// * dragging anywhere else pans the window,
+/// * pinching zooms around the pinch's anchor point, at any time,
+/// * double-tapping zooms to fit the current selection.
 struct WaveformView: View {
+    enum DragTarget: Equatable { case start, end, selection }
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let samples: [Float]          // Normalized audio samples in 0...1, covering windowStart...windowEnd
     @Binding var windowStart: Double
@@ -17,16 +31,25 @@ struct WaveformView: View {
     let trimEnd: Double
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
+    /// Called when the whole selection is dragged, so both markers move in one update.
+    var onTrimRangeChanged: ((Double, Double) -> Void)? = nil
     @Binding var progress: Double
-    /// Called after a pan or pinch gesture ends with the new desired window, so the caller can reload samples for it.
+    /// Called after a pan, pinch or edge-scroll ends with the new desired window, so the caller can reload samples for it.
     var onWindowChanged: (ClosedRange<Double>) -> Void = { _ in }
 
-    // How far inside (in seconds) the handles/overlays should start/end from the waveform edges.
-    // Default to 10 seconds as requested.
-    var insetSeconds: Double = 0.0
-
     // Minimum visible span while zoomed in, so the user can't zoom past what's meaningful to select.
-    private static let minWindowSpan: Double = 3.0
+    private static let minWindowSpan: Double = 2.0
+    // Shortest clip the handles will let the user create.
+    private static let minSelectionSpan: Double = 1.0
+    // The handles are drawn narrow but grabbed wide: a 5pt target was the main reason
+    // placing a marker felt fiddly.
+    private static let handleWidth: CGFloat = 11
+    private static let handleHitWidth: CGFloat = 44
+    // While dragging a marker, holding the finger this close to an edge scrolls the window.
+    private static let edgeScrollZone: CGFloat = 34
+    // Fastest auto-scroll, as a fraction of the visible span per second.
+    private static let maxEdgeScrollRate: Double = 0.9
+    private static let bubbleBoxWidth: CGFloat = 68
 
     // The window the user is currently looking at, live during gestures. Decoupled from
     // `windowStart`/`windowEnd` (which track the currently *loaded* samples) so consecutive
@@ -36,119 +59,337 @@ struct WaveformView: View {
     @State private var panBaseWindow: (start: Double, end: Double)?
     @State private var pinchBaseWindow: (start: Double, end: Double)?
 
+    // Marker dragging
+    @State private var dragTarget: DragTarget?
+    /// Seconds between the finger and the value it grabbed, so a marker never jumps to the touch.
+    @State private var grabOffset: Double = 0
+    @State private var grabbedSelectionSpan: Double = 0
+    @State private var pointerX: CGFloat = 0
+    @State private var viewWidth: CGFloat = 1
+    @State private var edgeScrollVelocity: Double = 0
+    @State private var edgeScrollTask: Task<Void, Never>?
+    /// Bumped whenever an edge-scroll loop starts or is stopped, so a loop that wakes up
+    /// after being cancelled can't clear a successor's task handle.
+    @State private var edgeScrollGeneration = 0
+    @State private var windowMovedDuringDrag = false
+
+    private var visibleSpan: Double { max(visibleEnd - visibleStart, 0.0001) }
+
     var body: some View {
         GeometryReader { geo in
-            let spacing: CGFloat = 0.1
-            let capsuleWidth = (geo.size.width - spacing * CGFloat(max(samples.count - 1, 0))) / CGFloat(samples.count)
+            let width = max(geo.size.width, 1)
+            let height = max(geo.size.height, 1)
+            let startX = x(for: trimStart, width: width)
+            let endX = x(for: trimEnd, width: width)
 
-            // Time span currently shown to the user (live, not the possibly-stale loaded window)
-            let totalTime = visibleEnd - visibleStart
-            // Prevent division by zero
-            let safeTotalTime = max(totalTime, 0.0001)
-            // Convert inset seconds to pixels, but clamp so we never exceed half width
-            let secondsPerPixel = safeTotalTime / geo.size.width
-            let rawInsetPixels = CGFloat(insetSeconds / max(secondsPerPixel, 0.0001))
-            let insetPixels = min(rawInsetPixels, geo.size.width * 0.45) // keep at least 10% usable width
-            let effectiveWidth = max(geo.size.width - 2 * insetPixels, 1)
+            ZStack(alignment: .topLeading) {
+                Color.clear // establishes the ZStack's coordinate space at the full size
 
-            // Transform that maps the bars (laid out for windowStart...windowEnd) onto the
-            // currently visible window, so they slide/scale live under the gesture without
-            // waiting for a reload.
-            let loadedSpan = max(windowEnd - windowStart, 0.0001)
-            let barsScale = loadedSpan / safeTotalTime
-            let barsOffset = geo.size.width * CGFloat((windowStart - visibleStart) / safeTotalTime)
+                bars(width: width, height: height)
 
-            ZStack(alignment: .bottom) {
-                // Waveform
-                HStack(spacing: spacing) {
-                    ForEach(samples.indices, id: \.self) { sampleIndex in
-                        let sample = samples[sampleIndex]
-                        Capsule()
-                            .fill(Color.accent.opacity(0.7))
-                            .frame(width: max(1, capsuleWidth), height: max(2, CGFloat(sample) * geo.size.height))
-                    }
+                // Dim what is not part of the clip. A neutral scrim (rather than a coloured
+                // block) keeps the unselected audio visible as context instead of hiding it.
+                scrim(from: 0, to: startX, height: height)
+                scrim(from: endX, to: width, height: height)
+
+                selectionBorder(startX: startX, endX: endX, height: height)
+                progressIndicator(width: width, height: height)
+
+                // Hit target for moving the whole selection. Sits under the handles so the
+                // handles keep priority where they overlap.
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .frame(width: max(endX - startX, 0), height: height)
+                    .offset(x: startX)
+                    .highPriorityGesture(markerDrag(target: .selection, width: width))
+                    .allowsHitTesting(onTrimRangeChanged != nil && endX - startX > Self.handleHitWidth)
+
+                handle(target: .start, x: startX, height: height, width: width)
+                handle(target: .end, x: endX, height: height, width: width)
+
+                if let dragTarget, dragTarget != .selection {
+                    timeBubble(
+                        time: dragTarget == .start ? trimStart : trimEnd,
+                        x: dragTarget == .start ? startX : endX,
+                        width: width
+                    )
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(reduceMotion ? nil : .easeInOut, value: samples)
-                .scaleEffect(x: barsScale, y: 1, anchor: .leading)
-                .offset(x: barsOffset)
-                // The pan/zoom transform must snap instantly to match the live gesture and to
-                // disappear the moment freshly decoded samples land — animating it (e.g. via an
-                // ancestor's `.animation(value:)`) makes the zoomed-in waveform visibly shrink
-                // back to identity before the swap, which reads as "snapping back".
-                .transaction { $0.animation = nil }
-
-                // Progress line (only within [trimStart, trimEnd])
-                if trimEnd > trimStart, progress >= 0, progress <= (trimEnd - trimStart) {
-                    let progressX = position(for: trimStart + progress, in: geo.size.width, inset: insetPixels, effectiveWidth: effectiveWidth)
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.5))
-                        .frame(width: 3, height: geo.size.height)
-                        .position(x: progressX, y: geo.size.height / 2)
-                        .allowsHitTesting(true)
-                }
-
-                // Trim overlays (dimmed regions outside the selected range)
-                trimOverlay(color: Color.accent.opacity(0.8),
-                            from: 0,
-                            to: position(for: trimStart, in: geo.size.width, inset: insetPixels, effectiveWidth: effectiveWidth))
-
-                trimOverlay(color: Color.accent.opacity(0.8),
-                            from: position(for: trimEnd, in: geo.size.width, inset: insetPixels, effectiveWidth: effectiveWidth),
-                            to: geo.size.width)
-
-                // Trim handles
-                trimHandle(
-                    x: position(for: trimStart, in: geo.size.width, inset: insetPixels, effectiveWidth: effectiveWidth),
-                    color: .accent,
-                    systemName: "arrow.left",
-                    onDrag: { x in
-                        // Convert x back to time respecting inset/effectiveWidth
-                        let clampedX = max(insetPixels, min(x, insetPixels + effectiveWidth))
-                        let percent = (clampedX - insetPixels) / effectiveWidth
-                        let newTime = visibleStart + (safeTotalTime * percent)
-                        onTrimStartChanged(newTime.clamped(to: 0...trimEnd))
-                    }
-                )
-
-                trimHandle(
-                    x: position(for: trimEnd, in: geo.size.width, inset: insetPixels, effectiveWidth: effectiveWidth),
-                    color: .accent,
-                    systemName: "arrow.right",
-                    onDrag: { x in
-                        // Convert x back to time respecting inset/effectiveWidth
-                        let clampedX = max(insetPixels, min(x, insetPixels + effectiveWidth))
-                        let percent = (clampedX - insetPixels) / effectiveWidth
-                        let newTime = visibleStart + (safeTotalTime * percent)
-                        onTrimEndChanged(newTime.clamped(to: trimStart...fullDuration))
-                    }
-                )
             }
             .contentShape(Rectangle())
-            .highPriorityGesture(zoomGesture())
-            .gesture(panGesture(width: geo.size.width))
-            .clipped()
+            .gesture(panGesture(width: width))
+            .simultaneousGesture(zoomGesture())
+            .onTapGesture(count: 2) { zoomToSelection() }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .onAppear { viewWidth = width }
+            .onChange(of: width) { _, newValue in viewWidth = newValue }
         }
-        .frame(height: 60)
+        .background {
+            // The waveform owns its backdrop so its contrast never depends on whatever
+            // cover art happens to be blurred behind the sheet.
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.black.opacity(0.55))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+        }
+        .sensoryFeedback(.selection, trigger: dragTarget)
         .onAppear {
             visibleStart = windowStart
             visibleEnd = windowEnd
         }
+        .onDisappear { stopEdgeScroll() }
         .onChange(of: windowStart) { _, newValue in
-            if panBaseWindow == nil && pinchBaseWindow == nil { visibleStart = newValue }
+            if isIdle { visibleStart = newValue }
         }
         .onChange(of: windowEnd) { _, newValue in
-            if panBaseWindow == nil && pinchBaseWindow == nil { visibleEnd = newValue }
+            if isIdle { visibleEnd = newValue }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Clip selection"))
+        .accessibilityValue(Text("From \(Self.accessibilityTime(trimStart)) to \(Self.accessibilityTime(trimEnd))"))
+    }
+
+    private var isIdle: Bool {
+        panBaseWindow == nil && pinchBaseWindow == nil && dragTarget == nil
+    }
+
+    // MARK: - Pieces
+
+    private func bars(width: CGFloat, height: CGFloat) -> some View {
+        let spacing: CGFloat = 1
+        let count = max(samples.count, 1)
+        let barWidth = max((width - spacing * CGFloat(count - 1)) / CGFloat(count), 1)
+        // Transform that maps the bars (laid out for windowStart...windowEnd) onto the
+        // currently visible window, so they slide/scale live under the gesture without
+        // waiting for a reload.
+        let loadedSpan = max(windowEnd - windowStart, 0.0001)
+        let barsScale = loadedSpan / visibleSpan
+        let barsOffset = width * CGFloat((windowStart - visibleStart) / visibleSpan)
+
+        return HStack(spacing: spacing) {
+            ForEach(samples.indices, id: \.self) { index in
+                Capsule()
+                    .fill(barColor(at: index, loadedSpan: loadedSpan))
+                    .frame(width: barWidth, height: max(2, CGFloat(samples[index]) * (height - 8)))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(reduceMotion ? nil : .easeInOut, value: samples)
+        .scaleEffect(x: barsScale, y: 1, anchor: .leading)
+        .offset(x: barsOffset)
+        // The pan/zoom transform must snap instantly to match the live gesture and to
+        // disappear the moment freshly decoded samples land — animating it (e.g. via an
+        // ancestor's `.animation(value:)`) makes the zoomed-in waveform visibly shrink
+        // back to identity before the swap, which reads as "snapping back".
+        .transaction { $0.animation = nil }
+    }
+
+    /// Bars inside the clip are accented, the rest stay a muted grey, so the selection is
+    /// readable even before the scrim is taken into account.
+    private func barColor(at index: Int, loadedSpan: Double) -> Color {
+        let fraction = (Double(index) + 0.5) / Double(max(samples.count, 1))
+        let time = windowStart + fraction * loadedSpan
+        return (time >= trimStart && time <= trimEnd)
+            ? Color.accentColor
+            : Color.white.opacity(0.28)
+    }
+
+    private func scrim(from: CGFloat, to: CGFloat, height: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.45))
+            .frame(width: max(to - from, 0), height: height)
+            .offset(x: from)
+            .allowsHitTesting(false)
+    }
+
+    private func selectionBorder(startX: CGFloat, endX: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .strokeBorder(Color.accentColor.opacity(0.9), lineWidth: 1.5)
+            .frame(width: max(endX - startX, 0), height: height)
+            .offset(x: startX)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func progressIndicator(width: CGFloat, height: CGFloat) -> some View {
+        if trimEnd > trimStart, progress >= 0, progress <= (trimEnd - trimStart) {
+            let progressX = x(for: trimStart + progress, width: width)
+            Capsule()
+                .fill(Color.white)
+                .frame(width: 2, height: height)
+                .offset(x: progressX - 1)
+                .shadow(color: .black.opacity(0.6), radius: 2)
+                .allowsHitTesting(false)
         }
     }
 
+    private func handle(target: DragTarget, x handleX: CGFloat, height: CGFloat, width: CGFloat) -> some View {
+        let isActive = dragTarget == target
+        return ZStack {
+            RoundedRectangle(cornerRadius: Self.handleWidth / 2, style: .continuous)
+                .fill(Color.accentColor)
+                .frame(width: Self.handleWidth, height: height)
+                .overlay {
+                    // Grip lines make the bar read as something you can grab.
+                    VStack(spacing: 3) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Capsule()
+                                .fill(Color.black.opacity(0.45))
+                                .frame(width: 1.5, height: 3)
+                        }
+                    }
+                }
+                .shadow(color: .black.opacity(0.5), radius: 3)
+                .scaleEffect(isActive ? 1.15 : 1, anchor: .center)
+                .animation(reduceMotion ? nil : .spring(duration: 0.2), value: isActive)
+        }
+        .frame(width: Self.handleHitWidth, height: height)
+        .contentShape(Rectangle())
+        .offset(x: handleX - Self.handleHitWidth / 2)
+        .highPriorityGesture(markerDrag(target: target, width: width))
+    }
+
+    private func timeBubble(time: Double, x bubbleX: CGFloat, width: CGFloat) -> some View {
+        Text(Self.shortTime(time))
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.accentColor, in: Capsule())
+            .shadow(color: .black.opacity(0.4), radius: 3)
+            .fixedSize()
+            // A fixed-width box centres the bubble on the marker whatever the digit count is.
+            .frame(width: Self.bubbleBoxWidth)
+            // Keep the bubble inside the view when the marker is near an edge.
+            .offset(
+                x: bubbleX.clamped(to: (Self.bubbleBoxWidth / 2)...max(Self.bubbleBoxWidth / 2, width - Self.bubbleBoxWidth / 2))
+                    - Self.bubbleBoxWidth / 2,
+                y: 4
+            )
+            .allowsHitTesting(false)
+            .transition(.opacity)
+    }
+
+    // MARK: - Marker gestures
+
+    private func markerDrag(target: DragTarget, width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                // A two-finger pinch also feeds the drag recognizer; ignore it so the
+                // markers don't lurch while zooming.
+                guard pinchBaseWindow == nil else { return }
+                if dragTarget != target {
+                    dragTarget = target
+                    windowMovedDuringDrag = false
+                    let grabbedTime = time(forX: value.startLocation.x, width: width)
+                    switch target {
+                    case .start:
+                        grabOffset = trimStart - grabbedTime
+                    case .end:
+                        grabOffset = trimEnd - grabbedTime
+                    case .selection:
+                        grabOffset = trimStart - grabbedTime
+                        grabbedSelectionSpan = max(trimEnd - trimStart, 0)
+                    }
+                }
+                pointerX = value.location.x
+                viewWidth = width
+                applyPointerDrag(width: width)
+                updateEdgeScroll(width: width)
+            }
+            .onEnded { _ in
+                stopEdgeScroll()
+                dragTarget = nil
+                grabOffset = 0
+                if windowMovedDuringDrag {
+                    windowMovedDuringDrag = false
+                    onWindowChanged(visibleStart...visibleEnd)
+                }
+            }
+    }
+
+    /// Maps the current finger position back to a time and moves whatever is being dragged.
+    /// Called both while the finger moves and while the window auto-scrolls under a still finger.
+    private func applyPointerDrag(width: CGFloat) {
+        guard let target = dragTarget else { return }
+        let proposed = time(forX: pointerX, width: width) + grabOffset
+        switch target {
+        case .start:
+            let upper = max(0, trimEnd - Self.minSelectionSpan)
+            onTrimStartChanged(proposed.clamped(to: 0...upper))
+        case .end:
+            let lower = min(trimStart + Self.minSelectionSpan, fullDuration)
+            onTrimEndChanged(proposed.clamped(to: lower...fullDuration))
+        case .selection:
+            guard let onTrimRangeChanged else { return }
+            let span = min(grabbedSelectionSpan, fullDuration)
+            let newStart = proposed.clamped(to: 0...max(0, fullDuration - span))
+            onTrimRangeChanged(newStart, newStart + span)
+        }
+    }
+
+    // MARK: - Edge auto-scroll
+
+    private func updateEdgeScroll(width: CGFloat) {
+        let span = visibleSpan
+        var velocity: Double = 0
+        if pointerX < Self.edgeScrollZone {
+            let intensity = Double((Self.edgeScrollZone - max(pointerX, 0)) / Self.edgeScrollZone).clamped(to: 0...1)
+            velocity = -intensity * span * Self.maxEdgeScrollRate
+        } else if pointerX > width - Self.edgeScrollZone {
+            let intensity = Double((pointerX - (width - Self.edgeScrollZone)) / Self.edgeScrollZone).clamped(to: 0...1)
+            velocity = intensity * span * Self.maxEdgeScrollRate
+        }
+        edgeScrollVelocity = velocity
+        if velocity != 0 {
+            startEdgeScroll()
+        } else {
+            edgeScrollTask?.cancel()
+            edgeScrollTask = nil
+        }
+    }
+
+    private func startEdgeScroll() {
+        guard edgeScrollTask == nil else { return }
+        edgeScrollGeneration += 1
+        let generation = edgeScrollGeneration
+        edgeScrollTask = Task { @MainActor in
+            let step = 1.0 / 60.0
+            while Task.isCancelled == false, dragTarget != nil, edgeScrollVelocity != 0 {
+                try? await Task.sleep(for: .milliseconds(16))
+                if Task.isCancelled { break }
+                let delta = edgeScrollVelocity * step
+                let clamped = clampedWindow(newStart: visibleStart + delta, newEnd: visibleEnd + delta)
+                // Already against the start or end of the episode: nothing left to scroll to.
+                if clamped.start == visibleStart && clamped.end == visibleEnd { break }
+                visibleStart = clamped.start
+                visibleEnd = clamped.end
+                windowMovedDuringDrag = true
+                applyPointerDrag(width: viewWidth)
+            }
+            if edgeScrollGeneration == generation { edgeScrollTask = nil }
+        }
+    }
+
+    private func stopEdgeScroll() {
+        edgeScrollGeneration += 1
+        edgeScrollTask?.cancel()
+        edgeScrollTask = nil
+        edgeScrollVelocity = 0
+    }
+
+    // MARK: - Window gestures
+
     // Pan: drag left/right to scroll the visible window earlier/later in the episode.
     private func panGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 6)
             .onChanged { value in
+                guard dragTarget == nil, pinchBaseWindow == nil, width > 0 else { return }
                 let base = panBaseWindow ?? (visibleStart, visibleEnd)
                 if panBaseWindow == nil { panBaseWindow = base }
-                guard width > 0 else { return }
                 let span = base.end - base.start
                 let timePerPixel = span / Double(width)
                 // Dragging right reveals earlier content; dragging left reveals later content.
@@ -158,30 +399,57 @@ struct WaveformView: View {
                 visibleEnd = clamped.end
             }
             .onEnded { _ in
+                guard panBaseWindow != nil else { return }
                 panBaseWindow = nil
                 onWindowChanged(visibleStart...visibleEnd)
             }
     }
 
-    // Pinch: zoom the visible window in/out around its center to select more precisely or span more time.
+    // Pinch: zoom in/out around the point between the fingers, so the moment under the
+    // pinch stays put instead of drifting toward the centre.
     private func zoomGesture() -> some Gesture {
-        MagnificationGesture()
+        MagnifyGesture()
             .onChanged { value in
                 let base = pinchBaseWindow ?? (visibleStart, visibleEnd)
-                if pinchBaseWindow == nil { pinchBaseWindow = base }
+                if pinchBaseWindow == nil {
+                    pinchBaseWindow = base
+                    // A pinch beats an in-flight marker drag.
+                    stopEdgeScroll()
+                    dragTarget = nil
+                    panBaseWindow = nil
+                }
                 let originalSpan = base.end - base.start
-                let center = (base.start + base.end) / 2
+                let anchor = Double(value.startAnchor.x).clamped(to: 0...1)
+                let anchorTime = base.start + originalSpan * anchor
                 let minSpan = min(Self.minWindowSpan, fullDuration)
                 let maxSpan = max(fullDuration, minSpan)
-                let newSpan = (originalSpan / max(Double(value), 0.01)).clamped(to: minSpan...maxSpan)
-                let clamped = clampedWindow(newStart: center - newSpan / 2, newEnd: center + newSpan / 2)
+                let newSpan = (originalSpan / max(value.magnification, 0.01)).clamped(to: minSpan...maxSpan)
+                let clamped = clampedWindow(
+                    newStart: anchorTime - newSpan * anchor,
+                    newEnd: anchorTime + newSpan * (1 - anchor)
+                )
                 visibleStart = clamped.start
                 visibleEnd = clamped.end
             }
             .onEnded { _ in
+                guard pinchBaseWindow != nil else { return }
                 pinchBaseWindow = nil
                 onWindowChanged(visibleStart...visibleEnd)
             }
+    }
+
+    /// Double tap: frame the current selection with a little air on either side.
+    private func zoomToSelection() {
+        let selection = max(trimEnd - trimStart, Self.minSelectionSpan)
+        let minSpan = min(Self.minWindowSpan, fullDuration)
+        let span = (selection * 1.3).clamped(to: minSpan...max(fullDuration, minSpan))
+        let center = (trimStart + trimEnd) / 2
+        let clamped = clampedWindow(newStart: center - span / 2, newEnd: center + span / 2)
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            visibleStart = clamped.start
+            visibleEnd = clamped.end
+        }
+        onWindowChanged(clamped.start...clamped.end)
     }
 
     // Keeps a proposed window within 0...fullDuration without changing its span, unless the span itself doesn't fit.
@@ -202,35 +470,30 @@ struct WaveformView: View {
         return (start, end)
     }
 
-    // Helper: position for a time value with inset-aware mapping, relative to the live visible window
-    func position(for time: Double, in width: CGFloat, inset: CGFloat, effectiveWidth: CGFloat) -> CGFloat {
-        let total = max(visibleEnd - visibleStart, 0.0001)
-        let percent = CGFloat((time - visibleStart) / total)
-        return inset + percent * effectiveWidth
+    // MARK: - Coordinate mapping
+
+    /// Horizontal position of a time within the live visible window.
+    private func x(for time: Double, width: CGFloat) -> CGFloat {
+        CGFloat((time - visibleStart) / visibleSpan) * width
     }
 
-    // Trim overlay
-    func trimOverlay(color: Color, from: CGFloat, to: CGFloat) -> some View {
-        Rectangle()
-            .fill(color)
-            .frame(width: max(to - from, 0), height: 60)
-            .position(x: from + (to-from)/2, y: 30)
+    /// Time at a horizontal position within the live visible window.
+    private func time(forX x: CGFloat, width: CGFloat) -> Double {
+        visibleStart + Double(x / max(width, 1)) * visibleSpan
     }
 
-    // Trim handle
-    func trimHandle(x: CGFloat, color: Color, systemName: String, onDrag: @escaping (CGFloat) -> Void) -> some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(color)
-            .frame(width: 5, height: 60)
-            // .overlay(Image(systemName: systemName).foregroundColor(.black))
-            .position(x: x, y: 30)
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        onDrag(value.location.x)
-                    }
-            )
-            .shadow(radius: 2)
+    // MARK: - Formatting
+
+    private static func shortTime(_ time: Double) -> String {
+        let total = Int(time.rounded())
+        if total >= 3600 {
+            return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+        }
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    private static func accessibilityTime(_ time: Double) -> String {
+        Duration.seconds(max(time, 0)).formatted(.time(pattern: .minuteSecond))
     }
 }
 
