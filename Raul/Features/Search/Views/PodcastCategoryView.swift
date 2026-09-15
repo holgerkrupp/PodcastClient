@@ -5,6 +5,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct PodcastCategoryView: View {
     @StateObject private var viewModel: CategoryPodcastViewModel

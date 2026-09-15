@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 @MainActor
 final class IncomingPodcastSubscriptionController: ObservableObject {

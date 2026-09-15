@@ -69,17 +69,22 @@ struct ListenTogetherInvitation: Transferable {
 private final class ListenTogetherCoordinatorDelegate: NSObject, AVPlayerPlaybackCoordinatorDelegate, Sendable {
     private let currentEpisodeIdentifier = Mutex<String?>(nil)
 
-    func setCurrentEpisodeURL(_ url: URL?) {
-        currentEpisodeIdentifier.withLock { $0 = url?.absoluteString }
+    /// The coordinator calls the delegate from its own queue, and
+    /// `AVPlayerItem.asset` is main actor-isolated, so the identifier -
+    /// including the asset-URL fallback AVFoundation would use by itself - is
+    /// resolved here, on the main actor, and only read back in the callback.
+    @MainActor
+    func setCurrentEpisode(url: URL?, in player: AVPlayer) {
+        let identifier = url?.absoluteString
+            ?? (player.currentItem?.asset as? AVURLAsset)?.url.absoluteString
+        currentEpisodeIdentifier.withLock { $0 = identifier }
     }
 
     func playbackCoordinator(
         _ coordinator: AVPlayerPlaybackCoordinator,
         identifierFor playerItem: AVPlayerItem
     ) -> String {
-        currentEpisodeIdentifier.withLock { $0 }
-            ?? (playerItem.asset as? AVURLAsset)?.url.absoluteString
-            ?? ""
+        currentEpisodeIdentifier.withLock { $0 } ?? ""
     }
 }
 
@@ -121,8 +126,8 @@ final class ListenTogetherController {
 
         let player = Player.shared
         player.isInSharedListeningSession = true
-        coordinatorDelegate.setCurrentEpisodeURL(player.currentEpisodeURL)
         let avPlayer = player.videoPlayer
+        coordinatorDelegate.setCurrentEpisode(url: player.currentEpisodeURL, in: avPlayer)
         avPlayer.playbackCoordinator.delegate = coordinatorDelegate
         avPlayer.playbackCoordinator.coordinateWithSession(newSession)
 
@@ -175,7 +180,7 @@ final class ListenTogetherController {
     }
 
     private func localEpisodeDidChange(to episodeURL: URL?) {
-        coordinatorDelegate.setCurrentEpisodeURL(episodeURL)
+        coordinatorDelegate.setCurrentEpisode(url: episodeURL, in: Player.shared.videoPlayer)
         guard let session,
               let episodeURL,
               episodeURL != session.activity.episodeURL,

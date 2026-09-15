@@ -298,11 +298,11 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         }
 
         let actor = EpisodeActor(modelContainer: fixture.container)
-        try await actor.decodeAndSetTranscript(
+        _ = try await actor.decodeAndSetTranscript(
             for: episodeURL,
             vtt: makeVTT(lineCount: 100)
         )
-        try await actor.decodeAndSetTranscript(
+        _ = try await actor.decodeAndSetTranscript(
             for: episodeURL,
             vtt: makeVTT(lineCount: 2_000)
         )
@@ -334,13 +334,13 @@ final class EpisodeChapterIngestionTests: XCTestCase {
             let end = String(format: "%02d:%02d:%02d.500", (index + 1) / 3600, ((index + 1) / 60) % 60, (index + 1) % 60)
             vtt += "\(start) --> \(end)\nLine \(index)\n\n"
         }
-        try await actor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
+        _ = try await actor.decodeAndSetTranscript(for: episodeURL, vtt: vtt)
 
         XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count, 2_000)
         try await actor.deleteTranscript(for: episodeURL)
         XCTAssertEqual(try fetchEpisode(in: fixture.container, url: episodeURL).transcriptLines?.count ?? 0, 0)
 
-        try await actor.decodeAndSetTranscript(
+        _ = try await actor.decodeAndSetTranscript(
             for: episodeURL,
             vtt: """
             WEBVTT

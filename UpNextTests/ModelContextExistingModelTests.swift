@@ -73,7 +73,7 @@ final class ModelContextExistingModelTests: XCTestCase {
 
     func testExistingModelsOnAnEmptyBatchDoesNotFetch() throws {
         let context = try makeContext()
-        insertPodcast("only", in: context)
+        _ = insertPodcast("only", in: context)
         try context.save()
 
         let resolved: [PersistentIdentifier: Podcast] = context.existingModels(for: [])

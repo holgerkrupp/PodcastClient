@@ -107,7 +107,7 @@ struct FastExportClipIntent: ProgressReportingIntent {
             }
 
             // 4. Wrap the generated media asset into an IntentFile
-            let clipName = "\(currentEpisode.title ?? "Clip")-\(Int(trimStart))s"
+            let clipName = "\(currentEpisode.title)-\(Int(trimStart))s"
             let intentFile = IntentFile(fileURL: generatedURL, filename: "\(clipName).mp4")
             
             // 5. Speak back confirmation and hand the physical file directly over to Siri/Shortcuts

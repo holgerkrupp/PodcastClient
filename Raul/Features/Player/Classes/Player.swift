@@ -1111,7 +1111,7 @@ class Player {
 
         Task { [weak self] in
             guard let self else { return }
-            await self.engine.setBoundaryTimeObserver(at: chapterStartTimes) { [weak self] in
+            self.engine.setBoundaryTimeObserver(at: chapterStartTimes) { [weak self] in
                 Task { @MainActor [weak self] in
                     await self?.handleChapterBoundary()
                 }
@@ -1133,7 +1133,7 @@ class Player {
     private func handleChapterBoundary() async {
         guard currentPlaybackSource != .liveRemote else { return }
 
-        let currentTime = sanitizedPosition(await engine.currentTime())
+        let currentTime = sanitizedPosition(engine.currentTime())
         playPosition = chapterEvaluationPosition(for: currentTime, snappingToUpcomingBoundary: true)
 
         guard chapters?.isEmpty == false else { return }
@@ -1369,7 +1369,7 @@ class Player {
         guard currentEpisodeURL != nil else { return }
         guard currentPlaybackSource != .liveRemote else { return }
 
-        playPosition = sanitizedPosition(await engine.currentTime())
+        playPosition = sanitizedPosition(engine.currentTime())
         if currentEpisode?.chapters?.isEmpty == false {
             _ = updateCurrentChapter()
             updateChapterProgress()
@@ -1479,7 +1479,7 @@ class Player {
             return nil
         }
 
-        playPosition = sanitizedPosition(await engine.currentTime())
+        playPosition = sanitizedPosition(engine.currentTime())
         if currentEpisode?.chapters?.isEmpty == false {
             _ = updateCurrentChapter()
             updateChapterProgress()
@@ -1748,9 +1748,9 @@ class Player {
             }
         }
 
-        await engine.pause()
+        engine.pause()
         await resetPlaybackAudioProcessing(for: item)
-        await engine.replaceCurrentItem(with: item)
+        engine.replaceCurrentItem(with: item)
         configureChapterBoundaryObserver()
         configureOutroBoundaryObserver()
         schedulePlaybackAudioProcessing(
@@ -1841,7 +1841,7 @@ class Player {
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
         await resetPlaybackAudioProcessing(for: playback.item)
-        await engine.replaceCurrentItem(with: playback.item)
+        engine.replaceCurrentItem(with: playback.item)
         configureChapterBoundaryObserver()
         if let episodeURL = currentEpisodeURL {
             schedulePlaybackAudioProcessing(
@@ -1905,7 +1905,7 @@ class Player {
 
         let item = AVPlayerItem(url: url)
         await resetPlaybackAudioProcessing(for: item)
-        await engine.replaceCurrentItem(with: item)
+        engine.replaceCurrentItem(with: item)
         setupStaticNowPlayingInfo()
         play()
         isPlayerSheetPresented = true
@@ -1996,7 +1996,7 @@ class Player {
         restartSleepTimerIfNeeded()
 
         guard currentEpisodeURL != nil else { return }
-        playPosition = sanitizedPosition(await engine.currentTime())
+        playPosition = sanitizedPosition(engine.currentTime())
         if currentEpisode?.chapters?.isEmpty == false {
             _ = updateCurrentChapter()
             updateChapterProgress()
@@ -2083,7 +2083,7 @@ class Player {
         updateNowPlayingInfo()
         Task {
             if pauseEngine {
-                await engine.pause()
+                engine.pause()
             }
             await captureCurrentPlaybackStateFromEngine(force: true)
 
@@ -2096,33 +2096,31 @@ class Player {
     }
     
     func listenToEvent() {
-        Task {
-            await engine.setInterruptionHandler { [weak self] event in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    switch event {
-                    case .began:
-                        self.wasPlayingBeforeInterruption = self.isPlaying
-                        self.handleInterruptionBegan()
-                    case .pause:
-                        self.pause()
-                    case .ended:
-                        self.wasPlayingBeforeInterruption = false
-                        BasicLogger.shared.log("Interruption Ended Without Resume")
-                    case .resume:
-                        let shouldResume = self.wasPlayingBeforeInterruption
-                        self.wasPlayingBeforeInterruption = false
-                        if shouldResume {
-                            self.resumeAfterInterruption()
-                        }
-                    case .activationFailed(let description):
-                        BasicLogger.shared.log("Audio Session Activation Failed: \(description)")
-                        if self.isPlaying {
-                            self.transitionToPaused(pauseEngine: true)
-                        }
-                    case .finished:
-                        self.handlePlaybackEndedEvent(source: "interruption_finished_event")
+        engine.setInterruptionHandler { [weak self] event in
+            Task { @MainActor in
+                guard let self else { return }
+                switch event {
+                case .began:
+                    self.wasPlayingBeforeInterruption = self.isPlaying
+                    self.handleInterruptionBegan()
+                case .pause:
+                    self.pause()
+                case .ended:
+                    self.wasPlayingBeforeInterruption = false
+                    BasicLogger.shared.log("Interruption Ended Without Resume")
+                case .resume:
+                    let shouldResume = self.wasPlayingBeforeInterruption
+                    self.wasPlayingBeforeInterruption = false
+                    if shouldResume {
+                        self.resumeAfterInterruption()
                     }
+                case .activationFailed(let description):
+                    BasicLogger.shared.log("Audio Session Activation Failed: \(description)")
+                    if self.isPlaying {
+                        self.transitionToPaused(pauseEngine: true)
+                    }
+                case .finished:
+                    self.handlePlaybackEndedEvent(source: "interruption_finished_event")
                 }
             }
         }
@@ -2200,7 +2198,7 @@ class Player {
         if protectLargeSeek,
            pendingSkipProtectionOrigin == nil,
            let episodeURL = currentEpisodeURL {
-            let enginePosition = sanitizedPosition(await engine.currentTime())
+            let enginePosition = sanitizedPosition(engine.currentTime())
             if let origin = currentSkipProtectionOrigin(position: enginePosition),
                SkipProtectionPolicy.shouldOfferUndo(
                 from: origin.episodeURL,
@@ -2249,7 +2247,7 @@ class Player {
         stopPlaybackUpdates()
         playbackTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let stream = await engine.playbackStream(interval: playbackPowerMode.progressUpdateInterval)
+            let stream = engine.playbackStream(interval: playbackPowerMode.progressUpdateInterval)
             for await event in stream {
                 guard !Task.isCancelled else { break }
                 switch event {
@@ -2264,8 +2262,8 @@ class Player {
                         break
                     }
                 case .ended:
-                    let finalPosition = await engine.currentTime()
-                    let itemDuration = await engine.currentItemDuration()
+                    let finalPosition = engine.currentTime()
+                    let itemDuration = engine.currentItemDuration()
                     self.handlePlaybackEndedEvent(
                         source: "player_engine_stream",
                         observedPosition: finalPosition,
@@ -2512,8 +2510,8 @@ class Player {
                 finishingEpisodeURL = nil
             }
 
-            Task(priority: .utility) { [weak self] in
-                await self?.finalizeFinishedEpisode(
+            Task(priority: .utility) {
+                await self.finalizeFinishedEpisode(
                     episodeURL: finishedEpisodeURL,
                     finalPlaybackPosition: finalPlaybackPosition
                 )
@@ -2609,7 +2607,7 @@ class Player {
         let playbackGeneration = advancePlaybackLoadGeneration()
 
         await resetPlaybackAudioProcessing(for: replacementItem)
-        await engine.replaceCurrentItem(with: replacementItem)
+        engine.replaceCurrentItem(with: replacementItem)
         currentPlaybackSource = .local
         if let episodeURL = currentEpisodeURL {
             schedulePlaybackAudioProcessing(

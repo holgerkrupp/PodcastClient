@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct PodcastSearchView: View {
     @StateObject private var viewModel = PodcastSearchViewModel()

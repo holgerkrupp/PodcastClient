@@ -546,7 +546,7 @@ private extension AudioClipExporter {
     }
 
     static func platformAccentColor() -> CGColor {
-        NSColor.controlAccentColor.cgColor ?? NSColor.systemBlue.cgColor
+        NSColor.controlAccentColor.cgColor
     }
 
     static func platformMonospacedFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {

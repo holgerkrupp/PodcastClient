@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var context

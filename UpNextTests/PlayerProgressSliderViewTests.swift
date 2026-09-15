@@ -1,6 +1,7 @@
 import XCTest
 @testable import UpNext
 
+@MainActor
 final class PlayerProgressSliderViewTests: XCTestCase {
     func testChapterMarkerPositionsUseProvidedDuration() {
         let intro = Marker(start: 15, title: "Intro")

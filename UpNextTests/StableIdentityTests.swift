@@ -1039,9 +1039,6 @@ final class StableIdentityTests: XCTestCase {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
             isStoredInMemoryOnly: true
         )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
-            isStoredInMemoryOnly: true
-        )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
             isStoredInMemoryOnly: true
         )
@@ -1152,9 +1149,6 @@ final class StableIdentityTests: XCTestCase {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
             isStoredInMemoryOnly: true
         )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
-            isStoredInMemoryOnly: true
-        )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
             isStoredInMemoryOnly: true
         )
@@ -1226,9 +1220,6 @@ final class StableIdentityTests: XCTestCase {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
             isStoredInMemoryOnly: true
         )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
-            isStoredInMemoryOnly: true
-        )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
             isStoredInMemoryOnly: true
         )
@@ -1293,9 +1284,6 @@ final class StableIdentityTests: XCTestCase {
     @MainActor
     func testAIContentImporterFindsEpisodeByEnclosureURLWithoutGUID() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
-            isStoredInMemoryOnly: true
-        )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
@@ -1363,9 +1351,6 @@ final class StableIdentityTests: XCTestCase {
     @MainActor
     func testAITranscriptTombstoneRemovesGeneratedTranscriptButPreservesPublisherTranscript() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
-            isStoredInMemoryOnly: true
-        )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(

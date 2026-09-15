@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import SwiftData
+import ESADesignKit
 import Combine
 
 struct EpisodeRowView: View {

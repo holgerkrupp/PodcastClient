@@ -80,8 +80,8 @@ final class PlayerEngine {
 
 #if os(iOS)
          Task {
-             await self.addInterruptionObserver()
-             await self.addRouteChangeObserver()
+             self.addInterruptionObserver()
+             self.addRouteChangeObserver()
          }
 #endif
         
