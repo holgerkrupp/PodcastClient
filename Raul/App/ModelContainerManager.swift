@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import Synchronization
 import CloudKitSyncMonitor
 #if canImport(UIKit)
 import UIKit
@@ -36,7 +37,7 @@ class ModelContainerManager: ObservableObject {
 #if DEBUG
     @Published private(set) var developmentResetRequiresRelaunch = false
 #endif
-    private var preparationTask: Task<ModelContainer, Error>?
+    private var preparationTask: Task<RuntimeContainerPreparation, Error>?
     private var splitStorePreparationTask: Task<SplitStoreContainers, Never>?
     /// Set while a `BGProcessingTask` is driving the migration. iOS has granted a
     /// time budget in that window, so the "app is backgrounded" stop condition
@@ -227,35 +228,90 @@ class ModelContainerManager: ObservableObject {
     }
 #endif
 
-    
+    /// What opening the runtime store produces. `requiresInitialCloudImport` is
+    /// decided from the same off-main pass, because it has to be read *before*
+    /// the open creates the store file.
+    struct RuntimeContainerPreparation: Sendable {
+        let container: ModelContainer
+        let requiresInitialCloudImport: Bool
+    }
+
+    /// Holds the open started by `startEagerContainerPreparation` until
+    /// `prepareContainer` adopts it. Deliberately not main-actor state: the
+    /// point is to start the open while the main thread is still busy.
+    nonisolated private static let eagerPreparationTask =
+        Mutex<Task<RuntimeContainerPreparation, Error>?>(nil)
+
+    /// Starts opening the runtime store as soon as the process is up, rather
+    /// than waiting for SwiftUI to render the launch view and run its `.task`.
+    /// Opening the store is the long pole of launch and needs nothing from the
+    /// UI, so it should overlap the first render instead of following it.
+    ///
+    /// The work must not be hopped through the main actor to get here: during
+    /// launch the main thread is building the first frame, so a
+    /// `Task { @MainActor }` would not run until after the render this is meant
+    /// to overlap - measured as no improvement at all.
+    ///
+    /// Idempotent. `prepareContainer` adopts this task rather than opening the
+    /// store a second time.
+    nonisolated static func startEagerContainerPreparation() {
+        eagerPreparationTask.withLock { slot in
+            guard slot == nil else { return }
+            slot = makeRuntimeContainerPreparationTask()
+        }
+    }
+
+    nonisolated private static func takeEagerPreparationTask()
+    -> Task<RuntimeContainerPreparation, Error>? {
+        eagerPreparationTask.withLock { slot in
+            defer { slot = nil }
+            return slot
+        }
+    }
+
+    /// The order inside this task is load-bearing and matches what used to run
+    /// on the main actor: the rollout promotion first (it flips the live
+    /// `newStoreReadsEnabled`), then the "is this a fresh install" check, which
+    /// is only meaningful while the store file does not exist yet, then the
+    /// open itself.
+    nonisolated private static func makeRuntimeContainerPreparationTask()
+    -> Task<RuntimeContainerPreparation, Error> {
+        Task.detached(priority: .userInitiated) {
+            CrashBreadcrumbs.shared.record("model_container_initialization_started")
+#if !DEBUG
+            _ = Self.promoteRolloutForCompletedSplitStoreMigrationIfNeeded()
+#endif
+            let requiresInitialCloudImport =
+                StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                && (Self.sharedStoreURL.map {
+                    !FileManager.default.fileExists(atPath: $0.path)
+                } ?? false)
+            return RuntimeContainerPreparation(
+                container: try Self.makeRuntimeContainer(),
+                requiresInitialCloudImport: requiresInitialCloudImport
+            )
+        }
+    }
+
     func prepareContainer() async {
         guard preparedContainer == nil else { return }
 
-        let task: Task<ModelContainer, Error>
+        let task: Task<RuntimeContainerPreparation, Error>
         if let preparationTask {
             task = preparationTask
         } else {
             isInitializing = true
             initializationError = nil
-#if !DEBUG
-            Self.promoteRolloutForCompletedSplitStoreMigrationIfNeeded()
-#endif
-            requiresInitialCloudImport =
-                StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-                && (Self.sharedStoreURL.map {
-                    !FileManager.default.fileExists(atPath: $0.path)
-                } ?? false)
-            CrashBreadcrumbs.shared.record("model_container_initialization_started")
-
-            let newTask = Task.detached(priority: .userInitiated) {
-                try Self.makeRuntimeContainer()
-            }
+            let newTask = Self.takeEagerPreparationTask()
+                ?? Self.makeRuntimeContainerPreparationTask()
             preparationTask = newTask
             task = newTask
         }
 
         do {
-            let preparedContainer = try await task.value
+            let preparation = try await task.value
+            let preparedContainer = preparation.container
+            requiresInitialCloudImport = preparation.requiresInitialCloudImport
             if self.preparedContainer == nil {
                 self.preparedContainer = preparedContainer
                 CrashBreadcrumbs.shared.record("model_container_initialization_completed")

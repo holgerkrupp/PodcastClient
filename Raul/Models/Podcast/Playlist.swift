@@ -169,6 +169,20 @@ class Playlist {
     var sortIndex: Int = 0
     var kindRawValue: String = Kind.manual.rawValue
     var smartFilter: SmartPlaylistFilter?
+    /// Keep the episodes of this playlist downloaded without waiting for the
+    /// per-podcast auto-download policy, which only ever considers a show's
+    /// newest or oldest unplayed episodes.
+    var autoDownloadEnabled: Bool = false
+    /// How many of the playlist's episodes, counted from the top, are kept
+    /// downloaded. `nil` downloads every episode in the playlist.
+    var autoDownloadEpisodeLimit: Int?
+    /// Whether finishing an episode somewhere else also drops it from this
+    /// playlist. On by default, which is how every playlist behaved before the
+    /// setting existed: a played episode is not a playlist member.
+    ///
+    /// Turning it off lets a playlist keep an episode it shares with another
+    /// playlist — a favourites or re-listen list — after it was played there.
+    var removesEpisodesPlayedElsewhere: Bool = true
 
     @Relationship var items: [PlaylistEntry]? = [] // we need to ensure that we can create an ordered list. Swiftdata won't ensure that the items are kept in the same order without manually managing that.
 
@@ -201,6 +215,20 @@ class Playlist {
 
     var isSmartPlaylist: Bool {
         kind == .smart
+    }
+
+    static let autoDownloadEpisodeLimitRange = 1...50
+    static let defaultAutoDownloadEpisodeLimit = 5
+
+    /// The limit the download policy actually applies. `nil` means "no limit",
+    /// and a stored value is clamped so an out-of-range import can never make
+    /// the policy download nothing at all.
+    var resolvedAutoDownloadEpisodeLimit: Int? {
+        guard let autoDownloadEpisodeLimit else { return nil }
+        return min(
+            max(autoDownloadEpisodeLimit, Self.autoDownloadEpisodeLimitRange.lowerBound),
+            Self.autoDownloadEpisodeLimitRange.upperBound
+        )
     }
 
     var displayTitle: String {
@@ -279,7 +307,10 @@ class Playlist {
             defaultPlaylist.sortIndex = 0
             changed = true
         }
-        if defaultPlaylist.symbolName.isEmpty || defaultPlaylist.symbolName == defaultManualSymbolName {
+        // Only fill in a missing icon. This runs on every launch, so matching the
+        // generic list symbol here as well would make it impossible to ever pick
+        // that icon for the built-in queue in playlist settings.
+        if defaultPlaylist.symbolName.isEmpty {
             defaultPlaylist.symbolName = defaultQueueSymbolName
             changed = true
         }

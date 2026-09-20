@@ -131,6 +131,9 @@ final class PlaylistSync: Identifiable {
     var kindRawValue: String = ""
     var smartFilterRawValue: String?
     var isHidden: Bool = false
+    var autoDownloadEnabled: Bool = false
+    var autoDownloadEpisodeLimit: Int?
+    var removesEpisodesPlayedElsewhere: Bool = true
     var isDeleted: Bool = false
     var deletedAt: Date?
     var createdAt: Date = Date.distantPast
@@ -145,6 +148,9 @@ final class PlaylistSync: Identifiable {
         kindRawValue: String,
         smartFilterRawValue: String? = nil,
         isHidden: Bool = false,
+        autoDownloadEnabled: Bool = false,
+        autoDownloadEpisodeLimit: Int? = nil,
+        removesEpisodesPlayedElsewhere: Bool = true,
         isDeleted: Bool = false,
         deletedAt: Date? = nil,
         createdAt: Date = .now,
@@ -158,6 +164,9 @@ final class PlaylistSync: Identifiable {
         self.kindRawValue = kindRawValue
         self.smartFilterRawValue = smartFilterRawValue
         self.isHidden = isHidden
+        self.autoDownloadEnabled = autoDownloadEnabled
+        self.autoDownloadEpisodeLimit = autoDownloadEpisodeLimit
+        self.removesEpisodesPlayedElsewhere = removesEpisodesPlayedElsewhere
         self.isDeleted = isDeleted
         self.deletedAt = deletedAt
         self.createdAt = createdAt

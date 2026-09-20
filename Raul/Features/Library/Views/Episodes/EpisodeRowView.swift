@@ -61,7 +61,7 @@ struct EpisodeRowView: View {
         VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
-                        CoverImageView(episode: episode)
+                        CoverImageView(episode: episode, maxPixelSize: 512)
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
 
@@ -163,7 +163,8 @@ struct EpisodeRowView: View {
         .background {
             BlurredCoverImageView(
                 imageURL: episode.imageURL ?? episode.podcast?.imageURL,
-                radius: 8
+                radius: 8,
+                maxPixelSize: 512
             )
             .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
             .clipped()

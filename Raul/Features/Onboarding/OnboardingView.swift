@@ -8,6 +8,7 @@ enum OnboardingPreferenceKeys {
 
 struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedPage = 0
 
     private let requiresInitialCloudImport: Bool
     private let modelContainer: ModelContainer?
@@ -64,39 +65,80 @@ struct OnboardingView: View {
         )
     ]
 
+    private var pageCount: Int {
+        pages.count + (requiresInitialCloudImport && modelContainer != nil ? 1 : 0)
+    }
+
     var body: some View {
         NavigationStack {
-            TabView {
-                ForEach(pages) { page in
+            pageContent
+                .navigationTitle("Getting Started")
+                .platformInlineNavigationTitle()
+                .safeAreaInset(edge: .bottom) {
+                    HStack {
+                        HStack {
+                            ForEach(0..<pageCount, id: \.self) { index in
+                                Button {
+                                    withAnimation { selectedPage = index }
+                                } label: {
+                                    Image(systemName: selectedPage == index ? "circle.fill" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(selectedPage == index ? Color.accentColor : .secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Page \(index + 1) of \(pageCount)")
+                                .accessibilityAddTraits(selectedPage == index ? .isSelected : [])
+                            }
+                        }
+
+                        Spacer()
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Start Listening")
+                                .font(.headline)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var pageContent: some View {
+        #if os(macOS)
+        ZStack {
+            ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
+                if selectedPage == index {
                     OnboardingPageView(page: page)
                 }
-
-                if requiresInitialCloudImport, let modelContainer {
-                    OnboardingCloudSyncPageView(modelContainer: modelContainer)
-                }
             }
-            .navigationTitle("Getting Started")
-            .platformInlineNavigationTitle()
-            .safeAreaInset(edge: .bottom) {
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Start Listening")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .padding(.horizontal)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-                .background(.thinMaterial)
+
+            if selectedPage == pages.count, requiresInitialCloudImport, let modelContainer {
+                OnboardingCloudSyncPageView(modelContainer: modelContainer)
             }
         }
+        #else
+        TabView(selection: $selectedPage) {
+            ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
+                OnboardingPageView(page: page)
+                    .tag(index)
+            }
+
+            if requiresInitialCloudImport, let modelContainer {
+                OnboardingCloudSyncPageView(modelContainer: modelContainer)
+                    .tag(pages.count)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        #endif
     }
 }
 
-private struct OnboardingPage: Identifiable {
-    let id = UUID()
+private struct OnboardingPage {
     let title: String
     let summary: String
     let systemImage: String
@@ -108,48 +150,54 @@ private struct OnboardingPageView: View {
     let page: OnboardingPage
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 26) {
+        GeometryReader { geometry in
+            ViewThatFits(in: .vertical) {
+                content
+                ScrollView { content }
+            }
+            .frame(maxWidth: min(geometry.size.width, geometry.size.height) * 0.9)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading) {
+            HStack {
                 Image(systemName: page.systemImage)
-                    .font(.system(size: 76, weight: .semibold))
+                    .font(.largeTitle)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(page.tint)
-                    .frame(width: 120, height: 120)
-                    .background(page.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-                    .padding(.top, 34)
+                    .padding()
+                    .background(page.tint.opacity(0.12), in: .circle)
 
-                VStack(spacing: 10) {
-                    Text(page.title)
-                        .font(.largeTitle.bold())
-                        .multilineTextAlignment(.center)
+                Text(page.title)
+                    .font(.title.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom)
 
-                    Text(page.summary)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            Text(page.summary)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom)
 
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(page.bullets, id: \.self) { bullet in
-                        Label {
-                            Text(bullet)
-                                .font(.body)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(page.tint)
-                        }
+            VStack(alignment: .leading) {
+                ForEach(page.bullets, id: \.self) { bullet in
+                    Label {
+                        Text(bullet)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(page.tint)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                Spacer(minLength: 90)
             }
-            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding()
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -235,55 +283,61 @@ private struct OnboardingCloudSyncPageView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 26) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 76, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(tint)
-                    .frame(width: 120, height: 120)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-                    .symbolEffect(.rotate, options: .repeating, isActive: !isComplete && !hasBlockingProblem)
-                    .padding(.top, 34)
-
-                VStack(spacing: 10) {
-                    Text(title)
-                        .font(.largeTitle.bold())
-                        .multilineTextAlignment(.center)
-
-                    Text(summary)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if !isComplete && !hasBlockingProblem {
-                    VStack(spacing: 8) {
-                        if let estimatedProgress {
-                            ProgressView(value: estimatedProgress)
-                                .progressViewStyle(.linear)
-
-                            Text("\(localRecordCount.formatted()) of about \(referenceRecordCount?.formatted() ?? "0") records")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ProgressView()
-                                .progressViewStyle(.linear)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(18)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-
-                Spacer(minLength: 90)
+        GeometryReader { geometry in
+            ViewThatFits(in: .vertical) {
+                content
+                ScrollView { content }
             }
-            .padding(.horizontal, 24)
+            .frame(maxWidth: min(geometry.size.width, geometry.size.height) * 0.9)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task {
             await updateEstimatedProgress()
         }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Image(systemName: systemImage)
+                    .font(.largeTitle)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(tint)
+                    .symbolEffect(.rotate, options: .repeating, isActive: !isComplete && !hasBlockingProblem)
+                    .padding()
+                    .background(tint.opacity(0.12), in: .circle)
+
+                Text(title)
+                    .font(.title.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom)
+
+            Text(summary)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !isComplete && !hasBlockingProblem {
+                VStack {
+                    if let estimatedProgress {
+                        ProgressView(value: estimatedProgress)
+                            .progressViewStyle(.linear)
+
+                        Text("\(localRecordCount.formatted()) of about \(referenceRecordCount?.formatted() ?? "0") records")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(.linear)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top)
+            }
+        }
+        .padding()
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func updateEstimatedProgress() async {

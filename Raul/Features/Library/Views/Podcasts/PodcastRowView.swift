@@ -47,6 +47,7 @@ struct PodcastRowView: View {
             HStack(spacing: 14) {
                 CoverImageView(
                     podcast: podcast,
+                    maxPixelSize: 512,
                     loadDelay: .milliseconds(200)
                 )
                     .frame(width: artworkSize, height: artworkSize)

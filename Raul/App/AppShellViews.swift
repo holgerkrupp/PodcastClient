@@ -3,12 +3,23 @@ import SwiftUI
 
 struct CompactAppShell: View {
     @Bindable var navigation: AppNavigationModel
+    @Bindable private var player = Player.shared
     let inboxCount: Int
     let playlistTitle: String
     let playlistSymbolName: String
     @Binding var search: String
 
     var body: some View {
+        Group {
+            if player.currentEpisode != nil {
+                compactTabView.platformPlayerAccessory()
+            } else {
+                compactTabView
+            }
+        }
+    }
+
+    private var compactTabView: some View {
         TabView(selection: $navigation.selectedSection) {
             Tab(LocalizedStringKey(playlistTitle), systemImage: playlistSymbolName, value: AppSection.queue) {
                 AppSectionHost(section: .queue, navigation: navigation, search: $search)
@@ -32,7 +43,6 @@ struct CompactAppShell: View {
         // Selecting the search tab turns it into the search field instead of
         // just switching to the Add page with a collapsed field.
         .tabViewSearchActivation(.searchTabSelection)
-        .platformPlayerAccessory()
     }
 }
 
@@ -42,6 +52,10 @@ struct SidebarAppShell: View {
     @Binding var search: String
 
     var body: some View {
+        // `NavigationSplitView` intentionally owns column sizing and collapse.
+        // A Duo is still an iPhone while it transitions between compact and
+        // regular widths, and hard-coding a device width here would make the
+        // intermediate and multitasking sizes fragile.
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: sidebarSelection) {
@@ -66,6 +80,10 @@ struct SidebarAppShell: View {
                 search: $search
             )
         }
+        // Keep the browsing column compact enough to be a navigator on Duo,
+        // iPad, and Mac. The system can still collapse it whenever the usable
+        // region is too narrow (including around an active fold).
+        .navigationSplitViewStyle(.balanced)
     }
 
     private func sections(in group: AppSectionGroup) -> [AppSection] {

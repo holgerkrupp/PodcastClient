@@ -17,6 +17,7 @@ struct CoverImageView: View {
     // timecode remains as input to determine the active chapter,
     // but we will NOT key the async task directly off this Double.
     var timecode: Double? = nil
+    var maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
     var loadDelay: Duration = .zero
 
     @State private var loadedImage: Image? = nil
@@ -40,12 +41,18 @@ struct CoverImageView: View {
         // Only run the task when the imageKey changes (i.e., at chapter boundaries
         // or when the underlying image source changes), not on every playback tick.
         .task(id: imageKey, priority: .utility) {
+            seedFromCacheIfPossible(for: imageKey)
+            if lastAppliedKey == imageKey {
+                return
+            }
+            if await loadPersistedImage(for: imageKey) {
+                return
+            }
             do {
                 try await Task.sleep(for: loadDelay)
             } catch {
                 return
             }
-            seedFromCacheIfPossible(for: imageKey)
             await loadImage(for: imageKey)
         }
     }
@@ -141,7 +148,34 @@ struct CoverImageView: View {
     private func cachedUIImage(for url: URL) -> UIImage? {
         // Keep body evaluation cheap. Disk-cache access and image decoding are
         // handled by SharedImageRepository from the asynchronous task below.
-        SharedImageRepository.cachedImage(for: url)
+        SharedImageRepository.cachedImage(for: url, maxPixelSize: maxPixelSize)
+    }
+
+    @MainActor
+    private func loadPersistedImage(for key: String) async -> Bool {
+        guard key == imageKey else { return false }
+
+        let url: URL?
+        if let chapter = activeChapter, chapter.imageData?.isEmpty != false {
+            url = chapter.image
+        } else if activeChapter != nil {
+            return lastAppliedKey == key
+        } else {
+            url = imageURL ?? fallbackEpisodeOrPodcastURL
+        }
+
+        guard let url,
+              let uiImage = await ImageLoaderAndCache.loadPersistedUIImage(
+                from: url,
+                maxPixelSize: maxPixelSize
+              ),
+              key == imageKey else {
+            return false
+        }
+
+        loadedImage = Image(uiImage: uiImage)
+        lastAppliedKey = key
+        return true
     }
 
     @MainActor
@@ -168,7 +202,10 @@ struct CoverImageView: View {
             }
             // URL next
             if let url = chapter.image {
-                if let uiImage = await ImageLoaderAndCache.loadUIImage(from: url) {
+                if let uiImage = await ImageLoaderAndCache.loadUIImage(
+                    from: url,
+                    maxPixelSize: maxPixelSize
+                ) {
                     if currentKey == imageKey {
                         loadedImage = Image(uiImage: uiImage)
                         lastAppliedKey = currentKey
@@ -180,7 +217,10 @@ struct CoverImageView: View {
 
         // 2) If an explicit imageURL was provided, use it
         if let directURL = imageURL {
-            if let uiImage = await ImageLoaderAndCache.loadUIImage(from: directURL) {
+            if let uiImage = await ImageLoaderAndCache.loadUIImage(
+                from: directURL,
+                maxPixelSize: maxPixelSize
+            ) {
                 if currentKey == imageKey {
                     loadedImage = Image(uiImage: uiImage)
                     lastAppliedKey = currentKey
@@ -191,7 +231,10 @@ struct CoverImageView: View {
 
         // 3) Fallback to episode or podcast cover
         if let fallback = fallbackEpisodeOrPodcastURL {
-            if let uiImage = await ImageLoaderAndCache.loadUIImage(from: fallback) {
+            if let uiImage = await ImageLoaderAndCache.loadUIImage(
+                from: fallback,
+                maxPixelSize: maxPixelSize
+            ) {
                 if currentKey == imageKey {
                     loadedImage = Image(uiImage: uiImage)
                     lastAppliedKey = currentKey
@@ -233,12 +276,18 @@ struct BlurredCoverImageView: View {
             }
         }
         .task(id: imageKey, priority: .utility) {
+            seedFromCacheIfPossible(for: imageKey)
+            if lastAppliedKey == imageKey {
+                return
+            }
+            if await loadPersistedImage(for: imageKey) {
+                return
+            }
             do {
                 try await Task.sleep(for: loadDelay)
             } catch {
                 return
             }
-            seedFromCacheIfPossible(for: imageKey)
             await loadImage(for: imageKey)
         }
     }
@@ -275,6 +324,24 @@ struct BlurredCoverImageView: View {
         guard let uiImage = SharedImageRepository.cachedBlurredImage(for: key) else { return }
         loadedImage = Image(uiImage: uiImage)
         lastAppliedKey = key
+    }
+
+    @MainActor
+    private func loadPersistedImage(for key: String) async -> Bool {
+        guard key == imageKey,
+              let resolvedURL,
+              let uiImage = await ImageLoaderAndCache.loadPersistedBlurredUIImage(
+                from: resolvedURL,
+                radius: radius,
+                maxPixelSize: maxPixelSize
+              ),
+              key == imageKey else {
+            return false
+        }
+
+        loadedImage = Image(uiImage: uiImage)
+        lastAppliedKey = key
+        return true
     }
 
     @MainActor

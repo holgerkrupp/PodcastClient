@@ -4,6 +4,8 @@ Analysis date: 2026-09-14. This is a design and implementation plan for the curr
 
 Revision 2026-09-14 (second pass): re-read the published HIG page and added layout options per surface, control ownership, bar-free surfaces, an explicit open/close transition contract, and the conditional reserved regions. Nothing from the first pass was removed.
 
+Revision 2026-09-19: added implementation details from Apple’s new preparation technology overview, including container-specific bar behavior, toolbar APIs, arrangement-hosting cautions, and pose-by-pose validation.
+
 ## Recommendation in one sentence
 
 Keep the current queue-first experience on the outer display, let the inner display use the app’s existing sidebar hierarchy, and turn the full player into a fold-aware player/content arrangement whose state survives every open, close, rotate, and partial-fold transition.
@@ -247,8 +249,17 @@ Run the app in Device Hub and exercise open, close, rotate, and fold controls wh
 - Count the text-only buttons in each toolbar. Where the count is high, confirm the horizontal bar is intentional.
 - If a playback Live Activity exists by then, repeat the fold test with it active and confirm the expanded Dynamic Island never covers player content.
 
+## Technology-overview refinements (2026-09-19)
+
+Apple’s newer preparation overview makes the bar behavior more specific than “inner landscape means a side bar.” When `NavigationSplitView` shows multiple columns, the sidebar and content-column bars stay horizontal while the detail-column bar can be vertical; inspector bars remain horizontal. An outer-display player sheet has a vertical bar by default. On the inner display, a centered or leading sheet uses a horizontal toolbar, while a trailing sheet uses a vertical one. Test the Queue/Inbox/Library detail and full-player sheet in each actual placement. Use `presentationPlacement(_:)` when sheet placement should be intentional, and `toolbarVerticalBehavior(_:)` only if a sheet has a defensible need to opt out of vertical bars.
+
+For a custom player header, read `toolbarVerticalEdge` rather than guessing from size or orientation. Keep the close item in `.cancellationAction`; use `.topBarPinnedTrailing` for a prominent Done action where appropriate. Give commands an icon and title: Apple says a title-only or custom-view item will not appear vertically. Use `axisBehavior(_:)`, `visibilityPriority(_:)`, and `ToolbarOverflowMenu` to make Queue/Play visible while transcript generation and export overflow. `PlaylistTitleMenu` can remain a content header when its custom bar representation cannot adapt. Artwork may extend beneath a vertical bar with `backgroundExtensionEffect()`, but the scrubber, title, and controls must stay in the safe area.
+
+The overview also warns that an `ArrangementView` inside a navigation split view, list, or scroll view can make content inaccessible. Prototype the proposed player/Up Next arrangement at the player content root inside its navigation or sheet container, outside transcript and queue scroll views; if the hosting split/detail column clips either child, use ordinary adaptive panes with reserved-region avoidance instead. A split arrangement puts peers side by side in a wide proposal and top/bottom in a tall one; `.split.axes(.horizontal)` is useful only if the secondary pane should disappear rather than consume scarce vertical space. Test the player sheet, chapter popover, and every editor while rotating in closed, flat-open, book, and tabletop poses—not just the main player.
+
 ## Sources
 
+- [Preparing your app for iPhone Duo — Technology Overview](https://developer.apple.com/documentation/technologyoverviews/preparing-your-app-for-iphone-duo)
 - [Designing for iPhone Duo — Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo)
 - [iPhone Duo technical specifications](https://www.apple.com/iphone-duo/specs/)
 - [Prepare your app for iPhone Duo](https://developer.apple.com/videos/play/tech-talks/111461/)

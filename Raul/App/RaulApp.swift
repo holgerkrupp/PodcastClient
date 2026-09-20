@@ -890,6 +890,7 @@ private struct RootWindowView: View {
                         await CloudSyncProgressReferenceStore.publish(modelContainer: container)
                         await PlayNextWidgetSync.refresh(using: container)
                         WatchSyncCoordinator.refreshSoon()
+                        PlaylistAutoDownloadCoordinator.scheduleAll(modelContainer: container)
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(3))

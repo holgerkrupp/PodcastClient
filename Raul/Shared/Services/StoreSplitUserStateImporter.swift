@@ -533,6 +533,10 @@ actor StoreSplitUserStateImporter {
                 playlist.sortIndex = record.sortIndex
                 playlist.kindRawValue = record.kindRawValue
                 playlist.hidden = record.isHidden
+                playlist.autoDownloadEnabled = record.autoDownloadEnabled
+                playlist.autoDownloadEpisodeLimit = record.autoDownloadEpisodeLimit
+                playlist.removesEpisodesPlayedElsewhere =
+                    record.removesEpisodesPlayedElsewhere
                 playlist.deleteable = record.title != Playlist.defaultQueueTitle
                 playlist.smartFilter = record.smartFilterRawValue
                     .flatMap { $0.data(using: .utf8) }

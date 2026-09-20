@@ -466,6 +466,9 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
                 kindRawValue: Playlist.Kind.manual.rawValue,
                 smartFilterRawValue: nil,
                 isHidden: false,
+                autoDownloadEnabled: false,
+                autoDownloadEpisodeLimit: nil,
+                removesEpisodesPlayedElsewhere: true,
                 entries: [
                     StoreSplitPlaylistEntrySnapshot(
                         identity: identity,
@@ -514,6 +517,9 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
                 kindRawValue: Playlist.Kind.manual.rawValue,
                 smartFilterRawValue: nil,
                 isHidden: false,
+                autoDownloadEnabled: false,
+                autoDownloadEpisodeLimit: nil,
+                removesEpisodesPlayedElsewhere: true,
                 entries: [
                     StoreSplitPlaylistEntrySnapshot(
                         identity: identity,

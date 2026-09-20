@@ -39,6 +39,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         CrashBreadcrumbs.shared.record("app_delegate_did_finish_launching")
+        // A background launch reaches the container through whichever
+        // BGTask asked for it, and must not do store work it was not
+        // granted budget for.
+        if application.applicationState != .background {
+            ModelContainerManager.startEagerContainerPreparation()
+        }
         UNUserNotificationCenter.current().delegate = self
         SkipProtectionNotification.registerCategory()
         ListenTogetherController.shared.startListening()

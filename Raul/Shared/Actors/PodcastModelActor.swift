@@ -43,10 +43,12 @@ actor PodcastModelActor {
         subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
         category: "PodcastRefresh"
     )
-    /// Network parsing remains concurrent, but each worker also persists to
-    /// SQLite. Two writers avoid the lock/save amplification seen with the
-    /// previous six-worker refresh fan-out.
-    static let maximumConcurrentRefreshes = 2
+    /// A refresh worker performs network parsing and SwiftData mutations in the
+    /// same operation. SwiftData contexts may be separate, but concurrent
+    /// refreshes can still interleave relationship updates and cascade work in
+    /// the shared store, which can trip an internal context assertion while
+    /// saving. Keep the fan-out at one writer; feed downloads remain async.
+    static let maximumConcurrentRefreshes = 1
 
     private static func logRefresh(_ message: String) {
         refreshLogger.info("\(message, privacy: .public)")

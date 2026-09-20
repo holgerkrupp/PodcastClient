@@ -8,6 +8,19 @@ import Foundation
 import SwiftData
 import BasicLogger
 
+/// A subscribed podcast whose new episodes land in one particular playlist.
+struct PlaylistRoutedPodcast: Sendable, Identifiable, Hashable {
+    /// The feed URL, which is how podcasts are addressed everywhere else here —
+    /// `Podcast.id` is a `PersistentIdentifier` and cannot leave its context.
+    let id: URL
+    let title: String
+    let imageURL: URL?
+    let position: Playlist.Position
+    /// Whether the routing comes from this podcast's own settings rather than
+    /// from the global default.
+    let usesCustomSettings: Bool
+}
+
 struct AutoDownloadPolicySnapshot: Sendable {
     let keepCount: Int
     let selection: AutoDownloadSelection
@@ -143,6 +156,69 @@ actor PodcastSettingsModelActor {
         }
     }
     
+    /// Every subscribed podcast whose new episodes are queued into `playlistID`.
+    ///
+    /// Mirrors what `EpisodeActor.processAfterCreation` actually does: a podcast's
+    /// own settings win only while they are enabled, a queue position of `.none`
+    /// means the podcast is not queued anywhere, and a target playlist that no
+    /// longer exists falls back to the built-in queue the same way the insert
+    /// path does.
+    func podcastsRouted(toPlaylistID playlistID: UUID) async -> [PlaylistRoutedPodcast] {
+        let globalSettings = await standardSettings()
+        let defaultQueueID = defaultQueueID()
+        let globalPosition = globalSettings.playnextPosition
+        let globalPlaylistID = globalSettings.defaultPlaylistID ?? defaultQueueID
+
+        // One fetch for every podcast's settings instead of one per podcast.
+        let customSettingsByFeed = ((try? modelContext.fetch(
+            FetchDescriptor<PodcastSettings>(
+                predicate: #Predicate<PodcastSettings> { $0.isEnabled == true }
+            )
+        )) ?? []).reduce(into: [URL: PodcastSettings]()) { partialResult, settings in
+            guard let feed = settings.podcast?.feed else { return }
+            partialResult[feed] = settings
+        }
+
+        let podcasts = (try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? []
+        var routed: [PlaylistRoutedPodcast] = []
+
+        for podcast in podcasts {
+            guard podcast.isSubscribed, let feed = podcast.feed else { continue }
+
+            let customSettings = customSettingsByFeed[feed]
+            let position = customSettings?.playnextPosition ?? globalPosition
+            guard position != .none else { continue }
+
+            var resolvedPlaylistID = customSettings?.defaultPlaylistID ?? globalPlaylistID
+            if manualPlaylistExists(id: resolvedPlaylistID) == false {
+                resolvedPlaylistID = defaultQueueID
+            }
+            guard resolvedPlaylistID == playlistID else { continue }
+
+            routed.append(
+                PlaylistRoutedPodcast(
+                    id: feed,
+                    title: podcast.title,
+                    imageURL: podcast.imageURL,
+                    position: position,
+                    usesCustomSettings: customSettings?.defaultPlaylistID != nil
+                )
+            )
+        }
+
+        return routed.sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+
+    /// The network preference every automatic download is gated on.
+    ///
+    /// `standardSettings()` hands back a model object, which cannot leave this
+    /// actor, so callers outside it ask for the resolved value instead.
+    func globalAutoDownloadNetworkMode() async -> AutoDownloadNetworkMode {
+        await standardSettings().autoDownloadNetworkMode
+    }
+
     /// Example: Update a settings object (edit as needed for your app's settings editing UI)
     func updateSettings(_ settingsID: PersistentIdentifier, apply changes: (PodcastSettings) -> Void) {
         guard let settings: PodcastSettings = modelContext.existingModel(for: settingsID) else { return }

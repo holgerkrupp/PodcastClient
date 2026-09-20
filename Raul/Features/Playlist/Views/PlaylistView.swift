@@ -16,6 +16,7 @@ struct PlaylistView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openPodcastSettings) private var openSettings
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var storedPlaylistID: String = ""
     @Binding var requestedEpisodeURL: URL?
@@ -36,48 +37,53 @@ struct PlaylistView: View {
         return visiblePlaylists.first(where: { $0.id == selectedID })
     }
 
+    /// On a regular-width scene, the playlist picker belongs to the episode
+    /// list it changes. Keeping it in the content header also leaves the
+    /// trailing system bar free to adapt around the fold. Compact scenes keep
+    /// the familiar principal toolbar control.
+    private var showsPlaylistPickerInContent: Bool {
+        horizontalSizeClass == .regular
+    }
+
     var body: some View {
-        Group {
-            if let selectedPlaylist {
-                ManualPlaylistPageView(playlist: selectedPlaylist)
-                    .id(selectedPlaylist.id)
-            } else {
-                PlaylistEmptyView(
-                    title: Playlist.defaultQueueDisplayName,
-                    isSmartPlaylist: false,
-                    isDefaultQueue: true
-                )
+        VStack {
+            if showsPlaylistPickerInContent {
+                playlistPicker
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+            }
+
+            Group {
+                if let selectedPlaylist {
+                    ManualPlaylistPageView(playlist: selectedPlaylist)
+                        .id(selectedPlaylist.id)
+                } else {
+                    PlaylistEmptyView(
+                        title: Playlist.defaultQueueDisplayName,
+                        isSmartPlaylist: false,
+                        isDefaultQueue: true
+                    )
+                }
             }
         }
         .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
         .platformInlineNavigationTitle()
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                PlaylistTitleMenu(
-                    currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
-                    currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
-                    playlists: visiblePlaylists,
-                    selectedPlaylistID: selectedPlaylist?.id,
-                    onSelect: { playlist in
-                        selectPlaylist(playlist)
-                    },
-                    onCreate: {
-                        showCreatePlaylistSheet = true
-                    }
-                )
+            if showsPlaylistPickerInContent == false {
+                ToolbarItem(placement: .principal) {
+                    playlistPicker
+                }
             }
 
-
-
-            ToolbarItem(placement: .secondaryAction) {
+            ToolbarItem(placement: .primaryAction) {
                 Button(action: {
                     openSettings()
                 }) {
-                    Label("Queue settings", systemImage: "gear")
+                    Label("Settings", systemImage: "gear")
                 }
-                .accessibilityLabel("Queue settings")
-                .accessibilityHint("Open playback and queue settings")
-                .accessibilityInputLabels([Text("Queue settings"), Text("Open settings")])
+                .accessibilityLabel("Settings")
+                .accessibilityHint("Open settings")
+                .accessibilityInputLabels([Text("Settings"), Text("Open settings")])
             }
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
@@ -104,6 +110,21 @@ struct PlaylistView: View {
         .onChange(of: requestedEpisodeURL) { _, _ in
             openRequestedEpisodeIfNeeded()
         }
+    }
+
+    private var playlistPicker: some View {
+        PlaylistTitleMenu(
+            currentTitle: selectedPlaylist?.displayTitle ?? Playlist.defaultQueueDisplayName,
+            currentSymbolName: selectedPlaylist?.displaySymbolName ?? Playlist.defaultQueueSymbolName,
+            playlists: visiblePlaylists,
+            selectedPlaylistID: selectedPlaylist?.id,
+            onSelect: { playlist in
+                selectPlaylist(playlist)
+            },
+            onCreate: {
+                showCreatePlaylistSheet = true
+            }
+        )
     }
 
     private func ensureDefaultPlaylist() {
@@ -149,22 +170,11 @@ struct PlaylistView: View {
     }
 
     private func createPlaylist(from draft: PlaylistCreationDraft) {
-        let allPlaylists = Playlist.manualVisibleSorted(playlists)
-        let title = Playlist.normalizedPlaylistName(draft.name.isEmpty ? "Playlist" : draft.name, existing: allPlaylists)
-
-        let playlist = Playlist()
-        playlist.title = title
-        playlist.deleteable = true
-        playlist.hidden = false
-        playlist.sortIndex = (allPlaylists.map(\.sortIndex).max() ?? 0) + 1
-        playlist.kind = .manual
-        playlist.symbolName = Playlist.normalizedSymbolName(draft.symbolName, fallback: Playlist.defaultManualSymbolName)
-        playlist.smartFilter = nil
-
-        modelContext.insert(playlist)
-        modelContext.saveIfNeeded()
-        StoreSplitPlaylistSyncCoordinator.publish(playlist)
-
+        let playlist = PlaylistLibrary.create(
+            name: draft.name,
+            symbolName: draft.symbolName,
+            in: modelContext
+        )
         selectedPlaylistID = playlist.id.uuidString
         storedPlaylistID = selectedPlaylistID
     }
@@ -343,94 +353,5 @@ private struct ManualPlaylistPageView: View {
             return
         }
         try? await playlistActor.remove(episodeURL: episodeURL)
-    }
-}
-
-private struct NewPlaylistSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var draft = PlaylistCreationDraft()
-
-    let onCreate: (PlaylistCreationDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Playlist") {
-                    TextField("Name", text: $draft.name)
-                }
-
-                Section("Icon") {
-                    PlaylistSymbolGridPicker(selection: $draft.symbolName)
-                }
-            }
-            .navigationTitle("New Playlist")
-            .platformInlineNavigationTitle()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        onCreate(draft)
-                        dismiss()
-                    }
-                    .disabled(canCreate == false)
-                }
-            }
-        }
-    }
-
-    private var canCreate: Bool {
-        draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    }
-}
-
-private struct PlaylistCreationDraft {
-    var name: String = ""
-    var symbolName: String = Playlist.defaultManualSymbolName
-}
-
-private struct PlaylistSymbolGridPicker: View {
-    @Binding var selection: String
-
-    private let columns: [GridItem] = [
-        GridItem(.adaptive(minimum: 56, maximum: 70), spacing: 10)
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-            ForEach(Playlist.symbolOptions) { option in
-                Button {
-                    selection = option.symbolName
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: option.symbolName)
-                            .font(.title3)
-                            .frame(maxWidth: .infinity)
-                        Text(option.title)
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(selection == option.symbolName ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(selection == option.symbolName ? Color.accentColor : Color.clear, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Playlist icon \(option.title)")
-                .accessibilityAddTraits(selection == option.symbolName ? .isSelected : [])
-            }
-        }
     }
 }

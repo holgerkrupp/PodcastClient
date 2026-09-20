@@ -90,6 +90,14 @@ actor AutoDownloadNetworkCoordinator {
         }
         lastResumeAttemptAt = now
 
+        // Playlist downloads share the global network preference, so a playlist
+        // that deferred on cellular has to be retried from here too.
+        let playlistService = PlaylistAutoDownloadService(modelContainer: modelContainer)
+        if await playlistService.hasPlaylistsWithAutoDownload() {
+            await logAutoDownload("network-monitor/resume-playlist-downloads")
+            await playlistService.applyPolicyToAllPlaylists(force: true)
+        }
+
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         let podcastFeeds = await settingsActor.podcastFeedsRequiringAutoDownloadReconciliationOnWiFi()
         guard podcastFeeds.isEmpty == false else {

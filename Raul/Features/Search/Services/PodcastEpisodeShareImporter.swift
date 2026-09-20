@@ -16,12 +16,26 @@ enum PodcastEpisodeShareImportError: LocalizedError {
     }
 }
 
+enum SharedEpisodeImportDestination: Sendable, Equatable {
+    case inbox
+    case playlist(UUID)
+}
+
 struct PodcastEpisodeShareImporter {
     @MainActor
     @discardableResult
-    func importEpisode(from sharedURL: URL, modelContext: ModelContext) async throws -> URL {
+    func importEpisode(
+        from sharedURL: URL,
+        destination: SharedEpisodeImportDestination = .inbox,
+        modelContext: ModelContext
+    ) async throws -> URL {
         let resolved = try await resolveEpisode(from: sharedURL)
-        return try upsert(resolved, sharedURL: sharedURL, modelContext: modelContext)
+        return try await upsert(
+            resolved,
+            sharedURL: sharedURL,
+            destination: destination,
+            modelContext: modelContext
+        )
     }
 
     /// Imports an episode someone shared by its enclosure URL, e.g. over
@@ -33,7 +47,12 @@ struct PodcastEpisodeShareImporter {
         if let feedURL,
            let page = try? await PodcastParser.fetchPage(from: feedURL),
            let draft = matchingEpisode(in: page.episodes, sharedURL: episodeURL) {
-            return try upsert(.feed(draft: draft, feed: page.feed), sharedURL: episodeURL, modelContext: modelContext)
+            return try await upsert(
+                .feed(draft: draft, episodes: page.episodes, feed: page.feed),
+                sharedURL: episodeURL,
+                destination: .inbox,
+                modelContext: modelContext
+            )
         }
         return try await importEpisode(from: episodeURL, modelContext: modelContext)
     }
@@ -63,11 +82,19 @@ struct PodcastEpisodeShareImporter {
 
         let page = try await fetchText(from: sharedURL)
         let feedURLs = discoverFeedURLs(in: page, baseURL: sharedURL)
+        let canonicalPageURL = discoverCanonicalURL(in: page, baseURL: sharedURL)
 
         for feedURL in feedURLs {
             guard let page = try? await PodcastParser.fetchPage(from: feedURL) else { continue }
-            if let draft = matchingEpisode(in: page.episodes, sharedURL: sharedURL) {
-                return .feed(draft: draft, feed: page.feed)
+            if let draft = matchingEpisode(
+                in: page.episodes,
+                sharedURLs: [sharedURL, canonicalPageURL].compactMap { $0 }
+            ) {
+                return .feed(
+                    draft: draft,
+                    episodes: page.episodes,
+                    feed: page.feed
+                )
             }
         }
 
@@ -100,23 +127,72 @@ struct PodcastEpisodeShareImporter {
     private func upsert(
         _ resolved: ResolvedSharedEpisode,
         sharedURL: URL,
+        destination: SharedEpisodeImportDestination,
         modelContext: ModelContext
-    ) throws -> URL {
+    ) async throws -> URL {
         switch resolved {
-        case .feed(let draft, let feed):
+        case .feed(let draft, let episodes, let feed):
             let podcast = upsertPodcast(from: feed, modelContext: modelContext)
             let episode = upsertEpisode(from: draft, podcast: podcast, modelContext: modelContext)
-            markInInbox(episode)
+
+            // Keep the feed-backed show browsable even when the user only
+            // shared one episode and has not subscribed yet. The selected
+            // episode is inserted first so it remains available if a malformed
+            // sibling entry cannot be imported.
+            for sibling in episodes where sibling.episodeURL != draft.episodeURL {
+                _ = upsertEpisode(
+                    from: sibling,
+                    podcast: podcast,
+                    modelContext: modelContext
+                )
+            }
+
             modelContext.saveIfNeeded()
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-            return episode.url ?? draft.episodeURL
+            let episodeURL = episode.url ?? draft.episodeURL
+            try await apply(
+                destination,
+                to: episode,
+                episodeURL: episodeURL,
+                modelContext: modelContext
+            )
+            return episodeURL
 
         case .standalone(let standalone):
             let episode = upsertStandaloneEpisode(standalone, sharedURL: sharedURL, modelContext: modelContext)
+            modelContext.saveIfNeeded()
+            let episodeURL = episode.url ?? standalone.mediaURL
+            try await apply(
+                destination,
+                to: episode,
+                episodeURL: episodeURL,
+                modelContext: modelContext
+            )
+            return episodeURL
+        }
+    }
+
+    @MainActor
+    private func apply(
+        _ destination: SharedEpisodeImportDestination,
+        to episode: Episode,
+        episodeURL: URL,
+        modelContext: ModelContext
+    ) async throws {
+        switch destination {
+        case .inbox:
             markInInbox(episode)
             modelContext.saveIfNeeded()
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-            return episode.url ?? standalone.mediaURL
+
+        case .playlist(let playlistID):
+            // The playlist actor uses its own model context, so the imported
+            // episode must be durable before it can look it up by URL.
+            modelContext.saveIfNeeded()
+            let playlistActor = try PlaylistModelActor(
+                modelContainer: modelContext.container,
+                playlistID: playlistID
+            )
+            try await playlistActor.add(episodeURL: episodeURL, to: .end)
         }
     }
 
@@ -130,6 +206,16 @@ struct PodcastEpisodeShareImporter {
                 apply(feed: feed, to: existing)
                 return existing
             }
+        }
+
+        // A shared page may advertise the current endpoint while an existing
+        // subscription still stores an older redirect or an alternate feed.
+        // Reuse that podcast so the normal subscription state and navigation
+        // remain attached to one show.
+        if let podcasts = try? modelContext.fetch(FetchDescriptor<Podcast>()),
+           let existing = podcasts.first(where: feed.matchesExistingPodcast) {
+            apply(feed: feed, to: existing)
+            return existing
         }
 
         let podcast = Podcast(from: feed)
@@ -248,10 +334,27 @@ struct PodcastEpisodeShareImporter {
     }
 
     private func matchingEpisode(in drafts: [PodcastEpisodeDraft], sharedURL: URL) -> PodcastEpisodeDraft? {
-        drafts.first { draft in
-            urlsMatch(draft.link, sharedURL)
-            || urlsMatch(draft.episodeURL, sharedURL)
-            || draft.deeplinks.contains { urlsMatch($0, sharedURL) }
+        matchingEpisode(in: drafts, sharedURLs: [sharedURL])
+    }
+
+    func matchingEpisode(
+        in drafts: [PodcastEpisodeDraft],
+        sharedURLs: [URL]
+    ) -> PodcastEpisodeDraft? {
+        let pathIdentifiers = Set(
+            sharedURLs
+                .map(\.lastPathComponent)
+                .filter { $0.isEmpty == false }
+        )
+
+        return drafts.first { draft in
+            sharedURLs.contains { sharedURL in
+                urlsMatch(draft.link, sharedURL)
+                    || urlsMatch(draft.episodeURL, sharedURL)
+                    || draft.deeplinks.contains { urlsMatch($0, sharedURL) }
+            }
+                || draft.guid.map(pathIdentifiers.contains) == true
+                || pathIdentifiers.contains(draft.id)
         }
     }
 
@@ -277,7 +380,7 @@ struct PodcastEpisodeShareImporter {
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
     }
 
-    private func discoverFeedURLs(in html: String, baseURL: URL) -> [URL] {
+    func discoverFeedURLs(in html: String, baseURL: URL) -> [URL] {
         let links = linkTags(in: html).compactMap { tag -> URL? in
             let type = attribute("type", in: tag)?.lowercased() ?? ""
             let rel = attribute("rel", in: tag)?.lowercased() ?? ""
@@ -290,6 +393,20 @@ struct PodcastEpisodeShareImporter {
         }
 
         return Array(NSOrderedSet(array: links)) as? [URL] ?? links
+    }
+
+    func discoverCanonicalURL(in html: String, baseURL: URL) -> URL? {
+        for tag in linkTags(in: html) {
+            let rel = attribute("rel", in: tag)?.lowercased() ?? ""
+            guard rel.split(whereSeparator: { $0.isWhitespace }).contains("canonical"),
+                  let href = attribute("href", in: tag) else {
+                continue
+            }
+            return URL(string: href, relativeTo: baseURL)?.absoluteURL
+        }
+
+        return htmlMetadata(named: "og:url", in: html)
+            .flatMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL }
     }
 
     private func discoverMediaURL(in html: String, baseURL: URL) -> URL? {
@@ -454,7 +571,11 @@ struct PodcastEpisodeShareImporter {
 }
 
 private enum ResolvedSharedEpisode {
-    case feed(draft: PodcastEpisodeDraft, feed: PodcastFeed)
+    case feed(
+        draft: PodcastEpisodeDraft,
+        episodes: [PodcastEpisodeDraft],
+        feed: PodcastFeed
+    )
     case standalone(StandaloneSharedEpisode)
 }
 

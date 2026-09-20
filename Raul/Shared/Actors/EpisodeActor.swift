@@ -15,7 +15,6 @@ import SwiftUI
 import UIKit
 #endif
 import ImageIO
-import Network
 
 
 struct EpisodePlaybackStateSnapshot: Sendable {
@@ -1049,28 +1048,7 @@ actor EpisodeActor {
     }
 
     private func canScheduleAutoDownloads(for networkMode: AutoDownloadNetworkMode) async -> Bool {
-        switch networkMode {
-        case .wifiAndCellular:
-            return true
-        case .wifiOnly:
-            return await isOnWiFi()
-        }
-    }
-
-    private func isOnWiFi() async -> Bool {
-        await withCheckedContinuation { continuation in
-            let monitor = NWPathMonitor()
-            let queue = DispatchQueue(label: "AutoDownloadNetworkMonitor")
-
-            monitor.pathUpdateHandler = { path in
-                let isConnected = path.status == .satisfied
-                let isWiFiLikeConnection = path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)
-                monitor.cancel()
-                continuation.resume(returning: isConnected && isWiFiLikeConnection)
-            }
-
-            monitor.start(queue: queue)
-        }
+        await AutoDownloadNetworkGate.canScheduleDownloads(for: networkMode)
     }
     
     
@@ -1183,6 +1161,11 @@ actor EpisodeActor {
         print ("markEpisodeAvailable for \(episode.title)")
         guard let url = episode.url else {
             return
+        }
+        if let artworkURL = episode.imageURL ?? episode.podcast?.imageURL {
+            Task(priority: .utility) {
+                _ = await ImageLoaderAndCache.loadUIImage(from: artworkURL)
+            }
         }
         ensureMetadata(for: episode)
         let wasAvailableLocally = episode.metaData?.isAvailableLocally == true

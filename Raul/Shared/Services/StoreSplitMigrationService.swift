@@ -923,6 +923,11 @@ actor StoreSplitMigrationService {
                     destination.kindRawValue = playlist.kindRawValue
                     destination.smartFilterRawValue = smartFilterRawValue
                     destination.isHidden = playlist.hidden
+                    destination.autoDownloadEnabled = playlist.autoDownloadEnabled
+                    destination.autoDownloadEpisodeLimit =
+                        playlist.resolvedAutoDownloadEpisodeLimit
+                    destination.removesEpisodesPlayedElsewhere =
+                        playlist.removesEpisodesPlayedElsewhere
                     destination.updatedAt = updatedAt
                     outcome.delta.updated += 1
                 } else {
@@ -937,6 +942,9 @@ actor StoreSplitMigrationService {
                     kindRawValue: playlist.kindRawValue,
                     smartFilterRawValue: smartFilterRawValue,
                     isHidden: playlist.hidden,
+                    autoDownloadEnabled: playlist.autoDownloadEnabled,
+                    autoDownloadEpisodeLimit: playlist.resolvedAutoDownloadEpisodeLimit,
+                    removesEpisodesPlayedElsewhere: playlist.removesEpisodesPlayedElsewhere,
                     createdAt: createdAt,
                     updatedAt: updatedAt
                 )

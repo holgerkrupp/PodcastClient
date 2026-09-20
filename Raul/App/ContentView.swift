@@ -31,6 +31,7 @@ struct ContentView: View {
     @State private var showOnboarding: Bool = false
     @State private var didEvaluateOnboardingLaunch = false
     @State private var didCompleteInitialContentLoad = false
+    @State private var isImportingSharedEpisodes = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
     
     @State private var search:String = ""
@@ -99,6 +100,9 @@ struct ContentView: View {
         }
         .onChange(of: phase, {
             SystemPressureGate.shared.setSceneActive(phase == .active)
+            if phase == .active, didCompleteInitialContentLoad {
+                Task { await importPendingSharedEpisodeIfNeeded() }
+            }
             if SETTINGgoingBackToPlayerafterBackground{
                 switch phase {
                 case .background:
@@ -110,7 +114,6 @@ struct ContentView: View {
                     guard didCompleteInitialContentLoad else { break }
                     // Refresh the badge when app becomes active
                     Task { await loadInboxCount() }
-                    Task { await importPendingSharedEpisodeIfNeeded() }
                     Task { await podcastYearShareCoordinator.evaluateAppBecameActive(modelContext: modelContext) }
                     if let goingToBackgroundDate = goingToBackgroundDate, goingToBackgroundDate < Date().addingTimeInterval(-5*60) {
                        
@@ -135,6 +138,9 @@ struct ContentView: View {
         }
         .onChange(of: selectedPlaylistID) { _, newValue in
             refreshWidgetForSelectedPlaylist(newValue)
+        }
+        .task(id: sharedPlaylistSnapshotSignature) {
+            PendingSharedEpisodeImportStore.publish(playlists: playlists)
         }
         .onChange(of: navigation.selectedSection) { _, newValue in
             restoredSelection = newValue.rawValue
@@ -206,7 +212,7 @@ struct ContentView: View {
 
     private var usesSidebarLayout: Bool {
         PlatformSupport.usesDesktopLayout
-            || (PlatformSupport.isPhone == false && horizontalSizeClass == .regular)
+            || horizontalSizeClass == .regular
     }
     
     func setGoingToBackgroundDate() {
@@ -303,11 +309,16 @@ struct ContentView: View {
 
     @MainActor
     private func importPendingSharedEpisodeIfNeeded() async {
-        guard let sharedEpisodeURL = PendingSharedEpisodeImportStore.pendingURL() else {
-            return
-        }
+        guard isImportingSharedEpisodes == false else { return }
+        let requests = PendingSharedEpisodeImportStore.pendingRequests()
+        guard requests.isEmpty == false else { return }
 
-        await importSharedEpisode(from: sharedEpisodeURL)
+        isImportingSharedEpisodes = true
+        defer { isImportingSharedEpisodes = false }
+
+        for request in requests {
+            await importSharedEpisode(request)
+        }
     }
 
     @MainActor
@@ -318,7 +329,6 @@ struct ContentView: View {
                 from: sharedEpisodeURL,
                 modelContext: modelContext
             )
-            PendingSharedEpisodeImportStore.clear(ifMatching: sharedEpisodeURL)
             CrashBreadcrumbs.shared.record("shared_episode_imported", details: importedURL.absoluteString)
             BasicLogger.shared.log("Imported shared episode: \(importedURL.absoluteString)")
             await loadInboxCount()
@@ -326,6 +336,58 @@ struct ContentView: View {
             BasicLogger.shared.log("Failed to import shared episode \(sharedEpisodeURL.absoluteString): \(error.localizedDescription)")
             CrashBreadcrumbs.shared.record("shared_episode_import_failed", details: error.localizedDescription)
         }
+    }
+
+    @MainActor
+    private func importSharedEpisode(_ request: PendingSharedEpisodeImportRequest) async {
+        let destination: SharedEpisodeImportDestination
+        if let playlistID = request.playlistID,
+           Playlist.manualVisibleSorted(playlists).contains(where: {
+               $0.id == playlistID
+           }) {
+            destination = .playlist(playlistID)
+            selectedPlaylistID = playlistID.uuidString
+            navigation.select(.queue)
+        } else {
+            destination = .inbox
+            navigation.select(.inbox)
+        }
+
+        do {
+            let importedURL = try await PodcastEpisodeShareImporter().importEpisode(
+                from: request.url,
+                destination: destination,
+                modelContext: modelContext
+            )
+            PendingSharedEpisodeImportStore.remove(id: request.id)
+            CrashBreadcrumbs.shared.record(
+                "shared_episode_imported",
+                details: importedURL.absoluteString
+            )
+            BasicLogger.shared.log(
+                "Imported shared episode: \(importedURL.absoluteString)"
+            )
+            await loadInboxCount()
+        } catch {
+            BasicLogger.shared.log(
+                "Failed to import shared episode \(request.url.absoluteString): \(error.localizedDescription)"
+            )
+            CrashBreadcrumbs.shared.record(
+                "shared_episode_import_failed",
+                details: error.localizedDescription
+            )
+        }
+    }
+
+    private var sharedPlaylistSnapshotSignature: String {
+        Playlist.manualVisibleSorted(playlists).map {
+            [
+                $0.id.uuidString,
+                $0.displayTitle,
+                $0.displaySymbolName,
+                String($0.sortIndex)
+            ].joined(separator: "|")
+        }.joined(separator: "||")
     }
 
     private func refreshWidgetForSelectedPlaylist(_ playlistID: String) {
@@ -395,49 +457,6 @@ private actor InboxCountLoader {
         let context = ModelContext(container)
         let predicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
         return try context.fetchCount(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
-    }
-}
-
-private enum PendingSharedEpisodeImportStore {
-    private static let appGroupID = "group.de.holgerkrupp.PodcastClient"
-    private static let pendingURLKey = "PendingSharedEpisodeURL"
-
-    static func pendingURL() -> URL? {
-        guard let rawValue = UserDefaults(suiteName: appGroupID)?.string(forKey: pendingURLKey) else {
-            return nil
-        }
-        guard let url = URL(string: rawValue), isSupportedSharedURL(url) else {
-            clear()
-            return nil
-        }
-
-        return url
-    }
-
-    static func clear(ifMatching url: URL) {
-        let defaults = UserDefaults(suiteName: appGroupID)
-        guard defaults?.string(forKey: pendingURLKey) == url.absoluteString else {
-            return
-        }
-        defaults?.removeObject(forKey: pendingURLKey)
-        defaults?.synchronize()
-    }
-
-    static func clear() {
-        let defaults = UserDefaults(suiteName: appGroupID)
-        defaults?.removeObject(forKey: pendingURLKey)
-        defaults?.synchronize()
-    }
-
-    private static func isSupportedSharedURL(_ url: URL) -> Bool {
-        guard let scheme = url.scheme?.lowercased() else {
-            return false
-        }
-
-        return scheme == "http"
-            || scheme == "https"
-            || scheme == "feed"
-            || scheme == "rss"
     }
 }
 

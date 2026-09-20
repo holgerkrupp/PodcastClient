@@ -6,12 +6,12 @@ import SwiftUI
 actor SharedImageRepository {
     static let shared = SharedImageRepository()
 
-    private var inFlightTasks: [URL: Task<UIImage?, Never>] = [:]
+    private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
     private var inFlightBlurredTasks: [String: Task<UIImage?, Never>] = [:]
     private static let ciContext = CIContext(options: [.cacheIntermediates: true])
 
-    nonisolated(unsafe) private static let memoryCache: NSCache<NSURL, UIImage> = {
-        let cache = NSCache<NSURL, UIImage>()
+    nonisolated(unsafe) private static let memoryCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
         cache.countLimit = 120
         cache.totalCostLimit = 1024 * 1024 * 96
         return cache
@@ -24,12 +24,24 @@ actor SharedImageRepository {
         return cache
     }()
 
-    nonisolated static func cachedImage(for url: URL) -> UIImage? {
-        memoryCache.object(forKey: url as NSURL)
+    nonisolated static func cachedImage(
+        for url: URL,
+        maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
+    ) -> UIImage? {
+        memoryCache.object(forKey: imageCacheKey(for: url, maxPixelSize: maxPixelSize) as NSString)
     }
 
-    nonisolated static func store(_ image: UIImage, for url: URL, cost: Int = 0) {
-        memoryCache.setObject(image, forKey: url as NSURL, cost: cost)
+    nonisolated static func store(
+        _ image: UIImage,
+        for url: URL,
+        maxPixelSize: CGFloat,
+        cost: Int = 0
+    ) {
+        memoryCache.setObject(
+            image,
+            forKey: imageCacheKey(for: url, maxPixelSize: maxPixelSize) as NSString,
+            cost: cost
+        )
     }
 
     nonisolated static func cachedBlurredImage(for key: String) -> UIImage? {
@@ -50,28 +62,81 @@ actor SharedImageRepository {
         return width * height * 4
     }
 
-    func image(for url: URL, saveTo: URL? = nil) async -> UIImage? {
-        if let cached = Self.cachedImage(for: url) {
+    func image(
+        for url: URL,
+        maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize,
+        saveTo: URL? = nil
+    ) async -> UIImage? {
+        if let cached = Self.cachedImage(for: url, maxPixelSize: maxPixelSize) {
             return cached
         }
 
-        if let task = inFlightTasks[url] {
+        let cacheKey = Self.imageCacheKey(for: url, maxPixelSize: maxPixelSize)
+        if let task = inFlightTasks[cacheKey] {
             return await task.value
         }
 
         let task = Task<UIImage?, Never> {
+            if let image = await Self.loadPersistedImage(
+                for: url,
+                maxPixelSize: maxPixelSize
+            ) {
+                Self.store(
+                    image,
+                    for: url,
+                    maxPixelSize: maxPixelSize,
+                    cost: Self.memoryCost(for: image)
+                )
+                return image
+            }
+
             guard let data = await ImageLoaderAndCache.loadImageData(from: url, saveTo: saveTo),
-                  let image = ImageLoaderAndCache.makeUIImage(from: data) else {
+                  let image = ImageLoaderAndCache.makeUIImage(
+                    from: data,
+                    maxPixelSize: maxPixelSize
+                  ) else {
                 return nil
             }
 
-            Self.store(image, for: url, cost: Self.memoryCost(for: image))
+            Self.store(
+                image,
+                for: url,
+                maxPixelSize: maxPixelSize,
+                cost: Self.memoryCost(for: image)
+            )
+            await Self.persist(
+                image,
+                sourceURL: url,
+                variant: .image(maxPixelSize: maxPixelSize)
+            )
             return image
         }
 
-        inFlightTasks[url] = task
+        inFlightTasks[cacheKey] = task
         let image = await task.value
-        inFlightTasks[url] = nil
+        inFlightTasks[cacheKey] = nil
+        return image
+    }
+
+    func persistedImage(
+        for url: URL,
+        maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
+    ) async -> UIImage? {
+        if let cached = Self.cachedImage(for: url, maxPixelSize: maxPixelSize) {
+            return cached
+        }
+        guard let image = await Self.loadPersistedImage(
+            for: url,
+            maxPixelSize: maxPixelSize
+        ) else {
+            return nil
+        }
+        Self.store(
+            image,
+            for: url,
+            maxPixelSize: maxPixelSize,
+            cost: Self.memoryCost(for: image)
+        )
         return image
     }
 
@@ -91,7 +156,20 @@ actor SharedImageRepository {
         }
 
         let task = Task<UIImage?, Never> {
-            guard let sourceImage = await self.image(for: url, saveTo: saveTo),
+            if let image = await Self.loadPersistedBlurredImage(
+                for: url,
+                radius: radius,
+                maxPixelSize: maxPixelSize
+            ) {
+                Self.storeBlurredImage(image, for: key, cost: Self.memoryCost(for: image))
+                return image
+            }
+
+            guard let sourceImage = await self.image(
+                    for: url,
+                    maxPixelSize: maxPixelSize,
+                    saveTo: saveTo
+                  ),
                   let blurredImage = Self.makeBlurredImage(
                     from: sourceImage,
                     radius: radius,
@@ -101,6 +179,11 @@ actor SharedImageRepository {
             }
 
             Self.storeBlurredImage(blurredImage, for: key, cost: Self.memoryCost(for: blurredImage))
+            await Self.persist(
+                blurredImage,
+                sourceURL: url,
+                variant: .blurred(radius: radius, maxPixelSize: maxPixelSize)
+            )
             return blurredImage
         }
 
@@ -108,6 +191,30 @@ actor SharedImageRepository {
         let image = await task.value
         inFlightBlurredTasks[key] = nil
         return image
+    }
+
+    func persistedBlurredImage(
+        for url: URL,
+        radius: CGFloat,
+        maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
+    ) async -> UIImage? {
+        let key = Self.blurredCacheKey(for: url, radius: radius, maxPixelSize: maxPixelSize)
+        if let cached = Self.cachedBlurredImage(for: key) {
+            return cached
+        }
+        guard let image = await Self.loadPersistedBlurredImage(
+            for: url,
+            radius: radius,
+            maxPixelSize: maxPixelSize
+        ) else {
+            return nil
+        }
+        Self.storeBlurredImage(image, for: key, cost: Self.memoryCost(for: image))
+        return image
+    }
+
+    nonisolated static func imageCacheKey(for url: URL, maxPixelSize: CGFloat) -> String {
+        "\(url.absoluteString)|max:\(Int(maxPixelSize.rounded(.up)))"
     }
 
     nonisolated static func blurredCacheKey(
@@ -145,6 +252,72 @@ actor SharedImageRepository {
         }
 
         return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
+    }
+
+    private static func loadPersistedImage(
+        for url: URL,
+        maxPixelSize: CGFloat
+    ) async -> UIImage? {
+        guard url.isFileURL == false else { return nil }
+
+        if let data = await ArtworkDiskCache.shared.cachedData(
+                for: url,
+                variant: .image(maxPixelSize: maxPixelSize)
+              ) {
+            return ImageLoaderAndCache.makeUIImage(from: data, maxPixelSize: maxPixelSize)
+        }
+
+        // Downloaded episodes retain a full-size display variant. Smaller row
+        // requests can reuse it while offline instead of requiring a duplicate.
+        guard maxPixelSize < ImageLoaderAndCache.defaultMaxPixelSize,
+              let fallbackData = await ArtworkDiskCache.shared.cachedData(
+                for: url,
+                variant: .image(maxPixelSize: ImageLoaderAndCache.defaultMaxPixelSize)
+              ) else {
+            return nil
+        }
+        return ImageLoaderAndCache.makeUIImage(from: fallbackData, maxPixelSize: maxPixelSize)
+    }
+
+    private static func loadPersistedBlurredImage(
+        for url: URL,
+        radius: CGFloat,
+        maxPixelSize: CGFloat
+    ) async -> UIImage? {
+        guard url.isFileURL == false,
+              let data = await ArtworkDiskCache.shared.cachedData(
+                for: url,
+                variant: .blurred(radius: radius, maxPixelSize: maxPixelSize)
+              ) else {
+            return nil
+        }
+        return ImageLoaderAndCache.makeUIImage(from: data, maxPixelSize: maxPixelSize)
+    }
+
+    private static func persist(
+        _ image: UIImage,
+        sourceURL: URL,
+        variant: ArtworkDiskCache.Variant
+    ) async {
+        guard sourceURL.isFileURL == false,
+              let data = encodedCacheData(for: image) else {
+            return
+        }
+        await ArtworkDiskCache.shared.store(data, for: sourceURL, variant: variant)
+    }
+
+    nonisolated private static func encodedCacheData(for image: UIImage) -> Data? {
+        guard let alphaInfo = image.cgImage?.alphaInfo else {
+            return image.jpegData(compressionQuality: 0.82)
+        }
+        switch alphaInfo {
+        case .first, .last, .premultipliedFirst, .premultipliedLast:
+            return image.pngData()
+        case .none, .noneSkipFirst, .noneSkipLast, .alphaOnly:
+            return image.jpegData(compressionQuality: 0.82)
+        @unknown default:
+            return image.jpegData(compressionQuality: 0.82)
+        }
     }
 }
 
@@ -239,8 +412,26 @@ class ImageLoaderAndCache: ObservableObject {
         return UIImage(cgImage: cgImage)
     }
     
-    nonisolated static func loadUIImage(from url: URL, saveTo: URL? = nil) async -> UIImage? {
-        await SharedImageRepository.shared.image(for: url, saveTo: saveTo)
+    nonisolated static func loadUIImage(
+        from url: URL,
+        maxPixelSize: CGFloat = defaultMaxPixelSize,
+        saveTo: URL? = nil
+    ) async -> UIImage? {
+        await SharedImageRepository.shared.image(
+            for: url,
+            maxPixelSize: maxPixelSize,
+            saveTo: saveTo
+        )
+    }
+
+    nonisolated static func loadPersistedUIImage(
+        from url: URL,
+        maxPixelSize: CGFloat = defaultMaxPixelSize
+    ) async -> UIImage? {
+        await SharedImageRepository.shared.persistedImage(
+            for: url,
+            maxPixelSize: maxPixelSize
+        )
     }
 
     nonisolated static func loadBlurredUIImage(
@@ -254,6 +445,18 @@ class ImageLoaderAndCache: ObservableObject {
             radius: radius,
             maxPixelSize: maxPixelSize,
             saveTo: saveTo
+        )
+    }
+
+    nonisolated static func loadPersistedBlurredUIImage(
+        from url: URL,
+        radius: CGFloat,
+        maxPixelSize: CGFloat = defaultMaxPixelSize
+    ) async -> UIImage? {
+        await SharedImageRepository.shared.persistedBlurredImage(
+            for: url,
+            radius: radius,
+            maxPixelSize: maxPixelSize
         )
     }
 }

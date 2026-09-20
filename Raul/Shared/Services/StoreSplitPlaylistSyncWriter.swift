@@ -21,6 +21,9 @@ struct StoreSplitPlaylistSnapshot: Sendable {
     let kindRawValue: String
     let smartFilterRawValue: String?
     let isHidden: Bool
+    let autoDownloadEnabled: Bool
+    let autoDownloadEpisodeLimit: Int?
+    let removesEpisodesPlayedElsewhere: Bool
     let entries: [StoreSplitPlaylistEntrySnapshot]
 }
 
@@ -61,6 +64,9 @@ extension Playlist {
             kindRawValue: kindRawValue,
             smartFilterRawValue: smartFilterRawValue,
             isHidden: hidden,
+            autoDownloadEnabled: autoDownloadEnabled,
+            autoDownloadEpisodeLimit: resolvedAutoDownloadEpisodeLimit,
+            removesEpisodesPlayedElsewhere: removesEpisodesPlayedElsewhere,
             entries: entries
         )
     }
@@ -110,6 +116,10 @@ actor StoreSplitPlaylistSyncWriter {
             playlist.kindRawValue = snapshot.kindRawValue
             playlist.smartFilterRawValue = snapshot.smartFilterRawValue
             playlist.isHidden = snapshot.isHidden
+            playlist.autoDownloadEnabled = snapshot.autoDownloadEnabled
+            playlist.autoDownloadEpisodeLimit = snapshot.autoDownloadEpisodeLimit
+            playlist.removesEpisodesPlayedElsewhere =
+                snapshot.removesEpisodesPlayedElsewhere
             playlist.isDeleted = false
             playlist.deletedAt = nil
             playlist.updatedAt = date
@@ -124,6 +134,10 @@ actor StoreSplitPlaylistSyncWriter {
                     kindRawValue: snapshot.kindRawValue,
                     smartFilterRawValue: snapshot.smartFilterRawValue,
                     isHidden: snapshot.isHidden,
+                    autoDownloadEnabled: snapshot.autoDownloadEnabled,
+                    autoDownloadEpisodeLimit: snapshot.autoDownloadEpisodeLimit,
+                    removesEpisodesPlayedElsewhere:
+                        snapshot.removesEpisodesPlayedElsewhere,
                     updatedAt: date,
                     sourceDeviceID: deviceID
                 )

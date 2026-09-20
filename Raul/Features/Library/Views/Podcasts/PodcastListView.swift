@@ -275,7 +275,7 @@ private struct LibraryPlaylistsView: View {
             }
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
-            LibraryNewPlaylistSheet { draft in
+            NewPlaylistSheet { draft in
                 createPlaylist(from: draft)
             }
         }
@@ -287,28 +287,9 @@ private struct LibraryPlaylistsView: View {
 
     private func deletePlaylists(at offsets: IndexSet) {
         let candidates = visiblePlaylists
-        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
-
-        for index in offsets {
-            guard index < candidates.count else { continue }
-            let playlist = candidates[index]
-            guard playlist.deleteable else { continue }
-
-            if let selectedID = UUID(uuidString: selectedPlaylistID),
-               selectedID == playlist.id {
-                selectedPlaylistID = defaultPlaylist.id.uuidString
-            }
-
-            for entry in playlist.items ?? [] {
-                modelContext.delete(entry)
-            }
-            StoreSplitPlaylistSyncCoordinator.tombstone(
-                playlistID: playlist.storeSplitSyncID
-            )
-            modelContext.delete(playlist)
+        for index in offsets where index < candidates.count {
+            PlaylistLibrary.delete(candidates[index], in: modelContext)
         }
-
-        modelContext.saveIfNeeded()
         ensurePlaylistPreferencesValid()
     }
 
@@ -334,22 +315,8 @@ private struct LibraryPlaylistsView: View {
 
     }
 
-    private func createPlaylist(from draft: LibraryPlaylistCreationDraft) {
-        let allPlaylists = Playlist.manualVisibleSorted(playlists)
-        let title = Playlist.normalizedPlaylistName(draft.name, existing: allPlaylists)
-
-        let playlist = Playlist()
-        playlist.title = title
-        playlist.deleteable = true
-        playlist.hidden = false
-        playlist.sortIndex = (allPlaylists.map(\.sortIndex).max() ?? 0) + 1
-        playlist.kind = .manual
-        playlist.symbolName = Playlist.normalizedSymbolName(draft.symbolName, fallback: Playlist.defaultManualSymbolName)
-        playlist.smartFilter = nil
-
-        modelContext.insert(playlist)
-        modelContext.saveIfNeeded()
-        StoreSplitPlaylistSyncCoordinator.publish(playlist)
+    private func createPlaylist(from draft: PlaylistCreationDraft) {
+        PlaylistLibrary.create(name: draft.name, symbolName: draft.symbolName, in: modelContext)
     }
 
     private func playlistRowContent(for playlist: Playlist) -> some View {
@@ -370,95 +337,6 @@ private struct LibraryPlaylistsView: View {
                 Text("Default")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-private struct LibraryNewPlaylistSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var draft = LibraryPlaylistCreationDraft()
-
-    let onCreate: (LibraryPlaylistCreationDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Playlist") {
-                    TextField("Name", text: $draft.name)
-                }
-
-                Section("Icon") {
-                    LibraryPlaylistSymbolGridPicker(selection: $draft.symbolName)
-                }
-            }
-            .navigationTitle("New Playlist")
-            .platformInlineNavigationTitle()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        onCreate(draft)
-                        dismiss()
-                    }
-                    .disabled(canCreate == false)
-                }
-            }
-        }
-    }
-
-    private var canCreate: Bool {
-        draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    }
-}
-
-private struct LibraryPlaylistCreationDraft {
-    var name: String = ""
-    var symbolName: String = Playlist.defaultManualSymbolName
-}
-
-private struct LibraryPlaylistSymbolGridPicker: View {
-    @Binding var selection: String
-
-    private let columns: [GridItem] = [
-        GridItem(.adaptive(minimum: 56, maximum: 70), spacing: 10)
-    ]
-
-    var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-            ForEach(Playlist.symbolOptions) { option in
-                Button {
-                    selection = option.symbolName
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: option.symbolName)
-                            .font(.title3)
-                            .frame(maxWidth: .infinity)
-                        Text(option.title)
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(selection == option.symbolName ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(selection == option.symbolName ? Color.accentColor : Color.clear, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Playlist icon \(option.title)")
-                .accessibilityAddTraits(selection == option.symbolName ? .isSelected : [])
             }
         }
     }

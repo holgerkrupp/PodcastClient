@@ -10,11 +10,6 @@ import AVFoundation
 import AVKit
 import TipKit
 
-enum PlayerControlLayout {
-    case standard
-    case landscapeCompact
-}
-
 struct PlayerControllView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -31,17 +26,19 @@ struct PlayerControllView: View {
 #if os(iOS)
     @State private var settingsRequest: SettingsWindowRequest?
 #endif
-    @ScaledMetric(relativeTo: .body) private var mediaSectionHeight: CGFloat = 360
-    @ScaledMetric(relativeTo: .body) private var transcriptCardHeight: CGFloat = 120
-    @ScaledMetric(relativeTo: .body) private var mediaSectionSpacing: CGFloat = 12
     var showPrimaryTransportControls: Bool = true
-    var layout: PlayerControlLayout = .standard
+    /// The enclosing player derives this from its live scene geometry. A nil
+    /// value preserves the cover's natural square presentation for inline use.
+    var mediaHeight: CGFloat?
+    var showsMedia = true
+    var showsInlineTranscript = true
+    var showsTranscriptOverHero = false
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
     var body: some View {
         if let episode = player.currentEpisode {
-            VStack(spacing: layout == .landscapeCompact ? 6 : 8) {
+            VStack(spacing: 8) {
                 
                 HStack {
                     AirPlayButtonView()
@@ -89,8 +86,8 @@ struct PlayerControllView: View {
                 }
 #endif
                 
-                if layout == .standard {
-                    VStack(spacing: mediaSectionSpacing) {
+                if showsMedia, let mediaHeight {
+                    VStack(spacing: 0) {
                         PlayerMediaView(
                             episode: episode,
                             player: player.videoPlayer,
@@ -101,13 +98,14 @@ struct PlayerControllView: View {
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
                             .frame(
-                                height: showTranscripts
-                                    ? mediaSectionHeight - transcriptCardHeight - mediaSectionSpacing
-                                    : mediaSectionHeight,
+                                height: showsInlineTranscript && showTranscripts
+                                    ? mediaHeight * 0.6
+                                    : mediaHeight,
                                 alignment: .top
                             )
 
                         if let transcriptLines = player.currentEpisode?.transcriptLines,
+                           showsInlineTranscript,
                            showTranscripts {
                             TranscriptView(
                                 transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
@@ -117,7 +115,7 @@ struct PlayerControllView: View {
                                     showFullTranscripts = true
                                 }
                             )
-                            .frame(maxWidth: .infinity, minHeight: transcriptCardHeight, maxHeight: transcriptCardHeight, alignment: .topLeading)
+                            .frame(maxWidth: .infinity, maxHeight: mediaHeight * 0.4, alignment: .topLeading)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .accessibilityHint("Scroll to read along. Tap a caption to open the full transcript.")
@@ -125,24 +123,37 @@ struct PlayerControllView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: mediaSectionHeight, alignment: .top)
+                    .frame(height: mediaHeight, alignment: .top)
                     .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85), value: showTranscripts)
-                    .sheet(isPresented: $showFullTranscripts, onDismiss: {
-                        openFullTranscriptFollowingPlayback = false
-                    }) {
-                        if let transcriptLines = player.currentEpisode?.transcriptLines {
-                            TranscriptListView(
-                                transcriptLines: transcriptLines,
-                                episode: episode,
-                                startFollowingPlayback: openFullTranscriptFollowingPlayback
-                            )
-                                .presentationDetents([.large])
-                                .presentationDragIndicator(.visible)
+                } else if showsMedia {
+                    PlayerMediaView(
+                        episode: episode,
+                        player: player.videoPlayer,
+                        isVideo: player.currentPlaybackIsVideo,
+                        timecode: player.currentChapter?.start
+                    )
+                    .id("\(episode.url?.absoluteString ?? "")-\(player.currentPlaybackIsVideo)")
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
+                } else if !showsTranscriptOverHero,
+                          showsInlineTranscript,
+                          showTranscripts,
+                          let transcriptLines = episode.transcriptLines {
+                    TranscriptView(
+                        transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
+                        currentTime: $player.playPosition,
+                        onOpenFullTranscript: {
+                            openFullTranscriptFollowingPlayback = true
+                            showFullTranscripts = true
                         }
-                    }
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 
-                if layout == .standard,
+                if showsInlineTranscript,
                    let transcripts = player.currentEpisode?.transcriptLines,
                    transcripts.count > 0 {
                     HStack {
@@ -154,8 +165,12 @@ struct PlayerControllView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Hide inline transcript")
-                                .accessibilityHint("Removes the transcript panel below the artwork")
-                                .help("Hide the transcript below the artwork")
+                                .accessibilityHint(showsTranscriptOverHero
+                                    ? "Removes the transcript panel from the artwork"
+                                    : "Removes the transcript panel below the artwork")
+                                .help(showsTranscriptOverHero
+                                    ? "Hide the transcript on the artwork"
+                                    : "Hide the transcript below the artwork")
                                 .accessibilityInputLabels([Text("Hide captions"), Text("Hide transcript")])
                         }else{
                             Button {
@@ -165,8 +180,12 @@ struct PlayerControllView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Show inline transcript")
-                                .accessibilityHint("Shows the transcript panel below the artwork")
-                                .help("Read along below the artwork")
+                                .accessibilityHint(showsTranscriptOverHero
+                                    ? "Shows the transcript panel over the artwork"
+                                    : "Shows the transcript panel below the artwork")
+                                .help(showsTranscriptOverHero
+                                    ? "Read along over the artwork"
+                                    : "Read along below the artwork")
                                 .accessibilityInputLabels([Text("Show captions"), Text("Show transcript")])
                         }
                         Spacer()
@@ -189,8 +208,8 @@ struct PlayerControllView: View {
                 
                 
                 Text("\(episode.title)")
-                    .font(layout == .landscapeCompact ? .subheadline : .body)
-                    .lineLimit(layout == .landscapeCompact ? 1 : 2)
+                    .font(.body)
+                    .lineLimit(2)
                 
                 
                 VStack {
@@ -318,7 +337,42 @@ struct PlayerControllView: View {
 
                 
             }
-            .padding(layout == .landscapeCompact ? 10 : 16)
+            .padding()
+            .overlay(alignment: .top) {
+                if showsTranscriptOverHero,
+                   showsInlineTranscript,
+                   showTranscripts,
+                   let transcriptLines = episode.transcriptLines,
+                   !transcriptLines.isEmpty {
+                    TranscriptView(
+                        transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
+                        currentTime: $player.playPosition,
+                        onOpenFullTranscript: {
+                            openFullTranscriptFollowingPlayback = true
+                            showFullTranscripts = true
+                        }
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .offset(y: -132)
+                    .accessibilityHint("Scroll to read along. Tap a caption to open the full transcript.")
+                }
+            }
+            .sheet(isPresented: $showFullTranscripts, onDismiss: {
+                openFullTranscriptFollowingPlayback = false
+            }) {
+                if let transcriptLines = player.currentEpisode?.transcriptLines {
+                    TranscriptListView(
+                        transcriptLines: transcriptLines,
+                        episode: episode,
+                        startFollowingPlayback: openFullTranscriptFollowingPlayback
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                }
+            }
         }
     }
 

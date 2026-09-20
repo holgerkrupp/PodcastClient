@@ -433,6 +433,16 @@
         }
       }
     },
+    "^[%lld episode](inflect: true)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%lld Episode](inflect: true)"
+          }
+        }
+      }
+    },
     "+ %lld more" : {
       "localizations" : {
         "de" : {
@@ -722,6 +732,46 @@
         }
       }
     },
+    "Added to the bottom · Global default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unten einsortiert · Globale Vorgabe"
+          }
+        }
+      }
+    },
+    "Added to the bottom · Podcast setting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unten einsortiert · Podcast-Einstellung"
+          }
+        }
+      }
+    },
+    "Added to the top · Global default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oben einsortiert · Globale Vorgabe"
+          }
+        }
+      }
+    },
+    "Added to the top · Podcast setting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oben einsortiert · Podcast-Einstellung"
+          }
+        }
+      }
+    },
     "Adds a new playlist" : {
       "localizations" : {
         "de" : {
@@ -911,6 +961,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Amerika"
+          }
+        }
+      }
+    },
+    "An episode you finish anywhere else also leaves this playlist. Finishing an episode here always removes it from this playlist." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Episode, die du anderswo zu Ende hörst, verlässt auch diese Wiedergabeliste. Hörst du eine Episode hier zu Ende, wird sie immer aus dieser Liste entfernt."
           }
         }
       }
@@ -1503,6 +1563,7 @@
       }
     },
     "Changes the current episode between the audio enclosure and alternate video stream" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1511,9 +1572,6 @@
           }
         }
       }
-    },
-    "Changes the landscape player layout for left- or right-handed use" : {
-
     },
     "Changes this episode between the audio enclosure and alternate video stream" : {
       "localizations" : {
@@ -1631,6 +1689,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neue Episoden werden gesucht"
+          }
+        }
+      }
+    },
+    "Checking podcasts…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts werden geprüft …"
           }
         }
       }
@@ -1761,6 +1829,9 @@
           }
         }
       }
+    },
+    "Close player" : {
+
     },
     "CloudKit does not expose exact transfer progress, so the displayed percentage is an estimate. CloudKit's import status determines when synchronization is complete." : {
       "localizations" : {
@@ -1898,6 +1969,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erstellt ein Teilen-Bild aus der Podcast-Hörstatistik und gibt es als PNG-Datei zurück."
+          }
+        }
+      }
+    },
+    "Create and delete playlists, and set their downloads and icons" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabelisten erstellen und löschen, Downloads und Symbole festlegen"
           }
         }
       }
@@ -2182,6 +2263,16 @@
         }
       }
     },
+    "Delete “%@”?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ löschen?"
+          }
+        }
+      }
+    },
     "Delete All Stored Files" : {
       "localizations" : {
         "de" : {
@@ -2238,6 +2329,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abgespielte löschen"
+          }
+        }
+      }
+    },
+    "Delete Playlist" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabeliste löschen"
+          }
+        }
+      }
+    },
+    "Delete Playlist?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabeliste löschen?"
+          }
+        }
+      }
+    },
+    "Delete Playlist…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabeliste löschen …"
           }
         }
       }
@@ -2422,6 +2543,26 @@
         }
       }
     },
+    "Download at most" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höchstens herunterladen"
+          }
+        }
+      }
+    },
+    "Download episodes automatically" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden automatisch herunterladen"
+          }
+        }
+      }
+    },
     "Download sort" : {
       "localizations" : {
         "de" : {
@@ -2468,6 +2609,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Downloads"
+          }
+        }
+      }
+    },
+    "Downloads episodes automatically" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lädt Episoden automatisch herunter"
+          }
+        }
+      }
+    },
+    "Downloads every episode in this playlist. Turn on the limit to keep only the next few episodes on this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lädt jede Episode dieser Wiedergabeliste herunter. Aktiviere die Begrenzung, um nur die nächsten Episoden auf diesem Gerät zu behalten."
           }
         }
       }
@@ -2740,6 +2901,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Episoden"
+          }
+        }
+      }
+    },
+    "Episodes in playlist" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden in der Wiedergabeliste"
+          }
+        }
+      }
+    },
+    "Episodes in this playlist are only downloaded when you start them or when a podcast's own automatic downloads cover them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden dieser Wiedergabeliste werden nur geladen, wenn du sie startest oder wenn die automatischen Downloads des jeweiligen Podcasts sie erfassen."
           }
         }
       }
@@ -3473,6 +3654,9 @@
     "Hide the transcript below the artwork" : {
 
     },
+    "Hide the transcript on the artwork" : {
+
+    },
     "Hide transcript" : {
       "localizations" : {
         "de" : {
@@ -3932,6 +4116,16 @@
         }
       }
     },
+    "Keeps the first episodes of this playlist downloaded, in playlist order. Later episodes download as the ones above them leave the playlist. Downloads already on this device are never deleted by this setting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hält die ersten Episoden dieser Wiedergabeliste in der Reihenfolge der Liste geladen. Weitere Episoden werden geladen, sobald die Episoden über ihnen die Liste verlassen. Bereits geladene Dateien werden durch diese Einstellung nie gelöscht."
+          }
+        }
+      }
+    },
     "Keyword or phrase" : {
       "localizations" : {
         "de" : {
@@ -4092,6 +4286,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Limit"
+          }
+        }
+      }
+    },
+    "Limit downloaded episodes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl heruntergeladener Episoden begrenzen"
           }
         }
       }
@@ -4667,12 +4871,6 @@
         }
       }
     },
-    "Move controls to left" : {
-
-    },
-    "Move controls to right" : {
-
-    },
     "Move Current To End" : {
       "localizations" : {
         "de" : {
@@ -4697,12 +4895,6 @@
 
     },
     "Move later" : {
-
-    },
-    "Move playback controls to left" : {
-
-    },
-    "Move playback controls to right" : {
 
     },
     "Move Subscriptions in Minutes" : {
@@ -4891,6 +5083,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neue Episoden abonnierter Podcasts erscheinen hier. Du kannst sie zu deiner Warteschlange hinzufügen oder archivieren, wenn dich eine Episode nicht interessiert."
+          }
+        }
+      }
+    },
+    "New episodes of these podcasts are queued into this playlist as they arrive." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Episoden dieser Podcasts werden automatisch in diese Wiedergabeliste eingereiht."
           }
         }
       }
@@ -5188,6 +5390,16 @@
         }
       }
     },
+    "No podcast puts its new episodes here. A podcast's own settings decide which playlist it fills." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Podcast legt seine neuen Episoden hier ab. Die Einstellungen des jeweiligen Podcasts bestimmen, welche Wiedergabeliste er füllt."
+          }
+        }
+      }
+    },
     "No Podcast Storage Yet" : {
       "localizations" : {
         "de" : {
@@ -5377,6 +5589,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Normal"
+          }
+        }
+      }
+    },
+    "Not added automatically" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird nicht automatisch hinzugefügt"
           }
         }
       }
@@ -5581,6 +5803,16 @@
         }
       }
     },
+    "Open a playlist to rename it, change its icon, and set how its episodes are downloaded. Swipe to delete a playlist; the built-in queue cannot be deleted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne eine Wiedergabeliste, um sie umzubenennen, ihr Symbol zu ändern und festzulegen, wie ihre Episoden geladen werden. Wische, um eine Wiedergabeliste zu löschen; die eingebaute Warteschlange kann nicht gelöscht werden."
+          }
+        }
+      }
+    },
     "Open all settings for queue behavior, podcasts, transcriptions, appearance, integrations, and storage." : {
       "localizations" : {
         "de" : {
@@ -5712,6 +5944,7 @@
       }
     },
     "Open playback and queue settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5932,6 +6165,27 @@
         }
       }
     },
+    "Opens podcast settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Podcast-Einstellungen"
+          }
+        }
+      }
+    },
+    "Opens settings for this playlist" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Einstellungen dieser Wiedergabeliste"
+          }
+        }
+      }
+    },
     "Opens settings related to playback" : {
       "localizations" : {
         "de" : {
@@ -5993,6 +6247,7 @@
       }
     },
     "Opens the share sheet with the current playback timestamp" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6058,6 +6313,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Überblick"
+          }
+        }
+      }
+    },
+    "Page %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Page %1$lld of %2$lld"
           }
         }
       }
@@ -6468,6 +6733,9 @@
         }
       }
     },
+    "Playback controls and shownotes for %@" : {
+
+    },
     "Playback controls for %@" : {
 
     },
@@ -6581,6 +6849,16 @@
         }
       }
     },
+    "Played Episodes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgespielte Episoden"
+          }
+        }
+      }
+    },
     "Player" : {
       "localizations" : {
         "de" : {
@@ -6666,6 +6944,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Playlist-Symbol %@"
+          }
+        }
+      }
+    },
+    "Playlist name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name der Wiedergabeliste"
           }
         }
       }
@@ -6917,6 +7205,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcasts"
+          }
+        }
+      }
+    },
+    "Podcasts Added Automatically" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch hinzugefügte Podcasts"
           }
         }
       }
@@ -7352,6 +7650,7 @@
       }
     },
     "Queue settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7382,6 +7681,9 @@
       }
     },
     "Read along below the artwork" : {
+
+    },
+    "Read along over the artwork" : {
 
     },
     "Read the whole episode as text" : {
@@ -7780,6 +8082,16 @@
     "Remove episode from playlist" : {
 
     },
+    "Remove episodes played in another playlist" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episoden entfernen, die in einer anderen Wiedergabeliste abgespielt wurden"
+          }
+        }
+      }
+    },
     "Remove from Inbox" : {
       "localizations" : {
         "de" : {
@@ -7839,6 +8151,9 @@
           }
         }
       }
+    },
+    "Removes the transcript panel from the artwork" : {
+
     },
     "Removes this episode from Inbox without changing archive or playlist membership" : {
       "localizations" : {
@@ -8530,6 +8845,9 @@
         }
       }
     },
+    "Shownotes" : {
+
+    },
     "Shows all chapter markers" : {
       "localizations" : {
         "de" : {
@@ -8669,6 +8987,9 @@
           }
         }
       }
+    },
+    "Shows the transcript panel over the artwork" : {
+
     },
     "Shuffle" : {
       "localizations" : {
@@ -9481,6 +9802,16 @@
         }
       }
     },
+    "The episodes stay in your library. Podcasts that added new episodes to this playlist will add them to Up Next instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Episoden bleiben in deiner Mediathek. Podcasts, die neue Episoden zu dieser Wiedergabeliste hinzugefügt haben, fügen sie stattdessen zu Up Next hinzu."
+          }
+        }
+      }
+    },
     "The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows." : {
       "localizations" : {
         "de" : {
@@ -9631,6 +9962,16 @@
         }
       }
     },
+    "This is the built-in queue, so its name is fixed. You can still give it any icon." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dies ist die eingebaute Warteschlange, ihr Name ist deshalb fest. Ein beliebiges Symbol kannst du trotzdem wählen."
+          }
+        }
+      }
+    },
     "This item cannot be shared on macOS yet." : {
       "localizations" : {
         "de" : {
@@ -9647,6 +9988,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Playlist enthält keine weiteren Episoden."
+          }
+        }
+      }
+    },
+    "This playlist keeps its episodes even after you finish them in another playlist. Finishing an episode here still removes it from this playlist." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Wiedergabeliste behält ihre Episoden, auch wenn du sie in einer anderen Liste zu Ende hörst. Hörst du eine Episode hier zu Ende, wird sie weiterhin aus dieser Liste entfernt."
           }
         }
       }

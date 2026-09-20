@@ -28,10 +28,7 @@ final class ShareViewController: UIHostingController<ShareExtensionView> {
         guard handlingTask == nil else { return }
 
         handlingTask = Task {
-            await ShareExtensionHandler(
-                extensionContext: extensionContext,
-                viewModel: viewModel
-            ).run()
+            await viewModel.prepare(extensionContext: extensionContext)
         }
     }
 }
@@ -63,10 +60,7 @@ final class ShareViewController: NSHostingController<ShareExtensionView> {
         guard handlingTask == nil else { return }
 
         handlingTask = Task {
-            await ShareExtensionHandler(
-                extensionContext: extensionContext,
-                viewModel: viewModel
-            ).run()
+            await viewModel.prepare(extensionContext: extensionContext)
         }
     }
 }

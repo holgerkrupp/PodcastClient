@@ -4,6 +4,9 @@ import AVFoundation
 import MediaPlayer
 import SwiftData
 import BasicLogger
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum PlaybackMediaSelection: String, Codable, Sendable {
     case primary
@@ -233,6 +236,14 @@ class Player {
     private var chapterSkipPlan = ChapterSkipPlan(entries: [])
     private let chapterBoundaryTolerance: TimeInterval = 0.35
     private var playbackPowerMode: PlaybackPowerMode = .foreground
+#if canImport(UIKit)
+    // When an AVPlayer item ends, the audio background assertion can disappear
+    // before the async queue lookup and replacement item have started. Keep a
+    // very short execution lease over that handoff; the new item takes over as
+    // soon as AVPlayer reports that it is playing.
+    private var episodeTransitionBackgroundTaskID = UIBackgroundTaskIdentifier.invalid
+    private var episodeTransitionBackgroundTaskTimeout: Task<Void, Never>?
+#endif
     private var reduceSilenceGapsEnabled = false
     private var silenceGapReductionLevel: SilenceGapReductionLevel = .low
     private var voiceEnhancementEnabled = false
@@ -1962,6 +1973,7 @@ class Player {
 
     private func syncPlaybackStateFromObservedPlayer(_ observedPlayer: AVPlayer) {
         if observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing {
+            finishEpisodeTransitionBackgroundTask()
             if isPlaying == false {
                 // In SharePlay the coordinator has already applied the group's
                 // rate; re-applying ours would change it for everyone.
@@ -1991,6 +2003,10 @@ class Player {
     }
 
     func enterForegroundPlaybackMode() async {
+        // A background transition assertion is no longer needed once the app
+        // is active. This also covers opening the app while a replacement item
+        // is still buffering.
+        finishEpisodeTransitionBackgroundTask()
         let powerModeChanged = playbackPowerMode != .foreground
         playbackPowerMode = .foreground
         restartSleepTimerIfNeeded()
@@ -2024,6 +2040,45 @@ class Player {
     private func restartPlaybackUpdatesIfNeeded() {
         guard playbackTask != nil else { return }
         startPlaybackUpdates()
+    }
+
+    private func beginEpisodeTransitionBackgroundTask() {
+#if canImport(UIKit)
+        guard UIApplication.shared.applicationState == .background else { return }
+
+        finishEpisodeTransitionBackgroundTask()
+        let taskID = UIApplication.shared.beginBackgroundTask(
+            withName: "StartNextPlaybackEpisode"
+        ) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.finishEpisodeTransitionBackgroundTask()
+            }
+        }
+        guard taskID != .invalid else {
+            BasicLogger.shared.log("Could not acquire background time for next episode")
+            return
+        }
+
+        episodeTransitionBackgroundTaskID = taskID
+        // This is a safety net, not the normal completion path. The task is
+        // normally released by the AVPlayer rate/status observation above.
+        episodeTransitionBackgroundTaskTimeout = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(20))
+            guard Task.isCancelled == false else { return }
+            self?.finishEpisodeTransitionBackgroundTask()
+        }
+#endif
+    }
+
+    private func finishEpisodeTransitionBackgroundTask() {
+#if canImport(UIKit)
+        episodeTransitionBackgroundTaskTimeout?.cancel()
+        episodeTransitionBackgroundTaskTimeout = nil
+
+        guard episodeTransitionBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(episodeTransitionBackgroundTaskID)
+        episodeTransitionBackgroundTaskID = .invalid
+#endif
     }
 
     private func restartSleepTimerIfNeeded() {
@@ -2468,6 +2523,7 @@ class Player {
         }
         finishingEpisodeURL = finishedEpisodeURL
         let finalPlaybackPosition = max(playPosition, currentEpisode?.duration ?? 0.0)
+        beginEpisodeTransitionBackgroundTask()
 
         Task {
             let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
@@ -2506,8 +2562,16 @@ class Player {
                     playDirectly: true,
                     skipProtectionBehavior: .ignore
                 )
+
+                // Keep the lease while the replacement item activates its
+                // audio session. If loading failed before it installed the
+                // next item, there is nothing left for the lease to protect.
+                if currentEpisodeURL != nextEpisodeURL {
+                    finishEpisodeTransitionBackgroundTask()
+                }
             } else {
                 finishingEpisodeURL = nil
+                finishEpisodeTransitionBackgroundTask()
             }
 
             Task(priority: .utility) {

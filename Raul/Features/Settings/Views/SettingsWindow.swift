@@ -132,7 +132,12 @@ private struct SettingsPresentationHost: ViewModifier {
                     settingsRequest = request
                     openWindow(id: SettingsWindowRequest.sceneID)
 #else
-                    if supportsMultipleWindows {
+                    // Duo remains an iPhone when its inner display becomes a
+                    // regular-width scene. Keeping Settings in the current
+                    // scene lets dismissing it return to the same main view,
+                    // with its navigation state intact, instead of opening a
+                    // second app window beside it.
+                    if supportsMultipleWindows && PlatformSupport.isPhone == false {
                         openWindow(id: SettingsWindowRequest.sceneID, value: request)
                     } else {
                         sheetRequest = request

@@ -215,25 +215,57 @@ private struct MacPlayerPresentationHost: ViewModifier {
 }
 #else
 private struct IOSPlayerPresentationHost: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Bindable var navigation: AppNavigationModel
 
     func body(content: Content) -> some View {
-        content
+        let playerActionContent = content
             .environment(
                 \.openPlayer,
                 OpenPlayerAction {
                     navigation.isPlayerPresented = true
                 }
             )
-            .sheet(isPresented: $navigation.isPlayerPresented) {
-                PlayerView(fullSize: true)
-                    .presentationDragIndicator(.visible)
+
+        Group {
+            if horizontalSizeClass == .regular {
+                playerActionContent
+                    .overlay {
+                        GeometryReader { proxy in
+                            if navigation.isPlayerPresented {
+                                HStack(spacing: 0) {
+                                    Spacer(minLength: 0)
+
+                                    PlayerView(
+                                        fullSize: true,
+                                        usesExpandedLayout: false,
+                                        onDismiss: { navigation.isPlayerPresented = false }
+                                    )
+                                    .frame(
+                                        width: proxy.size.width * 0.5,
+                                        height: proxy.size.height
+                                    )
+                                    .background(.regularMaterial)
+                                    .transition(.move(edge: .trailing))
+                                }
+                            }
+                        }
+                    }
+            } else {
+                playerActionContent
+                    .sheet(isPresented: $navigation.isPlayerPresented) {
+                        PlayerView(fullSize: true)
+                            .presentationBackground(.clear)
+                            .presentationDragIndicator(.visible)
+                    }
             }
-            .onChange(of: Player.shared.isPlayerSheetPresented) { _, isPresented in
+        }
+        .animation(.smooth, value: navigation.isPlayerPresented)
+        .onChange(of: Player.shared.isPlayerSheetPresented) { _, isPresented in
                 guard isPresented else { return }
                 Player.shared.isPlayerSheetPresented = false
                 navigation.isPlayerPresented = true
-            }
+        }
     }
 }
 #endif

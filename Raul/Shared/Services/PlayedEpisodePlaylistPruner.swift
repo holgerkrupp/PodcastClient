@@ -122,6 +122,9 @@ actor PlayedEpisodePlaylistPruner {
             guard let playlist = entry.playlist,
                   playlist.isSmartPlaylist == false,
                   let episode = entry.episode else { continue }
+            // A playlist that opted out of cross-playlist removal keeps its copy
+            // of an episode that was finished somewhere else.
+            guard playlist.removesEpisodesPlayedElsewhere else { continue }
             guard episode.url != nowPlayingURL else { continue }
             guard PlayedEpisodeQueuePolicy.isStaleQueueMembership(
                 for: episode,

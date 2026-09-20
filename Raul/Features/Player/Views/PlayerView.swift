@@ -1,15 +1,19 @@
 import SwiftUI
 import SwiftData
-import RichText
+import WebKit
 import ESADesignKit
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct PlayerView: View {
     @Bindable private var player = Player.shared
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @AppStorage(PlayerLandscapePreference.controlsSideKey)
-    private var landscapeControlsSideRawValue = LandscapePlayerControlsSide.trailing.rawValue
-    @State private var landscapeTab: LandscapePlayerTab = .shownotes
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @State private var contentTab: PlayerContentTab = .shownotes
     @State private var transcriptionItem: TranscriptionItem?
     @State private var isStartingTranscription = false
     @State private var isGeneratingChapters = false
@@ -18,8 +22,17 @@ struct PlayerView: View {
     @State private var refreshedContentEpisodeURL: URL?
     @State private var refreshedTranscriptLines: [TranscriptLineAndTime] = []
     @State private var refreshedChapterMarkers: [Marker] = []
+    @State private var isTransportPinned = false
 
     let fullSize: Bool
+    /// Set by the iOS presentation host because a sheet's local size class can
+    /// differ from the scene that presented it.
+    var usesExpandedLayout: Bool? = nil
+    var onDismiss: (() -> Void)? = nil
+
+    private var shouldUseExpandedLayout: Bool {
+        usesExpandedLayout ?? (horizontalSizeClass == .regular)
+    }
 
     var body: some View {
         if let episode = player.currentEpisode {
@@ -27,15 +40,18 @@ struct PlayerView: View {
 
             GeometryReader { geometry in
                 Group {
-                    if fullSize && isPhoneLandscape(in: geometry.size) {
-                        landscapePlayer(episode: episode)
+                    if fullSize && shouldUseExpandedLayout && !PlatformSupport.isPhone {
+                        expandedPlayer(episode: episode, in: geometry.size)
                     } else if fullSize {
-                        portraitFullPlayer(episode: episode)
+                        compactFullPlayer(episode: episode, in: geometry.size)
                     } else {
                         compactPlayer(episode: episode)
                     }
                 }
-                .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
+            }
+            .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
+            .onChange(of: episode.url) { _, _ in
+                isTransportPinned = false
             }
             .task(id: episode.url) {
                 await refreshGenerationState(for: episode)
@@ -57,99 +73,51 @@ struct PlayerView: View {
         }
     }
 
-    private func isPhoneLandscape(in size: CGSize) -> Bool {
-        PlatformSupport.isPhone && verticalSizeClass == .compact && size.width > size.height
-    }
-
-    private var landscapeControlsSide: LandscapePlayerControlsSide {
-        LandscapePlayerControlsSide(rawValue: landscapeControlsSideRawValue) ?? .trailing
-    }
-
-    private func landscapePlayer(episode: Episode) -> some View {
-        GeometryReader { geometry in
-            let controlsWidth = min(max(geometry.size.width * 0.41, 280), 360)
-
-            HStack(spacing: 12) {
-                if landscapeControlsSide == .leading {
-                    landscapeControls(episode: episode)
-                        .frame(width: controlsWidth)
-                    landscapeContent(episode: episode)
-                } else {
-                    landscapeContent(episode: episode)
-                    landscapeControls(episode: episode)
-                        .frame(width: controlsWidth)
-                }
-            }
-            .safeAreaPadding(.horizontal, 12)
-            .safeAreaPadding(.vertical, 8)
-        }
-    }
-
-    private func landscapeControls(episode: Episode) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("Playback")
-                    .font(.headline)
-                    .lineLimit(1)
-
-                Spacer(minLength: 4)
-
-                Button {
-                    landscapeControlsSideRawValue = landscapeControlsSide.opposite.rawValue
-                } label: {
-                    Label(
-                        landscapeControlsSide == .trailing ? "Move controls to left" : "Move controls to right",
-                        systemImage: "arrow.left.arrow.right"
-                    )
-                    .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.glass(.clear))
-                .accessibilityLabel(
-                    landscapeControlsSide == .trailing
-                        ? "Move playback controls to left"
-                        : "Move playback controls to right"
-                )
-                .accessibilityHint("Changes the landscape player layout for left- or right-handed use")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+    private func expandedPlayer(episode: Episode, in size: CGSize) -> some View {
+        HStack(spacing: 0) {
+            playerContentPane(episode: episode)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
-            ScrollView {
-                PlayerControllView(
-                    showPrimaryTransportControls: true,
-                    layout: .landscapeCompact
-                )
-            }
-            .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
+            // Keep the panes clear of the Duo's central division without
+            // coupling the layout to a device-specific measurement.
+            Color.clear
+                .frame(width: size.width * 0.06)
+                .accessibilityHidden(true)
+
+            Divider()
+
+            PlayerControllView(
+                mediaHeight: min(size.width, size.height) * 0.33,
+                showsInlineTranscript: false
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Playback controls for \(episode.title)")
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Playback controls for \(episode.title)")
+        .safeAreaPadding()
     }
 
-    private func landscapeContent(episode: Episode) -> some View {
+    private func playerContentPane(episode: Episode) -> some View {
         let transcriptLines = availableTranscriptLines(for: episode)
         let chapterMarkers = availableChapterMarkers(for: episode)
 
         return VStack(spacing: 0) {
-            Picker("Player content", selection: $landscapeTab) {
-                ForEach(LandscapePlayerTab.allCases) { tab in
+            Picker("Player content", selection: $contentTab) {
+                ForEach(PlayerContentTab.allCases) { tab in
                     Text(tab.title)
                         .tag(tab)
                 }
             }
             .pickerStyle(.segmented)
-            .padding(10)
+            .padding()
             .accessibilityLabel("Player content")
 
             Divider()
 
             Group {
-                switch landscapeTab {
+                switch contentTab {
                 case .shownotes:
                     ScrollView {
                         PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
@@ -180,8 +148,7 @@ struct PlayerView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.regularMaterial)
     }
 
     private func missingTranscriptView(episode: Episode) -> some View {
@@ -250,85 +217,132 @@ struct PlayerView: View {
         }
     }
 
-    private func portraitFullPlayer(episode: Episode) -> some View {
-        ScrollView(.vertical) {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                PlayerControllView(showPrimaryTransportControls: false)
-                    .padding()
+    private func compactFullPlayer(episode: Episode, in size: CGSize) -> some View {
+        let usesArtworkHero = !player.currentPlaybackIsVideo && colorSchemeContrast != .increased
 
-                Section {
-                    HStack {
-                        if let episodeLink = episode.link {
-                            Link(destination: episodeLink) {
-                                Label("Open in Browser", systemImage: "safari")
-                                    .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.glass(.clear))
-                        }
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                PlayerControllView(
+                    showPrimaryTransportControls: false,
+                    mediaHeight: min(max(0, size.width - 32), size.height * 0.72),
+                    showsMedia: !usesArtworkHero,
+                    showsTranscriptOverHero: usesArtworkHero
+                )
+                    .frame(maxWidth: .infinity, alignment: .top)
 
-                        Spacer()
-#if DEBUG
-                        NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
-                            Image(systemName: "ladybug")
-                                .imageScale(.small)
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .frame(height: 30)
-                        .accessibilityLabel("Episode debug metadata")
-                        Spacer()
-#endif
-
-                        if player.canSwitchCurrentEpisodeMedia {
-                            Button {
-                                Task {
-                                    await player.switchCurrentEpisodeMedia()
-                                }
-                            } label: {
-                                Label {
-                                    Text(player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video")
-                                } icon: {
-                                    Image(systemName: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle")
-                                        .resizable()
-                                        .scaledToFit()
-                                }
-                                .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
-                            .frame(height: 30)
-                            .accessibilityLabel(player.currentPlaybackIsVideo ? "Switch to audio" : "Switch to video")
-                            .accessibilityHint("Changes the current episode between the audio enclosure and alternate video stream")
-                        }
-
-                        Spacer()
-
-                        if let url = episode.deeplinks?.first ?? episode.link {
-                            ShareLink(item: positionedURL(for: url)) {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                                    .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityLabel("Share episode link at current time")
-                            .accessibilityHint("Opens the share sheet with the current playback timestamp")
-                        }
-
-                        ListenTogetherButton(episode: episode)
+                transportControls
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.frame(in: .named("playerViewport")).minY
+                    } action: { _, headerY in
+                        isTransportPinned = headerY <= 0
                     }
-                    .padding()
+                    .opacity(isTransportPinned ? 0 : 1)
+                    .allowsHitTesting(!isTransportPinned)
 
-                    PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
-                        .padding()
-                } header: {
-                    PlayerPrimaryTransportControlsView(includeBookmark: true)
-                        .tint(.primary)
-                        .padding(.horizontal)
-                        .padding(.top, 20)
-                        .padding(.bottom, 6)
-                        .frame(maxWidth: .infinity)
-                        .zIndex(3)
-                }
+                compactShownotes(episode: episode)
+            }
+            .safeAreaPadding(.horizontal)
+            .safeAreaPadding(.bottom)
+            .safeAreaPadding(.top, usesArtworkHero ? 0 : nil)
+        }
+        .coordinateSpace(name: "playerViewport")
+        .coverHero(
+            image: .url(episode.imageURL ?? episode.podcast?.imageURL),
+            enabled: usesArtworkHero,
+            placeholderAspectRatio: 1.0
+        )
+        .overlay(alignment: .top) {
+            if isTransportPinned {
+                transportControls
+                    .padding(.trailing, onDismiss == nil ? 0 : 48)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Label("Close player", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.glass(.clear))
+                .accessibilityLabel("Close player")
+                .padding()
+            }
+        }
+        // A square cover should fit within a short landscape iPhone viewport.
+        .frame(width: min(size.width, size.height * 0.55))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollIndicators(.automatic)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Playback controls and shownotes for \(episode.title)")
+    }
+
+    private var transportControls: some View {
+        PlayerPrimaryTransportControlsView(includeBookmark: true)
+            .tint(.primary)
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+    }
+
+    private func compactShownotes(episode: Episode) -> some View {
+        VStack(alignment: .leading) {
+            Divider()
+
+            HStack {
+                if let episodeLink = episode.link {
+                    Link(destination: episodeLink) {
+                        Label("Open in Browser", systemImage: "safari")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.glass(.clear))
+                }
+
+                Spacer()
+#if DEBUG
+                NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
+                    Image(systemName: "ladybug")
+                        .imageScale(.small)
+                }
+                .buttonStyle(.glass(.clear))
+                .accessibilityLabel("Episode debug metadata")
+#endif
+
+                if player.canSwitchCurrentEpisodeMedia {
+                    Button {
+                        Task { await player.switchCurrentEpisodeMedia() }
+                    } label: {
+                        Label(
+                            player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video",
+                            systemImage: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle"
+                        )
+                        .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel(player.currentPlaybackIsVideo ? "Switch to audio" : "Switch to video")
+                }
+
+                Spacer()
+
+                if let url = episode.deeplinks?.first ?? episode.link {
+                    ShareLink(item: positionedURL(for: url)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .accessibilityLabel("Share episode link at current time")
+                }
+
+                ListenTogetherButton(episode: episode)
+            }
+
+            Text("Shownotes")
+                .font(.headline)
+
+            PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func compactPlayer(episode: Episode) -> some View {
@@ -546,20 +560,7 @@ struct PlayerView: View {
     }
 }
 
-private enum PlayerLandscapePreference {
-    static let controlsSideKey = "player.landscapeControlsSide"
-}
-
-private enum LandscapePlayerControlsSide: String {
-    case leading
-    case trailing
-
-    var opposite: Self {
-        self == .leading ? .trailing : .leading
-    }
-}
-
-private enum LandscapePlayerTab: String, CaseIterable, Identifiable {
+private enum PlayerContentTab: String, CaseIterable, Identifiable {
     case shownotes
     case transcript
     case chapters
@@ -576,32 +577,129 @@ private enum LandscapePlayerTab: String, CaseIterable, Identifiable {
 }
 
 private struct PlayerShownotesView: View {
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var reloadGeneration = 0
-    @State private var wasBackgrounded = false
+    @State private var page: WebPage
+    @State private var contentHeight: CGFloat = 1
 
     let html: String
 
+    init(html: String) {
+        self.html = html
+        _page = State(
+            initialValue: WebPage(navigationDecider: ShownotesNavigationDecider())
+        )
+    }
+
     var body: some View {
-        Group {
-#if os(iOS)
-            RichText(html: html)
-                .linkColor(light: Color.secondary, dark: Color.secondary)
-                .backgroundColor(.transparent)
-#else
-            RichText(html: html)
-                .backgroundColor(.transparent)
-#endif
-        }
-        .id(reloadGeneration)
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .background {
-                wasBackgrounded = true
-            } else if newPhase == .active, wasBackgrounded {
-                wasBackgrounded = false
-                reloadGeneration &+= 1
+        WebView(page)
+            .webViewContentBackground(.hidden)
+            .webViewOnScrollGeometryChange(for: CGFloat.self) { geometry in
+                ceil(geometry.contentSize.height)
+            } action: { _, newHeight in
+                guard newHeight.isFinite, newHeight > 0, newHeight != contentHeight else { return }
+                contentHeight = newHeight
             }
+            .scrollDisabled(true)
+            .frame(height: contentHeight)
+            .task(id: html) {
+                page.load(html: Self.document(containing: html))
+            }
+    }
+
+    private static func document(containing html: String) -> String {
+        """
+        <!doctype html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, shrink-to-fit=yes, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+            <style>
+                :root { color-scheme: light dark; }
+                @media (prefers-color-scheme: light) {
+                    :root { --shownotes-text: #000000; --shownotes-link: \(lightLinkColor); }
+                }
+                @media (prefers-color-scheme: dark) {
+                    :root { --shownotes-text: #F2F2F2; --shownotes-link: \(darkLinkColor); }
+                }
+                html, body { background: transparent; }
+                body { margin: 0; padding: 0; }
+                img {
+                    max-height: 100%;
+                    min-height: 100%;
+                    height: auto;
+                    max-width: 100%;
+                    width: auto;
+                    margin-bottom: 5px;
+                    border-radius: 0;
+                }
+                h1, h2, h3, h4, h5, h6, p, div, dl, ol, ul, pre,
+                blockquote, figure, figcaption, details, summary, article,
+                section, aside, header, footer, nav, main {
+                    text-align: left;
+                    line-height: 170%;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    color: var(--shownotes-text);
+                    background-color: transparent;
+                    overflow-wrap: break-word;
+                }
+                iframe { width: 100%; height: 250px; border: none; }
+                a:link {
+                    color: var(--shownotes-link) !important;
+                    text-decoration: none;
+                    transition: color 0.2s ease;
+                }
+                a:hover { text-decoration: underline; }
+                figure { margin: 1em 0; padding: 0; }
+                figcaption { font-size: 0.9em; font-style: italic; margin-top: 0.5em; text-align: center; }
+                details { margin: 1em 0; padding: 0; }
+                summary { cursor: pointer; font-weight: bold; margin-bottom: 0.5em; }
+                summary::-webkit-details-marker { display: none; }
+                summary::before { content: "▶ "; display: inline-block; transition: transform 0.2s; }
+                details[open] summary::before { transform: rotate(90deg); }
+                article, section, aside { margin: 1em 0; }
+                header, footer { margin: 1.5em 0; }
+                nav ul { list-style: none; padding: 0; }
+                nav li { display: inline-block; margin-right: 1em; }
+            </style>
+        </head>
+        <body>
+            \(html)
+        </body>
+        </html>
+        """
+    }
+
+    private static var lightLinkColor: String {
+#if os(iOS)
+        "-apple-system-secondary-label"
+#else
+        "#007AFF"
+#endif
+    }
+
+    private static var darkLinkColor: String {
+#if os(iOS)
+        "-apple-system-secondary-label"
+#else
+        "#0A84FF"
+#endif
+    }
+}
+
+private struct ShownotesNavigationDecider: WebPage.NavigationDeciding {
+    func decidePolicy(
+        for action: WebPage.NavigationAction,
+        preferences: inout WebPage.NavigationPreferences
+    ) async -> WKNavigationActionPolicy {
+        guard action.navigationType == .linkActivated,
+              let url = action.request.url else {
+            return .allow
         }
+
+#if os(iOS)
+        await UIApplication.shared.open(url)
+#elseif os(macOS)
+        NSWorkspace.shared.open(url)
+#endif
+        return .cancel
     }
 }
 

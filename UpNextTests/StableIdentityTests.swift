@@ -349,6 +349,9 @@ final class StableIdentityTests: XCTestCase {
                 kindRawValue: Playlist.Kind.manual.rawValue,
                 smartFilterRawValue: nil,
                 isHidden: false,
+                autoDownloadEnabled: false,
+                autoDownloadEpisodeLimit: nil,
+                removesEpisodesPlayedElsewhere: true,
                 entries: [
                     StoreSplitPlaylistEntrySnapshot(
                         identity: localIdentity,

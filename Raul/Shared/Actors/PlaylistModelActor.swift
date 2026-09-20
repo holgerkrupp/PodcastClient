@@ -299,11 +299,18 @@ actor PlaylistModelActor {
             nextEpisodeURL = remainingEntries.first?.episode?.url
         }
 
+        // Finishing an episode always dequeues it from the playlist it was
+        // played in. Every *other* playlist decides for itself whether a play
+        // that happened elsewhere also drops its own copy.
         let matchingEntries = try modelContext.fetch(FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate<PlaylistEntry> { entry in
                 entry.episode?.url == episodeURL
             }
-        ))
+        )).filter { entry in
+            guard let entryPlaylist = entry.playlist else { return true }
+            guard entryPlaylist.id != playlistID else { return true }
+            return entryPlaylist.removesEpisodesPlayedElsewhere
+        }
         guard matchingEntries.isEmpty == false else {
             if modelContext.hasChanges {
                 try modelContext.save()
@@ -339,6 +346,10 @@ actor PlaylistModelActor {
         // queue advanced when the finished entry is still persisted.
         if modelContext.hasChanges {
             try modelContext.save()
+        }
+
+        for affectedPlaylistID in affectedPlaylistIDs {
+            scheduleAutoDownloadPolicy(for: affectedPlaylistID)
         }
 
         // Cross-store propagation and presentation refreshes are not on the audio hand-off
@@ -452,6 +463,17 @@ actor PlaylistModelActor {
         await StoreSplitLocalEpisodeClassificationWriter(
             modelContainer: cacheContainer
         ).upsert(snapshots)
+    }
+
+    /// Re-run the playlist's own auto-download policy after its contents moved.
+    ///
+    /// Throttled inside the service, so every insert, removal and reorder can
+    /// call it without turning a bulk edit into a download storm.
+    private func scheduleAutoDownloadPolicy(for playlistID: UUID? = nil) {
+        PlaylistAutoDownloadCoordinator.schedule(
+            playlistID: playlistID ?? self.playlistID,
+            modelContainer: modelContainer
+        )
     }
 
     private func startDownloadIfNeeded(for episode: Episode, episodeURL: URL) async {
@@ -597,6 +619,8 @@ actor PlaylistModelActor {
             await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
         }
         await restoreQueuedChapterImages(for: episodeURL)
+        scheduleAutoDownloadPolicy()
+
         await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
         WatchSyncCoordinator.refreshSoon(force: true)
     }
@@ -670,6 +694,8 @@ actor PlaylistModelActor {
         }
         await restoreQueuedChapterImages(for: episodeURL)
 
+        scheduleAutoDownloadPolicy()
+
         await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
         WatchSyncCoordinator.refreshSoon(force: true)
     }
@@ -742,6 +768,8 @@ actor PlaylistModelActor {
         }
         await restoreQueuedChapterImages(for: episodeURL)
 
+        scheduleAutoDownloadPolicy()
+
         await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
         WatchSyncCoordinator.refreshSoon(force: true)
     }
@@ -780,6 +808,7 @@ actor PlaylistModelActor {
             normalizeOrder()
             modelContext.saveIfNeeded()
             await tombstoneSplitStoreEntries(removals)
+            scheduleAutoDownloadPolicy()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
                 WatchSyncCoordinator.refreshSoon(force: true)
@@ -827,6 +856,7 @@ actor PlaylistModelActor {
             }
             normalizeOrder()
             await publishSplitStorePlaylist(playlist)
+            scheduleAutoDownloadPolicy()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
                 WatchSyncCoordinator.refreshSoon(force: true)
@@ -879,6 +909,9 @@ actor PlaylistModelActor {
 
         modelContext.saveIfNeeded()
         await tombstoneSplitStoreEntries(removals)
+        for affectedPlaylistID in playlists {
+            scheduleAutoDownloadPolicy(for: affectedPlaylistID)
+        }
 
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: playlists)
