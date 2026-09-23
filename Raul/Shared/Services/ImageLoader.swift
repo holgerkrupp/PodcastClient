@@ -6,6 +6,7 @@ import SwiftUI
 actor SharedImageRepository {
     static let shared = SharedImageRepository()
 
+    private var inFlightDataTasks: [URL: Task<Data?, Never>] = [:]
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
     private var inFlightBlurredTasks: [String: Task<UIImage?, Never>] = [:]
     private static let ciContext = CIContext(options: [.cacheIntermediates: true])
@@ -76,7 +77,9 @@ actor SharedImageRepository {
             return await task.value
         }
 
-        let task = Task<UIImage?, Never> {
+        // A visible cover should not inherit the lower priority of a decorative
+        // blurred-image request that happened to reach the repository first.
+        let task = Task<UIImage?, Never>(priority: .userInitiated) {
             if let image = await Self.loadPersistedImage(
                 for: url,
                 maxPixelSize: maxPixelSize
@@ -90,12 +93,16 @@ actor SharedImageRepository {
                 return image
             }
 
-            guard let data = await ImageLoaderAndCache.loadImageData(from: url, saveTo: saveTo),
+            guard let data = await self.imageData(for: url),
                   let image = ImageLoaderAndCache.makeUIImage(
                     from: data,
                     maxPixelSize: maxPixelSize
                   ) else {
                 return nil
+            }
+
+            if let saveTo {
+                try? data.write(to: saveTo)
             }
 
             Self.store(
@@ -155,7 +162,7 @@ actor SharedImageRepository {
             return await task.value
         }
 
-        let task = Task<UIImage?, Never> {
+        let task = Task<UIImage?, Never>(priority: .utility) {
             if let image = await Self.loadPersistedBlurredImage(
                 for: url,
                 radius: radius,
@@ -191,6 +198,24 @@ actor SharedImageRepository {
         let image = await task.value
         inFlightBlurredTasks[key] = nil
         return image
+    }
+
+    /// Coalesces the original byte download independently of decoded size.
+    /// Inbox rows, blurred backgrounds, and larger destinations can therefore
+    /// request the same artwork concurrently without starting multiple HTTP
+    /// transfers for that URL.
+    private func imageData(for url: URL) async -> Data? {
+        if let task = inFlightDataTasks[url] {
+            return await task.value
+        }
+
+        let task = Task<Data?, Never>(priority: .userInitiated) {
+            await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil)
+        }
+        inFlightDataTasks[url] = task
+        let data = await task.value
+        inFlightDataTasks[url] = nil
+        return data
     }
 
     func persistedBlurredImage(

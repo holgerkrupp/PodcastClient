@@ -40,18 +40,24 @@ struct CoverImageView: View {
         }
         // Only run the task when the imageKey changes (i.e., at chapter boundaries
         // or when the underlying image source changes), not on every playback tick.
-        .task(id: imageKey, priority: .utility) {
+        .task(id: imageKey, priority: .userInitiated) {
             seedFromCacheIfPossible(for: imageKey)
             if lastAppliedKey == imageKey {
                 return
             }
-            if await loadPersistedImage(for: imageKey) {
-                return
-            }
-            do {
-                try await Task.sleep(for: loadDelay)
-            } catch {
-                return
+
+            // With no intentional delay, the repository already checks memory,
+            // disk, and network in that order. Calling the disk-only API first
+            // would repeat every cache miss before an inbox cover can download.
+            if loadDelay > .zero {
+                if await loadPersistedImage(for: imageKey) {
+                    return
+                }
+                do {
+                    try await Task.sleep(for: loadDelay)
+                } catch {
+                    return
+                }
             }
             await loadImage(for: imageKey)
         }
@@ -280,13 +286,16 @@ struct BlurredCoverImageView: View {
             if lastAppliedKey == imageKey {
                 return
             }
-            if await loadPersistedImage(for: imageKey) {
-                return
-            }
-            do {
-                try await Task.sleep(for: loadDelay)
-            } catch {
-                return
+
+            if loadDelay > .zero {
+                if await loadPersistedImage(for: imageKey) {
+                    return
+                }
+                do {
+                    try await Task.sleep(for: loadDelay)
+                } catch {
+                    return
+                }
             }
             await loadImage(for: imageKey)
         }
