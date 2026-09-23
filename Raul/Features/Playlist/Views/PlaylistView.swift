@@ -31,10 +31,20 @@ struct PlaylistView: View {
     }
 
     private var selectedPlaylist: Playlist? {
-        guard let selectedID = UUID(uuidString: selectedPlaylistID) else {
-            return nil
+        let candidateIDs = [selectedPlaylistID, storedPlaylistID]
+            .compactMap(UUID.init(uuidString:))
+
+        for candidateID in candidateIDs {
+            if let playlist = visiblePlaylists.first(where: { $0.id == candidateID }) {
+                return playlist
+            }
         }
-        return visiblePlaylists.first(where: { $0.id == selectedID })
+
+        // `selectedPlaylistID` is view-local state and starts empty on every
+        // launch. Resolve the persisted/default playlist synchronously for the
+        // first frame instead of briefly rendering the no-selection branch.
+        return visiblePlaylists.first(where: { $0.title == Playlist.defaultQueueTitle })
+            ?? visiblePlaylists.first
     }
 
     /// On a regular-width scene, the playlist picker belongs to the episode
@@ -58,13 +68,10 @@ struct PlaylistView: View {
                     ManualPlaylistPageView(playlist: selectedPlaylist)
                         .id(selectedPlaylist.id)
                 } else {
-                    PlaylistEmptyView(
-                        title: Playlist.defaultQueueDisplayName,
-                        isSmartPlaylist: false,
-                        isDefaultQueue: true
-                    )
+                    PlaylistLaunchPlaceholder()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
         .platformInlineNavigationTitle()
@@ -192,6 +199,21 @@ struct PlaylistView: View {
     }
 }
 
+private struct PlaylistLaunchPlaceholder: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Loading playlist…")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loading playlist")
+    }
+}
+
 private struct PlaylistTitleMenu: View {
     let currentTitle: String
     let currentSymbolName: String
@@ -263,11 +285,15 @@ private struct ManualPlaylistPageView: View {
     }
 
     private var episodes: [Episode] {
-        playlistEntries.compactMap { $0.episode }
+        playlistEntries.compactMap(\.episode)
+    }
+
+    private var hasRenderableEpisodes: Bool {
+        episodes.contains { $0.url != nil }
     }
 
     var body: some View {
-        if episodes.isEmpty {
+        if hasRenderableEpisodes == false {
             PlaylistEmptyView(
                 title: playlist.displayTitle,
                 isSmartPlaylist: false,

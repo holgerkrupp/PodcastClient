@@ -34,6 +34,12 @@ struct PlayerView: View {
         usesExpandedLayout ?? (horizontalSizeClass == .regular)
     }
 
+    private var currentArtworkSource: ESAImageSource {
+        player.currentArtworkImage.map {
+            .image(Image(uiImage: $0))
+        } ?? .url(nil)
+    }
+
     var body: some View {
         if let episode = player.currentEpisode {
             let _ = episode.refresh
@@ -49,7 +55,9 @@ struct PlayerView: View {
                     }
                 }
             }
-            .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
+            .background {
+                ESADesignKit.ESAFullBackground(image: currentArtworkSource)
+            }
             .onChange(of: episode.url) { _, _ in
                 isTransportPinned = false
             }
@@ -90,7 +98,11 @@ struct PlayerView: View {
 
             PlayerControllView(
                 mediaHeight: min(size.width, size.height) * 0.33,
-                showsInlineTranscript: false
+                showsInlineTranscript: false,
+                debugGenerateTranscriptAndChaptersAction: {
+                    Task { await generateTranscript(for: episode, includeChapters: true) }
+                },
+                isDebugGeneratingTranscriptAndChapters: isTranscriptionBusy(for: episode) || isGeneratingChapters
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .accessibilityElement(children: .contain)
@@ -226,7 +238,12 @@ struct PlayerView: View {
                     showPrimaryTransportControls: false,
                     mediaHeight: min(max(0, size.width - 32), size.height * 0.72),
                     showsMedia: !usesArtworkHero,
-                    showsTranscriptOverHero: usesArtworkHero
+                    showsTranscriptOverHero: usesArtworkHero,
+                    showsPlaybackUtilities: false,
+                    debugGenerateTranscriptAndChaptersAction: {
+                        Task { await generateTranscript(for: episode, includeChapters: true) }
+                    },
+                    isDebugGeneratingTranscriptAndChapters: isTranscriptionBusy(for: episode) || isGeneratingChapters
                 )
                     .frame(maxWidth: .infinity, alignment: .top)
 
@@ -239,7 +256,12 @@ struct PlayerView: View {
                     .opacity(isTransportPinned ? 0 : 1)
                     .allowsHitTesting(!isTransportPinned)
 
+                PlayerPlaybackUtilitiesRow()
+                    .padding(.horizontal)
+                    .padding(.bottom, 12)
+
                 compactShownotes(episode: episode)
+
             }
             .safeAreaPadding(.horizontal)
             .safeAreaPadding(.bottom)
@@ -247,14 +269,14 @@ struct PlayerView: View {
         }
         .coordinateSpace(name: "playerViewport")
         .coverHero(
-            image: .url(episode.imageURL ?? episode.podcast?.imageURL),
+            image: currentArtworkSource,
             enabled: usesArtworkHero,
             placeholderAspectRatio: 1.0
         )
         .overlay(alignment: .top) {
             if isTransportPinned {
                 transportControls
-                    .padding(.trailing, onDismiss == nil ? 0 : 48)
+                    .safeAreaPadding(.horizontal)
             }
         }
         .overlay(alignment: .topTrailing) {
@@ -280,6 +302,7 @@ struct PlayerView: View {
         PlayerPrimaryTransportControlsView(includeBookmark: true)
             .tint(.primary)
             .padding(.horizontal)
+            .padding(.trailing, onDismiss == nil ? 0 : 48)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
     }
@@ -347,7 +370,12 @@ struct PlayerView: View {
 
     private func compactPlayer(episode: Episode) -> some View {
         VStack(spacing: 0) {
-            PlayerControllView()
+            PlayerControllView(
+                debugGenerateTranscriptAndChaptersAction: {
+                    Task { await generateTranscript(for: episode, includeChapters: true) }
+                },
+                isDebugGeneratingTranscriptAndChapters: isTranscriptionBusy(for: episode) || isGeneratingChapters
+            )
                 .padding()
 #if DEBUG
             NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
@@ -577,6 +605,7 @@ private enum PlayerContentTab: String, CaseIterable, Identifiable {
 }
 
 private struct PlayerShownotesView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var page: WebPage
     @State private var contentHeight: CGFloat = 1
 
@@ -601,8 +630,21 @@ private struct PlayerShownotesView: View {
             .scrollDisabled(true)
             .frame(height: contentHeight)
             .task(id: html) {
-                page.load(html: Self.document(containing: html))
+                loadShownotes()
             }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                guard oldPhase != .active, newPhase == .active else { return }
+                loadShownotes()
+            }
+    }
+
+    private func loadShownotes() {
+        // WebKit may discard the page while the app is suspended. Its last
+        // measured height remains, leaving a large blank area when the player
+        // is still presented after wake. Reload the HTML and discard that stale
+        // measurement whenever the scene becomes active again.
+        contentHeight = 1
+        page.load(html: Self.document(containing: html))
     }
 
     private static func document(containing html: String) -> String {

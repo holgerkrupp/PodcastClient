@@ -20,9 +20,6 @@ struct PlayerControllView: View {
 
     @State private var showFullTranscripts: Bool = false
     @State private var openFullTranscriptFollowingPlayback: Bool = false
-    @State private var showPlaybackSpeedSettings = false
-    @State private var showSleepTimerSettings = false
-    private let furthestPositionTip = FurthestPositionTip()
 #if os(iOS)
     @State private var settingsRequest: SettingsWindowRequest?
 #endif
@@ -33,66 +30,21 @@ struct PlayerControllView: View {
     var showsMedia = true
     var showsInlineTranscript = true
     var showsTranscriptOverHero = false
+    var showsPlaybackUtilities = true
+    var debugGenerateTranscriptAndChaptersAction: (() -> Void)?
+    var isDebugGeneratingTranscriptAndChapters = false
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
     var body: some View {
         if let episode = player.currentEpisode {
             VStack(spacing: 8) {
-                
-                HStack {
-                    AirPlayButtonView()
-                        .tint(.primary)
-                        .foregroundColor(.primary)
-                        .frame(width: 44, height: 44)
-                        .accessibilityLabel("AirPlay")
-                        .accessibilityHint("Choose an audio output device")
-                        .help("Choose where audio plays")
-                        
-                    Spacer()
-
-                    Button {
-                        openPlaybackSettings()
-                    } label: {
-                        Label {
-                            Text("Playback Settings")
-                        } icon: {
-                            Image(systemName: "gear")
-                                .tint(.primary)
-                        }
-                        .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Playback Settings")
-                    .accessibilityHint("Opens settings related to playback")
-                    .help("Adjust playback options for this podcast")
-                    .accessibilityInputLabels([Text("Playback settings"), Text("Player settings")])
-                    
-                    
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .zIndex(3)
-                .sheet(isPresented: $showPlaybackSpeedSettings) {
-                    playbackSpeedSheet
-                }
-                .sheet(isPresented: $showSleepTimerSettings) {
-                    sleepTimerSheet
-                }
-#if os(iOS)
-                .sheet(item: $settingsRequest) { request in
-                    SettingsWindowContent(request: request)
-                        .presentationDetents([.large])
-                        .presentationDragIndicator(.visible)
-                }
-#endif
-                
                 if showsMedia, let mediaHeight {
                     VStack(spacing: 0) {
                         PlayerMediaView(
-                            episode: episode,
                             player: player.videoPlayer,
                             isVideo: player.currentPlaybackIsVideo,
-                            timecode: player.currentChapter?.start
+                            artworkImage: player.currentArtworkImage
                         )
                             .id("\(episode.url?.absoluteString ?? "")-\(player.currentPlaybackIsVideo)")
                             .scaledToFit()
@@ -107,14 +59,7 @@ struct PlayerControllView: View {
                         if let transcriptLines = player.currentEpisode?.transcriptLines,
                            showsInlineTranscript,
                            showTranscripts {
-                            TranscriptView(
-                                transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
-                                currentTime: $player.playPosition,
-                                onOpenFullTranscript: {
-                                    openFullTranscriptFollowingPlayback = true
-                                    showFullTranscripts = true
-                                }
-                            )
+                            inlineTranscriptCard(transcriptLines: transcriptLines)
                             .frame(maxWidth: .infinity, maxHeight: mediaHeight * 0.4, alignment: .topLeading)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -127,10 +72,9 @@ struct PlayerControllView: View {
                     .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85), value: showTranscripts)
                 } else if showsMedia {
                     PlayerMediaView(
-                        episode: episode,
                         player: player.videoPlayer,
                         isVideo: player.currentPlaybackIsVideo,
-                        timecode: player.currentChapter?.start
+                        artworkImage: player.currentArtworkImage
                     )
                     .id("\(episode.url?.absoluteString ?? "")-\(player.currentPlaybackIsVideo)")
                     .scaledToFit()
@@ -140,71 +84,13 @@ struct PlayerControllView: View {
                           showsInlineTranscript,
                           showTranscripts,
                           let transcriptLines = episode.transcriptLines {
-                    TranscriptView(
-                        transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
-                        currentTime: $player.playPosition,
-                        onOpenFullTranscript: {
-                            openFullTranscriptFollowingPlayback = true
-                            showFullTranscripts = true
-                        }
-                    )
+                    inlineTranscriptCard(transcriptLines: transcriptLines)
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 
-                if showsInlineTranscript,
-                   let transcripts = player.currentEpisode?.transcriptLines,
-                   transcripts.count > 0 {
-                    HStack {
-                        if showTranscripts{
-                            Button {
-                                    showTranscripts.toggle()
-                                } label: {
-                                    Image("custom.quote.bubble.slash")
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Hide inline transcript")
-                                .accessibilityHint(showsTranscriptOverHero
-                                    ? "Removes the transcript panel from the artwork"
-                                    : "Removes the transcript panel below the artwork")
-                                .help(showsTranscriptOverHero
-                                    ? "Hide the transcript on the artwork"
-                                    : "Hide the transcript below the artwork")
-                                .accessibilityInputLabels([Text("Hide captions"), Text("Hide transcript")])
-                        }else{
-                            Button {
-                                    showTranscripts.toggle()
-                                } label: {
-                                    Image(systemName: "quote.bubble")
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Show inline transcript")
-                                .accessibilityHint(showsTranscriptOverHero
-                                    ? "Shows the transcript panel over the artwork"
-                                    : "Shows the transcript panel below the artwork")
-                                .help(showsTranscriptOverHero
-                                    ? "Read along over the artwork"
-                                    : "Read along below the artwork")
-                                .accessibilityInputLabels([Text("Show captions"), Text("Show transcript")])
-                        }
-                        Spacer()
-                        Button {
-                                openFullTranscriptFollowingPlayback = false
-                                showFullTranscripts = true
-                            } label: {
-                                Image("custom.quote.bubble.rectangle.portrait")
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Open full transcript")
-                            .accessibilityHint("Opens the full transcript in a sheet")
-                            .help("Read the whole episode as text")
-                            .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
-                    }
-                }
-                
-                
-                PlayerChapterView()
+                chapterControlsRow
                 
                 
                 Text("\(episode.title)")
@@ -257,85 +143,14 @@ struct PlayerControllView: View {
                     .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
                 }
 
-                HStack{
-
-                    
-
-                    Button {
-                        showPlaybackSpeedSettings = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "gauge.with.dots.needle.50percent")
-                                .tint(.primary)
-                            Text(playbackSpeedButtonTitle)
-                                .monospacedDigit()
-                        }
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel("Playback speed")
-                    .accessibilityValue(playbackSpeedButtonTitle)
-                    .accessibilityHint("Opens playback speed controls")
-                    .help("Change how fast episodes play")
-                    .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
-
-                    Spacer()
-                    
-                    
-                    if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition, maxPlay-5.0 > player.currentEpisode?.metaData?.playPosition ?? 0.0  {
-                        Button(action: {
-                            furthestPositionTip.invalidate(reason: .actionPerformed)
-                            Task{
-                                await player.jumpTo(time: maxPlay)
-                            }
-                        }) {
-                            Label {
-                                Text("max play position")
-                                    .monospaced()
-                                    .font(.caption)
-                            } icon: {
-                                Image(systemName: "forward.end.alt.fill")
-                                   // .resizable()
-                                    .scaledToFit()
-                                
-                            }
-                            .labelStyle(.iconOnly)
-                            
-                        }
-                        
-                       
-                        .buttonStyle(.glass)
-                        .accessibilityLabel("Jump to max play position")
-                        .accessibilityHint("Jumps to the furthest point you have listened to in this episode")
-                        .help("Jump to the furthest point you've listened to")
-                        .popoverTip(furthestPositionTip)
-                    }
-                    Spacer()
-                    
-                    Button {
-                        showSleepTimerSettings = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "zzz")
-                                .tint(player.remainingTime == nil && player.stopAfterEpisode == false ? .primary : .accent)
-                            Text(sleepTimerButtonTitle)
-                                .monospacedDigit()
-                        }
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel("Sleep timer")
-                    .accessibilityValue(sleepTimerAccessibilityValue)
-                    .accessibilityHint("Opens sleep timer controls")
-                    .help("Stop playback after a set time or at the end of the episode")
-                    .accessibilityInputLabels([Text("Sleep timer"), Text("Timer")])
-                }
-                .frame(height: 50)
-                
                 if showPrimaryTransportControls {
                     PlayerPrimaryTransportControlsView(includeBookmark: true)
                         .tint(.primary)
                 }
 
-                
+                if showsPlaybackUtilities {
+                    PlayerPlaybackUtilitiesRow()
+                }
             }
             .padding()
             .overlay(alignment: .top) {
@@ -344,14 +159,7 @@ struct PlayerControllView: View {
                    showTranscripts,
                    let transcriptLines = episode.transcriptLines,
                    !transcriptLines.isEmpty {
-                    TranscriptView(
-                        transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
-                        currentTime: $player.playPosition,
-                        onOpenFullTranscript: {
-                            openFullTranscriptFollowingPlayback = true
-                            showFullTranscripts = true
-                        }
-                    )
+                    inlineTranscriptCard(transcriptLines: transcriptLines)
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -373,6 +181,130 @@ struct PlayerControllView: View {
                     .presentationDragIndicator(.visible)
                 }
             }
+#if os(iOS)
+            .sheet(item: $settingsRequest) { request in
+                SettingsWindowContent(request: request)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+#endif
+        }
+    }
+
+    private var chapterControlsRow: some View {
+        ZStack {
+            if player.currentEpisode?.preferredChapters.count ?? 0 > 1 {
+                PlayerChapterView()
+                    .padding(.horizontal, 16)
+            } else {
+#if DEBUG
+                if let debugGenerateTranscriptAndChaptersAction {
+                    Button(action: debugGenerateTranscriptAndChaptersAction) {
+                        if isDebugGeneratingTranscriptAndChapters {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Label("Create transcript/chapters", systemImage: "sparkles")
+                                .font(.caption)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .disabled(isDebugGeneratingTranscriptAndChapters)
+                    .padding(.horizontal, 50)
+                    .accessibilityLabel("Create transcript and chapters")
+                    .accessibilityHint("Generates a transcript and chapter markers for this episode")
+                }
+#endif
+            }
+
+            HStack(spacing: 0) {
+                if showsInlineTranscript,
+                   player.currentEpisode?.transcriptLines?.isEmpty == false {
+                    transcriptVisibilityButton
+                } else {
+                    Color.clear
+                        .frame(width: 44, height: 44)
+                        .accessibilityHidden(true)
+                }
+
+                Spacer(minLength: 0)
+                playbackSettingsButton
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .zIndex(3)
+    }
+
+    private var playbackSettingsButton: some View {
+        Button {
+            openPlaybackSettings()
+        } label: {
+            Label("Playback Settings", systemImage: "gear")
+                .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .accessibilityLabel("Playback Settings")
+        .accessibilityHint("Opens settings related to playback")
+        .help("Adjust playback options for this podcast")
+        .accessibilityInputLabels([Text("Playback settings"), Text("Player settings")])
+    }
+
+    private var transcriptVisibilityButton: some View {
+        Button {
+            showTranscripts.toggle()
+        } label: {
+            if showTranscripts {
+                Image("custom.quote.bubble.slash")
+            } else {
+                Image(systemName: "quote.bubble")
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .accessibilityLabel(showTranscripts ? "Hide inline transcript" : "Show inline transcript")
+        .accessibilityHint(transcriptVisibilityAccessibilityHint)
+        .help(showTranscripts ? "Hide the transcript" : "Show the transcript")
+        .accessibilityInputLabels([Text(showTranscripts ? "Hide captions" : "Show captions"), Text("Transcript")])
+    }
+
+    private var transcriptVisibilityAccessibilityHint: String {
+        if showsTranscriptOverHero {
+            return showTranscripts
+                ? "Removes the transcript panel from the artwork"
+                : "Shows the transcript panel over the artwork"
+        }
+        return showTranscripts
+            ? "Removes the transcript panel below the artwork"
+            : "Shows the transcript panel below the artwork"
+    }
+
+    private func inlineTranscriptCard(transcriptLines: [TranscriptLineAndTime]) -> some View {
+        TranscriptView(
+            transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
+            currentTime: $player.playPosition,
+            onOpenFullTranscript: {
+                openFullTranscriptFollowingPlayback = true
+                showFullTranscripts = true
+            },
+            reservesBottomTrailingAccessory: true
+        )
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                openFullTranscriptFollowingPlayback = false
+                showFullTranscripts = true
+            } label: {
+                Image("custom.quote.bubble.rectangle.portrait")
+            }
+            .buttonStyle(.glass(.clear))
+            .frame(width: 44, height: 44)
+            .padding(6)
+            .accessibilityLabel("Open full transcript")
+            .accessibilityHint("Opens the full transcript in a sheet")
+            .help("Read the whole episode as text")
+            .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
         }
     }
 
@@ -385,20 +317,103 @@ struct PlayerControllView: View {
 #endif
     }
 
-    private var playbackSpeedButtonTitle: String {
-        player.playbackRate.formatted(.number.precision(.fractionLength(0...1))) + "x"
+}
+
+struct PlayerPlaybackUtilitiesRow: View {
+    @Bindable private var player = Player.shared
+    @State private var showPlaybackSpeedSettings = false
+    @State private var showSleepTimerSettings = false
+    private let furthestPositionTip = FurthestPositionTip()
+
+    var body: some View {
+        ZStack {
+            airPlayButton
+
+            HStack(spacing: 10) {
+                playbackSpeedButton
+                Spacer(minLength: 0)
+
+                if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition,
+                   maxPlay - 5 > player.currentEpisode?.metaData?.playPosition ?? 0 {
+                    maxPlayPositionButton(maxPlay: maxPlay)
+                }
+
+                sleepTimerButton
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .zIndex(3)
+        .sheet(isPresented: $showPlaybackSpeedSettings) {
+            playbackSpeedSheet
+        }
+        .sheet(isPresented: $showSleepTimerSettings) {
+            sleepTimerSheet
+        }
     }
 
-    private var sleepTimerButtonTitle: String {
-        if let remaining = player.remainingTime {
-            return Duration.seconds(remaining).formatted(.units(width: .narrow))
-        }
+    private var airPlayButton: some View {
+        AirPlayButtonView()
+            .tint(.primary)
+            .foregroundColor(.primary)
+            .frame(width: 44, height: 44)
+            .glassEffect(.regular, in: Circle())
+            .accessibilityLabel("AirPlay")
+            .accessibilityHint("Choose an audio output device")
+            .help("Choose where audio plays")
+    }
 
-        if player.stopAfterEpisode {
-            return "Episode"
+    private var playbackSpeedButton: some View {
+        Button {
+            showPlaybackSpeedSettings = true
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "gauge.with.dots.needle.50percent")
+                Text(playbackSpeedButtonTitle)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
+        .buttonStyle(.glass)
+        .accessibilityLabel("Playback speed")
+        .accessibilityValue(playbackSpeedButtonTitle)
+        .accessibilityHint("Opens playback speed controls")
+        .help("Change how fast episodes play")
+        .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
+    }
 
-        return ""
+    private func maxPlayPositionButton(maxPlay: Double) -> some View {
+        Button {
+            furthestPositionTip.invalidate(reason: .actionPerformed)
+            Task { await player.jumpTo(time: maxPlay) }
+        } label: {
+            Label("Max play position", systemImage: "forward.end.alt.fill")
+                .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.glass)
+        .accessibilityLabel("Jump to max play position")
+        .accessibilityHint("Jumps to the furthest point you have listened to in this episode")
+        .help("Jump to the furthest point you've listened to")
+        .popoverTip(furthestPositionTip)
+    }
+
+    private var sleepTimerButton: some View {
+        Button {
+            showSleepTimerSettings = true
+        } label: {
+            Image(systemName: "zzz")
+                .tint(player.remainingTime == nil && player.stopAfterEpisode == false ? .primary : .accent)
+        }
+        .buttonStyle(.glass)
+        .accessibilityLabel("Sleep timer")
+        .accessibilityValue(sleepTimerAccessibilityValue)
+        .accessibilityHint("Opens sleep timer controls")
+        .help("Stop playback after a set time or at the end of the episode")
+        .accessibilityInputLabels([Text("Sleep timer"), Text("Timer")])
+    }
+
+    private var playbackSpeedButtonTitle: String {
+        player.playbackRate.formatted(.number.precision(.fractionLength(0...1))) + "x"
     }
 
     private var sleepTimerAccessibilityValue: String {
@@ -454,14 +469,12 @@ struct PlayerControllView: View {
         .presentationBackground(.ultraThinMaterial)
         .presentationDetents([.fraction(0.25)])
     }
-
 }
 
 private struct PlayerMediaView: View {
-    let episode: Episode
     let player: AVPlayer
     let isVideo: Bool
-    let timecode: Double?
+    let artworkImage: UIImage?
 
     var body: some View {
         Group {
@@ -471,8 +484,18 @@ private struct PlayerMediaView: View {
                     .background(Color.black)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityLabel(Text(verbatim: "Video player"))
+            } else if let artworkImage {
+                Image(uiImage: artworkImage)
+                    .resizable()
+                    .scaledToFit()
             } else {
-                CoverImageView(episode: episode, timecode: timecode)
+                Rectangle()
+                    .fill(Color.accent)
+                    .overlay {
+                        Image(systemName: "photo")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                    }
             }
         }
     }

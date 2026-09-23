@@ -1454,7 +1454,6 @@ class ModelContainerManager: ObservableObject {
         migrationError = nil
         isMigratingSplitStores = true
 #if DEBUG
-        StoreSplitMigrationDebugLog.requestAuthorizationIfNeeded()
         StoreSplitMigrationDebugLog.record(
             "migration run started",
             details: storeSplitMigrationStatus().map {
@@ -1668,10 +1667,6 @@ class ModelContainerManager: ObservableObject {
         StoreSplitMigrationDebugLog.record(
             "migration complete",
             details: "version \(StoreSplitMigrationService.migrationVersion), failures=\(hadFailures)"
-        )
-        StoreSplitMigrationDebugLog.notify(
-            title: "Migration complete",
-            body: "Every phase of v\(StoreSplitMigrationService.migrationVersion) finished\(hadFailures ? " with failures" : "")."
         )
 #endif
         if let cacheContainer = preparedCacheContainer,

@@ -27,6 +27,91 @@ struct LastPlayedEpisodeReference: Sendable {
     let lastPlayed: Date
 }
 
+enum EpisodeChapterMerger {
+    static func identity(for chapter: Marker) -> String {
+        let normalizedTitle = chapter.title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let normalizedStart = Int(((chapter.start ?? 0) * 100).rounded())
+        return "\(chapter.type.rawValue)|\(normalizedStart)|\(normalizedTitle)"
+    }
+
+    static func replaceChapters(
+        on episode: Episode,
+        replacingTypes types: Set<MarkerType>,
+        with newChapters: [Marker]
+    ) {
+        if episode.chapters == nil {
+            episode.chapters = []
+        }
+
+        let shouldPreserveChapterProgress = episode.hasPlaybackHistory
+        var existingByIdentity: [String: Marker] = [:]
+        for chapter in (episode.chapters ?? []) where types.contains(chapter.type) {
+            let identity = identity(for: chapter)
+            if existingByIdentity[identity] == nil {
+                existingByIdentity[identity] = chapter
+            }
+        }
+
+        var seen = Set<String>()
+        let replacementChapters = newChapters.filter { chapter in
+            seen.insert(identity(for: chapter)).inserted
+        }
+        var retainedChapters: [Marker] = []
+        var chaptersToInsert: [Marker] = []
+        for chapter in replacementChapters {
+            if let existing = existingByIdentity[identity(for: chapter)] {
+                // Keep user-controlled skip settings and listening progress.
+                existing.title = chapter.title
+                existing.start = chapter.start
+                existing.endTime = chapter.endTime
+                existing.duration = chapter.duration
+                existing.image = chapter.image ?? existing.image
+                existing.imageData = chapter.imageData ?? existing.imageData
+                existing.link = chapter.link ?? existing.link
+                existing.progress = shouldPreserveChapterProgress ? existing.progress : 0
+                retainedChapters.append(existing)
+            } else {
+                chapter.episode = episode
+                chaptersToInsert.append(chapter)
+            }
+        }
+
+        episode.chapters?.removeAll { chapter in
+            types.contains(chapter.type)
+                && retainedChapters.contains(where: { $0 === chapter }) == false
+        }
+        episode.chapters?.append(contentsOf: chaptersToInsert)
+        episode.chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+    }
+}
+
+enum ChapterSkipKeywordPolicy {
+    static func apply(_ rules: [skipKey], to chapters: [Marker]) -> Bool {
+        var didChange = false
+        for rule in rules {
+            guard let keyword = rule.keyWord?.lowercased(), !keyword.isEmpty else { continue }
+            let matches: (String) -> Bool
+            switch rule.keyOperator {
+            case .Contains:
+                matches = { $0.contains(keyword) }
+            case .Is:
+                matches = { $0 == keyword }
+            case .StartsWith:
+                matches = { $0.hasPrefix(keyword) }
+            case .EndsWith:
+                matches = { $0.hasSuffix(keyword) }
+            }
+            for chapter in chapters where matches(chapter.title.lowercased()) {
+                didChange = didChange || chapter.shouldPlay
+                chapter.shouldPlay = false
+            }
+        }
+        return didChange
+    }
+}
+
 
 @ModelActor
 actor EpisodeActor {
@@ -69,18 +154,7 @@ actor EpisodeActor {
     }
 
     private func chapterIdentity(for chapter: Marker) -> String {
-        let normalizedTitle = chapter.title
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let normalizedStart = Int(((chapter.start ?? 0) * 100).rounded())
-        return "\(chapter.type.rawValue)|\(normalizedStart)|\(normalizedTitle)"
-    }
-
-    private func uniqueChapters(_ chapters: [Marker]) -> [Marker] {
-        var seen = Set<String>()
-        return chapters.filter { chapter in
-            seen.insert(chapterIdentity(for: chapter)).inserted
-        }
+        EpisodeChapterMerger.identity(for: chapter)
     }
 
     private func replaceChapters(
@@ -88,49 +162,7 @@ actor EpisodeActor {
         replacingTypes types: Set<MarkerType>,
         with newChapters: [Marker]
     ) {
-        if episode.chapters == nil {
-            episode.chapters = []
-        }
-
-        let shouldPreserveChapterProgress = episode.hasPlaybackHistory
-
-        var existingByIdentity: [String: Marker] = [:]
-        for chapter in (episode.chapters ?? []) where types.contains(chapter.type) {
-            let identity = chapterIdentity(for: chapter)
-            if existingByIdentity[identity] == nil {
-                existingByIdentity[identity] = chapter
-            }
-        }
-
-        let replacementChapters = uniqueChapters(newChapters)
-        var retainedChapters: [Marker] = []
-        var chaptersToInsert: [Marker] = []
-        for chapter in replacementChapters {
-            if let existing = existingByIdentity[chapterIdentity(for: chapter)] {
-                // `shouldPlay` is user-controlled state, not source metadata. Keep
-                // the persisted Marker (and its preference) when a downloaded file
-                // contains the same chapter that was already read remotely.
-                existing.title = chapter.title
-                existing.start = chapter.start
-                existing.endTime = chapter.endTime
-                existing.duration = chapter.duration
-                existing.image = chapter.image ?? existing.image
-                existing.imageData = chapter.imageData ?? existing.imageData
-                existing.link = chapter.link ?? existing.link
-                existing.progress = shouldPreserveChapterProgress ? existing.progress : 0
-                retainedChapters.append(existing)
-            } else {
-                chapter.episode = episode
-                chaptersToInsert.append(chapter)
-            }
-        }
-
-        episode.chapters?.removeAll { chapter in
-            types.contains(chapter.type)
-                && retainedChapters.contains(where: { $0 === chapter }) == false
-        }
-        episode.chapters?.append(contentsOf: chaptersToInsert)
-        episode.chapters?.sort { ($0.start ?? 0) < ($1.start ?? 0) }
+        EpisodeChapterMerger.replaceChapters(on: episode, replacingTypes: types, with: newChapters)
     }
 
     @discardableResult
@@ -1469,32 +1501,10 @@ actor EpisodeActor {
     private func applyAutoSkipWords(episodeURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
         let actor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        guard let skipWord = await actor.getChapterSkipKeywords(for: episode.podcast?.feed) else {
+        guard let skipWords = await actor.getChapterSkipKeywords(for: episode.podcast?.feed) else {
             return false
         }
-        var didChange = false
-        for skipWord in skipWord {
-            guard let keyword = skipWord.keyWord?.lowercased(), !keyword.isEmpty else { continue }
-            let matches: (String) -> Bool
-            switch skipWord.keyOperator {
-            case .Contains:
-                matches = { $0.contains(keyword) }
-            case .Is:
-                matches = { $0 == keyword }
-            case .StartsWith:
-                matches = { $0.hasPrefix(keyword) }
-            case .EndsWith:
-                matches = { $0.hasSuffix(keyword) }
-            }
-            if let chapters = episode.chapters{
-                for chapter in chapters {
-                    if matches(chapter.title.lowercased()) {
-                        didChange = didChange || chapter.shouldPlay
-                        chapter.shouldPlay = false
-                    }
-                }
-            }
-        }
+        let didChange = ChapterSkipKeywordPolicy.apply(skipWords, to: episode.chapters ?? [])
         if didChange {
             episode.refresh.toggle()
             modelContext.saveIfNeeded()
@@ -1851,9 +1861,11 @@ actor EpisodeActor {
     func extractRemoteMP3Chapters(_ fileURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
         guard let remoteURL = episode.url else { return false }
+        let episodeID = episode.persistentModelID
 
         let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(remoteURL)
         guard chapters.isEmpty == false else { return false }
+        guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
 
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
         episode.refresh.toggle()

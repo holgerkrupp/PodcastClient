@@ -1,6 +1,5 @@
 #if DEBUG
 import Foundation
-import UserNotifications
 
 /// One recorded step of the store-split backfill.
 struct StoreSplitMigrationLogEntry: Codable, Identifiable, Sendable, Equatable {
@@ -21,7 +20,6 @@ struct StoreSplitMigrationLogEntry: Codable, Identifiable, Sendable, Equatable {
 enum StoreSplitMigrationDebugLog {
     private static let storageKey = "storeSplit.debugMigrationLog"
     private static let maximumEntryCount = 300
-    private static let notificationIdentifierPrefix = "storeSplitMigrationDebug."
     private static let lock = NSLock()
 
     private static var defaults: UserDefaults {
@@ -71,39 +69,6 @@ enum StoreSplitMigrationDebugLog {
         return stored
     }
 
-    // MARK: - Notifications
-
-    /// Whether a notification identifier belongs to this log, so the foreground
-    /// presentation handler can show these without changing how the app presents
-    /// its real notifications.
-    static func isDebugNotification(_ identifier: String) -> Bool {
-        identifier.hasPrefix(notificationIdentifierPrefix)
-    }
-
-    /// Asks for notification permission once, so a phase finishing overnight is
-    /// visible on the Lock Screen the next morning. Denied permission only costs
-    /// the banner — the log itself still records everything.
-    static func requestAuthorizationIfNeeded() {
-        Task {
-            await NotificationManager().requestAuthorizationIfUndetermined()
-        }
-    }
-
-    static func notify(title: String, body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = nil
-        content.interruptionLevel = .passive
-
-        let request = UNNotificationRequest(
-            identifier: notificationIdentifierPrefix + UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
-    }
-
     /// Records one slice. Slices are frequent, so these are collapsed into a
     /// single rolling entry per phase rather than appended, keeping the log
     /// readable while still showing that work is progressing.
@@ -141,14 +106,10 @@ enum StoreSplitMigrationDebugLog {
         defaults.set(data, forKey: storageKey)
     }
 
-    /// Records a finished phase and surfaces it as a passive banner.
+    /// Records a finished phase in the debug log.
     static func recordPhaseFinished(_ phase: String, progress: String?) {
         let details = progress ?? "no progress summary"
         record("phase finished: \(phase)", details: details)
-        notify(
-            title: "Migration phase finished",
-            body: progress.map { "\(phase) — \($0)" } ?? phase
-        )
     }
 }
 #endif

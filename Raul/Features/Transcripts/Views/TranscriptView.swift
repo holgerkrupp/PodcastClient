@@ -21,6 +21,8 @@ struct TranscriptView: View {
     @Binding var currentTime: TimeInterval
     /// Called when the user taps a caption, e.g. to open the full transcript.
     var onOpenFullTranscript: (() -> Void)?
+    /// Leaves the bottom-trailing corner free for controls supplied by the parent.
+    var reservesBottomTrailingAccessory = false
 
     @State private var segments: [TranscriptSegment] = []
     @State private var speakerHeaderIDs: Set<UUID> = []
@@ -57,7 +59,7 @@ struct TranscriptView: View {
                         followPlayback = false
                     }
             )
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: reservesBottomTrailingAccessory ? .bottomLeading : .bottomTrailing) {
                 if followPlayback == false, activeSegmentID != nil {
                     Button {
                         followPlayback = true

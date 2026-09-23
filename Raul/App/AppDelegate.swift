@@ -432,26 +432,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
-#if DEBUG
-    /// Presents the migration diagnostics while the app is open. Scoped to the
-    /// debug log's own identifiers so the app's real notifications keep their
-    /// existing foreground behaviour.
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler:
-            @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        guard StoreSplitMigrationDebugLog.isDebugNotification(
-            notification.request.identifier
-        ) else {
-            completionHandler([])
-            return
-        }
-        completionHandler([.banner, .list])
-    }
-#endif
-
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,

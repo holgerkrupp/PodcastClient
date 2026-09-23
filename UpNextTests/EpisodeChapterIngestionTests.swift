@@ -135,6 +135,40 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertTrue(chapters.contains { $0.type == .mp3 && $0.title == "Remote Chapter" })
     }
 
+    func testPlayingContextSeesRemotelyFetchedChaptersImmediately() throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/playing.mp3")!
+        let episode = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        episode.chapters = []
+        try fixture.context.save()
+        XCTAssertTrue(episode.preferredChapters.isEmpty)
+
+        EpisodeChapterMerger.replaceChapters(
+            on: episode,
+            replacingTypes: [.mp3],
+            with: [Marker(start: 5, title: "Remote Chapter", type: .mp3, duration: 60)]
+        )
+
+        XCTAssertEqual(episode.preferredChapters.map(\.title), ["Remote Chapter"])
+        try fixture.context.save()
+        let persisted = try fetchEpisode(in: fixture.container, url: episodeURL)
+        XCTAssertEqual(persisted.preferredChapters.map(\.title), ["Remote Chapter"])
+    }
+
+    func testPlaybackTimeChapterMergeAppliesSkipKeywords() {
+        let chapter = Marker(start: 30, title: "Sponsor Message", type: .mp3)
+        let rule = skipKey(keyWord: "sponsor", keyOperator: .Contains)
+
+        XCTAssertTrue(ChapterSkipKeywordPolicy.apply([rule], to: [chapter]))
+        XCTAssertFalse(chapter.shouldPlay)
+        XCTAssertFalse(ChapterSkipKeywordPolicy.apply([rule], to: [chapter]))
+    }
+
     func testRemoteMP3ChaptersPreserveFeedChaptersAndExistingChapterState() async throws {
         let fixture = try makeFixture()
         let episodeURL = URL(string: "https://example.com/episode.mp3")!

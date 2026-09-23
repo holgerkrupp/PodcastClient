@@ -203,6 +203,12 @@
     },
     "%@, %@" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
@@ -1105,17 +1111,6 @@
         }
       }
     },
-    "Archive podcast episodes" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Podcast-Episoden archivieren"
-          }
-        }
-      }
-    },
     "Asia-Pacific" : {
       "localizations" : {
         "de" : {
@@ -1562,17 +1557,6 @@
         }
       }
     },
-    "Changes the current episode between the audio enclosure and alternate video stream" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wechselt die aktuelle Episode zwischen der Audio-Mediendatei und dem alternativen Videostream"
-          }
-        }
-      }
-    },
     "Changes this episode between the audio enclosure and alternate video stream" : {
       "localizations" : {
         "de" : {
@@ -1719,17 +1703,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wähle unten in der Playlist eine Episode aus."
-          }
-        }
-      }
-    },
-    "Choose episode sort order and hide played episodes" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sortierreihenfolge der Episoden wählen und abgespielte Episoden ausblenden"
           }
         }
       }
@@ -2732,17 +2705,6 @@
     "End" : {
 
     },
-    "End: %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ende: %@"
-          }
-        }
-      }
-    },
     "Ended cleanly" : {
       "localizations" : {
         "de" : {
@@ -2839,28 +2801,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Episodenfortschritt"
-          }
-        }
-      }
-    },
-    "Episode sort" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episodensortierung"
-          }
-        }
-      }
-    },
-    "Episode sort and visibility" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sortierung und Sichtbarkeit der Episoden"
           }
         }
       }
@@ -3011,17 +2951,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird exportiert…"
-          }
-        }
-      }
-    },
-    "Exporting... %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird exportiert … %@"
           }
         }
       }
@@ -3651,21 +3580,8 @@
         }
       }
     },
-    "Hide the transcript below the artwork" : {
+    "Hide the transcript" : {
 
-    },
-    "Hide the transcript on the artwork" : {
-
-    },
-    "Hide transcript" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkript ausblenden"
-          }
-        }
-      }
     },
     "Holi" : {
       "localizations" : {
@@ -4146,17 +4062,6 @@
         }
       }
     },
-    "Language" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprache"
-          }
-        }
-      }
-    },
     "Last checked" : {
       "localizations" : {
         "de" : {
@@ -4520,6 +4425,12 @@
         }
       }
     },
+    "Loading playlist" : {
+
+    },
+    "Loading playlist…" : {
+
+    },
     "Loading podcasts..." : {
       "localizations" : {
         "de" : {
@@ -4660,17 +4571,6 @@
         }
       }
     },
-    "Marks all episodes in this podcast as archived" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Markiert alle Episoden dieses Podcasts als archiviert"
-          }
-        }
-      }
-    },
     "Match style" : {
       "localizations" : {
         "de" : {
@@ -4701,15 +4601,8 @@
         }
       }
     },
-    "max play position" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Max. Wiedergabeposition"
-          }
-        }
-      }
+    "Max play position" : {
+
     },
     "Max snippet length" : {
       "localizations" : {
@@ -5188,6 +5081,7 @@
       }
     },
     "Next predicted release: Unavailable" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5943,17 +5837,6 @@
         }
       }
     },
-    "Open playback and queue settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiedergabe- und Warteschlangeneinstellungen öffnen"
-          }
-        }
-      }
-    },
     "Open Player" : {
       "localizations" : {
         "de" : {
@@ -6020,17 +5903,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen öffnen"
-          }
-        }
-      }
-    },
-    "Open settings for this podcast" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einstellungen für diesen Podcast öffnen"
           }
         }
       }
@@ -6175,17 +6047,6 @@
         }
       }
     },
-    "Opens settings for this playlist" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnet die Einstellungen dieser Wiedergabeliste"
-          }
-        }
-      }
-    },
     "Opens settings related to playback" : {
       "localizations" : {
         "de" : {
@@ -6242,17 +6103,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffnet „Teilen“ für diese Episode"
-          }
-        }
-      }
-    },
-    "Opens the share sheet with the current playback timestamp" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnet „Teilen“ mit dem aktuellen Wiedergabezeitstempel"
           }
         }
       }
@@ -6319,6 +6169,12 @@
     },
     "Page %lld of %lld" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seite %lld von %lld"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
@@ -7078,17 +6934,6 @@
         }
       }
     },
-    "Podcast settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Podcast-Einstellungen"
-          }
-        }
-      }
-    },
     "Podcast Settings" : {
       "localizations" : {
         "de" : {
@@ -7649,17 +7494,6 @@
         }
       }
     },
-    "Queue settings" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Warteschlangeneinstellungen"
-          }
-        }
-      }
-    },
     "Rainbow" : {
       "localizations" : {
         "de" : {
@@ -7679,12 +7513,6 @@
           }
         }
       }
-    },
-    "Read along below the artwork" : {
-
-    },
-    "Read along over the artwork" : {
-
     },
     "Read the whole episode as text" : {
 
@@ -8794,17 +8622,6 @@
         }
       }
     },
-    "Show Podcast" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Podcast anzeigen"
-          }
-        }
-      }
-    },
     "Show Recent Play Sessions" : {
       "localizations" : {
         "de" : {
@@ -8825,15 +8642,8 @@
         }
       }
     },
-    "Show transcript" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkript anzeigen"
-          }
-        }
-      }
+    "Show the transcript" : {
+
     },
     "Show Undo for one minute after a seek of 90 seconds or more, or after changing episodes." : {
       "localizations" : {
@@ -9277,17 +9087,6 @@
         }
       }
     },
-    "Sort episodes" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episoden sortieren"
-          }
-        }
-      }
-    },
     "Sort episodes, change visibility, open settings, or archive episodes" : {
       "localizations" : {
         "de" : {
@@ -9380,17 +9179,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Starte die Wiedergabe mit der ersten Episode in deiner „Als Nächstes“-Warteschlange."
-          }
-        }
-      }
-    },
-    "Start: %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Start: %@"
           }
         }
       }
@@ -9734,17 +9522,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ wird synchronisiert"
-          }
-        }
-      }
-    },
-    "Tap and hold an episode, then drag it up or down to change the playback order." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tippe und halte eine Folge und ziehe sie dann nach oben oder unten, um die Wiedergabereihenfolge zu ändern."
           }
         }
       }

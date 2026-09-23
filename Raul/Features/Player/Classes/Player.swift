@@ -4,6 +4,7 @@ import AVFoundation
 import MediaPlayer
 import SwiftData
 import BasicLogger
+import mp3ChapterReader
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -33,6 +34,28 @@ struct SkipProtectionPolicy {
         }
 
         return abs(destinationPosition - originPosition) >= significantSeekThreshold
+    }
+}
+
+enum RemoteMP3PlaybackDurationReader {
+    static func duration(fromID3 tags: [String: Any]) -> TimeInterval? {
+        guard let milliseconds = tags["TLEN"] as? String,
+              let value = Double(milliseconds.trimmingCharacters(in: .whitespacesAndNewlines)),
+              value.isFinite, value > 0 else {
+            return nil
+        }
+        return value / 1_000
+    }
+
+    static func duration(from url: URL) async -> TimeInterval? {
+        if let reader = await mp3ChapterReader.fromRemoteURL(url),
+           let duration = duration(fromID3: reader.getID3Dict()) {
+            return duration
+        }
+
+        // Some MP3s omit TLEN. The package can estimate their length from
+        // the remote file size and first audio frame without downloading it.
+        return try? await RemoteMP3DurationReader.duration(from: url)
     }
 }
 
@@ -254,6 +277,8 @@ class Player {
     private var pendingSilenceGapTimeSavedSeconds: TimeInterval = 0
     private var pendingSkipProtectionOrigin: SkipProtectionOrigin?
     private var skipProtectionExpirationTask: Task<Void, Never>?
+    private var artworkLoadTask: Task<Void, Never>?
+    private var artworkLoadGeneration: UInt64 = 0
 #if !os(watchOS)
     private var currentAudioPlaybackProcessor: AudioPlaybackProcessor?
 #endif
@@ -294,7 +319,11 @@ class Player {
     var skipBackBehavior: SkipButtonBehavior = .seconds
     
     
-    var currentEpisode: Episode?
+    var currentEpisode: Episode? {
+        didSet {
+            scheduleCurrentArtworkUpdate()
+        }
+    }
     var currentEpisodeURL: URL?
     var mediaSelection: PlaybackMediaSelection = .primary
 
@@ -352,18 +381,19 @@ class Player {
     var isPlayerSheetPresented: Bool = false
     
     var chapterProgress: Double?
-    var currentChapter: Marker?
+    var currentChapter: Marker? {
+        didSet {
+            scheduleCurrentArtworkUpdate()
+        }
+    }
     var nextChapter: Marker?
     var chapters: [Marker]?
+    private(set) var currentArtworkImage: UIImage?
     
     var allowScrubbing:Bool?
     private(set) var skipProtectionEnabled = false
     private(set) var skipProtectionNotificationsEnabled = false
     private(set) var skipProtectionUndo: SkipProtectionUndo?
-
-    
-    private var nowPlayingArtwork: MPMediaItemArtwork?
-    private var lastArtworkIdentifier: String?
 
     
      init()  {
@@ -1175,9 +1205,6 @@ class Player {
         currentChapter = playingChapter
         chapterProgress = 0.0
         updateChapterProgress()
-        Task {
-            await updateNowPlayingCover()
-        }
         return true
     }
 
@@ -1623,7 +1650,6 @@ class Player {
         currentAudioPlaybackProcessor = nil
 #endif
         lastProgressSaveDate = .distantPast
-        lastArtworkIdentifier = nil
         await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
         WatchSyncCoordinator.refreshSoon(force: true)
 
@@ -1811,6 +1837,30 @@ class Player {
         if playDirectly {
             await playPreparedEpisode()
         }
+        if playback.source == .remote,
+           playback.usesAlternateMedia == false,
+           episode.url?.pathExtension.lowercased() == "mp3" {
+            if episode.duration.map({ $0.isFinite && $0 > 0 }) != true {
+                Task(priority: .utility) { [weak self] in
+                    await self?.fillMissingRemoteMP3Duration(
+                        for: episodeURL,
+                        generation: playbackGeneration,
+                        item: item
+                    )
+                }
+            }
+            if (episode.chapters ?? []).contains(where: { $0.type == .mp3 }) == false {
+                let podcastFeed = episode.podcast?.feed
+                Task(priority: .utility) { [weak self] in
+                    await self?.loadRemoteMP3Chapters(
+                        for: episodeURL,
+                        podcastFeed: podcastFeed,
+                        generation: playbackGeneration,
+                        item: item
+                    )
+                }
+            }
+        }
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         if let fastSwitchUnloadSnapshot {
             Task(priority: .utility) {
@@ -1824,9 +1874,55 @@ class Player {
             WatchSyncCoordinator.refreshSoon(force: true)
         }
 
-        Task {
-            await updateNowPlayingCover(for: episodeURL)
+    }
+
+    private func fillMissingRemoteMP3Duration(
+        for episodeURL: URL,
+        generation: UInt64,
+        item: AVPlayerItem
+    ) async {
+        guard let duration = await RemoteMP3PlaybackDurationReader.duration(from: episodeURL),
+              duration.isFinite, duration > 0,
+              isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item),
+              let episode = currentEpisode,
+              episode.duration.map({ $0.isFinite && $0 > 0 }) != true else {
+            return
         }
+
+        episode.duration = duration
+        episode.refresh.toggle()
+        episodeActor?.modelContainer.mainContext.saveIfNeeded()
+        configureOutroBoundaryObserver()
+        updateNowPlayingInfo()
+    }
+
+    private func loadRemoteMP3Chapters(
+        for episodeURL: URL,
+        podcastFeed: URL?,
+        generation: UInt64,
+        item: AVPlayerItem
+    ) async {
+        let remoteChapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(episodeURL)
+        guard remoteChapters.isEmpty == false else { return }
+        let skipRules = await settingsActor?.getChapterSkipKeywords(for: podcastFeed) ?? []
+        guard isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item),
+              let episode = currentEpisode else {
+            return
+        }
+
+        EpisodeChapterMerger.replaceChapters(
+            on: episode,
+            replacingTypes: [.mp3],
+            with: remoteChapters
+        )
+        _ = ChapterSkipKeywordPolicy.apply(skipRules, to: episode.chapters ?? [])
+        episode.refresh.toggle()
+        episodeActor?.modelContainer.mainContext.saveIfNeeded()
+        updateChapters()
+        _ = updateCurrentChapter()
+        updateChapterProgress()
+        await skipOverChapters()
+        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     func switchCurrentEpisodeMedia(to requestedSelection: PlaybackMediaSelection? = nil) async {
@@ -1920,9 +2016,6 @@ class Player {
         setupStaticNowPlayingInfo()
         play()
         isPlayerSheetPresented = true
-        Task {
-            await updateNowPlayingCover(for: url)
-        }
     }
     
     var progress: Double {
@@ -2606,7 +2699,6 @@ class Player {
         currentAudioPlaybackProcessor = nil
 #endif
         lastProgressSaveDate = .distantPast
-        lastArtworkIdentifier = nil
 
         // Only refresh the widget/watch for an "empty" state when there is no next episode.
         // When a next episode follows, `playEpisode` refreshes them with the correct URL.
@@ -2736,101 +2828,83 @@ class Player {
     }
     
   
-    private func updateNowPlayingCover() async {
+    /// Keeps one resolved artwork image for both the in-app player and Now Playing.
+    /// The only synchronous operation here is an in-memory cache lookup; decoding,
+    /// disk access, and downloads stay outside the main actor.
+    private func scheduleCurrentArtworkUpdate() {
+        artworkLoadGeneration &+= 1
+        let generation = artworkLoadGeneration
+        artworkLoadTask?.cancel()
+        artworkLoadTask = nil
+
         guard let episode = currentEpisode else {
-            nowPlayingInfoActor.setArtwork(nil)
-            lastArtworkIdentifier = nil
+            applyCurrentArtwork(nil)
             return
         }
-        let coverEpisodeURL = episode.url
 
-        let targetSize = CGSize(width: 600, height: 600)
-
-        if let chapter = currentChapter,
-           let chapterImageData = chapter.imageData,
-           chapterImageData.isEmpty == false {
-            let identifier = "chapter-data:\(chapter.uuid?.uuidString ?? chapter.title):\(chapterImageData.count)"
-            if lastArtworkIdentifier == identifier {
-                return
-            }
-
-            if let image = ImageLoaderAndCache.makeUIImage(
-                from: chapterImageData,
-                maxPixelSize: max(targetSize.width, targetSize.height)
-            ) {
-                guard currentEpisodeURL == coverEpisodeURL else { return }
-                lastArtworkIdentifier = identifier
-                nowPlayingInfoActor.setArtwork(image)
-                return
-            }
+        let chapter = currentChapter.flatMap { candidate in
+            episode.preferredChapters.contains { episodeChapter in
+                episodeChapter === candidate ||
+                    (candidate.uuid != nil && episodeChapter.uuid == candidate.uuid)
+            } ? candidate : nil
         }
-
+        let chapterData = chapter?.imageData.flatMap { $0.isEmpty ? nil : $0 }
         let imageURLs = [
-            currentChapter?.image,
+            chapter?.image,
             episode.imageURL,
             episode.podcast?.imageURL
         ].compactMap { $0 }
 
-        guard imageURLs.isEmpty == false else {
-            if lastArtworkIdentifier != nil {
-                nowPlayingInfoActor.setArtwork(nil)
-                lastArtworkIdentifier = nil
-            }
+        if chapterData == nil,
+           let primaryURL = imageURLs.first,
+           let cachedImage = SharedImageRepository.cachedImage(for: primaryURL) {
+            applyCurrentArtwork(cachedImage)
             return
         }
 
-        for imageURL in imageURLs {
-            let identifier = "url:\(imageURL.absoluteString)"
-            if lastArtworkIdentifier == identifier {
+        applyCurrentArtwork(nil)
+        artworkLoadTask = Task(priority: .userInitiated) { [weak self] in
+            let image = await Self.loadCurrentArtwork(
+                chapterData: chapterData,
+                imageURLs: imageURLs
+            )
+            guard Task.isCancelled == false,
+                  let self,
+                  artworkLoadGeneration == generation else {
                 return
             }
+            applyCurrentArtwork(image)
+            artworkLoadTask = nil
+        }
+    }
 
-            guard let originalImage = await ImageLoaderAndCache.loadUIImage(from: imageURL),
-                  let resizedImage = Self.downscale(image: originalImage, to: targetSize) else {
-                continue
+    private func applyCurrentArtwork(_ image: UIImage?) {
+        currentArtworkImage = image
+        if let image {
+            nowPlayingInfoActor.setArtwork(image)
+        } else {
+            nowPlayingInfoActor.setArtwork(nil)
+        }
+    }
+
+    nonisolated private static func loadCurrentArtwork(
+        chapterData: Data?,
+        imageURLs: [URL]
+    ) async -> UIImage? {
+        if let chapterData,
+           let chapterImage = await Task.detached(priority: .userInitiated, operation: {
+               ImageLoaderAndCache.makeUIImage(from: chapterData)
+           }).value {
+            return chapterImage
+        }
+
+        var loadedURLs = Set<URL>()
+        for imageURL in imageURLs where loadedURLs.insert(imageURL).inserted {
+            if Task.isCancelled { return nil }
+            if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+                return image
             }
-
-            guard currentEpisodeURL == coverEpisodeURL else { return }
-            lastArtworkIdentifier = identifier
-            nowPlayingInfoActor.setArtwork(resizedImage)
-            return
         }
-
-        guard currentEpisodeURL == coverEpisodeURL else { return }
-        nowPlayingInfoActor.setArtwork(nil)
-        lastArtworkIdentifier = nil
-    }
-
-    private func updateNowPlayingCover(for episodeURL: URL) async {
-        guard currentEpisodeURL == episodeURL else { return }
-        await updateNowPlayingCover()
-        guard currentEpisodeURL == episodeURL else { return }
-    }
-    
-    private static func downscale(image: UIImage, to size: CGSize) -> UIImage? {
-#if canImport(UIKit)
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
-        image.draw(in: CGRect(origin: .zero, size: size))
-        let newImage = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        return newImage
-#else
-        guard let source = image.cgImage,
-              let context = CGContext(
-                data: nil,
-                width: max(Int(size.width), 1),
-                height: max(Int(size.height), 1),
-                bitsPerComponent: 8,
-                bytesPerRow: 0,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              ) else {
-            return nil
-        }
-        context.interpolationQuality = .high
-        context.draw(source, in: CGRect(origin: .zero, size: size))
-        guard let resized = context.makeImage() else { return nil }
-        return UIImage(cgImage: resized)
-#endif
+        return nil
     }
 }
