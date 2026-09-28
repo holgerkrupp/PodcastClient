@@ -115,7 +115,7 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     }
     
     private func fetchAndPopulateFeedIfNeeded() {
-        print("fetchAndPopulateFeedIfNeeded \(String(describing: url))")
+        print("fetchAndPopulateFeedIfNeeded \(url?.redactedPodcastURLString ?? "<missing-url>")")
         
         guard let url else { return }
         // If we already have most information, skip
@@ -135,10 +135,14 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         }
     }
 
-    func apply(parsedFeed: [String: Any], fallbackURL: URL? = nil) {
+    func apply(
+        parsedFeed: [String: Any],
+        fallbackURL: URL? = nil,
+        preservingAccessFrom sourceURL: URL? = nil
+    ) {
         if let selfURLString = parsedFeed["selfURL"] as? String,
            let resolvedURL = URL(string: selfURLString, relativeTo: fallbackURL ?? url)?.absoluteURL {
-            url = resolvedURL
+            url = resolvedURL.preservingFeedAccessComponents(from: sourceURL ?? fallbackURL ?? url)
         } else if url == nil {
             url = fallbackURL
         }

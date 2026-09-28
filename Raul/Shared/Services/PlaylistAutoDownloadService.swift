@@ -152,7 +152,7 @@ actor PlaylistAutoDownloadService {
 
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
         for episodeURL in pendingEpisodeURLs {
-            await log("playlist-policy/download playlist=\(playlistTitle) episode=\(episodeURL.absoluteString)")
+            await log("playlist-policy/download playlist=\(playlistTitle) episode=\(episodeURL.redactedPodcastURLString)")
             await episodeActor.download(episodeURL: episodeURL)
         }
 

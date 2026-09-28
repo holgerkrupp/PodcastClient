@@ -1001,7 +1001,7 @@ actor SubscriptionManager:NSObject{
             guard let podcast = podcasts.first(where: { $0.feed == target.feed }) else {
                 CrashBreadcrumbs.shared.record(
                     "predicted_release_refresh_skipped",
-                    details: "reason=podcast_missing,feed=\(target.feed.absoluteString)"
+                    details: "reason=podcast_missing,feed=\(target.feed.redactedPodcastURLString)"
                 )
                 continue
             }
@@ -1011,7 +1011,7 @@ actor SubscriptionManager:NSObject{
 
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_started",
-                details: "feed=\(target.feed.absoluteString),release=\(target.releaseDate)"
+                    details: "feed=\(target.feed.redactedPodcastURLString),release=\(target.releaseDate)"
             )
 
             let remainingRuntime = Self.predictedReleaseRefreshRuntimeLimit
@@ -1058,7 +1058,7 @@ actor SubscriptionManager:NSObject{
                 timedOutCount += 1
                 CrashBreadcrumbs.shared.record(
                     "predicted_release_refresh_timed_out",
-                    details: "feed=\(target.feed.absoluteString),last_check_age=\(lastCheckAge)s"
+                    details: "feed=\(target.feed.redactedPodcastURLString),last_check_age=\(lastCheckAge)s"
                 )
 #if DEBUG
                 checkedPodcasts.append(
@@ -1258,7 +1258,7 @@ actor SubscriptionManager:NSObject{
                         timedOut += 1
                         CrashBreadcrumbs.shared.record(
                             "bgupdate_feed_timed_out",
-                            details: "feed=\(refreshResult.feed.absoluteString),last_check_age=\(refreshResult.lastCheckAge)s"
+                            details: "feed=\(refreshResult.feed.redactedPodcastURLString),last_check_age=\(refreshResult.lastCheckAge)s"
                         )
 #if DEBUG
                         checkedPodcasts.append(
@@ -1338,13 +1338,21 @@ actor SubscriptionManager:NSObject{
     """
         
         for podcast in podcasts {
+            guard let feedURL = podcast.feed,
+                  feedURL.isLikelyPrivatePodcastURL == false else {
+                // Tokenized/private feeds are intentionally omitted from the
+                // default OPML export. The feed URL is the credential.
+                continue
+            }
             let latestEpisode = latestFetchedEpisode(for: podcast)
             let lastRefresh = podcast.metaData?.lastRefresh?.opmlMetadataString()
             let lastEpisodeDate = latestEpisode?.publishDate?.opmlMetadataString()
-            let lastEpisodeURL = latestEpisode?.url?.absoluteString
+            let lastEpisodeURL = latestEpisode?.url.flatMap {
+                $0.isLikelyPrivatePodcastURL ? nil : $0.absoluteString
+            }
 
             opmlString += """
-            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\((podcast.feed?.absoluteString ?? "").xmlEscaped)"\(opmlAttribute("upnextLastRefresh", lastRefresh))\(opmlAttribute("upnextLastEpisodeDate", lastEpisodeDate))\(opmlAttribute("upnextLastEpisodeURL", lastEpisodeURL)) />\n
+            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\(feedURL.absoluteString.xmlEscaped)"\(opmlAttribute("upnextLastRefresh", lastRefresh))\(opmlAttribute("upnextLastEpisodeDate", lastEpisodeDate))\(opmlAttribute("upnextLastEpisodeURL", lastEpisodeURL)) />\n
         """
         }
         

@@ -164,7 +164,7 @@ final class ListenTogetherController {
             // with the group.
             await Player.shared.playEpisode(episodeURL, playDirectly: false, skipProtectionBehavior: .ignore)
         } catch {
-            BasicLogger.shared.log("SharePlay: could not load \(activity.episodeURL.absoluteString): \(error.localizedDescription)")
+            BasicLogger.shared.log("SharePlay: could not load \(activity.episodeURL.redactedPodcastURLString): \(error.localizedDescription)")
         }
     }
 

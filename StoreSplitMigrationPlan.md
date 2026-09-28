@@ -23,6 +23,15 @@ off and `UserState.sqlite` becomes the read authority. This is the release that
 shrinks the iCloud payload. Safe only once ship #1 has converged across the
 population.
 
+The cutover is a one-way attachment boundary. The cutover build persists that
+`SharedDatabase.sqlite` has been detached in the app-group defaults before any
+later read-authority decision can be applied. A rollback may restore a legacy
+local projection for recovery, but it must keep the library configuration
+`cloudKitDatabase: .none`; it must never re-attach the old CloudKit mirror.
+Remote pause/rollback controls only stop split-store work and do not change this
+attachment decision. The re-attach guard remains defense in depth for pre-cutover
+DEBUG experiments.
+
 ## Final architecture (revised 2026-08-16)
 
 The split is a **synchronization** boundary, not a file migration. The app must

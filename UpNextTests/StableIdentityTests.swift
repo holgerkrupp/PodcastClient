@@ -1124,27 +1124,33 @@ final class StableIdentityTests: XCTestCase {
 
         XCTAssertEqual(result.transcriptsApplied, 1)
         XCTAssertEqual(result.chaptersApplied, 1)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
+        let cacheContext = ModelContext(cacheContainer)
+        let cachedLines = try cacheContext.fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
         XCTAssertEqual(
-            refreshedEpisode.transcriptLines?
-                .sorted { $0.startTime < $1.startTime }
-                .map(\.text),
+            cachedLines.sorted { $0.ordinal < $1.ordinal }.map(\.text),
             ["Welcome", "Main topic"]
         )
-        XCTAssertTrue(refreshedEpisode.transcriptLines?.allSatisfy {
-            $0.episode?.persistentModelID == refreshedEpisode.persistentModelID
-        } == true)
-        XCTAssertTrue(refreshedEpisode.chapters?.contains(where: {
-            $0.type == .podlove && $0.title == "Publisher intro"
-        }) == true)
-        XCTAssertTrue(refreshedEpisode.chapters?.contains(where: {
+        let cachedChapters = try cacheContext.fetch(
+            FetchDescriptor<CachedChapter>()
+        ).filter { $0.episodeID == identity.key }
+        XCTAssertTrue(cachedChapters.contains {
+            $0.typeRawValue == MarkerType.podlove.rawValue && $0.title == "Publisher intro"
+        })
+        XCTAssertTrue(cachedChapters.contains {
+            $0.typeRawValue == MarkerType.ai.rawValue && $0.title == "New AI chapter"
+        })
+        XCTAssertFalse(cachedChapters.contains {
+            $0.typeRawValue == MarkerType.ai.rawValue && $0.title == "Old AI"
+        })
+        let legacyEpisode = try XCTUnwrap(
+            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
+        )
+        XCTAssertTrue(legacyEpisode.transcriptLines?.isEmpty != false)
+        XCTAssertFalse(legacyEpisode.chapters?.contains {
             $0.type == .ai && $0.title == "New AI chapter"
-        }) == true)
-        XCTAssertFalse(refreshedEpisode.chapters?.contains(where: {
-            $0.type == .ai && $0.title == "Old AI"
-        }) == true)
+        } == true)
     }
 
     @MainActor
@@ -1208,14 +1214,11 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 1)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
-        let importedLines = try XCTUnwrap(refreshedEpisode.transcriptLines)
+        let importedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
         XCTAssertEqual(importedLines.count, lineCount)
-        XCTAssertTrue(importedLines.allSatisfy {
-            $0.episode?.persistentModelID == refreshedEpisode.persistentModelID
-        })
+        XCTAssertTrue(importedLines.contains { $0.text == "Transcript line 0" })
     }
 
     @MainActor
@@ -1278,10 +1281,10 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 0)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
-        XCTAssertEqual(refreshedEpisode.transcriptLines?.first?.text, "Publisher supplied")
+        let cachedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
+        XCTAssertEqual(cachedLines.first?.text, "Publisher supplied")
     }
 
     @MainActor
@@ -1342,11 +1345,11 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 1)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
+        let cachedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
         XCTAssertEqual(
-            refreshedEpisode.transcriptLines?.first?.text,
+            cachedLines.first?.text,
             "Found without scanning the library"
         )
     }
@@ -1422,16 +1425,21 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 1)
-        let episodes = try legacyContainer.mainContext.fetch(FetchDescriptor<Episode>())
-        let refreshedGenerated = try XCTUnwrap(
-            episodes.first { $0.guid == "generated-transcript" }
+        let cachedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
         )
-        let refreshedPublisher = try XCTUnwrap(
-            episodes.first { $0.guid == "publisher-transcript-tombstone" }
-        )
-        XCTAssertTrue(refreshedGenerated.transcriptLines?.isEmpty != false)
+        let generatedIdentity = generatedEpisode.stableEpisodeIdentity
+        let publisherIdentity = publisherEpisode.stableEpisodeIdentity
+        XCTAssertTrue(cachedLines.contains {
+            $0.episodeID == generatedIdentity.key
+                && ($0.sourceRawValue == CachedTranscriptSource.ai.rawValue
+                    || $0.sourceRawValue == CachedTranscriptSource.localAI.rawValue)
+        } == false)
         XCTAssertEqual(
-            refreshedPublisher.transcriptLines?.first?.text,
+            cachedLines.first {
+                $0.episodeID == publisherIdentity.key
+                    && $0.sourceRawValue == CachedTranscriptSource.publisher.rawValue
+            }?.text,
             "Publisher supplied"
         )
     }

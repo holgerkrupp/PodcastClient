@@ -555,7 +555,8 @@ final class PhoneWatchSyncController: NSObject {
             guard let episodeURLString = command.episodeURL else { return }
             requestedFileTransferEpisodeIDs.insert(episodeURLString)
             #if DEBUG
-            print("Watch sync received phone fallback transfer request for \(episodeURLString)")
+            let safeEpisodeURL = URL(string: episodeURLString)?.redactedPodcastURLString ?? "<invalid-url>"
+            print("Watch sync received phone fallback transfer request for \(safeEpisodeURL)")
             #endif
             await refreshSnapshotAndTransfers()
 

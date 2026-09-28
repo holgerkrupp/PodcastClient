@@ -263,6 +263,7 @@ struct PlayerView: View {
                 compactShownotes(episode: episode)
 
             }
+            .fullPageScreenshotSupport()
             .safeAreaPadding(.horizontal)
             .safeAreaPadding(.bottom)
             .safeAreaPadding(.top, usesArtworkHero ? 0 : nil)

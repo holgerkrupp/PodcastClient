@@ -32,11 +32,19 @@ struct PodcastSearchView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .onAppear {
+                    viewModel.searchText = search
+                }
                 .onChange(of: search) {
                     viewModel.searchText = search
                 }
 
             if viewModel.isLoading {
+                if viewModel.isDirectURLInput {
+                    Label("Add Podcast from URL", systemImage: "link")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
                 ProgressView()
             }
             else if let singlePodcast = viewModel.singlePodcast{
@@ -132,11 +140,21 @@ struct PodcastSearchView: View {
                     focusedField = .username
                 }
             }
+            else if let urlErrorMessage = viewModel.urlErrorMessage {
+                Label("Couldn’t add podcast from URL", systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+                Text(urlErrorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             else if !viewModel.searchText.isEmpty{
                 Text("no results for \(search)")
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }
+        }
+        .onDisappear {
+            viewModel.cancelPendingSearch()
         }
     }
 

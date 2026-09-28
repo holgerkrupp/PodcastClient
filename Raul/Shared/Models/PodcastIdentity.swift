@@ -13,6 +13,11 @@ enum PodcastFeedIdentity {
     private static func normalizedURLString(_ url: URL) -> String {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.fragment = nil
+        if url.isLikelyPrivatePodcastURL {
+            components?.user = nil
+            components?.password = nil
+            components?.query = nil
+        }
         let normalizedScheme = components?.scheme?.lowercased()
         let normalizedHost = components?.host?.lowercased()
         components?.scheme = normalizedScheme

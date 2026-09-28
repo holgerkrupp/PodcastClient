@@ -146,27 +146,40 @@ actor StoreSplitUserStateImporter {
         let subscriptions = deduplicatedSubscriptions(
             (try? userStateContext.fetch(FetchDescriptor<SubscriptionSync>())) ?? [],
         )
+        let accessResolver = PodcastAccessResolver()
         for subscription in subscriptions.values {
-            guard let feedURL = URL(string: subscription.feedURL) else {
+            guard let manifestFeedURL = URL(string: subscription.feedURL) else {
                 result.failed += 1
                 continue
             }
-            let podcast = feedURL.podcastFeedComparisonKeys.compactMap {
+            let accessProfile = accessProfile(for: subscription, resourceURL: manifestFeedURL)
+            let resolvedFeedURL = accessProfile.flatMap {
+                try? accessResolver.resolvedURL(for: $0, fallbackURL: manifestFeedURL)
+            } ?? manifestFeedURL
+            let hasCredential = accessProfile.map {
+                accessResolver.credentialState(for: $0) == .available
+            } ?? true
+            let podcast = resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
                 podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
-                let podcast = Podcast(feed: feedURL)
+                let podcast = Podcast(feed: resolvedFeedURL)
                 legacyContext.insert(podcast)
-                for key in feedURL.podcastFeedComparisonKeys {
+                for key in resolvedFeedURL.podcastFeedComparisonKeys {
                     self.podcastsByComparisonKey[key] = podcast.persistentModelID
                 }
-                result.feedsToBootstrap.append(feedURL)
+                if hasCredential {
+                    result.feedsToBootstrap.append(resolvedFeedURL)
+                }
                 return podcast
             }()
             guard let podcast else { continue }
 
             let metadata = ensureMetadata(for: podcast)
             metadata.isSubscribed = subscription.isSubscribed
+            metadata.accessProfileID = accessProfile?.id
+            metadata.accessKindRawValue = accessProfile?.kind.rawValue
+            metadata.credentialState = hasCredential ? .available : .missing
             if subscription.isSubscribed {
                 metadata.subscriptionDate = metadata.subscriptionDate ?? subscription.subscribedAt
                 if let titleOverride = nonEmpty(subscription.titleOverride) {
@@ -241,6 +254,18 @@ actor StoreSplitUserStateImporter {
         logProjectionAudit(result: result)
 #endif
         return result
+    }
+
+    private func accessProfile(
+        for subscription: SubscriptionSync,
+        resourceURL: URL
+    ) -> PodcastAccessProfile? {
+        guard let id = subscription.accessProfileID,
+              let rawKind = subscription.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind) else {
+            return nil
+        }
+        return PodcastAccessProfile(id: id, kind: kind, resourceURL: resourceURL)
     }
 
     /// Indexes the library's podcasts by feed comparison key and returns them.

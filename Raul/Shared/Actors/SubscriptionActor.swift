@@ -339,13 +339,21 @@ actor SubscriptionActor:NSObject{
     """
         
         for podcast in podcasts {
+            guard let feedURL = podcast.feed,
+                  feedURL.isLikelyPrivatePodcastURL == false else {
+                // Tokenized/private feeds are intentionally omitted from the
+                // default OPML export. The feed URL is the credential.
+                continue
+            }
             let latestEpisode = latestFetchedEpisode(for: podcast)
             let lastRefresh = podcast.metaData?.lastRefresh?.opmlMetadataString()
             let lastEpisodeDate = latestEpisode?.publishDate?.opmlMetadataString()
-            let lastEpisodeURL = latestEpisode?.url?.absoluteString
+            let lastEpisodeURL = latestEpisode?.url.flatMap {
+                $0.isLikelyPrivatePodcastURL ? nil : $0.absoluteString
+            }
 
             opmlString += """
-            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\((podcast.feed?.absoluteString ?? "").xmlEscaped)"\(opmlAttribute("upnextLastRefresh", lastRefresh))\(opmlAttribute("upnextLastEpisodeDate", lastEpisodeDate))\(opmlAttribute("upnextLastEpisodeURL", lastEpisodeURL)) />\n
+            <outline text="\(podcast.title.xmlEscaped)" type="rss" xmlUrl="\(feedURL.absoluteString.xmlEscaped)"\(opmlAttribute("upnextLastRefresh", lastRefresh))\(opmlAttribute("upnextLastEpisodeDate", lastEpisodeDate))\(opmlAttribute("upnextLastEpisodeURL", lastEpisodeURL)) />\n
         """
         }
         

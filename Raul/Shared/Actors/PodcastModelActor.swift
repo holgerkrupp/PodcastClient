@@ -39,6 +39,7 @@ struct PodcastUpdateSummary: Sendable {
 @ModelActor
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
+    private let authenticationRetryInterval: TimeInterval = 6 * 60 * 60
     private static let refreshLogger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
         category: "PodcastRefresh"
@@ -64,6 +65,42 @@ actor PodcastModelActor {
         return statusCode
     }
 
+    private func accessProfile(
+        for metadata: PodcastMetaData?,
+        feedURL: URL?
+    ) -> PodcastAccessProfile? {
+        guard let metadata,
+              let feedURL,
+              let id = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind) else {
+            return nil
+        }
+        return PodcastAccessProfile(id: id, kind: kind, resourceURL: feedURL)
+    }
+
+    private func configureAccessMetadata(for feedURL: URL, metadata: PodcastMetaData?) {
+        guard let metadata, feedURL.isLikelyPrivatePodcastURL else { return }
+        let kind: PodcastAccessKind = feedURL.user != nil || feedURL.password != nil
+            ? .httpBasic
+            : .privateURL
+        let profile = PodcastAccessProfile.make(for: feedURL, kind: kind)
+        metadata.accessProfileID = profile.id
+        metadata.accessKindRawValue = profile.kind.rawValue
+        metadata.credentialState = .available
+        switch kind {
+        case .privateURL:
+            try? KeychainPodcastCredentialStore.shared.save(.privateURL(feedURL), for: profile)
+        case .httpBasic:
+            try? KeychainPodcastCredentialStore.shared.save(
+                .httpBasic(username: feedURL.user ?? "", password: feedURL.password ?? ""),
+                for: profile
+            )
+        case .publicFeed, .bearerToken:
+            break
+        }
+    }
+
     private func recordFeedRefreshSuccess(metadataID: PersistentIdentifier) {
         guard let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) else { return }
         metadata.consecutiveFeedFailureCount = 0
@@ -71,6 +108,8 @@ actor PodcastModelActor {
         metadata.lastFeedFailureDate = nil
         metadata.lastFeedFailureStatusCode = nil
         metadata.lastFeedFailureMessage = nil
+        metadata.credentialState = .available
+        metadata.authenticationRetryAfter = nil
     }
 
     private func recordFeedRefreshFailure(
@@ -79,12 +118,25 @@ actor PodcastModelActor {
     ) {
         guard let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) else { return }
         let now = Date()
+        let statusCode = Self.feedFailureStatusCode(from: error)
+        if statusCode == 401 || statusCode == 403 {
+            metadata.credentialState = .needsLogin
+            metadata.authenticationRetryAfter = now.addingTimeInterval(authenticationRetryInterval)
+            metadata.lastFeedFailureDate = now
+            metadata.lastFeedFailureStatusCode = statusCode
+            metadata.lastFeedFailureMessage = error.localizedDescription
+            // Authentication failures are recoverable and must not feed the
+            // abandoned/cancelled heuristics or trigger a retry storm.
+            metadata.consecutiveFeedFailureCount = 0
+            metadata.firstConsecutiveFeedFailureDate = nil
+            return
+        }
         if metadata.consecutiveFeedFailureCount == 0 {
             metadata.firstConsecutiveFeedFailureDate = now
         }
         metadata.consecutiveFeedFailureCount += 1
         metadata.lastFeedFailureDate = now
-        metadata.lastFeedFailureStatusCode = Self.feedFailureStatusCode(from: error)
+        metadata.lastFeedFailureStatusCode = statusCode
         metadata.lastFeedFailureMessage = error.localizedDescription
     }
 
@@ -186,15 +238,30 @@ actor PodcastModelActor {
 
     
     func fetchPodcast(byFeed podcastFeed: URL) async -> Podcast? {
+        let storedFeedURL = podcastFeed.isLikelyPrivatePodcastURL
+            ? podcastFeed.podcastNonSecretURL
+            : podcastFeed
         let predicate = #Predicate<Podcast> { podcast in
-            podcast.feed == podcastFeed
+            podcast.feed == storedFeedURL
         }
 
         do {
-            let results = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate))
-            return results.first
+            guard let podcast = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate)).first else {
+                return nil
+            }
+
+            // Migrate legacy records that stored the private endpoint directly
+            // in SwiftData. The original URL is used once to recover the
+            // credential; the model keeps only the safe identity thereafter.
+            if let existingFeed = podcast.feed, existingFeed.isLikelyPrivatePodcastURL {
+                let metadata = ensureMetadata(for: podcast)
+                configureAccessMetadata(for: existingFeed, metadata: metadata)
+                podcast.feed = existingFeed.podcastNonSecretURL
+                modelContext.saveIfNeeded()
+            }
+            return podcast
         } catch {
-            print("❌ Error fetching episode for podcast Feed: \(podcastFeed), Error: \(error)")
+            print("❌ Error fetching podcast feed \(podcastFeed.redactedPodcastURLString), Error: \(error)")
             return nil
         }
     }
@@ -366,9 +433,10 @@ actor PodcastModelActor {
 
         // Snapshot value properties (safe)
         let feedURL = podcast.feed
+        let accessProfile = accessProfile(for: podcast.metaData, feedURL: feedURL)
 
         // --- Async work with only value types ---
-        let status = try? await feedURL?.status()
+        let status = try? await feedURL?.status(profile: accessProfile)
         let serverLastModified = status?.lastModified
         let now = Date()
         
@@ -403,6 +471,18 @@ actor PodcastModelActor {
         // Treat the preflight request as advisory only. Some feeds either reject HEAD
         // requests or return stale/missing Last-Modified values.
         guard let statusCode = status?.statusCode else {
+            return nil
+        }
+
+        if statusCode == 401 || statusCode == 403 {
+            freshMeta.credentialState = .needsLogin
+            freshMeta.authenticationRetryAfter = now.addingTimeInterval(authenticationRetryInterval)
+            freshMeta.lastFeedFailureDate = now
+            freshMeta.lastFeedFailureStatusCode = statusCode
+            freshMeta.lastFeedFailureMessage = status?.displayMessage
+            freshMeta.consecutiveFeedFailureCount = 0
+            freshMeta.firstConsecutiveFeedFailureDate = nil
+            modelContext.saveIfNeeded()
             return nil
         }
 
@@ -463,6 +543,7 @@ actor PodcastModelActor {
         try Task.checkCancellation()
         guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
         guard let feedURL = podcast.feed else { return false }
+        let accessProfile = accessProfile(for: podcast.metaData, feedURL: feedURL)
 
         let podcastIDRef = podcast.persistentModelID
         var metaIDRef = podcast.metaData?.persistentModelID
@@ -486,7 +567,11 @@ actor PodcastModelActor {
         modelContext.saveIfNeeded()
 
         do {
-            let page = try await PodcastParser.fetchPage(from: feedURL, maximumEpisodes: maximumEpisodes)
+            let page = try await PodcastParser.fetchPage(
+                from: feedURL,
+                maximumEpisodes: maximumEpisodes,
+                profile: accessProfile
+            )
             try Task.checkCancellation()
 
             guard
@@ -515,6 +600,9 @@ actor PodcastModelActor {
             modelContext.saveIfNeeded()
             return true
         } catch {
+            if let metaIDRef {
+                recordFeedRefreshFailure(metadataID: metaIDRef, error: error)
+            }
             if let metaIDRef,
                let failedMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                 failedMeta.isUpdating = false
@@ -567,7 +655,7 @@ actor PodcastModelActor {
         func logRefreshResult(_ result: String) {
             let totalDuration = refreshStartedAt.duration(to: .now)
             Self.logRefresh(
-                "feed=\(podcastFeed.absoluteString) "
+                "feed=\(podcastFeed.redactedPodcastURLString) "
                     + "result=\(result) "
                     + "status=\(Self.milliseconds(statusDuration))ms "
                     + "download_parse=\(Self.milliseconds(downloadAndParseDuration))ms "
@@ -598,6 +686,19 @@ actor PodcastModelActor {
             podcast.metaData = meta
             modelContext.saveIfNeeded()
             metaIDRef = meta.persistentModelID
+        }
+
+        let accessProfile = accessProfile(
+            for: podcast.metaData,
+            feedURL: feedURL
+        )
+
+        if force != true,
+           let metaIDRef,
+           let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
+           let retryAfter = metadata.authenticationRetryAfter,
+           retryAfter > Date() {
+            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
         }
 
         // Snapshot some plain values if needed
@@ -679,7 +780,8 @@ actor PodcastModelActor {
             let downloadAndParseStartedAt = ContinuousClock.now
             let fullPodcast = try await PodcastParser.fetchAllPages(
                 from: feedURL,
-                knownEpisodeIdentifiers: knownEpisodeIdentifiers
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+                profile: accessProfile
             )
             downloadAndParseDuration = downloadAndParseStartedAt.duration(to: .now)
             try checkRefreshDeadline(deadline)
@@ -745,7 +847,7 @@ actor PodcastModelActor {
         } catch {
             let nsError = error as NSError
             print(
-                "Podcast refresh failed for \(feedURL.absoluteString):",
+                "Podcast refresh failed for \(feedURL.redactedPodcastURLString):",
                 "domain=\(nsError.domain)",
                 "code=\(nsError.code)",
                 "description=\(error.localizedDescription)"
@@ -1092,7 +1194,7 @@ actor PodcastModelActor {
             cacheContainer: cacheContainer
         )
         Self.logRefresh(
-            "cache_projection feed=\(feedURL.absoluteString) "
+            "cache_projection feed=\(feedURL.redactedPodcastURLString) "
                 + "completed=\(projection.completed) "
                 + "episodes=\(projection.episodesProcessed) "
                 + "inserted=\(projection.inserted) "
@@ -1106,7 +1208,7 @@ actor PodcastModelActor {
         if projection.completed == false {
             CrashBreadcrumbs.shared.record(
                 "feed_cache_projection_deferred",
-                details: "reason=not_committed,feed=\(feedURL.absoluteString)"
+                details: "reason=not_committed,feed=\(feedURL.redactedPodcastURLString)"
             )
         }
     }
@@ -1138,7 +1240,7 @@ actor PodcastModelActor {
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> PersistentIdentifier {
         
-        print("createPodcast from url: \(url)")
+        print("createPodcast from url: \(url.redactedPodcastURLString)")
         await reportProgress(SubscriptionProgressUpdate(0.02, "Resolving podcast feed"), using: progress)
         // Check URL STATUS
         var feedURL = url
@@ -1151,7 +1253,7 @@ actor PodcastModelActor {
             throw SubscriptionManager.SubscribeError.loadfeed
         case 410:
             if let newURL = status?.newURL{
-                feedURL = newURL
+                feedURL = newURL.preservingFeedAccessComponents(from: url)
                 await recordFeedAlias(
                     from: url,
                     to: newURL,
@@ -1167,15 +1269,21 @@ actor PodcastModelActor {
         
         
         
-        // Check if podcast with this feed URL already exists
+        let sourceFeedURL = feedURL
+        let storedFeedURL = feedURL.isLikelyPrivatePodcastURL
+            ? feedURL.podcastNonSecretURL
+            : feedURL
+
+        // Check if podcast with this credential-free feed URL already exists.
         let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feed == feedURL }
+            predicate: #Predicate<Podcast> { $0.feed == storedFeedURL }
         )
-        
+
         if let existingPodcasts = try? modelContext.fetch(descriptor),
            let existingPodcast = existingPodcasts.first, let feed = existingPodcast.feed {
             // If podcast exists, update it and return its ID
             let metaData = ensureMetadata(for: existingPodcast)
+            configureAccessMetadata(for: sourceFeedURL, metadata: metaData)
             metaData.isSubscribed = true
             metaData.subscriptionDate = Date()
             modelContext.saveIfNeeded()
@@ -1192,7 +1300,8 @@ actor PodcastModelActor {
         // Create new podcast if it doesn't exist
         
         
-        let podcast = Podcast(feed: feedURL)
+        let podcast = Podcast(feed: sourceFeedURL)
+        configureAccessMetadata(for: sourceFeedURL, metadata: podcast.metaData)
         modelContext.insert(podcast)
         modelContext.saveIfNeeded()
         await updateSplitSubscription(feedURL: feedURL, isSubscribed: true)

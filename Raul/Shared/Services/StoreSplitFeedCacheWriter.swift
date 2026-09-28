@@ -356,6 +356,7 @@ enum StoreSplitFeedCacheWriter {
             return false
         }
         let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
+        let safeFeed = feed.isLikelyPrivatePodcastURL ? feed.podcastNonSecretURL : feed
 
         result.fetchCount += 1
         let cached = fetchCachedPodcast(id: feedKey, in: cacheContext)
@@ -371,7 +372,7 @@ enum StoreSplitFeedCacheWriter {
         podcastChanged |= assignIfChanged(cached, \.title, podcast.title)
         podcastChanged |= assignIfChanged(cached, \.desc, podcast.desc)
         podcastChanged |= assignIfChanged(cached, \.author, podcast.author)
-        podcastChanged |= assignIfChanged(cached, \.feed, podcast.feed)
+        podcastChanged |= assignIfChanged(cached, \.feed, safeFeed)
         podcastChanged |= assignIfChanged(cached, \.link, podcast.link)
         podcastChanged |= assignIfChanged(cached, \.language, podcast.language)
         podcastChanged |= assignIfChanged(cached, \.copyright, podcast.copyright)

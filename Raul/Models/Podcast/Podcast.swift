@@ -127,14 +127,18 @@ final class Podcast: Identifiable {
 
     
     init(feed: URL) {
-        self.feed = feed
-        self.title = feed.absoluteString.removingPercentEncoding ?? "default"
+        let storedFeed = feed.isLikelyPrivatePodcastURL ? feed.podcastNonSecretURL : feed
+        self.feed = storedFeed
+        self.title = storedFeed.absoluteString.removingPercentEncoding ?? "default"
         self.metaData = PodcastMetaData()
+        configurePrivateAccess(for: feed, metadata: metaData)
     }
-    
+
     init(from feedData: PodcastFeed) {
-            self.feed = feedData.url
-            self.title = feedData.title ?? feedData.url?.absoluteString.removingPercentEncoding ?? "New Podcast"
+            let sourceFeedURL = feedData.url
+            let storedFeedURL = sourceFeedURL.map { $0.isLikelyPrivatePodcastURL ? $0.podcastNonSecretURL : $0 }
+            self.feed = storedFeedURL
+            self.title = feedData.title ?? storedFeedURL?.absoluteString.removingPercentEncoding ?? "New Podcast"
             self.desc = feedData.description
             self.author = feedData.artist
             self.imageURL = feedData.artworkURL
@@ -147,8 +151,26 @@ final class Podcast: Identifiable {
             self.optionalTags = feedData.optionalTags
             self.metaData = PodcastMetaData()
             self.settings = PodcastSettings()
+            if let sourceFeedURL {
+                configurePrivateAccess(for: sourceFeedURL, metadata: metaData)
+            }
             // Episodes are populated later during the network update.
         }
+
+    private func configurePrivateAccess(for sourceURL: URL, metadata: PodcastMetaData?) {
+        guard sourceURL.isLikelyPrivatePodcastURL, let metadata else { return }
+        let kind: PodcastAccessKind = sourceURL.user != nil || sourceURL.password != nil
+            ? .httpBasic
+            : .privateURL
+        let profile = PodcastAccessProfile.make(for: sourceURL, kind: kind)
+        metadata.accessProfileID = profile.id
+        metadata.accessKindRawValue = profile.kind.rawValue
+        metadata.credentialStateRawValue = PodcastCredentialState.available.rawValue
+        let credential: PodcastCredential = kind == .httpBasic
+            ? .httpBasic(username: sourceURL.user ?? "", password: sourceURL.password ?? "")
+            : .privateURL(sourceURL)
+        try? KeychainPodcastCredentialStore.shared.save(credential, for: profile)
+    }
     
     var isSubscribed: Bool {
         metaData?.isSubscribed != false
@@ -191,11 +213,21 @@ final class Podcast: Identifiable {
     var lastFeedFailureDate: Date?
     var lastFeedFailureStatusCode: Int?
     var lastFeedFailureMessage: String?
+    /// Non-secret reference to credentials held in Keychain.
+    var accessProfileID: String?
+    var accessKindRawValue: String?
+    var credentialStateRawValue: String = PodcastCredentialState.available.rawValue
+    var authenticationRetryAfter: Date?
     var subscriptionDate: Date? = Date()
     
     
     @Transient var isUpdating: Bool = false
     @Transient var message: String?
+
+    var credentialState: PodcastCredentialState {
+        get { PodcastCredentialState(rawValue: credentialStateRawValue) ?? .available }
+        set { credentialStateRawValue = newValue.rawValue }
+    }
 
     
     var isSubscribed: Bool = true

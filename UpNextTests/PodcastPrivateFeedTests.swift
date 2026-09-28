@@ -1,0 +1,233 @@
+import Foundation
+import XCTest
+@testable import UpNext
+
+final class PodcastPrivateFeedTests: XCTestCase {
+    private struct FixtureTransport: PodcastHTTPTransport {
+        let fixture: Data
+
+        func data(
+            for request: URLRequest,
+            profile: PodcastAccessProfile?,
+            resolver: PodcastAccessResolver
+        ) async throws -> (Data, URLResponse) {
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/rss+xml"]
+            )!
+            return (fixture, response)
+        }
+    }
+
+    func testHTTPClientFetchesTheSameFixtureThroughEveryAccessMode() async throws {
+        let fixture = Data("<rss><channel><title>Fixture</title></channel></rss>".utf8)
+        let endpoint = URL(string: "https://example.com/private.xml")!
+        let store = InMemoryPodcastCredentialStore()
+        let resolver = PodcastAccessResolver(credentialStore: store)
+        let client = PodcastHTTPClient(
+            resolver: resolver,
+            transport: FixtureTransport(fixture: fixture)
+        )
+
+        let publicResult = try await client.data(for: endpoint)
+        XCTAssertEqual(publicResult.0, fixture)
+
+        let privateProfile = PodcastAccessProfile(id: "private", kind: .privateURL, resourceURL: endpoint)
+        try store.save(.privateURL(URL(string: "https://example.com/private.xml?token=fake-token")!), for: privateProfile)
+        let privateResult = try await client.data(for: endpoint, profile: privateProfile)
+        XCTAssertEqual(privateResult.0, fixture)
+
+        let basicProfile = PodcastAccessProfile(id: "basic", kind: .httpBasic, resourceURL: endpoint)
+        try store.save(.httpBasic(username: "alice", password: "s3cret"), for: basicProfile)
+        let basicResult = try await client.data(for: endpoint, profile: basicProfile)
+        XCTAssertEqual(basicResult.0, fixture)
+
+        let bearerProfile = PodcastAccessProfile(id: "bearer", kind: .bearerToken, resourceURL: endpoint)
+        try store.save(.bearerToken("fake-bearer"), for: bearerProfile)
+        let bearerResult = try await client.data(for: endpoint, profile: bearerProfile)
+        XCTAssertEqual(bearerResult.0, fixture)
+    }
+
+    func testAccessProfileRedactsPrivateURLAndUsesStableNonSecretIdentity() {
+        let privateURL = URL(string: "https://alice:s3cret@example.com/private.xml?token=fake-token")!
+        let profile = PodcastAccessProfile.make(for: privateURL)
+
+        XCTAssertEqual(profile.kind, .privateURL)
+        XCTAssertEqual(profile.resourceURL?.absoluteString, "https://example.com/private.xml")
+        XCTAssertFalse(profile.resourceURL?.absoluteString.contains("fake-token") == true)
+        XCTAssertFalse(privateURL.redactedPodcastURLString.contains("fake-token"))
+        XCTAssertTrue(privateURL.redactedPodcastURLString.localizedCaseInsensitiveContains("redacted"))
+    }
+
+    func testAccessResolverSupportsPrivateURLBasicAndBearerCredentials() throws {
+        let store = InMemoryPodcastCredentialStore()
+        let resolver = PodcastAccessResolver(credentialStore: store)
+        let endpoint = URL(string: "https://example.com/private.xml")!
+
+        let privateProfile = PodcastAccessProfile(
+            id: "private-profile",
+            kind: .privateURL,
+            resourceURL: endpoint
+        )
+        try store.save(
+            .privateURL(URL(string: "https://example.com/private.xml?token=fake-token")!),
+            for: privateProfile
+        )
+        let privateRequest = try resolver.request(for: endpoint, profile: privateProfile)
+        XCTAssertEqual(privateRequest.url?.absoluteString, "https://example.com/private.xml?token=fake-token")
+
+        let basicProfile = PodcastAccessProfile(id: "basic-profile", kind: .httpBasic, resourceURL: endpoint)
+        try store.save(.httpBasic(username: "alice", password: "s3cret"), for: basicProfile)
+        let basicRequest = try resolver.request(for: endpoint, profile: basicProfile)
+        XCTAssertEqual(
+            basicRequest.value(forHTTPHeaderField: "Authorization"),
+            "Basic YWxpY2U6czNjcmV0"
+        )
+
+        let bearerProfile = PodcastAccessProfile(id: "bearer-profile", kind: .bearerToken, resourceURL: endpoint)
+        try store.save(.bearerToken("fake-bearer"), for: bearerProfile)
+        let bearerRequest = try resolver.request(for: endpoint, profile: bearerProfile)
+        XCTAssertEqual(bearerRequest.value(forHTTPHeaderField: "Authorization"), "Bearer fake-bearer")
+    }
+
+    func testAccessResolverRejectsCrossOriginCredentialForwarding() throws {
+        let store = InMemoryPodcastCredentialStore()
+        let resolver = PodcastAccessResolver(credentialStore: store)
+        let profile = PodcastAccessProfile(
+            id: "basic-profile",
+            kind: .httpBasic,
+            resourceURL: URL(string: "https://example.com/private.xml")!
+        )
+        try store.save(.httpBasic(username: "alice", password: "s3cret"), for: profile)
+
+        XCTAssertThrowsError(
+            try resolver.request(
+                for: URL(string: "https://cdn.example.net/episode.mp3")!,
+                profile: profile
+            )
+        ) { error in
+            XCTAssertEqual(error as? PodcastAccessError, .unauthorizedResource(URL(string: "https://cdn.example.net/episode.mp3")!))
+        }
+    }
+
+    func testSynchronizedFeedIdentityAndManifestNeverContainPrivateToken() throws {
+        let privateURL = URL(string: "https://example.com/private.xml?token=fake-token")!
+        let identity = PodcastFeedIdentity.normalizedFeedURLString(privateURL)
+        XCTAssertEqual(identity, "https://example.com/private.xml")
+
+        let profile = PodcastAccessProfile.make(for: privateURL)
+        let entry = SubscriptionManifestEntry(
+            feedURL: identity,
+            accessProfileID: profile.id,
+            accessKindRawValue: profile.kind.rawValue,
+            title: "Private Show"
+        )
+        let encoded = try JSONEncoder().encode(entry)
+        let payload = String(decoding: encoded, as: UTF8.self)
+        XCTAssertFalse(payload.contains("fake-token"))
+        XCTAssertTrue(payload.contains(profile.id))
+    }
+
+    func testCredentialStoreRemovalLeavesProfileMetadataUsable() throws {
+        let store = InMemoryPodcastCredentialStore()
+        let profile = PodcastAccessProfile.make(
+            for: URL(string: "https://example.com/private.xml?token=fake-token")!
+        )
+        try store.save(.privateURL(URL(string: "https://example.com/private.xml?token=fake-token")!), for: profile)
+        XCTAssertEqual(PodcastAccessResolver(credentialStore: store).credentialState(for: profile), .available)
+
+        try store.removeCredential(for: profile)
+        XCTAssertEqual(PodcastAccessResolver(credentialStore: store).credentialState(for: profile), .missing)
+        XCTAssertEqual(profile.kind, .privateURL)
+    }
+
+    func testPodcastModelStoresOnlyCredentialFreeFeedURL() {
+        let sourceURL = URL(string: "https://example.com/private.xml?token=fake-token")!
+        let podcast = Podcast(feed: sourceURL)
+
+        XCTAssertEqual(podcast.feed?.absoluteString, "https://example.com/private.xml")
+        XCTAssertEqual(podcast.metaData?.accessKindRawValue, PodcastAccessKind.privateURL.rawValue)
+        XCTAssertFalse(podcast.feed?.absoluteString.contains("fake-token") == true)
+    }
+
+    func testPrivateFeedTokenSurvivesCanonicalSelfURL() async throws {
+        let requestedURL = URL(string: "https://example.com/private.xml?freebie=secret")!
+        let xml = """
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+          <channel>
+            <title>Private Show</title>
+            <description>Private</description>
+            <atom:link rel="self" href="https://example.com/private.xml" />
+          </channel>
+        </rss>
+        """
+
+        let page = try await PodcastParser.parsePage(
+            from: PodcastFeedDocument(
+                data: Data(xml.utf8),
+                sourceURL: requestedURL,
+                requestedURL: requestedURL
+            )
+        )
+
+        XCTAssertEqual(page.feed.url, requestedURL)
+    }
+
+    func testPrivateFeedTokenSurvivesPagedFeedLinks() async throws {
+        let requestedURL = URL(string: "https://example.com/private.xml?freebie=secret")!
+        let xml = """
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+          <channel>
+            <title>Private Show</title>
+            <atom:link rel="next" href="/private.xml?page=2" />
+          </channel>
+        </rss>
+        """
+
+        let page = try await PodcastParser.parsePage(
+            from: PodcastFeedDocument(
+                data: Data(xml.utf8),
+                sourceURL: requestedURL,
+                requestedURL: requestedURL
+            )
+        )
+
+        XCTAssertEqual(
+            page.nextPageURL?.absoluteString,
+            "https://example.com/private.xml?page=2&freebie=secret"
+        )
+    }
+
+    func testBasicAuthenticationSurvivesCanonicalSelfURLAndIsSentOnRequests() async throws {
+        let requestedURL = URL(string: "https://alice:s3cret@example.com/private.xml")!
+        let xml = """
+        <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+          <channel>
+            <title>Private Show</title>
+            <atom:link rel="self" href="https://example.com/private.xml" />
+          </channel>
+        </rss>
+        """
+
+        let page = try await PodcastParser.parsePage(
+            from: PodcastFeedDocument(
+                data: Data(xml.utf8),
+                sourceURL: requestedURL,
+                requestedURL: requestedURL
+            )
+        )
+        let request = URLRequest(podcastFeedURL: requestedURL)
+
+        XCTAssertEqual(page.feed.url, requestedURL)
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "Authorization"),
+            "Basic YWxpY2U6czNjcmV0"
+        )
+        XCTAssertTrue(request.value(forHTTPHeaderField: "User-Agent")?.contains("Safari") == true)
+        XCTAssertTrue(request.value(forHTTPHeaderField: "Accept")?.contains("application/rss+xml") == true)
+        XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Cache-Control"), "no-cache")
+    }
+}

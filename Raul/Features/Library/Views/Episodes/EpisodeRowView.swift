@@ -5,14 +5,12 @@
 //  Created by Holger Krupp on 12.04.25.
 //
 import SwiftUI
-import SwiftData
 import ESADesignKit
 import Combine
 
 struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -35,6 +33,9 @@ struct EpisodeRowView: View {
         usesLivePlaybackProgress: Bool = false
     ) {
         self._episode = Bindable(wrappedValue: episode)
+        self._referenceAvailability = State(
+            initialValue: EpisodeReferenceAvailability.seeded(from: episode)
+        )
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
         self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
         self.usesLivePlaybackProgress = usesLivePlaybackProgress
@@ -213,28 +214,16 @@ struct EpisodeRowView: View {
             .task(id: episode.url) {
                 await Task.yield()
                 guard Task.isCancelled == false else { return }
-                await refreshReferenceAvailability()
+                refreshReferenceAvailability()
             }
             .onChange(of: fileManager.downloadedFiles) { _, _ in
-                Task { @MainActor in
-                    await Task.yield()
-                    guard Task.isCancelled == false else { return }
-                    await refreshReferenceAvailability()
-                }
+                refreshReferenceAvailability()
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange).receive(on: DispatchQueue.main)) { notification in
-                Task { @MainActor in
-                    await Task.yield()
-                    guard Task.isCancelled == false else { return }
-                    await handleEpisodeReferencesDidChange(notification)
-                }
+                handleEpisodeReferencesDidChange(notification)
             }
             .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
-                Task { @MainActor in
-                    await Task.yield()
-                    guard Task.isCancelled == false else { return }
-                    await handleEpisodeDownloadFinished(notification)
-                }
+                handleEpisodeDownloadFinished(notification)
             }
 
     }
@@ -286,25 +275,22 @@ struct EpisodeRowView: View {
         return downloadedFiles.contains(localFile)
     }
 
-    private func refreshReferenceAvailability(invalidate: Bool = false) async {
-        if let episodeURL = episode.url {
-            if invalidate {
-                EpisodeReferenceAvailabilityCache.shared.invalidate(episodeURL)
-            } else if let cachedAvailability = EpisodeReferenceAvailabilityCache.shared.availability(for: episodeURL) {
-                updateReferenceAvailability(cachedAvailability)
-                return
-            }
-
-            let resolver = EpisodeReferenceAvailabilityResolver(
-                modelContainer: modelContext.container
-            )
-            let availability = await resolver.resolve(episodeURL: episodeURL)
-
-            guard Task.isCancelled == false else { return }
-
-            EpisodeReferenceAvailabilityCache.shared.store(availability, for: episodeURL)
-            updateReferenceAvailability(availability)
+    private func refreshReferenceAvailability(invalidate: Bool = false) {
+        guard let episodeURL = episode.url else {
+            updateReferenceAvailability(EpisodeReferenceAvailability.seeded(from: episode))
+            return
         }
+
+        if invalidate {
+            EpisodeReferenceAvailabilityCache.shared.invalidate(episodeURL)
+        } else if let cachedAvailability = EpisodeReferenceAvailabilityCache.shared.availability(for: episodeURL) {
+            updateReferenceAvailability(cachedAvailability)
+            return
+        }
+
+        let availability = EpisodeReferenceAvailability.seeded(from: episode)
+        EpisodeReferenceAvailabilityCache.shared.store(availability, for: episodeURL)
+        updateReferenceAvailability(availability)
     }
 
     private func updateReferenceAvailability(_ availability: EpisodeReferenceAvailability) {
@@ -313,16 +299,16 @@ struct EpisodeRowView: View {
         }
     }
 
-    private func handleEpisodeReferencesDidChange(_ notification: Notification) async {
+    private func handleEpisodeReferencesDidChange(_ notification: Notification) {
         guard notificationMatchesEpisode(notification, urlKey: EpisodeReferenceNotificationKey.episodeURL) else { return }
         fileManager.refreshDownloadedFiles()
-        await refreshReferenceAvailability(invalidate: true)
+        refreshReferenceAvailability(invalidate: true)
     }
 
-    private func handleEpisodeDownloadFinished(_ notification: Notification) async {
+    private func handleEpisodeDownloadFinished(_ notification: Notification) {
         guard notificationMatchesEpisode(notification, urlKey: EpisodeDownloadNotificationKey.episodeURL) else { return }
         fileManager.refreshDownloadedFiles()
-        await refreshReferenceAvailability()
+        refreshReferenceAvailability()
     }
 
     private func notificationMatchesEpisode(_ notification: Notification, urlKey: String) -> Bool {
@@ -348,52 +334,18 @@ struct EpisodeRowView: View {
 
 }
 
-private struct EpisodeReferenceAvailability: Equatable, Sendable {
+private struct EpisodeReferenceAvailability: Equatable {
     var hasChapters = false
     var hasTranscript = false
     var hasBookmarks = false
-}
 
-@ModelActor
-private actor EpisodeReferenceAvailabilityResolver {
-    func resolve(episodeURL: URL) -> EpisodeReferenceAvailability {
-        var availability = EpisodeReferenceAvailability()
-
-        let episodeDescriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { candidate in
-                candidate.url == episodeURL
-            }
+    static func seeded(from episode: Episode) -> EpisodeReferenceAvailability {
+        EpisodeReferenceAvailability(
+            hasChapters: episode.chapters?.isEmpty == false,
+            hasTranscript: episode.hasLoadedTranscript
+                || episode.externalFiles.contains(where: { $0.category == .transcript }),
+            hasBookmarks: episode.bookmarks?.isEmpty == false
         )
-        if let matchingEpisodes = try? modelContext.fetch(episodeDescriptor) {
-            availability.hasTranscript = matchingEpisodes.contains {
-                $0.externalFiles.contains(where: { $0.category == .transcript })
-            }
-        }
-
-        let chapterDescriptor = FetchDescriptor<Marker>(
-            predicate: #Predicate<Marker> { marker in
-                marker.episode?.url == episodeURL
-            }
-        )
-        availability.hasChapters = ((try? modelContext.fetchCount(chapterDescriptor)) ?? 0) > 0
-
-        if availability.hasTranscript == false {
-            let transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-                predicate: #Predicate<TranscriptLineAndTime> { line in
-                    line.episode?.url == episodeURL
-                }
-            )
-            availability.hasTranscript = ((try? modelContext.fetchCount(transcriptDescriptor)) ?? 0) > 0
-        }
-
-        let bookmarkDescriptor = FetchDescriptor<Bookmark>(
-            predicate: #Predicate<Bookmark> { bookmark in
-                bookmark.bookmarkEpisode?.url == episodeURL
-            }
-        )
-        availability.hasBookmarks = ((try? modelContext.fetchCount(bookmarkDescriptor)) ?? 0) > 0
-
-        return availability
     }
 }
 

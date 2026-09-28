@@ -8,6 +8,7 @@ import XCTest
 final class StoreSplitCloudReattachGuardTests: XCTestCase {
     private let lastStateKey = StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey
     private let approvedKey = StoreDevelopmentConfiguration.legacyCloudReattachApprovedKey
+    private let cutoverKey = StoreDevelopmentConfiguration.legacyCloudCutoverCompletedKey
 
     override func setUp() {
         super.setUp()
@@ -49,12 +50,34 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         StoreDevelopmentConfiguration.approveLegacyCloudReattach()
         StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
 
-        // Cutover to `.userStateAuthority`: mirroring off again.
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(false)
+        // Cutover to `.userStateAuthority`: mirroring off again. The explicit
+        // persisted boundary is what makes a later rollback safe even if the
+        // release phase constant is changed back.
+        StoreDevelopmentConfiguration.markLegacyCloudCutoverCompleted()
         XCTAssertTrue(
             StoreDevelopmentConfiguration.legacyCloudReattachBlocked,
             "a rollback after the cutover must be blocked even on a device that approved an earlier re-attach"
         )
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudCutoverCompleted)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+    }
+
+    func testCutoverBoundarySurvivesAReadAuthorityRollback() {
+        StoreDevelopmentConfiguration.markLegacyCloudCutoverCompleted()
+
+        // Simulate a rollback release whose read authority changes but whose
+        // library attachment policy must remain local-only.
+        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
+
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudCutoverCompleted)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+    }
+
+    func testPreCutoverInstallKeepsLegacyAttachmentWhenItWasNeverDetached() {
+        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
+
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudCutoverCompleted)
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
     }
 
     func testAStoreThatWasNeverDetachedIsNeverBlocked() {
@@ -99,7 +122,15 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
     }
 
     private func clearGuardDefaults() {
+        let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID)
+            ?? .standard
+        defaults.removeObject(forKey: lastStateKey)
+        defaults.removeObject(forKey: approvedKey)
+        defaults.removeObject(forKey: cutoverKey)
+        // Keep the fallback clean too when the app-group suite is unavailable
+        // in a unit-test process.
         UserDefaults.standard.removeObject(forKey: lastStateKey)
         UserDefaults.standard.removeObject(forKey: approvedKey)
+        UserDefaults.standard.removeObject(forKey: cutoverKey)
     }
 }

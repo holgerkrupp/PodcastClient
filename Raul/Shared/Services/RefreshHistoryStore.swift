@@ -100,9 +100,10 @@ struct RefreshHistoryPodcastCheck: Codable, Identifiable, Sendable {
     let result: RefreshHistoryPodcastResult
 
     init(title: String, feedURL: URL, result: RefreshHistoryPodcastResult) {
-        self.id = feedURL.absoluteString
+        let safeFeedURL = feedURL.podcastNonSecretURL
+        self.id = safeFeedURL.absoluteString
         self.title = title
-        self.feedURL = feedURL.absoluteString
+        self.feedURL = safeFeedURL.absoluteString
         self.result = result
     }
 }

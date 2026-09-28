@@ -737,8 +737,8 @@ struct RaulApp: App {
         let startedEpisodeURL = await TranscriptionManager.shared
             .processNextAutomaticTranscriptionFromPlaylists()
         if let startedEpisodeURL {
-            CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started_episode", details: startedEpisodeURL.absoluteString)
-            BasicLogger.shared.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.absoluteString)")
+            CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started_episode", details: startedEpisodeURL.redactedPodcastURLString)
+            BasicLogger.shared.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.redactedPodcastURLString)")
         } else {
             CrashBreadcrumbs.shared.record("automatic_transcription_sweep_idle", details: reason)
         }

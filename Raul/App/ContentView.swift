@@ -146,7 +146,7 @@ struct ContentView: View {
             restoredSelection = newValue.rawValue
         }
         .onOpenURL { url in
-            CrashBreadcrumbs.shared.record("on_open_url", details: url.absoluteString)
+            CrashBreadcrumbs.shared.record("on_open_url", details: url.redactedPodcastURLString)
             guard let appLink = AppLink.parse(url) else { return }
 
             switch appLink {
@@ -329,11 +329,11 @@ struct ContentView: View {
                 from: sharedEpisodeURL,
                 modelContext: modelContext
             )
-            CrashBreadcrumbs.shared.record("shared_episode_imported", details: importedURL.absoluteString)
-            BasicLogger.shared.log("Imported shared episode: \(importedURL.absoluteString)")
+            CrashBreadcrumbs.shared.record("shared_episode_imported", details: importedURL.redactedPodcastURLString)
+            BasicLogger.shared.log("Imported shared episode: \(importedURL.redactedPodcastURLString)")
             await loadInboxCount()
         } catch {
-            BasicLogger.shared.log("Failed to import shared episode \(sharedEpisodeURL.absoluteString): \(error.localizedDescription)")
+            BasicLogger.shared.log("Failed to import shared episode \(sharedEpisodeURL.redactedPodcastURLString): \(error.localizedDescription)")
             CrashBreadcrumbs.shared.record("shared_episode_import_failed", details: error.localizedDescription)
         }
     }
@@ -362,15 +362,15 @@ struct ContentView: View {
             PendingSharedEpisodeImportStore.remove(id: request.id)
             CrashBreadcrumbs.shared.record(
                 "shared_episode_imported",
-                details: importedURL.absoluteString
+                details: importedURL.redactedPodcastURLString
             )
             BasicLogger.shared.log(
-                "Imported shared episode: \(importedURL.absoluteString)"
+                "Imported shared episode: \(importedURL.redactedPodcastURLString)"
             )
             await loadInboxCount()
         } catch {
             BasicLogger.shared.log(
-                "Failed to import shared episode \(request.url.absoluteString): \(error.localizedDescription)"
+                "Failed to import shared episode \(request.url.redactedPodcastURLString): \(error.localizedDescription)"
             )
             CrashBreadcrumbs.shared.record(
                 "shared_episode_import_failed",

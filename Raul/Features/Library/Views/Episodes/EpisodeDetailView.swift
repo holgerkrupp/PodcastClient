@@ -54,6 +54,7 @@ struct EpisodeDetailView: View {
                 ScrollView {
                     EpisodeProgressView(episode: episode)
                         .padding()
+                        .fullPageScreenshotSupport()
                         
                     if episode.source != .sideLoaded {
                         DownloadControllView(episode: episode, showDelete: false)

@@ -147,7 +147,7 @@ actor EpisodeActor {
     }
 
     private func episodeLogID(_ episode: Episode) -> String {
-        if let episodeURL = episode.url?.absoluteString {
+        if let episodeURL = episode.url?.redactedPodcastURLString {
             return episodeURL
         }
         return episode.title
@@ -491,11 +491,11 @@ actor EpisodeActor {
     }
 
     func removeFromPlaylist(_ episodeURL: URL) async {
-        await logAutoDownload("trigger/remove-from-all-playlists episode=\(episodeURL.absoluteString)")
+        await logAutoDownload("trigger/remove-from-all-playlists episode=\(episodeURL.redactedPodcastURLString)")
         if let playlistModelActor = try? PlaylistModelActor(modelContainer: modelContainer) {
             try? await playlistModelActor.removeFromAllPlaylists(episodeURL: episodeURL)
         } else {
-            await logAutoDownload("trigger/remove-from-all-playlists failed-to-create-playlist-actor episode=\(episodeURL.absoluteString)")
+            await logAutoDownload("trigger/remove-from-all-playlists failed-to-create-playlist-actor episode=\(episodeURL.redactedPodcastURLString)")
         }
     }
     
@@ -503,10 +503,10 @@ actor EpisodeActor {
         guard let episodeURL else { return }
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else {
-            print("could not find episode with URL \(episodeURL) to archive")
+            print("could not find episode with URL \(episodeURL.redactedPodcastURLString) to archive")
             return }
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
-        await logAutoDownload("trigger/archive episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
+        await logAutoDownload("trigger/archive episode=\(episodeURL.redactedPodcastURLString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         
         for episode in episodes {
             ensureMetadata(for: episode)
@@ -522,7 +522,7 @@ actor EpisodeActor {
         WatchSyncCoordinator.refreshSoon(force: true)
 
         for podcastFeed in podcastFeeds {
-            await logAutoDownload("trigger/archive applying-policy feed=\(podcastFeed.absoluteString)")
+            await logAutoDownload("trigger/archive applying-policy feed=\(podcastFeed.redactedPodcastURLString)")
             await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
@@ -531,7 +531,7 @@ actor EpisodeActor {
         guard let episodeURL else { return }
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else { return }
-        await logAutoDownload("trigger/unarchive episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count)")
+        await logAutoDownload("trigger/unarchive episode=\(episodeURL.redactedPodcastURLString) matchedEpisodes=\(episodes.count)")
 
         for episode in episodes {
             ensureMetadata(for: episode)
@@ -675,7 +675,7 @@ actor EpisodeActor {
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else { return }
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
-        await logAutoDownload("trigger/move-to-history episode=\(episodeURL.absoluteString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
+        await logAutoDownload("trigger/move-to-history episode=\(episodeURL.redactedPodcastURLString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         await removeFromPlaylist(episodeURL)
 
         for episode in episodes {
@@ -702,7 +702,7 @@ actor EpisodeActor {
         }
 
         for podcastFeed in podcastFeeds {
-            await logAutoDownload("trigger/move-to-history applying-policy feed=\(podcastFeed.absoluteString)")
+            await logAutoDownload("trigger/move-to-history applying-policy feed=\(podcastFeed.redactedPodcastURLString)")
             await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
@@ -716,7 +716,7 @@ actor EpisodeActor {
         case .run:
             break
         case .skip(let reason):
-            await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=\(reason)")
+            await logAutoDownload("policy/skip feed=\(podcastFeed.redactedPodcastURLString) reason=\(reason)")
             return
         }
         defer {
@@ -725,10 +725,10 @@ actor EpisodeActor {
             }
         }
 
-        await logAutoDownload("policy/start feed=\(podcastFeed.absoluteString) force=\(force)")
+        await logAutoDownload("policy/start feed=\(podcastFeed.redactedPodcastURLString) force=\(force)")
 
         guard let policy = await settingsActor.autoDownloadPolicy(for: podcastFeed) else {
-            await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=no-policy")
+            await logAutoDownload("policy/skip feed=\(podcastFeed.redactedPodcastURLString) reason=no-policy")
             return
         }
 
@@ -739,7 +739,7 @@ actor EpisodeActor {
         let networkMode = policy.networkMode
         let includesBackCatalogEpisodes = policy.includesArchivedEpisodes
         await logAutoDownload(
-            "policy/config feed=\(podcastFeed.absoluteString) keep=\(keepCount) selection=\(selection.rawValue) queuePosition=\(queuePosition) playlistID=\(playlistID?.uuidString ?? "nil") network=\(networkMode.rawValue) includeBackCatalog=\(includesBackCatalogEpisodes)"
+            "policy/config feed=\(podcastFeed.redactedPodcastURLString) keep=\(keepCount) selection=\(selection.rawValue) queuePosition=\(queuePosition) playlistID=\(playlistID?.uuidString ?? "nil") network=\(networkMode.rawValue) includeBackCatalog=\(includesBackCatalogEpisodes)"
         )
 
         let descriptor = FetchDescriptor<Episode>(
@@ -752,12 +752,12 @@ actor EpisodeActor {
         do {
             podcastEpisodes = try modelContext.fetch(descriptor)
         } catch {
-            await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=fetch-episodes error=\(error.localizedDescription)")
+            await logAutoDownload("policy/error feed=\(podcastFeed.redactedPodcastURLString) step=fetch-episodes error=\(error.localizedDescription)")
             return
         }
 
         guard podcastEpisodes.isEmpty == false else {
-            await logAutoDownload("policy/skip feed=\(podcastFeed.absoluteString) reason=no-episodes")
+            await logAutoDownload("policy/skip feed=\(podcastFeed.redactedPodcastURLString) reason=no-episodes")
             return
         }
 
@@ -833,14 +833,14 @@ actor EpisodeActor {
         }
 
         await logAutoDownload(
-            "policy/eligibility feed=\(podcastFeed.absoluteString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedManualPlaylistRemoval=\(skippedManualPlaylistRemoval) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
+            "policy/eligibility feed=\(podcastFeed.redactedPodcastURLString) total=\(podcastEpisodes.count) eligible=\(eligibleEpisodes.count) skippedHistory=\(skippedHistory) skippedArchived=\(skippedArchived) skippedPlayed=\(skippedPlayed) skippedManualPlaylistRemoval=\(skippedManualPlaylistRemoval) skippedMissingSideload=\(skippedMissingSideload) skippedBackCatalogToggle=\(skippedBackCatalogToggle) sampleCount=\(sampledDecisions.count)"
         )
         if sampledDecisions.isEmpty == false {
-            await logAutoDownload("policy/eligibility-sample feed=\(podcastFeed.absoluteString) \(sampledDecisions.joined(separator: " | "))")
+            await logAutoDownload("policy/eligibility-sample feed=\(podcastFeed.redactedPodcastURLString) \(sampledDecisions.joined(separator: " | "))")
         }
 
         guard eligibleEpisodes.isEmpty == false else {
-            await logAutoDownload("policy/stop feed=\(podcastFeed.absoluteString) reason=no-eligible-episodes")
+            await logAutoDownload("policy/stop feed=\(podcastFeed.redactedPodcastURLString) reason=no-eligible-episodes")
             return
         }
 
@@ -874,11 +874,11 @@ actor EpisodeActor {
         let playlistActor = playlistActor(for: playlistID)
         let canScheduleDownloads = await canScheduleAutoDownloads(for: networkMode)
         await logAutoDownload(
-            "policy/target feed=\(podcastFeed.absoluteString) targetCount=\(targetEpisodes.count) queuePosition=\(queuePosition) playlistActorAvailable=\(playlistActor != nil) canScheduleDownloads=\(canScheduleDownloads)"
+            "policy/target feed=\(podcastFeed.redactedPodcastURLString) targetCount=\(targetEpisodes.count) queuePosition=\(queuePosition) playlistActorAvailable=\(playlistActor != nil) canScheduleDownloads=\(canScheduleDownloads)"
         )
         if targetEpisodes.isEmpty == false {
             let targetIDs = targetEpisodes.map(episodeLogID).joined(separator: ", ")
-            await logAutoDownload("policy/target-episodes feed=\(podcastFeed.absoluteString) \(targetIDs)")
+            await logAutoDownload("policy/target-episodes feed=\(podcastFeed.redactedPodcastURLString) \(targetIDs)")
         }
 
         for episode in targetEpisodes {
@@ -894,10 +894,10 @@ actor EpisodeActor {
                     do {
                         isQueued = try await playlistActor.containsEpisodeURL(episodeURL)
                     } catch {
-                        await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=contains-in-playlist episode=\(episodeURL.absoluteString) error=\(error.localizedDescription)")
+                        await logAutoDownload("policy/error feed=\(podcastFeed.redactedPodcastURLString) step=contains-in-playlist episode=\(episodeURL.redactedPodcastURLString) error=\(error.localizedDescription)")
                     }
                 } else {
-                    await logAutoDownload("policy/queue-skip feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) reason=no-playlist-actor")
+                    await logAutoDownload("policy/queue-skip feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) reason=no-playlist-actor")
                 }
                 if isQueued == false && isUserArchived == false && isPlayed == false {
                     if let playlistActor {
@@ -908,40 +908,40 @@ actor EpisodeActor {
                                 startDownload: false,
                                 origin: .automatic
                             )
-                            await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=success")
+                            await logAutoDownload("policy/queue-add feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) result=success")
                         } catch {
-                            await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=failure error=\(error.localizedDescription)")
+                            await logAutoDownload("policy/queue-add feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) result=failure error=\(error.localizedDescription)")
                         }
                     } else {
-                        await logAutoDownload("policy/queue-add feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=skipped-no-playlist-actor")
+                        await logAutoDownload("policy/queue-add feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) result=skipped-no-playlist-actor")
                     }
                 } else {
                     await logAutoDownload(
-                        "policy/queue-skip feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) reason=\(isQueued ? "already-queued" : (isUserArchived ? "user-archived" : "played"))"
+                        "policy/queue-skip feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) reason=\(isQueued ? "already-queued" : (isUserArchived ? "user-archived" : "played"))"
                     )
                 }
             } else {
-                await logAutoDownload("policy/queue-skip feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) reason=queue-position-none")
+                await logAutoDownload("policy/queue-skip feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) reason=queue-position-none")
             }
 
             if canScheduleDownloads && isDownloaded == false {
-                await logAutoDownload("policy/download feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) action=start")
+                await logAutoDownload("policy/download feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) action=start")
                 await download(episodeURL: episodeURL)
             } else if canScheduleDownloads == false && isDownloaded == false {
-                await logAutoDownload("policy/download feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) action=defer-network-gate")
+                await logAutoDownload("policy/download feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) action=defer-network-gate")
             }
         }
 
         var removedFromPlaylist = 0
         if overflowEpisodes.isEmpty == false {
             if queuePosition == .none {
-                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.absoluteString) reason=queue-position-none overflowCount=\(overflowEpisodes.count)")
+                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.redactedPodcastURLString) reason=queue-position-none overflowCount=\(overflowEpisodes.count)")
             } else if let playlistActor {
                 let queuedEpisodeURLs: Set<URL>
                 do {
                     queuedEpisodeURLs = Set(try await playlistActor.orderedEpisodeURLs())
                 } catch {
-                    await logAutoDownload("policy/error feed=\(podcastFeed.absoluteString) step=fetch-playlist-urls error=\(error.localizedDescription)")
+                    await logAutoDownload("policy/error feed=\(podcastFeed.redactedPodcastURLString) step=fetch-playlist-urls error=\(error.localizedDescription)")
                     queuedEpisodeURLs = []
                 }
 
@@ -955,23 +955,23 @@ actor EpisodeActor {
                             origin: .policyMaintenance
                         )
                         removedFromPlaylist += 1
-                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")
+                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString)")
                     } catch {
-                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString) result=failure error=\(error.localizedDescription)")
+                        await logAutoDownload("policy/prune-remove feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) result=failure error=\(error.localizedDescription)")
                     }
                 }
             } else {
-                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.absoluteString) reason=no-playlist-actor overflowCount=\(overflowEpisodes.count)")
+                await logAutoDownload("policy/prune-skip feed=\(podcastFeed.redactedPodcastURLString) reason=no-playlist-actor overflowCount=\(overflowEpisodes.count)")
             }
         }
-        await logAutoDownload("policy/prune-summary feed=\(podcastFeed.absoluteString) overflowCount=\(overflowEpisodes.count) removedFromPlaylist=\(removedFromPlaylist)")
+        await logAutoDownload("policy/prune-summary feed=\(podcastFeed.redactedPodcastURLString) overflowCount=\(overflowEpisodes.count) removedFromPlaylist=\(removedFromPlaylist)")
 
         let hasTargetCoverage = targetEpisodes.allSatisfy { episode in
             episode.metaData?.calculatedIsAvailableLocally == true
         }
 
         if hasTargetCoverage == false {
-            await logAutoDownload("policy/cleanup-skip feed=\(podcastFeed.absoluteString) reason=targets-not-downloaded")
+            await logAutoDownload("policy/cleanup-skip feed=\(podcastFeed.redactedPodcastURLString) reason=targets-not-downloaded")
             return
         }
 
@@ -984,9 +984,9 @@ actor EpisodeActor {
 
             await deleteFile(episodeURL: episodeURL)
             deletedDownloads += 1
-            await logAutoDownload("policy/cleanup-delete feed=\(podcastFeed.absoluteString) episode=\(episodeURL.absoluteString)")
+            await logAutoDownload("policy/cleanup-delete feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString)")
         }
-        await logAutoDownload("policy/done feed=\(podcastFeed.absoluteString) deletedDownloads=\(deletedDownloads)")
+        await logAutoDownload("policy/done feed=\(podcastFeed.redactedPodcastURLString) deletedDownloads=\(deletedDownloads)")
     }
 
     func migrateLegacyBackCatalogSuppressionIfNeeded() async {
@@ -1090,7 +1090,17 @@ actor EpisodeActor {
         guard episode.source != .sideLoaded else { return }
 
         if let localFile = episode.localFile {
-            if let url = episode.url, await DownloadManager.shared.download(from: url, saveTo: localFile) != nil {
+            let accessProfile = episode.podcast?.metaData.flatMap { metadata -> PodcastAccessProfile? in
+                guard let feedURL = episode.podcast?.feed,
+                      let profileID = metadata.accessProfileID,
+                      let rawKind = metadata.accessKindRawValue,
+                      let kind = PodcastAccessKind(rawValue: rawKind) else {
+                    return nil
+                }
+                return PodcastAccessProfile(id: profileID, kind: kind, resourceURL: feedURL)
+            }
+            if let url = episode.url,
+               await DownloadManager.shared.download(from: url, saveTo: localFile, profile: accessProfile) != nil {
             }
             try? await downloadTranscript(episode.persistentModelID)
 
@@ -1185,7 +1195,7 @@ actor EpisodeActor {
     }
 
     func markEpisodeAvailable(fileURL: URL) async {
-        print("mark Available for \(fileURL)")
+        print("mark Available for \(fileURL.redactedPodcastURLString)")
         guard let episode = await fetchEpisode(byURL: fileURL) else {
             print("episode not found")
             return }
@@ -2584,7 +2594,7 @@ actor EpisodeActor {
     
     
     private func downloadAndParseStringFile(url: URL) async -> String?{
-        print("downloadAndParseStringFile called with: \(url)")
+        print("downloadAndParseStringFile called with: \(url.redactedPodcastURLString)")
         var stringURL = url
         do{
             let status = try await stringURL.status()

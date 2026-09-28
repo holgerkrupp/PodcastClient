@@ -619,6 +619,9 @@
         }
       }
     },
+    "Add Podcast from URL" : {
+
+    },
     "Add Rule" : {
       "localizations" : {
         "de" : {
@@ -1875,6 +1878,9 @@
           }
         }
       }
+    },
+    "Couldn’t add podcast from URL" : {
+
     },
     "Counts" : {
       "localizations" : {
@@ -5081,7 +5087,6 @@
       }
     },
     "Next predicted release: Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6192,6 +6197,9 @@
           }
         }
       }
+    },
+    "Paste into podcast search" : {
+
     },
     "Pause" : {
       "localizations" : {

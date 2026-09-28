@@ -15,7 +15,7 @@ enum PodcastParserError: LocalizedError {
         case .notAPodcastFeed:
             return "This XML document does not look like a podcast feed."
         case .couldNotLoad(let url, let statusCode):
-            return "Could not load \(url.absoluteString). HTTP status \(statusCode)."
+            return "Could not load \(url.redactedPodcastURLString). HTTP status \(statusCode)."
         case .xmlParserError(let error, let line, let column):
             return "XML parser failed at line \(line), column \(column): \(error.localizedDescription)"
         }
@@ -25,6 +25,16 @@ enum PodcastParserError: LocalizedError {
 struct PodcastFeedDocument: Sendable {
     let data: Data
     let sourceURL: URL
+    /// The URL used to request this document. It can contain private-feed
+    /// query parameters or HTTP Basic credentials that are absent from the
+    /// response's final/canonical URL.
+    let requestedURL: URL?
+
+    init(data: Data, sourceURL: URL, requestedURL: URL? = nil) {
+        self.data = data
+        self.sourceURL = sourceURL
+        self.requestedURL = requestedURL
+    }
 }
 
 struct KnownPodcastEpisodeIdentifiers: Sendable {
@@ -667,21 +677,31 @@ private final class RawNamespaceNodeBuilder {
 // MARK: - RFC 5005 Paged Feed Aggregation
 
 extension PodcastParser {
-    static func downloadFeed(from url: URL) async throws -> PodcastFeedDocument {
-        let (data, response) = try await URLSession.shared.data(from: url)
-        if let httpResponse = response as? HTTPURLResponse,
-           (200..<400).contains(httpResponse.statusCode) == false {
-            throw PodcastParserError.couldNotLoad(response.url ?? url, statusCode: httpResponse.statusCode)
+    static func downloadFeed(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil
+    ) async throws -> PodcastFeedDocument {
+        let data: Data
+        let response: HTTPURLResponse
+        do {
+            (data, response) = try await PodcastHTTPClient.shared.data(for: url, profile: profile)
+        } catch let error as PodcastHTTPError {
+            throw PodcastParserError.couldNotLoad(error.url, statusCode: error.statusCode ?? 0)
         }
-        return PodcastFeedDocument(data: data, sourceURL: response.url ?? url)
+        return PodcastFeedDocument(
+            data: data,
+            sourceURL: response.url ?? url,
+            requestedURL: url
+        )
     }
 
     static func fetchPage(
         from url: URL,
         maximumEpisodes: Int? = nil,
-        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
+        profile: PodcastAccessProfile? = nil
     ) async throws -> PodcastFeedPage {
-        let document = try await downloadFeed(from: url)
+        let document = try await downloadFeed(from: url, profile: profile)
         return try await parsePage(
             from: document,
             maximumEpisodes: maximumEpisodes,
@@ -753,12 +773,18 @@ extension PodcastParser {
             }
             parsedFeed["rawExtensionElements"] = parser.podcastExtensionElements
             let podcastFeed = PodcastFeed(url: document.sourceURL, fetchMetadataIfNeeded: false)
-            podcastFeed.apply(parsedFeed: parsedFeed, fallbackURL: document.sourceURL)
+            podcastFeed.apply(
+                parsedFeed: parsedFeed,
+                fallbackURL: document.sourceURL,
+                preservingAccessFrom: document.requestedURL
+            )
 
             let episodes = (parsedFeed["episodes"] as? [[String: Any]] ?? [])
                 .compactMap(PodcastEpisodeDraft.init(episodeData:))
 
-            let nextPageURL = parser.nextPageURL.flatMap { URL(string: $0, relativeTo: document.sourceURL)?.absoluteURL }
+            let nextPageURL = parser.nextPageURL
+                .flatMap { URL(string: $0, relativeTo: document.sourceURL)?.absoluteURL }
+                .map { $0.preservingFeedAccessComponents(from: document.requestedURL ?? document.sourceURL) }
 
             return PodcastFeedPage(
                 parsedFeed: parsedFeed,
@@ -777,9 +803,10 @@ extension PodcastParser {
     /// - Returns: The merged podcast dictionary with all episodes.
     static func fetchAllPages(
         from url: URL,
-        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
+        profile: PodcastAccessProfile? = nil
     ) async throws -> [String: Any] {
-        print("fetching all pages from: \(url)")
+        print("fetching all pages from: \(url.redactedPodcastURLString)")
         var nextURL: URL? = url
         var allEpisodes: [Any] = []
         var podcastHeader: [String: Any] = [:]
@@ -787,7 +814,8 @@ extension PodcastParser {
         while let currentURL = nextURL {
             let page = try await fetchPage(
                 from: currentURL,
-                knownEpisodeIdentifiers: knownEpisodeIdentifiers
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+                profile: profile
             )
             // On the first page, get header
             if !seenFirstHeader {

@@ -6,6 +6,9 @@ import CryptoKit
 final class SubscriptionSync: Identifiable {
     var id: String = ""
     var feedURL: String = ""
+    /// Non-secret access-profile reference. Credentials remain in Keychain.
+    var accessProfileID: String?
+    var accessKindRawValue: String?
     var isSubscribed: Bool = true
     var titleOverride: String?
     var displaySettingsRawValue: String?
@@ -16,6 +19,8 @@ final class SubscriptionSync: Identifiable {
 
     init(
         feedURL: String,
+        accessProfileID: String? = nil,
+        accessKindRawValue: String? = nil,
         isSubscribed: Bool = true,
         titleOverride: String? = nil,
         displaySettingsRawValue: String? = nil,
@@ -26,6 +31,8 @@ final class SubscriptionSync: Identifiable {
     ) {
         self.id = feedURL
         self.feedURL = feedURL
+        self.accessProfileID = accessProfileID
+        self.accessKindRawValue = accessKindRawValue
         self.isSubscribed = isSubscribed
         self.titleOverride = titleOverride
         self.displaySettingsRawValue = displaySettingsRawValue

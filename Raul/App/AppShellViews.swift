@@ -43,6 +43,15 @@ struct CompactAppShell: View {
         // Selecting the search tab turns it into the search field instead of
         // just switching to the Add page with a collapsed field.
         .tabViewSearchActivation(.searchTabSelection)
+#if os(iOS)
+        // The compact layout's visible search field is owned by TabView's
+        // search role, so its keyboard toolbar must be attached here too.
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                PodcastSearchPasteButton(search: $search)
+            }
+        }
+#endif
     }
 }
 
@@ -84,6 +93,15 @@ struct SidebarAppShell: View {
         // iPad, and Mac. The system can still collapse it whenever the usable
         // region is too narrow (including around an active fold).
         .navigationSplitViewStyle(.balanced)
+#if os(iOS)
+        .toolbar {
+            if navigation.selectedSection == .search {
+                ToolbarItemGroup(placement: .keyboard) {
+                    PodcastSearchPasteButton(search: $search)
+                }
+            }
+        }
+#endif
     }
 
     private func sections(in group: AppSectionGroup) -> [AppSection] {
@@ -181,6 +199,20 @@ private struct AppSectionDestinationView: View {
         }
     }
 }
+
+#if os(iOS)
+private struct PodcastSearchPasteButton: View {
+    @Binding var search: String
+
+    var body: some View {
+        PasteButton(payloadType: String.self) { pastedStrings in
+            guard pastedStrings.isEmpty == false else { return }
+            search = pastedStrings.joined(separator: "\n")
+        }
+        .accessibilityLabel("Paste into podcast search")
+    }
+}
+#endif
 
 private struct RequestedEpisodeDestination: View {
     let url: URL

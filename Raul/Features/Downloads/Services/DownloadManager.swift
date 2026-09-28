@@ -10,6 +10,7 @@ struct DownloadedFilesManagerReference: @unchecked Sendable {
 
 actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     static let shared = DownloadManager()
+    private let accessResolver = PodcastAccessResolver()
     
     private var downloads: [URL: DownloadItem] = [:]
     private var urlToTask: [URL: URLSessionDownloadTask] = [:]
@@ -39,7 +40,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     }
 
     // MARK: - Public API
-    func download(from url: URL, saveTo destination: URL? = nil) async -> DownloadItem? {
+    func download(
+        from url: URL,
+        saveTo destination: URL? = nil,
+        profile: PodcastAccessProfile? = nil
+    ) async -> DownloadItem? {
         if let existing = downloads[url] {
             return existing
         }
@@ -56,7 +61,15 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         downloads[url] = item
         destinations[url] = finalDestination
         
-        let task = session.downloadTask(with: url)
+        let request: URLRequest
+        do {
+            request = try accessResolver.request(for: url, profile: profile)
+        } catch {
+            downloads[url] = nil
+            destinations[url] = nil
+            return nil
+        }
+        let task = session.downloadTask(with: request)
         urlToTask[url] = task
         await MainActor.run { item.isDownloading = true }
         task.resume()
@@ -148,7 +161,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                                 downloadTask: URLSessionDownloadTask,
                                 didFinishDownloadingTo location: URL) {
         guard let url = downloadTask.originalRequest?.url else { return }
-        print("downloaded \(url.absoluteString)")
+        print("downloaded \(url.redactedPodcastURLString)")
 
         let tempCopy = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -224,7 +237,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 }
             }
             await DownloadManager.shared.cleanUp(url: url)
-            print("Download failed for \(url.absoluteString): \(error.localizedDescription)")
+            print("Download failed for \(url.redactedPodcastURLString): \(error.localizedDescription)")
         }
     }
 

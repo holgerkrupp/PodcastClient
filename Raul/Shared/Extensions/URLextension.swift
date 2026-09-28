@@ -39,8 +39,106 @@ struct URLstatus: Sendable {
     }
 }
 
+extension URLRequest {
+    private static var podcastFeedUserAgent: String {
+        #if os(iOS)
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+        #elseif os(macOS)
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+        #else
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+        #endif
+    }
+
+    /// Creates a feed request and carries credentials embedded in the URL as
+    /// an HTTP Basic Authorization header. URLSession does not consistently
+    /// reuse URL user-info across redirects or subsequent requests, so feed
+    /// clients must make this explicit.
+    init(podcastFeedURL url: URL) {
+        self.init(url: url)
+        cachePolicy = .reloadIgnoringLocalCacheData
+        setValue(Self.podcastFeedUserAgent, forHTTPHeaderField: "User-Agent")
+        setValue(
+            "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+            forHTTPHeaderField: "Accept"
+        )
+        setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+
+        guard let user = url.user, let password = url.password else { return }
+
+        let credentials = Data("\(user):\(password)".utf8).base64EncodedString()
+        setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
+    }
+}
+
 
 extension URL{
+    /// Private feeds commonly carry their access token in the query, while
+    /// HTTP Basic feeds carry it in URL user-info. Keep those components when
+    /// a feed publishes a canonical URL without them.
+    func preservingFeedAccessComponents(from sourceURL: URL?) -> URL {
+        guard let sourceURL,
+              hasSameFeedOrigin(as: sourceURL),
+              var components = URLComponents(url: self, resolvingAgainstBaseURL: false),
+              let sourceComponents = URLComponents(url: sourceURL, resolvingAgainstBaseURL: false)
+        else {
+            return self
+        }
+
+        if components.user == nil {
+            components.user = sourceComponents.user
+        }
+        if components.password == nil {
+            components.password = sourceComponents.password
+        }
+
+        let sourceQueryItems = sourceComponents.queryItems ?? []
+        if sourceQueryItems.isEmpty == false {
+            var queryItems = components.queryItems ?? []
+            for sourceItem in sourceQueryItems {
+                let alreadyPresent = queryItems.contains {
+                    $0.name == sourceItem.name && $0.value == sourceItem.value
+                }
+                if alreadyPresent == false {
+                    queryItems.append(sourceItem)
+                }
+            }
+            components.queryItems = queryItems
+        }
+
+        return components.url ?? self
+    }
+
+    private func hasSameFeedOrigin(as otherURL: URL) -> Bool {
+        let destinationScheme = scheme?.lowercased()
+        let sourceScheme = otherURL.scheme?.lowercased()
+        guard ["http", "https"].contains(destinationScheme),
+              ["http", "https"].contains(sourceScheme),
+              host?.lowercased() == otherURL.host?.lowercased() else {
+            return false
+        }
+
+        if destinationScheme != sourceScheme {
+            // Only carry access components across the conventional HTTP to
+            // HTTPS upgrade, never across a downgrade or an unrelated port.
+            return sourceScheme == "http"
+                && destinationScheme == "https"
+                && (otherURL.port ?? 80) == 80
+                && (port ?? 443) == 443
+        }
+
+        let effectivePort: (URL) -> Int? = { url in
+            if let port = url.port { return port }
+            switch url.scheme?.lowercased() {
+            case "http": return 80
+            case "https": return 443
+            default: return nil
+            }
+        }
+
+        return effectivePort(self) == effectivePort(otherURL)
+    }
+
     var podcastFeedComparisonKeys: Set<String> {
         var keys = Set<String>()
         let absolute = absoluteURL
@@ -150,25 +248,31 @@ extension URL{
         return podcastWebComparisonKeys.intersection(otherURL.podcastWebComparisonKeys).isEmpty == false
     }
 
-    func status() async throws -> URLstatus?{
+    func status(profile: PodcastAccessProfile? = nil) async throws -> URLstatus?{
         
         var status = URLstatus(lastRequest: Date())
         
 
 
-                    let session = URLSession.shared
-                    var request = URLRequest(url: self)
+                    var request: URLRequest
+                    if let profile {
+                        guard let authorizedRequest = try? PodcastAccessResolver().request(
+                            for: self,
+                            profile: profile
+                        ) else {
+                            return nil
+                        }
+                        request = authorizedRequest
+                    } else {
+                        request = URLRequest(podcastFeedURL: self)
+                    }
                     request.cachePolicy = .reloadIgnoringLocalCacheData  // Always fetch from server
                     request.timeoutInterval = 8
 
                     request.httpMethod = "HEAD"
-        
-        if let appName = Bundle.main.infoDictionary?["CFBundleName"] as? String{
-                        request.setValue(appName, forHTTPHeaderField: "User-Agent")
-                    }
-        
+
         do{
-                        let (_, response) = try await session.data(for: request)
+                        let (_, response) = try await PodcastHTTPClient.shared.data(for: request)
                         
                         status.statusCode = (response as? HTTPURLResponse)?.statusCode
                         status.doctype = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")
@@ -188,7 +292,8 @@ extension URL{
     func downloadData() async -> Data?{
         
         do {
-            let (data, _) = try await URLSession.shared.data(from: self)
+            let request = URLRequest(podcastFeedURL: self)
+            let (data, _) = try await PodcastHTTPClient.shared.data(for: request)
             return data
             
         }catch{
@@ -199,16 +304,14 @@ extension URL{
        
     func feedData() async -> Data?{
         // print("loading feedData for \(self.absoluteString)")
-        let session = URLSession.shared
-        
-        let request = URLRequest(url: self)
+        let request = URLRequest(podcastFeedURL: self)
         /*
         if let appName = Bundle.main.applicationName{
             request.setValue(appName, forHTTPHeaderField: "User-Agent")
         }
          */
         do{
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await PodcastHTTPClient.shared.data(for: request)
             // print("got response for \(self.absoluteString) ")
            
             switch (response as? HTTPURLResponse)?.statusCode {

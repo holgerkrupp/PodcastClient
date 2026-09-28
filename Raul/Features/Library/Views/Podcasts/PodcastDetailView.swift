@@ -372,6 +372,7 @@ struct PodcastDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .fullPageScreenshotSupport()
                 }
                 .listRowSeparator(.hidden)
                 .background(.clear)

@@ -18,7 +18,7 @@ enum PodcastFeedResolverError: LocalizedError {
         case .unsupportedURL:
             return "This link is not a supported podcast feed URL."
         case .couldNotLoad(let url):
-            return "Could not load \(url.absoluteString)."
+            return "Could not load \(url.redactedPodcastURLString)."
         case .notAPodcastFeed:
             return "This link did not contain a podcast feed."
         case .unreadableFile:
@@ -109,13 +109,20 @@ private extension PodcastFeedResolver {
             throw PodcastFeedResolverError.notAPodcastFeed
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw PodcastFeedResolverError.couldNotLoad(url)
+        let data: Data
+        let response: HTTPURLResponse
+        do {
+            (data, response) = try await PodcastHTTPClient.shared.data(for: url)
+        } catch let error as PodcastHTTPError {
+            if error.statusCode == 401 || error.statusCode == 403 {
+                throw PodcastFeedResolverError.authenticationRequired(url)
+            }
+            throw PodcastFeedResolverError.couldNotLoad(error.url)
         }
 
-        if httpResponse.statusCode == 401 {
+        let httpResponse = response
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
             throw PodcastFeedResolverError.authenticationRequired(url)
         }
 
@@ -130,14 +137,19 @@ private extension PodcastFeedResolver {
         }
 
         if looksLikePodcastFeed(data) {
-            return try await buildPodcastFeed(from: data, sourceURL: finalURL)
+            return try await buildPodcastFeed(
+                from: data,
+                sourceURL: finalURL,
+                requestedURL: url
+            )
         }
 
         if let html = String(data: data, encoding: .utf8),
            let discoveredFeedURL = extractFeedURL(fromHTML: html, baseURL: finalURL) {
             var updatedVisited = visited
             updatedVisited.insert(visitKey)
-            return try await resolveRemote(discoveredFeedURL, visited: updatedVisited)
+            let feedURL = discoveredFeedURL.preservingFeedAccessComponents(from: finalURL)
+            return try await resolveRemote(feedURL, visited: updatedVisited)
         }
 
         throw PodcastFeedResolverError.notAPodcastFeed
@@ -184,8 +196,16 @@ private extension PodcastFeedResolver {
         return try await buildPodcastFeed(from: data, sourceURL: fileURL)
     }
 
-    static func buildPodcastFeed(from data: Data, sourceURL: URL) async throws -> PodcastFeed {
-        let document = PodcastFeedDocument(data: data, sourceURL: sourceURL)
+    static func buildPodcastFeed(
+        from data: Data,
+        sourceURL: URL,
+        requestedURL: URL? = nil
+    ) async throws -> PodcastFeed {
+        let document = PodcastFeedDocument(
+            data: data,
+            sourceURL: sourceURL,
+            requestedURL: requestedURL
+        )
         let page = try await PodcastParser.parsePage(from: document)
         return page.feed
     }

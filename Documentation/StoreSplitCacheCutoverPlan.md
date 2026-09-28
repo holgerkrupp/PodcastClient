@@ -177,6 +177,17 @@ Key facts that shape the shipped cutover:
 
 ## Phase 3 — Read cutover
 
+### 3.0 One-way library attachment boundary
+
+Before changing read authority, the release must persist that the durable
+library store has crossed the CloudKit detachment boundary. This state is
+stored in the app-group defaults and is monotonic: once `SharedDatabase.sqlite`
+has been opened local-only by the production cutover, a rollback or remote
+kill-switch change may not reopen it with `.automatic`. Read authority and
+CloudKit attachment are separate decisions. The existing re-attach guard still
+catches unexpected off-to-on transitions, but an explicit development approval
+cannot override the production boundary.
+
 Move feed/episode **reads** off the legacy graph and onto the cache, overlaying
 synced user state and falling back to legacy when the cache is absent. This is
 where the payload actually stops depending on the legacy store for reads.

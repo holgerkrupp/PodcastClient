@@ -1459,12 +1459,38 @@ class Player {
         return .primary
     }
 
+    private func accessProfile(for episode: Episode) -> PodcastAccessProfile? {
+        guard let metadata = episode.podcast?.metaData,
+              let id = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let feedURL = episode.podcast?.feed else {
+            return nil
+        }
+        return PodcastAccessProfile(id: id, kind: kind, resourceURL: feedURL)
+    }
+
+    private func authorizedPlayerItem(for url: URL, profile: PodcastAccessProfile?) -> AVPlayerItem {
+        guard let profile,
+              let request = try? PodcastAccessResolver().request(for: url, profile: profile),
+              let requestURL = request.url else {
+            return AVPlayerItem(url: url)
+        }
+
+        var options: [String: Any] = [:]
+        if let authorization = request.value(forHTTPHeaderField: "Authorization") {
+            options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authorization]
+        }
+        let asset = AVURLAsset(url: requestURL, options: options)
+        return AVPlayerItem(asset: asset)
+    }
+
     private func playbackItem(
         for episode: Episode,
         mediaSelection selection: PlaybackMediaSelection
     ) -> (item: AVPlayerItem, source: PlaybackSource, usesAlternateMedia: Bool)? {
         if selection == .alternateVideo, let alternateVideo = episode.alternateVideo {
-            return (AVPlayerItem(url: alternateVideo.url), .remote, true)
+            return (authorizedPlayerItem(for: alternateVideo.url, profile: accessProfile(for: episode)), .remote, true)
         }
 
         if episode.source == .sideLoaded {
@@ -1482,31 +1508,31 @@ class Player {
         }
 
         guard let remoteURL = episode.url else { return nil }
-        let item = AVPlayerItem(url: remoteURL)
+        let item = authorizedPlayerItem(for: remoteURL, profile: accessProfile(for: episode))
         item.preferredForwardBufferDuration = 0
         return (item, .remote, false)
     }
 
     private func shouldRequeueEpisodeOnUnload(_ episode: Episode, episodeURL: URL) async -> Bool {
         if episode.metaData?.isArchived == true || episode.metaData?.status == .archived {
-            BasicLogger.shared.log("skip requeue on unload: archived episode \(episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on unload: archived episode \(episodeURL.redactedPodcastURLString)")
             return false
         }
 
         if episode.metaData?.isHistory == true || episode.metaData?.status == .history {
-            BasicLogger.shared.log("skip requeue on unload: history episode \(episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on unload: history episode \(episodeURL.redactedPodcastURLString)")
             return false
         }
 
         if episode.metaData?.completionDate != nil {
-            BasicLogger.shared.log("skip requeue on unload: completed episode \(episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on unload: completed episode \(episodeURL.redactedPodcastURLString)")
             return false
         }
 
         let activePlaylistActor = activePlaybackPlaylistActor()
         let isCurrentlyQueued = (try? await activePlaylistActor?.containsEpisodeURL(episodeURL)) ?? false
         if isCurrentlyQueued == false {
-            BasicLogger.shared.log("skip requeue on unload: episode no longer queued \(episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on unload: episode no longer queued \(episodeURL.redactedPodcastURLString)")
         }
         return isCurrentlyQueued
     }
@@ -1581,19 +1607,19 @@ class Player {
 
         let shouldRequeueUnfinishedEpisode: Bool
         if snapshot.isArchived {
-            BasicLogger.shared.log("skip requeue on fast switch unload: archived episode \(snapshot.episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on fast switch unload: archived episode \(snapshot.episodeURL.redactedPodcastURLString)")
             shouldRequeueUnfinishedEpisode = false
         } else if snapshot.isHistory {
-            BasicLogger.shared.log("skip requeue on fast switch unload: history episode \(snapshot.episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on fast switch unload: history episode \(snapshot.episodeURL.redactedPodcastURLString)")
             shouldRequeueUnfinishedEpisode = false
         } else if snapshot.isCompleted {
-            BasicLogger.shared.log("skip requeue on fast switch unload: completed episode \(snapshot.episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on fast switch unload: completed episode \(snapshot.episodeURL.redactedPodcastURLString)")
             shouldRequeueUnfinishedEpisode = false
         } else {
             let activePlaylistActor = activePlaybackPlaylistActor()
             shouldRequeueUnfinishedEpisode = (try? await activePlaylistActor?.containsEpisodeURL(snapshot.episodeURL)) ?? false
             if shouldRequeueUnfinishedEpisode == false {
-                BasicLogger.shared.log("skip requeue on fast switch unload: episode no longer queued \(snapshot.episodeURL.absoluteString)")
+            BasicLogger.shared.log("skip requeue on fast switch unload: episode no longer queued \(snapshot.episodeURL.redactedPodcastURLString)")
             }
         }
 
@@ -2611,7 +2637,7 @@ class Player {
             return
         }
         guard finishingEpisodeURL != finishedEpisodeURL else {
-            BasicLogger.shared.log("Ignoring duplicate playback finish for \(finishedEpisodeURL.absoluteString)")
+            BasicLogger.shared.log("Ignoring duplicate playback finish for \(finishedEpisodeURL.redactedPodcastURLString)")
             return
         }
         finishingEpisodeURL = finishedEpisodeURL
@@ -2628,7 +2654,7 @@ class Player {
                     .dequeueFinishedEpisodeAndReturnNext(after: finishedEpisodeURL)
             } catch {
                 BasicLogger.shared.log(
-                    "Failed to dequeue finished episode \(finishedEpisodeURL.absoluteString): \(error.localizedDescription)"
+                    "Failed to dequeue finished episode \(finishedEpisodeURL.redactedPodcastURLString): \(error.localizedDescription)"
                 )
                 queuedSuccessor = try? await activePlaylistActor?
                     .nextEpisodeURL(after: finishedEpisodeURL)
@@ -2733,7 +2759,11 @@ class Player {
             return
         }
 
-        _ = await DownloadManager.shared.download(from: remoteURL, saveTo: episode.localFile)
+        _ = await DownloadManager.shared.download(
+            from: remoteURL,
+            saveTo: episode.localFile,
+            profile: accessProfile(for: episode)
+        )
     }
 
     private func handleDownloadFinished(for episodeURL: URL) async {

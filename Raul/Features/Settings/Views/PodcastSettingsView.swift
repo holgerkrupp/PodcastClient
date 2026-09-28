@@ -1808,7 +1808,7 @@ struct PodcastSettingsView: View {
         context.saveIfNeeded()
         publishPortableSettings()
         if let podcastFeed = podcast?.feed {
-            BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=podcast feed=\(podcastFeed.absoluteString)")
+            BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=podcast feed=\(podcastFeed.redactedPodcastURLString)")
         } else {
             BasicLogger.shared.log("[AutoDL] trigger/settings-changed scope=global")
         }
@@ -1920,7 +1920,7 @@ struct PodcastSettingsView: View {
     private func markAutoDownloadPolicyReconciliationPending(trigger: String) {
         hasPendingAutoDownloadReconciliation = true
         if let podcastFeed = podcast?.feed {
-            BasicLogger.shared.log("[AutoDL] trigger/\(trigger) scope=podcast feed=\(podcastFeed.absoluteString) action=mark-pending-reconciliation")
+            BasicLogger.shared.log("[AutoDL] trigger/\(trigger) scope=podcast feed=\(podcastFeed.redactedPodcastURLString) action=mark-pending-reconciliation")
         } else {
             BasicLogger.shared.log("[AutoDL] trigger/\(trigger) scope=global action=mark-pending-reconciliation")
         }
@@ -1929,7 +1929,7 @@ struct PodcastSettingsView: View {
     private func applyAutomaticDownloadPolicyIfNeededOnClose() {
         guard hasPendingAutoDownloadReconciliation else {
             if let podcastFeed = podcast?.feed {
-                BasicLogger.shared.log("[AutoDL] trigger/settings-closed scope=podcast feed=\(podcastFeed.absoluteString) action=no-pending-reconciliation")
+                BasicLogger.shared.log("[AutoDL] trigger/settings-closed scope=podcast feed=\(podcastFeed.redactedPodcastURLString) action=no-pending-reconciliation")
             } else {
                 BasicLogger.shared.log("[AutoDL] trigger/settings-closed scope=global action=no-pending-reconciliation")
             }
@@ -1939,7 +1939,7 @@ struct PodcastSettingsView: View {
         hasPendingAutoDownloadReconciliation = false
 
         if let podcastFeed = podcast?.feed {
-            BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy scope=podcast feed=\(podcastFeed.absoluteString)")
+                BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy scope=podcast feed=\(podcastFeed.redactedPodcastURLString)")
             Task {
                 await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
             }
@@ -1956,7 +1956,7 @@ struct PodcastSettingsView: View {
             let episodeActor = EpisodeActor(modelContainer: context.container)
             for feed in feeds {
                 await MainActor.run {
-                    BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy feed=\(feed.absoluteString)")
+                    BasicLogger.shared.log("[AutoDL] trigger/settings-closed apply-policy feed=\(feed.redactedPodcastURLString)")
                 }
                 await episodeActor.applyAutomaticDownloadPolicy(for: feed, force: true)
             }

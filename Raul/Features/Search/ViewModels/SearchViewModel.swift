@@ -10,6 +10,8 @@ class PodcastSearchViewModel: ObservableObject {
     @Published var regions: [PodcastRegion] = []
     @Published var singlePodcast: PodcastFeed?
     @Published var searchResults: [PodcastFeed] = []
+    @Published private(set) var isDirectURLInput = false
+    @Published private(set) var urlErrorMessage: String?
 
     @Published var selectedRegion: String? {
         didSet {
@@ -27,6 +29,7 @@ class PodcastSearchViewModel: ObservableObject {
     @Published var authErrorMessage: String? = nil
 
     private var cancellables = Set<AnyCancellable>()
+    private var searchTask: Task<Void, Never>?
     private let iTunesActor = ITunesSearchActor()
 
     init() {
@@ -43,71 +46,100 @@ class PodcastSearchViewModel: ObservableObject {
     }
 
     func performSearch() {
+        searchTask?.cancel()
+        searchTask = nil
         singlePodcast = nil
         searchResults.removeAll()
         results.removeAll()
-        
-        guard !searchText.isEmpty else {
+        shouldPromptForBasicAuth = false
+        pendingURLForAuth = nil
+        authErrorMessage = nil
+        urlErrorMessage = nil
+
+        let trimmedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedSearchText.isEmpty == false else {
+            isDirectURLInput = false
+            isLoading = false
             return
         }
-        isLoading = true
-        
-        var urlString = searchText
-        if !urlString.lowercased().hasPrefix("http://") && !urlString.lowercased().hasPrefix("https://") {
-            urlString = "https://" + urlString
-        }
-        if urlString.isValidURL, let url = URL(string: urlString) {
-            let searchedText = searchText
-            let fallbackFeed = PodcastFeed(url: url)
-            
-            Task {
-                do {
-                    let resolution = try await PodcastFeedResolver.resolve(url: url, allowAuthenticationPrompt: true)
 
+        isLoading = true
+
+        if let url = PodcastSearchInputRecognizer.url(from: searchText) {
+            isDirectURLInput = true
+            let searchedText = searchText
+            searchTask = Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let resolution = try await PodcastFeedResolver.resolve(
+                        url: url,
+                        allowAuthenticationPrompt: true
+                    )
+
+                    try Task.checkCancellation()
                     guard self.searchText == searchedText else { return }
 
                     switch resolution {
                     case .podcast(let podcastFeed):
                         self.singlePodcast = podcastFeed
-                        self.shouldPromptForBasicAuth = false
-                        self.pendingURLForAuth = nil
-                        self.authErrorMessage = nil
                     case .requiresBasicAuth(let protectedURL):
                         self.pendingURLForAuth = protectedURL
                         self.shouldPromptForBasicAuth = true
                     }
+                } catch is CancellationError {
+                    return
+                } catch let error as URLError where error.code == .cancelled {
+                    return
                 } catch {
                     guard self.searchText == searchedText else { return }
-                    self.singlePodcast = fallbackFeed
-                    self.shouldPromptForBasicAuth = false
-                    self.pendingURLForAuth = nil
-                    self.authErrorMessage = nil
+                    // Keep the URL in the field for correction or retry. The
+                    // error is deliberately URL-free because query parameters
+                    // on personal feeds can contain credentials.
+                    self.urlErrorMessage = Self.userFacingURLFailure(for: error)
                 }
 
+                guard self.searchText == searchedText else { return }
                 self.isLoading = false
             }
         } else {
-            singlePodcast = nil
-
-            let searchedText = searchText
-            Task {
+            isDirectURLInput = false
+            let searchedText = trimmedSearchText
+            searchTask = Task { [weak self] in
+                guard let self else { return }
                 let iTunesPodcasts = await iTunesActor.search(for: searchedText) ?? []
-                guard self.searchText == searchedText else { return }
+                guard self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == searchedText else {
+                    return
+                }
                 self.searchResults = iTunesPodcasts.uniqued(by: [ { AnyHashable($0.url) } ])
                 self.results = self.searchResults
                 self.isLoading = false
             }
         }
     }
+
+    func cancelPendingSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+    }
+
+    private static func userFacingURLFailure(for error: Error) -> String {
+        if let resolverError = error as? PodcastFeedResolverError {
+            return resolverError.localizedDescription
+        }
+        return "Could not load a podcast from this URL."
+    }
     
     /// Accepts credentials, rebuilds URL with user:pass@host, retries, and continues to resolve feed.
     func submitBasicAuth(username: String, password: String) {
         guard let baseURL = pendingURLForAuth else { return }
+        let searchedText = searchText
         isLoading = true
         authErrorMessage = nil
         shouldPromptForBasicAuth = false
-        
-        Task {
+
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            guard let self else { return }
             guard let comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
                 self.authErrorMessage = "Invalid URL"
                 self.isLoading = false
@@ -141,6 +173,8 @@ class PodcastSearchViewModel: ObservableObject {
             do {
                 let resolution = try await PodcastFeedResolver.resolve(url: credentialedURL)
 
+                guard self.searchText == searchedText else { return }
+
                 switch resolution {
                 case .podcast(let podcastFeed):
                     self.singlePodcast = podcastFeed
@@ -152,10 +186,12 @@ class PodcastSearchViewModel: ObservableObject {
                     self.shouldPromptForBasicAuth = true
                 }
             } catch PodcastFeedResolverError.authenticationRequired {
+                guard self.searchText == searchedText else { return }
                 self.authErrorMessage = "Authentication failed. Please check your credentials."
                 self.isLoading = false
                 self.shouldPromptForBasicAuth = true
             } catch {
+                guard self.searchText == searchedText else { return }
                 self.authErrorMessage = "Failed to reach URL."
                 self.isLoading = false
             }

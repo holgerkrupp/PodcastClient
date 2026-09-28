@@ -673,7 +673,7 @@ struct DebugRow: View {
     }
 
     init(_ label: String, url: URL?) {
-        self.init(label, value: url?.absoluteString, limit: 240)
+        self.init(label, value: url?.redactedPodcastURLString, limit: 240)
     }
 
     init(_ label: String, duration: TimeInterval?) {

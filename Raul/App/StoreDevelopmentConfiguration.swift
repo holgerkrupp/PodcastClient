@@ -140,10 +140,29 @@ struct StoreDevelopmentConfiguration: Equatable {
         "storeSplit.legacyCloudSyncLastEnabled"
     static let legacyCloudReattachApprovedKey =
         "storeSplit.legacyCloudReattachApproved"
+    /// Persisted one-way boundary for the production cutover. This lives in the
+    /// app group so the app and its extensions agree that SharedDatabase has
+    /// been detached, even if a later release changes the read-authority
+    /// policy back to the legacy projection.
+    static let legacyCloudCutoverCompletedKey =
+        "storeSplit.legacyCloudCutoverCompleted.v1"
+
+    private static var legacyAttachmentDefaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
 
     static var legacyCloudSyncEnabled: Bool {
         guard launch.effectiveLegacyCloudSyncEnabled else { return false }
+        // Read authority and CloudKit attachment are deliberately independent.
+        // Once production has crossed the boundary, a rollback may change which
+        // local projection is read but can never reopen SharedDatabase with
+        // CloudKit's automatic mirroring.
+        guard legacyCloudCutoverCompleted == false else { return false }
         return legacyCloudReattachBlocked == false
+    }
+
+    static var legacyCloudCutoverCompleted: Bool {
+        legacyAttachmentDefaults.bool(forKey: legacyCloudCutoverCompletedKey)
     }
 
     /// Whether the legacy store is being re-attached to CloudKit after a spell
@@ -160,7 +179,7 @@ struct StoreDevelopmentConfiguration: Equatable {
     /// A device that never had mirroring off has no recorded previous state and
     /// is never blocked, so shipping users are unaffected.
     static var legacyCloudReattachBlocked: Bool {
-        let defaults = UserDefaults.standard
+        let defaults = legacyAttachmentDefaults
         guard let previous = defaults.object(forKey: legacyCloudSyncLastStateKey) as? Bool,
               previous == false else {
             return false
@@ -178,17 +197,38 @@ struct StoreDevelopmentConfiguration: Equatable {
     /// (`userStateAuthority` detaches every store, a rollback re-attaches them)
     /// passes unblocked on any device that has ever approved a re-attach.
     static func recordLegacyCloudSyncDecision(_ enabled: Bool) {
-        let defaults = UserDefaults.standard
+        let defaults = legacyAttachmentDefaults
         if enabled == false {
+            // The production authority release is the one-way door. Do not set
+            // this for a DEBUG-only manual detach: the existing approval path is
+            // still useful for explicit development experiments before cutover.
+            if StoreSplitReleasePhase.current == .userStateAuthority {
+                markLegacyCloudCutoverCompleted()
+                return
+            }
             defaults.removeObject(forKey: legacyCloudReattachApprovedKey)
         }
         defaults.set(enabled, forKey: legacyCloudSyncLastStateKey)
     }
 
+    /// Records the irreversible production boundary explicitly. Keeping this
+    /// separate from the last applied configuration makes the rollback rule
+    /// testable and prevents a failed container open from claiming cutover.
+    static func markLegacyCloudCutoverCompleted() {
+        let defaults = legacyAttachmentDefaults
+        defaults.set(true, forKey: legacyCloudCutoverCompletedKey)
+        defaults.removeObject(forKey: legacyCloudReattachApprovedKey)
+        defaults.set(false, forKey: legacyCloudSyncLastStateKey)
+    }
+
     /// Clears the block. Deduplicate first — approving re-attach on a duplicated
     /// library merges the duplicates into CloudKit for every other device.
     static func approveLegacyCloudReattach() {
-        UserDefaults.standard.set(true, forKey: legacyCloudReattachApprovedKey)
+        // An explicit development approval cannot override the production
+        // one-way boundary. It remains available only for pre-cutover DEBUG
+        // experiments, where no customer store has crossed the boundary.
+        guard legacyCloudCutoverCompleted == false else { return }
+        legacyAttachmentDefaults.set(true, forKey: legacyCloudReattachApprovedKey)
     }
 
     static var userStateCloudSyncEnabled: Bool {
