@@ -230,4 +230,30 @@ final class PodcastPrivateFeedTests: XCTestCase {
         XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Cache-Control"), "no-cache")
     }
+
+    func testBasicAuthenticationDecodesReservedCharactersFromURLUserInfo() {
+        let requestedURL = URL(string: "https://alice%40example.com:p%40ss%3Aword@example.com/private.xml")!
+        let request = URLRequest(podcastFeedURL: requestedURL)
+
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "Authorization"),
+            "Basic YWxpY2VAZXhhbXBsZS5jb206cEBzczp3b3Jk"
+        )
+    }
+
+    func testAuthenticationPromptRequiresAnHTTPBasicChallenge() {
+        let blocked = PodcastHTTPError.httpStatus(
+            code: 403,
+            url: URL(string: "https://example.com/private.xml")!,
+            wwwAuthenticate: nil
+        )
+        XCTAssertFalse(blocked.advertisesHTTPBasicAuthentication)
+
+        let basicChallenge = PodcastHTTPError.httpStatus(
+            code: 401,
+            url: URL(string: "https://example.com/private.xml")!,
+            wwwAuthenticate: "Basic realm=\"podcast\""
+        )
+        XCTAssertTrue(basicChallenge.advertisesHTTPBasicAuthentication)
+    }
 }

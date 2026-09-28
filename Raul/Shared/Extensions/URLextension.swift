@@ -64,7 +64,11 @@ extension URLRequest {
         )
         setValue("no-cache", forHTTPHeaderField: "Cache-Control")
 
-        guard let user = url.user, let password = url.password else { return }
+        // URL.user is decoded by Foundation, while URL.password can retain
+        // percent-escapes for reserved characters. Basic authentication must
+        // use the original credential bytes, not the URL-escaped form.
+        guard let user = url.user?.removingPercentEncoding,
+              let password = url.password?.removingPercentEncoding else { return }
 
         let credentials = Data("\(user):\(password)".utf8).base64EncodedString()
         setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")

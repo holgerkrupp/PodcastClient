@@ -114,17 +114,13 @@ private extension PodcastFeedResolver {
         do {
             (data, response) = try await PodcastHTTPClient.shared.data(for: url)
         } catch let error as PodcastHTTPError {
-            if error.statusCode == 401 || error.statusCode == 403 {
+            if error.advertisesHTTPBasicAuthentication {
                 throw PodcastFeedResolverError.authenticationRequired(url)
             }
             throw PodcastFeedResolverError.couldNotLoad(error.url)
         }
 
         let httpResponse = response
-
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            throw PodcastFeedResolverError.authenticationRequired(url)
-        }
 
         guard (200..<400).contains(httpResponse.statusCode) else {
             throw PodcastFeedResolverError.couldNotLoad(url)

@@ -277,16 +277,32 @@ enum PodcastAccessError: LocalizedError, Equatable {
 
 enum PodcastHTTPError: LocalizedError, Equatable {
     case invalidResponse(URL)
-    case httpStatus(code: Int, url: URL)
+    case httpStatus(code: Int, url: URL, wwwAuthenticate: String?)
 
     var statusCode: Int? {
-        guard case .httpStatus(let code, _) = self else { return nil }
+        guard case .httpStatus(let code, _, _) = self else { return nil }
         return code
+    }
+
+    var wwwAuthenticate: String? {
+        guard case .httpStatus(_, _, let value) = self else { return nil }
+        return value
+    }
+
+    var advertisesHTTPBasicAuthentication: Bool {
+        guard let wwwAuthenticate else { return false }
+        let scheme = wwwAuthenticate
+            .split(separator: ",", maxSplits: 1, omittingEmptySubsequences: true)
+            .first.map(String.init) ?? ""
+        return scheme
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .hasPrefix("basic") == true
     }
 
     var url: URL {
         switch self {
-        case .invalidResponse(let url), .httpStatus(_, let url):
+        case .invalidResponse(let url), .httpStatus(_, let url, _):
             return url
         }
     }
@@ -295,7 +311,7 @@ enum PodcastHTTPError: LocalizedError, Equatable {
         switch self {
         case .invalidResponse:
             return "The podcast server returned an invalid response."
-        case .httpStatus(let code, _):
+        case .httpStatus(let code, _, _):
             return "Podcast server returned HTTP \(code)."
         }
     }
@@ -458,7 +474,8 @@ final class PodcastHTTPClient: @unchecked Sendable {
         guard (200..<400).contains(httpResponse.statusCode) else {
             throw PodcastHTTPError.httpStatus(
                 code: httpResponse.statusCode,
-                url: httpResponse.url ?? requestedURL
+                url: httpResponse.url ?? requestedURL,
+                wwwAuthenticate: httpResponse.value(forHTTPHeaderField: "WWW-Authenticate")
             )
         }
         return (data, httpResponse)
