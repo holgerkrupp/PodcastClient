@@ -79,6 +79,9 @@ struct StoreDevelopmentConfiguration: Equatable {
     static let legacyCloudSyncEnabledKey = "development.database.legacyCloudSyncEnabled"
     static let userStateCloudSyncEnabledKey = "development.database.userStateCloudSyncEnabled"
     static let splitStoreWorkEnabledKey = "development.database.splitStoreWorkEnabled"
+    static let debugConfigurationVersionKey =
+        "development.database.configurationVersion"
+    private static let currentDebugConfigurationVersion = 1
     static let resetLocalSplitStoresOnNextLaunchKey =
         "development.database.resetLocalSplitStoresOnNextLaunch"
     static let resetAllLocalStoresOnNextLaunchKey =
@@ -93,6 +96,18 @@ struct StoreDevelopmentConfiguration: Equatable {
     let userStateCloudSyncEnabled: Bool
     let splitStoreWorkEnabled: Bool
 
+    /// The configuration a DEBUG installation should mirror while validating
+    /// the currently published release phase. This is deliberately independent
+    /// of DEBUG overrides so the settings screen can show every deviation.
+    static var publicBaseline: StoreDevelopmentConfiguration {
+        StoreDevelopmentConfiguration(
+            mode: StoreSplitRollout.resolvedMode,
+            legacyCloudSyncEnabled: releaseLegacyCloudSyncEnabled,
+            userStateCloudSyncEnabled: releaseUserStateCloudSyncEnabled,
+            splitStoreWorkEnabled: true
+        )
+    }
+
     static let launch = loadCurrent()
 
     static var current: StoreDevelopmentConfiguration {
@@ -105,17 +120,16 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     /// Whether `UserState.sqlite` is the authority for user-owned state.
     ///
-    /// Always false during `dualSyncBackfill`: that release deliberately reads
-    /// nothing from the new store. Outside DEBUG this is not frozen at launch, so
-    /// a device that classifies itself mid-launch starts applying synchronized
-    /// state in the same launch rather than the next one.
+    /// The DEBUG next-step preview may exercise the read-authority path before
+    /// the release phase constant moves. Release builds remain gated by the
+    /// published phase and rollout state.
     static var newStoreReadsEnabled: Bool {
-        guard StoreSplitReleasePhase.current == .userStateAuthority else {
-            return false
-        }
 #if DEBUG
         return launch.newStoreReadsEnabled
 #else
+        guard StoreSplitReleasePhase.current == .userStateAuthority else {
+            return false
+        }
         guard splitStoresEnabled else { return false }
         return launch.newStoreReadsEnabled || StoreSplitRollout.state == .newStoreReads
 #endif
@@ -127,13 +141,15 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     /// Whether synchronized user state is projected back onto the library graph.
     ///
-    /// Off during `dualSyncBackfill`. In that phase the legacy graph carries its
-    /// own CloudKit mirror, so cross-device state already arrives through Core
-    /// Data — projecting UserState on top would duplicate that work, fight its
-    /// merge, and re-introduce the full-projection write volume for no benefit.
-    /// The backfill is strictly one-way: legacy → UserState.
+    /// Release builds keep this off during `dualSyncBackfill`. DEBUG can enable
+    /// it only through the explicit next-step read-authority preview, so the
+    /// cutover path can be exercised before changing the release phase.
     static var userStateImportEnabled: Bool {
+#if DEBUG
+        return launch.newStoreReadsEnabled && splitStoresEnabled
+#else
         StoreSplitReleasePhase.current == .userStateAuthority && splitStoresEnabled
+#endif
     }
 
     static let legacyCloudSyncLastStateKey =
@@ -289,20 +305,46 @@ struct StoreDevelopmentConfiguration: Equatable {
     private static func loadCurrent() -> StoreDevelopmentConfiguration {
 #if DEBUG
         let defaults = UserDefaults.standard
+        let publicBaseline = Self.publicBaseline
+        if defaults.integer(forKey: debugConfigurationVersionKey)
+            < currentDebugConfigurationVersion {
+            // The previous DEBUG build intentionally forced a local-only graph.
+            // Move existing installations back to the public backfill state once;
+            // subsequent changes are explicit DEBUG previews from the settings UI.
+            defaults.set(
+                publicBaseline.mode.rawValue,
+                forKey: modeKey
+            )
+            defaults.set(
+                publicBaseline.legacyCloudSyncEnabled,
+                forKey: legacyCloudSyncEnabledKey
+            )
+            defaults.set(
+                publicBaseline.userStateCloudSyncEnabled,
+                forKey: userStateCloudSyncEnabledKey
+            )
+            defaults.set(
+                publicBaseline.splitStoreWorkEnabled,
+                forKey: splitStoreWorkEnabledKey
+            )
+            defaults.set(
+                currentDebugConfigurationVersion,
+                forKey: debugConfigurationVersionKey
+            )
+        }
+
         let mode = defaults.string(forKey: modeKey)
             .flatMap(DevelopmentStoreMode.init(rawValue:))
-            ?? .splitStoreReads
-        // Debug builds can exercise either release phase; the default follows
-        // whatever `StoreSplitReleasePhase.current` ships.
+            ?? publicBaseline.mode
         let legacyCloudSyncEnabled = defaults.object(
             forKey: legacyCloudSyncEnabledKey
-        ) as? Bool ?? releaseLegacyCloudSyncEnabled
+        ) as? Bool ?? publicBaseline.legacyCloudSyncEnabled
         let userStateCloudSyncEnabled = defaults.object(
             forKey: userStateCloudSyncEnabledKey
-        ) as? Bool ?? true
+        ) as? Bool ?? publicBaseline.userStateCloudSyncEnabled
         let splitStoreWorkEnabled = defaults.object(
             forKey: splitStoreWorkEnabledKey
-        ) as? Bool ?? true
+        ) as? Bool ?? publicBaseline.splitStoreWorkEnabled
         return StoreDevelopmentConfiguration(
             mode: mode,
             legacyCloudSyncEnabled: legacyCloudSyncEnabled,

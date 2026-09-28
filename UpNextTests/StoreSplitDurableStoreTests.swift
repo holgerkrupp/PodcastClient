@@ -6,6 +6,14 @@ import XCTest
 /// the app's library graph stays on disk, and only user-owned state travels
 /// through `UserState.sqlite`.
 final class StoreSplitDurableStoreTests: XCTestCase {
+#if DEBUG
+    func testDebugInstallationDefaultsToPublicBackfillConfiguration() {
+        let configuration = StoreDevelopmentConfiguration.current
+
+        XCTAssertEqual(configuration, StoreDevelopmentConfiguration.publicBaseline)
+    }
+#endif
+
     func testOnlyTheExperimentalModeRebuildsTheLibraryInMemory() {
         XCTAssertFalse(DevelopmentStoreMode.legacyOnly.usesInMemoryLibraryProjection)
         XCTAssertFalse(DevelopmentStoreMode.splitStores.usesInMemoryLibraryProjection)

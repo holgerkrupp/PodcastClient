@@ -9,7 +9,8 @@ struct DevelopmentSettingsView: View {
     private var legacyCloudSyncEnabled = StoreDevelopmentConfiguration
         .releaseLegacyCloudSyncEnabled
     @AppStorage(StoreDevelopmentConfiguration.userStateCloudSyncEnabledKey)
-    private var userStateCloudSyncEnabled = false
+    private var userStateCloudSyncEnabled = StoreDevelopmentConfiguration
+        .releaseUserStateCloudSyncEnabled
     @AppStorage(StoreDevelopmentConfiguration.splitStoreWorkEnabledKey)
     private var splitStoreWorkEnabled = true
     @AppStorage(StoreDevelopmentConfiguration.migrationPausedKey)
@@ -37,6 +38,10 @@ struct DevelopmentSettingsView: View {
         return StoreSplitRemoteConfigStore.current
     }
 
+    private var publicConfiguration: StoreDevelopmentConfiguration {
+        StoreDevelopmentConfiguration.publicBaseline
+    }
+
     private var selectedConfiguration: StoreDevelopmentConfiguration {
         StoreDevelopmentConfiguration(
             mode: storeMode,
@@ -50,18 +55,109 @@ struct DevelopmentSettingsView: View {
         selectedConfiguration != launchConfiguration
     }
 
+    private var readAuthorityPreviewBinding: Binding<Bool> {
+        Binding(
+            get: { storeMode == .splitStoreReads },
+            set: { enabled in
+                storeMode = enabled
+                    ? .splitStoreReads
+                    : publicConfiguration.mode
+                if enabled {
+                    userStateCloudSyncEnabled = true
+                    splitStoreWorkEnabled = true
+                }
+            }
+        )
+    }
+
+    private var publicDifferences: [String] {
+        var differences: [String] = []
+        if selectedConfiguration.mode != publicConfiguration.mode {
+            differences.append(
+                "Read authority: \(selectedConfiguration.mode.title) (public: \(publicConfiguration.mode.title))"
+            )
+        }
+        if selectedConfiguration.legacyCloudSyncEnabled
+            != publicConfiguration.legacyCloudSyncEnabled {
+            differences.append(
+                "Legacy CloudKit: \(selectedConfiguration.legacyCloudSyncEnabled ? "enabled" : "disabled") (public: \(publicConfiguration.legacyCloudSyncEnabled ? "enabled" : "disabled"))"
+            )
+        } else if StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+            != publicConfiguration.legacyCloudSyncEnabled {
+            differences.append(
+                "Active legacy CloudKit: disabled by the re-attach guard (public: enabled)"
+            )
+        }
+        if selectedConfiguration.userStateCloudSyncEnabled
+            != publicConfiguration.userStateCloudSyncEnabled {
+            differences.append(
+                "User-state CloudKit: \(selectedConfiguration.userStateCloudSyncEnabled ? "enabled" : "disabled") (public: \(publicConfiguration.userStateCloudSyncEnabled ? "enabled" : "disabled"))"
+            )
+        }
+        if selectedConfiguration.splitStoreWorkEnabled
+            != publicConfiguration.splitStoreWorkEnabled {
+            differences.append(
+                "Migration and reconciliation: \(selectedConfiguration.splitStoreWorkEnabled ? "enabled" : "disabled") (public: enabled)"
+            )
+        }
+        if migrationPaused {
+            differences.append("Manual migration pause: enabled (public: not paused)")
+        }
+        return differences
+    }
+
     var body: some View {
         Form {
             Section {
-                Picker("Data architecture", selection: $storeMode) {
-                    ForEach(DevelopmentStoreMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
+                LabeledContent(
+                    "Data architecture",
+                    value: launchConfiguration.mode.title
+                )
             } header: {
                 Text("Store Selection")
             } footer: {
                 Text(storeModeDescription)
+            }
+
+            Section {
+                Toggle(
+                    "Next step: UserState read authority",
+                    isOn: readAuthorityPreviewBinding
+                )
+                .tint(.orange)
+
+                Text("DEBUG-only preview. Turning this on changes the read authority to UserState.sqlite after relaunch; the public build still reads the legacy library store until the release phase changes.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button("Match Public Backfill Configuration") {
+                    applyPublicConfiguration()
+                }
+                .disabled(publicDifferences.isEmpty)
+            } header: {
+                Text("Next Step Preview")
+            } footer: {
+                Text("Use the preview only after the backfill is complete and verified. Changing read authority requires a relaunch.")
+            }
+
+            Section("Compared with Public") {
+                if publicDifferences.isEmpty {
+                    Label(
+                        "Matches the public dual-sync backfill configuration",
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .foregroundStyle(.green)
+                } else {
+                    Label(
+                        "DEBUG settings differ from the public configuration",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                    ForEach(publicDifferences, id: \.self) { difference in
+                        Text(difference)
+                            .font(.footnote)
+                    }
+                }
             }
 
             Section {
@@ -88,7 +184,7 @@ struct DevelopmentSettingsView: View {
             } header: {
                 Text("Cloud Synchronization")
             } footer: {
-                Text("This build ships the \(StoreSplitReleasePhase.current == .dualSyncBackfill ? "dual-sync backfill" : "user-state authority") phase. In the backfill phase the legacy library store keeps its CloudKit mirror and stays the source of truth, while UserState.sqlite is populated one-way in the background and never read. PodcastCache.sqlite is always local-only.")
+                Text("Public builds currently ship the \(StoreSplitReleasePhase.current == .dualSyncBackfill ? "dual-sync backfill" : "user-state authority") phase. In the backfill phase the legacy library store keeps its CloudKit mirror and stays the source of truth, while UserState.sqlite is populated one-way in the background and never read. The DEBUG next-step preview can intentionally change that after relaunch. PodcastCache.sqlite is always local-only.")
             }
 
             Section("Active Since Launch") {
@@ -143,7 +239,7 @@ struct DevelopmentSettingsView: View {
                     .disabled(
                         isRunningSyncAction
                             || isResetting
-                            || splitStoreWorkEnabled == false
+                            || launchConfiguration.splitStoreWorkEnabled == false
                             || modelContainerManager.isMigratingSplitStores
                     )
 
@@ -204,7 +300,7 @@ struct DevelopmentSettingsView: View {
                 } header: {
                     Text("Rollout")
                 } footer: {
-                    Text("Resolved automatically at launch in every configuration: existing users publish their state in bounded slices, then switch to new-store reads; brand-new users go straight to new-store reads. The store-mode picker above still decides read authority in DEBUG — these buttons only let you re-run the resolution by hand.")
+                    Text("Resolved automatically at launch in every configuration: existing users publish their state in bounded slices, then switch to new-store reads; brand-new users go straight to new-store reads. The development installation keeps the local library store as its read authority.")
                 }
 
                 Section {
@@ -248,8 +344,8 @@ struct DevelopmentSettingsView: View {
                 .disabled(
                     isRunningSyncAction
                         || isResetting
-                        || splitStoreWorkEnabled == false
-                        || (storeMode != .splitStores && storeMode != .splitStoreReads)
+                        || launchConfiguration.splitStoreWorkEnabled == false
+                        || (launchConfiguration.mode != .splitStores && launchConfiguration.mode != .splitStoreReads)
                 )
 
                 Button("Import Available Cloud State Now") {
@@ -258,8 +354,8 @@ struct DevelopmentSettingsView: View {
                 .disabled(
                     isRunningSyncAction
                         || isResetting
-                        || splitStoreWorkEnabled == false
-                        || storeMode != .splitStoreReads
+                        || launchConfiguration.splitStoreWorkEnabled == false
+                        || launchConfiguration.mode != .splitStoreReads
                 )
 
                 Button("Recover Cache-Only Library Data") {
@@ -476,7 +572,7 @@ struct DevelopmentSettingsView: View {
     }
 
     private var storeModeDescription: String {
-        switch storeMode {
+        switch launchConfiguration.mode {
         case .legacyOnly:
             "Only the local library store is opened. Split-store migration, imports, and dual writes are disabled."
         case .splitStores:
@@ -493,8 +589,17 @@ struct DevelopmentSettingsView: View {
     private var splitStoreActionDisabled: Bool {
         isRunningSyncAction
             || isResetting
-            || splitStoreWorkEnabled == false
-            || storeMode == .legacyOnly
+            || launchConfiguration.splitStoreWorkEnabled == false
+            || launchConfiguration.mode == .legacyOnly
+    }
+
+    private func applyPublicConfiguration() {
+        let configuration = publicConfiguration
+        storeMode = configuration.mode
+        legacyCloudSyncEnabled = configuration.legacyCloudSyncEnabled
+        userStateCloudSyncEnabled = configuration.userStateCloudSyncEnabled
+        splitStoreWorkEnabled = configuration.splitStoreWorkEnabled
+        migrationPaused = false
     }
 
     private func resetMigratedData() {
