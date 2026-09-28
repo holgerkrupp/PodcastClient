@@ -88,7 +88,14 @@ private struct CachedPlaybackProgress: Codable {
 @MainActor
 private enum PlaybackProgressDefaultsStore {
     private static let defaultsKey = "Player.cachedPlaybackProgress.v1"
+    private static let pendingCompletionKey = "Player.pendingFinishedEpisode.v1"
     private static let defaults = UserDefaults.standard
+
+    struct PendingCompletion: Codable {
+        let episodeURL: URL
+        let playlistID: UUID?
+        let finalPlaybackPosition: Double
+    }
 
     static func cachedProgress(for episodeURL: URL) -> CachedPlaybackProgress? {
         allCachedProgress()[episodeURL.absoluteString]
@@ -144,6 +151,29 @@ private enum PlaybackProgressDefaultsStore {
         var allProgress = allCachedProgress()
         allProgress.removeValue(forKey: episodeURL.absoluteString)
         save(allProgress)
+    }
+
+    static func savePendingCompletion(
+        episodeURL: URL,
+        playlistID: UUID?,
+        finalPlaybackPosition: Double
+    ) {
+        let pending = PendingCompletion(
+            episodeURL: episodeURL,
+            playlistID: playlistID,
+            finalPlaybackPosition: finalPlaybackPosition
+        )
+        guard let data = try? JSONEncoder().encode(pending) else { return }
+        defaults.set(data, forKey: pendingCompletionKey)
+    }
+
+    static func pendingCompletion() -> PendingCompletion? {
+        guard let data = defaults.data(forKey: pendingCompletionKey) else { return nil }
+        return try? JSONDecoder().decode(PendingCompletion.self, from: data)
+    }
+
+    static func removePendingCompletion() {
+        defaults.removeObject(forKey: pendingCompletionKey)
     }
 
     private static func save(_ allProgress: [String: CachedPlaybackProgress]) {
@@ -255,6 +285,10 @@ class Player {
     private var hasStartedRecovery = false
     private var wasPlayingBeforeInterruption = false
     private var finishingEpisodeURL: URL?
+    /// The manual playlist that supplied the current episode. This is captured
+    /// when the episode is loaded so a later playlist selection change cannot
+    /// redirect successor/dequeue logic at completion time.
+    private var currentPlaybackPlaylistID: UUID?
     private var isSkippingChapters = false
     private var chapterSkipPlan = ChapterSkipPlan(entries: [])
     private let chapterBoundaryTolerance: TimeInterval = 0.35
@@ -402,6 +436,8 @@ class Player {
       //  super.init()
         restorePersistedSkipProtectionUndo()
         Task {
+            await retryPendingFinishedEpisode()
+
             // Restoring the episode is what makes the player usable, so nothing
             // else may sit in front of it. The cache reconciliation below used
             // to run first and walked every leftover entry with a store write
@@ -646,6 +682,29 @@ class Player {
 
     private func activePlaybackPlaylistActor() -> PlaylistModelActor? {
         try? PlaylistModelActor(activePlaybackPlaylistIn: ModelContainerManager.shared.container)
+    }
+
+    /// Captures the selected playlist only when it actually supplied the
+    /// episode. A nil result explicitly represents playback started outside a
+    /// playlist; it is not permission to re-resolve the selection at finish.
+    private func capturePlaybackPlaylistID(for episodeURL: URL) async -> UUID? {
+        do {
+            let actor = try PlaylistModelActor(
+                activePlaybackPlaylistIn: ModelContainerManager.shared.container
+            )
+            guard try await actor.containsEpisodeURL(episodeURL) else {
+                BasicLogger.shared.log(
+                    "Playback episode is outside the selected playlist: \(episodeURL.redactedPodcastURLString)"
+                )
+                return nil
+            }
+            return actor.playlistID
+        } catch {
+            BasicLogger.shared.log(
+                "Could not capture playback playlist for \(episodeURL.redactedPodcastURLString): \(error.localizedDescription)"
+            )
+            return nil
+        }
     }
 
     private func moveEpisodeToFrontOfActivePlaybackPlaylist(_ episodeURL: URL) async {
@@ -1658,6 +1717,7 @@ class Player {
         stopPlaybackUpdates()
         currentEpisode = nil
         currentEpisodeURL = nil
+        currentPlaybackPlaylistID = nil
         currentChapter = nil
         chapterProgress = nil
         nextChapter = nil
@@ -1703,7 +1763,17 @@ class Player {
         guard let episodeURL,
               let episode = await fetchEpisode(with: episodeURL) else { return }
 
+        // Do not let a manual switch discard a completion that still needs its
+        // queue mutation. Retrying here also covers a transient store failure
+        // without waiting for the next process launch.
+        if PlaybackProgressDefaultsStore.pendingCompletion() != nil {
+            await retryPendingFinishedEpisode()
+        }
+
         let previousEpisodeURL = currentEpisodeURL
+        let playbackPlaylistID = previousEpisodeURL == episodeURL
+            ? currentPlaybackPlaylistID
+            : await capturePlaybackPlaylistID(for: episodeURL)
         let previousProtectionOrigin = pendingSkipProtectionOrigin
             ?? currentSkipProtectionOrigin()
         let fastSwitchUnloadSnapshot: EpisodeUnloadSnapshot?
@@ -1750,6 +1820,7 @@ class Player {
         currentEpisode = episode
         currentEpisodeURL = episodeURL
         finishingEpisodeURL = nil
+        currentPlaybackPlaylistID = playbackPlaylistID
         mediaSelection = selectedMedia
         let playbackTrim = await loadPlaybackTrimSettings(
             for: episode.podcast?.feed,
@@ -2026,6 +2097,7 @@ class Player {
 
         currentEpisode = liveEpisode
         currentEpisodeURL = url
+        currentPlaybackPlaylistID = nil
         currentPlaybackSource = .liveRemote
         currentChapter = nil
         chapterProgress = nil
@@ -2629,7 +2701,6 @@ class Player {
 
 
     private func handlePlaybackFinished() {
-        // print("Playback finished. - handlePlaybackFinished")
         stopPlaybackUpdates()
         let finishedEpisodeURL = currentEpisodeURL
         guard let finishedEpisodeURL else {
@@ -2642,40 +2713,48 @@ class Player {
         }
         finishingEpisodeURL = finishedEpisodeURL
         let finalPlaybackPosition = max(playPosition, currentEpisode?.duration ?? 0.0)
+        let playbackPlaylistID = currentPlaybackPlaylistID
+        BasicLogger.shared.log(
+            "Playback finished; captured final position for \(finishedEpisodeURL.redactedPodcastURLString)"
+        )
+        PlaybackProgressDefaultsStore.savePendingCompletion(
+            episodeURL: finishedEpisodeURL,
+            playlistID: playbackPlaylistID,
+            finalPlaybackPosition: finalPlaybackPosition
+        )
         beginEpisodeTransitionBackgroundTask()
 
         Task {
             let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
             let sleepTimerContinuePlaying = !stopAfterEpisode
-            let activePlaylistActor = activePlaybackPlaylistActor()
-            let queuedSuccessor: URL?
-            do {
-                queuedSuccessor = try await activePlaylistActor?
-                    .dequeueFinishedEpisodeAndReturnNext(after: finishedEpisodeURL)
-            } catch {
-                BasicLogger.shared.log(
-                    "Failed to dequeue finished episode \(finishedEpisodeURL.redactedPodcastURLString): \(error.localizedDescription)"
-                )
-                queuedSuccessor = try? await activePlaylistActor?
-                    .nextEpisodeURL(after: finishedEpisodeURL)
-            }
-            // In a SharePlay session each participant's queue differs, so
-            // auto-advancing would split the group; stop at the end instead.
-            let nextEpisodeURL = sleepTimerContinuePlaying && continuePlaying && isInSharedListeningSession == false
-                ? queuedSuccessor
-                : nil
 
-            // Clear the in-memory playback state of the finished episode so the next episode
-            // can load cleanly (and isn't mistaken for a fast-switch and re-queued). This is
-            // cheap main-actor work only — all persistence for the finished episode is deferred.
+            let queuedSuccessor = await commitFinishedEpisode(
+                episodeURL: finishedEpisodeURL,
+                finalPlaybackPosition: finalPlaybackPosition,
+                playlistID: playbackPlaylistID
+            )
+
+            let nextEpisodeURL: URL?
+            if sleepTimerContinuePlaying,
+               continuePlaying,
+               isInSharedListeningSession == false,
+               queuedSuccessor != nil {
+                nextEpisodeURL = queuedSuccessor
+            } else {
+                // In a SharePlay session each participant's queue differs, so
+                // auto-advancing would split the group; stop at the end instead.
+                nextEpisodeURL = nil
+            }
+
+            // Clear the in-memory playback state only after the durable completion
+            // phase. A failed phase leaves a retry marker in UserDefaults and does
+            // not silently advance to a successor.
             await resetPlaybackStateForFinishedEpisode(refreshPresentation: nextEpisodeURL == nil)
 
-            // Start the next episode immediately. Persisting the *finished* episode (last-played,
-            // play position, completion, move-to-history, download policy) is bookkeeping the user
-            // is no longer waiting for, so it runs afterwards in the background — mirroring the
-            // fast-switch unload path used when the user manually switches episodes.
             if let nextEpisodeURL {
-                BasicLogger.shared.log("Playing next episode")
+                BasicLogger.shared.log(
+                    "Successor activated after completion commit: \(nextEpisodeURL.redactedPodcastURLString)"
+                )
                 await playEpisode(
                     nextEpisodeURL,
                     playDirectly: true,
@@ -2692,24 +2771,86 @@ class Player {
                 finishingEpisodeURL = nil
                 finishEpisodeTransitionBackgroundTask()
             }
-
-            Task(priority: .utility) {
-                await self.finalizeFinishedEpisode(
-                    episodeURL: finishedEpisodeURL,
-                    finalPlaybackPosition: finalPlaybackPosition
-                )
-            }
         }
+    }
+
+    /// Completes the finished episode before playback state is cleared or the
+    /// transition lease is released. A failed queue mutation is left in the
+    /// pending-completion store so the next launch retries it before restoring
+    /// playback.
+    private func commitFinishedEpisode(
+        episodeURL: URL,
+        finalPlaybackPosition: Double,
+        playlistID: UUID?
+    ) async -> URL? {
+        do {
+            guard let episodeActor else {
+                throw EpisodeCompletionError.episodeNotFound(episodeURL)
+            }
+
+            BasicLogger.shared.log(
+                "Committing completion state for \(episodeURL.redactedPodcastURLString)"
+            )
+            try await episodeActor.commitFinishedEpisode(
+                episodeURL: episodeURL,
+                finalPlaybackPosition: finalPlaybackPosition
+            )
+
+            let successor: URL?
+            if let playlistID {
+                let playlistActor = try PlaylistModelActor(
+                    modelContainer: ModelContainerManager.shared.container,
+                    playlistID: playlistID
+                )
+                successor = try await playlistActor.dequeueFinishedEpisodeAndReturnNext(
+                    after: episodeURL
+                )
+            } else {
+                // This episode was not supplied by the selected queue. Remove
+                // any stale copies without inventing a successor.
+                let playlistActor = try PlaylistModelActor(
+                    modelContainer: ModelContainerManager.shared.container
+                )
+                try await playlistActor.removeFromAllPlaylists(episodeURL: episodeURL)
+                successor = nil
+            }
+
+            PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+            PlaybackProgressDefaultsStore.removePendingCompletion()
+            BasicLogger.shared.log(
+                "Completion transaction finished for \(episodeURL.redactedPodcastURLString)"
+            )
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            WatchSyncCoordinator.refreshSoon(force: true)
+            return successor
+        } catch {
+            BasicLogger.shared.log(
+                "Completion transaction failed for \(episodeURL.redactedPodcastURLString): \(error.localizedDescription)"
+            )
+            return nil
+        }
+    }
+
+    private func retryPendingFinishedEpisode() async {
+        guard let pending = PlaybackProgressDefaultsStore.pendingCompletion() else { return }
+
+        BasicLogger.shared.log(
+            "Retrying pending completion for \(pending.episodeURL.redactedPodcastURLString)"
+        )
+        _ = await commitFinishedEpisode(
+            episodeURL: pending.episodeURL,
+            finalPlaybackPosition: pending.finalPlaybackPosition,
+            playlistID: pending.playlistID
+        )
     }
 
     /// Resets the in-memory state left behind by the episode that just finished, so the next
     /// episode can be loaded without inheriting stale chapters/artwork/audio-processing state.
-    /// Deliberately excludes all SwiftData persistence — that is handled by
-    /// `finalizeFinishedEpisode(episodeURL:finalPlaybackPosition:)` off the critical path.
     private func resetPlaybackStateForFinishedEpisode(refreshPresentation: Bool) async {
         stopPlaybackUpdates()
         currentEpisode = nil
         currentEpisodeURL = nil
+        currentPlaybackPlaylistID = nil
         currentChapter = nil
         chapterProgress = nil
         nextChapter = nil
@@ -2732,21 +2873,6 @@ class Player {
             await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
             WatchSyncCoordinator.refreshSoon(force: true)
         }
-    }
-
-    /// Persists the finished episode: last-played, final position, completion, and move-to-history.
-    /// Runs at utility priority after the next episode has already started playing.
-    private func finalizeFinishedEpisode(episodeURL: URL, finalPlaybackPosition: Double) async {
-        await episodeActor?.setLastPlayed(episodeURL: episodeURL)
-        await episodeActor?.setPlayPosition(
-            episodeURL: episodeURL,
-            position: finalPlaybackPosition,
-            force: true
-        )
-        PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
-        await episodeActor?.setCompletionDate(episodeURL: episodeURL)
-        await episodeActor?.moveToHistory(episodeURL: episodeURL)
-        WatchSyncCoordinator.refreshSoon(force: true)
     }
 
     private func ensureDownloadForCurrentEpisodeIfNeeded() async {

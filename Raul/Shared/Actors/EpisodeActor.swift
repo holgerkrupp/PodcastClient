@@ -27,6 +27,17 @@ struct LastPlayedEpisodeReference: Sendable {
     let lastPlayed: Date
 }
 
+enum EpisodeCompletionError: LocalizedError {
+    case episodeNotFound(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .episodeNotFound(let episodeURL):
+            return "Finished episode was not found: \(episodeURL.redactedPodcastURLString)"
+        }
+    }
+}
+
 enum EpisodeChapterMerger {
     static func identity(for chapter: Marker) -> String {
         let normalizedTitle = chapter.title
@@ -412,6 +423,61 @@ actor EpisodeActor {
             await publishSplitEpisodeState(episode)
         }
 
+    }
+
+    /// Commits the local source of truth for a naturally finished episode in one
+    /// explicit SwiftData save. The player keeps its transition background lease
+    /// until this method and the queue mutation both complete.
+    func commitFinishedEpisode(
+        episodeURL: URL,
+        finalPlaybackPosition: TimeInterval,
+        completionDate: Date = Date()
+    ) async throws {
+        let predicate = #Predicate<Episode> { episode in
+            episode.url == episodeURL
+        }
+        let episodes = try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate))
+        guard episodes.isEmpty == false else {
+            throw EpisodeCompletionError.episodeNotFound(episodeURL)
+        }
+
+        let position = max(0, finalPlaybackPosition.isFinite ? finalPlaybackPosition : 0)
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            episode.metaData?.playPosition = position
+            episode.metaData?.maxPlayposition = max(
+                episode.metaData?.maxPlayposition ?? 0,
+                position
+            )
+            episode.metaData?.completionDate = completionDate
+            episode.metaData?.lastPlayed = completionDate
+            episode.metaData?.isArchived = false
+            episode.metaData?.isHistory = true
+            episode.metaData?.isInbox = false
+            episode.metaData?.status = .history
+            episode.metaData?.systemSuppressionReason = nil
+        }
+
+        // Do not use saveIfNeeded here: a completion handoff must be able to
+        // report a failed commit instead of continuing as though it succeeded.
+        try modelContext.save()
+
+        // These projections are useful follow-up work, but the local SwiftData
+        // save above is the durable completion boundary used by playback recovery.
+        let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
+        Task { [self] in
+            await persistLocalEpisodeClassification(episodes)
+            for episode in episodes {
+                await publishSplitEpisodeState(episode)
+            }
+
+            // Moving to history used to trigger automatic download policy updates.
+            // Keep that work off the protected playback handoff while preserving
+            // the post-completion behavior.
+            for podcastFeed in podcastFeeds {
+                await applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
+            }
+        }
     }
 
     func applyCachedPlaybackProgress(

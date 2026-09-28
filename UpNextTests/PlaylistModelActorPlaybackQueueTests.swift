@@ -83,6 +83,38 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         XCTAssertEqual(orderedURLs, [])
     }
 
+    func testFinishedEpisodeCommitPersistsFinalStateBeforeQueueMutation() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        try queueEpisodes([0, 1], in: fixture.selectedPlaylist, fixture: fixture)
+        let finishedURL = try XCTUnwrap(fixture.episodes[0].url)
+        let completionDate = Date(timeIntervalSince1970: 10_000)
+        let episodeActor = EpisodeActor(modelContainer: fixture.container)
+
+        try await episodeActor.commitFinishedEpisode(
+            episodeURL: finishedURL,
+            finalPlaybackPosition: 321,
+            completionDate: completionDate
+        )
+
+        let beforeQueueMutation = try fetchEpisode(url: finishedURL, container: fixture.container)
+        XCTAssertEqual(beforeQueueMutation.metaData?.playPosition, 321)
+        XCTAssertEqual(beforeQueueMutation.metaData?.maxPlayposition, 321)
+        XCTAssertEqual(beforeQueueMutation.metaData?.completionDate, completionDate)
+        XCTAssertEqual(beforeQueueMutation.metaData?.lastPlayed, completionDate)
+        XCTAssertTrue(beforeQueueMutation.metaData?.isHistory == true)
+        XCTAssertEqual(beforeQueueMutation.metaData?.status, .history)
+
+        let playlistActor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        let nextURL = try await playlistActor.dequeueFinishedEpisodeAndReturnNext(after: finishedURL)
+
+        XCTAssertEqual(nextURL, fixture.episodes[1].url)
+        let containsFinishedEpisode = try await playlistActor.containsEpisodeURL(finishedURL)
+        XCTAssertFalse(containsFinishedEpisode)
+    }
+
     func testFinishingEpisodeRemovesDuplicateEntriesAndNormalizesOrder() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         try queueEpisodes([0, 0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)

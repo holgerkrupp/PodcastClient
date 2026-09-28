@@ -32,8 +32,8 @@ actor PlaylistModelActor {
     // Actor-isolated context (do not cross actors with it)
     private let modelContext: ModelContext
 
-    // We never store model instances; only the stable ID
-    private let playlistID: UUID
+    // We never store model instances; only the stable ID.
+    public nonisolated let playlistID: UUID
 
     // MARK: - Inits
 
@@ -406,10 +406,9 @@ actor PlaylistModelActor {
 
     /// Stamps the finished episode as completed inside the caller's transaction.
     ///
-    /// `Player.finalizeFinishedEpisode` persists the full bookkeeping afterwards,
-    /// off the audio hand-off path. Until that lands, every "is this episode still
-    /// unplayed?" check would answer yes, and any re-queue racing it would put the
-    /// episode back into the queue it was just dequeued from.
+    /// The player commits the full episode state before entering this queue phase.
+    /// This completion stamp remains here as an idempotent guard for automatic
+    /// insertions racing the dequeue transaction.
     private func markEpisodeFinished(_ episodeURL: URL) throws {
         for episode in try fetchEpisodes(byURL: episodeURL) {
             ensureMetadata(for: episode)
