@@ -6,7 +6,6 @@
 //
 import SwiftData
 import Foundation
-import BasicLogger
 
 actor PlaylistModelActor {
     enum RemovalOrigin: Sendable {
@@ -119,7 +118,7 @@ actor PlaylistModelActor {
 
     private func logAutoDownload(_ message: String) {
         Task { @MainActor in
-            BasicLogger.shared.log("[AutoDL] \(message)")
+            AppDiagnostics.log("[AutoDL] \(message)")
         }
     }
 
@@ -386,8 +385,16 @@ actor PlaylistModelActor {
         return min(1, sortedEntries.count)
     }
 
-    private func existingEntries(for episodeURL: URL, in playlist: Playlist) -> [PlaylistEntry] {
-        playlist.items?.filter { $0.episode?.url == episodeURL } ?? []
+    private func existingEntries(for episodeURL: URL, in playlistID: UUID) throws -> [PlaylistEntry] {
+        try modelContext.fetch(FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { entry in
+                entry.playlist?.id == playlistID && entry.episode?.url == episodeURL
+            },
+            sortBy: [
+                SortDescriptor(\PlaylistEntry.order, order: .forward),
+                SortDescriptor(\PlaylistEntry.dateAdded, order: .forward)
+            ]
+        ))
     }
 
     /// Whether an automatic caller must leave this episode out of the playlist.
@@ -511,8 +518,8 @@ actor PlaylistModelActor {
         for episodeURL: URL,
         in playlist: Playlist,
         sortedEntries: inout [PlaylistEntry]
-    ) -> PlaylistEntry? {
-        let matchingEntries = existingEntries(for: episodeURL, in: playlist)
+    ) throws -> PlaylistEntry? {
+        let matchingEntries = try existingEntries(for: episodeURL, in: playlistID)
         let reusableEntry = matchingEntries.first
 
         for duplicateEntry in matchingEntries.dropFirst() {
@@ -554,7 +561,7 @@ actor PlaylistModelActor {
     func containsEpisodeURL(_ episodeURL: URL) throws -> Bool {
         guard let playlist = try fetchPlaylist() else { return false }
         guard playlist.isSmartPlaylist == false else { return false }
-        return existingEntries(for: episodeURL, in: playlist).isEmpty == false
+        return try existingEntries(for: episodeURL, in: playlistID).isEmpty == false
     }
     
     func insert(
@@ -575,7 +582,7 @@ actor PlaylistModelActor {
         ) == false else { return }
 
         var sortedEntries = try fetchOrderedEntries()
-        let reusableEntry = detachExistingEntries(
+        let reusableEntry = try detachExistingEntries(
             for: episodeURL,
             in: playlist,
             sortedEntries: &sortedEntries
@@ -646,7 +653,7 @@ actor PlaylistModelActor {
         var sortedEntries = try fetchOrderedEntries()
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
-        let reusableEntry = detachExistingEntries(
+        let reusableEntry = try detachExistingEntries(
             for: episodeURL,
             in: playlist,
             sortedEntries: &sortedEntries
@@ -721,7 +728,7 @@ actor PlaylistModelActor {
         var sortedEntries = try fetchOrderedEntries()
         let pinnedEpisodeURL = await currentPlayingEpisodeURL()
 
-        let reusableEntry = detachExistingEntries(
+        let reusableEntry = try detachExistingEntries(
             for: episodeURL,
             in: playlist,
             sortedEntries: &sortedEntries
@@ -780,7 +787,7 @@ actor PlaylistModelActor {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
 
-        let matchingEntries = existingEntries(for: episodeURL, in: playlist)
+        let matchingEntries = try existingEntries(for: episodeURL, in: playlistID)
         let removals = matchingEntries.compactMap { entry -> StoreSplitPlaylistRemoval? in
             guard let identity = entry.episode?.stableEpisodeIdentity else { return nil }
             return StoreSplitPlaylistRemoval(
@@ -822,7 +829,7 @@ actor PlaylistModelActor {
         }
     }
 
-    /// Reorders by reindexing .ordered (sorted view) to contiguous 0...n and saves.
+    /// Reorders entries in store order to contiguous 0...n and saves.
     func normalizeOrder()  {
         do{
             guard let playlist = try? fetchPlaylist() else { return }
@@ -840,26 +847,24 @@ actor PlaylistModelActor {
     func moveEntry(from sourceIndex: Int, to destinationIndex: Int) async throws {
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
-        print("move from \(sourceIndex) to \(destinationIndex)")
-        if let sorted = playlist.items?.sorted(by: { $0.order < $1.order }){
-            guard sourceIndex < sorted.count, destinationIndex <= sorted.count else { return }
+        let sorted = try fetchOrderedEntries()
+        guard sourceIndex < sorted.count, destinationIndex <= sorted.count else { return }
 
-            var reordered = sorted
-            let moved = reordered.remove(at: sourceIndex)
-            let adjustedDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
-            let safeDestination = max(0, min(adjustedDestination, reordered.count))
-            reordered.insert(moved, at: safeDestination)
-            
-            for (i, entry) in reordered.enumerated() {
-                entry.order = i
-            }
-            normalizeOrder()
-            await publishSplitStorePlaylist(playlist)
-            scheduleAutoDownloadPolicy()
-            Task {
-                await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
-                WatchSyncCoordinator.refreshSoon(force: true)
-            }
+        var reordered = sorted
+        let moved = reordered.remove(at: sourceIndex)
+        let adjustedDestination = sourceIndex < destinationIndex ? destinationIndex - 1 : destinationIndex
+        let safeDestination = max(0, min(adjustedDestination, reordered.count))
+        reordered.insert(moved, at: safeDestination)
+
+        for (i, entry) in reordered.enumerated() {
+            entry.order = i
+        }
+        modelContext.saveIfNeeded()
+        await publishSplitStorePlaylist(playlist)
+        scheduleAutoDownloadPolicy()
+        Task {
+            await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
+            WatchSyncCoordinator.refreshSoon(force: true)
         }
     }
 

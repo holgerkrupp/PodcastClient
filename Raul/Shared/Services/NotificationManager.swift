@@ -8,7 +8,6 @@
 import UserNotifications
 import Combine
 import SwiftUI
-import BasicLogger
 
 enum SkipProtectionNotification {
     static let categoryIdentifier = "SKIP_PROTECTION_UNDO"
@@ -206,11 +205,11 @@ actor NotificationManager {
         UNUserNotificationCenter.current().add(request) { error in
             if error != nil {
                 Task{
-                   //  await BasicLogger.shared.log("🔕 Failed to schedule notification: \(error)")
+                   //  AppDiagnostics.log("🔕 Failed to schedule notification: \(error)")
                 }
             }else{
                 Task{
-                   //  await BasicLogger.shared.log("🔔 Notification sent successfully")
+                   //  AppDiagnostics.log("🔔 Notification sent successfully")
                 }
             }
         }

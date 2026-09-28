@@ -8,7 +8,6 @@
 import Foundation
 import AVFoundation
 import Speech
-import BasicLogger
 
 @Observable
 class AITranscripts {
@@ -112,7 +111,7 @@ class AITranscripts {
     func logEpisodeTitle(for url: URL) async {
         
             _ = await EpisodeActor(modelContainer: ModelContainerManager.shared.container).getEpisodeTitlefrom(url: url)
-           //  await BasicLogger.shared.log("Episode title: \(title ?? "unknown")")
+           //  AppDiagnostics.log("Episode title: \(title ?? "unknown")")
         
     }
     

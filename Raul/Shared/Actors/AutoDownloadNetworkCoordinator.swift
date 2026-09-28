@@ -1,7 +1,6 @@
 import Foundation
 import Network
 import SwiftData
-import BasicLogger
 
 actor AutoDownloadNetworkCoordinator {
     static let shared = AutoDownloadNetworkCoordinator()
@@ -15,7 +14,7 @@ actor AutoDownloadNetworkCoordinator {
 
     private func logAutoDownload(_ message: String) async {
         await MainActor.run {
-            BasicLogger.shared.log("[AutoDL] \(message)")
+            AppDiagnostics.log("[AutoDL] \(message)")
         }
     }
 

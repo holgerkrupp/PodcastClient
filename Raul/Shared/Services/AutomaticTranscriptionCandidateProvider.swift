@@ -45,8 +45,9 @@ actor AutomaticTranscriptionCandidateProvider {
 
     private let modelContext: ModelContext
     private let selectedPlaylistID: UUID?
-    /// `podcast.episodes` is a fault; resolving it once per podcast keeps a scan
-    /// over several playlists from faulting the same back catalog repeatedly.
+    /// Cache the result of a concrete store query once per podcast. Do not walk
+    /// `podcast.episodes`: a relationship fault can be invalidated by a feed
+    /// import while the launch-time transcription sweep is starting.
     private var podcastPublishesTranscriptsCache: [PersistentIdentifier: Bool] = [:]
 
     init(modelContainer: ModelContainer) {
@@ -170,14 +171,26 @@ actor AutomaticTranscriptionCandidateProvider {
     }
 
     private func podcastPublishesTranscripts(_ episode: Episode) -> Bool {
-        guard let podcast = episode.podcast else { return false }
+        guard let podcastID = episode.podcast?.persistentModelID else { return false }
 
-        let cacheKey = podcast.persistentModelID
+        let cacheKey = podcastID
         if let cached = podcastPublishesTranscriptsCache[cacheKey] {
             return cached
         }
 
-        let publishesTranscripts = (podcast.episodes ?? []).contains { candidate in
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { candidate in
+                candidate.podcast?.persistentModelID == podcastID
+            }
+        )
+        // Automatic transcription is opportunistic. If SwiftData cannot
+        // materialize this query during launch/import, fail closed and let the
+        // next sweep retry instead of faulting a relationship.
+        guard let episodes = try? modelContext.fetch(descriptor) else {
+            podcastPublishesTranscriptsCache[cacheKey] = true
+            return true
+        }
+        let publishesTranscripts = episodes.contains { candidate in
             candidate.externalFiles.contains { $0.category == .transcript }
         }
         podcastPublishesTranscriptsCache[cacheKey] = publishesTranscripts

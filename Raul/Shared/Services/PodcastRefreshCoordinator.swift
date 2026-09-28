@@ -2,6 +2,48 @@ import Combine
 import Foundation
 import SwiftData
 
+/// Serializes destructive and refresh writes for one feed while allowing
+/// unrelated podcasts to continue independently.
+actor PodcastMutationCoordinator {
+    static let shared = PodcastMutationCoordinator()
+
+    private var activeKeys = Set<String>()
+    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+
+    func withExclusive<T: Sendable>(
+        feedURL: URL,
+        operation: @Sendable () async throws -> T
+    ) async rethrows -> T {
+        let key = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        await acquire(key)
+        do {
+            let result = try await operation()
+            release(key)
+            return result
+        } catch {
+            release(key)
+            throw error
+        }
+    }
+
+    private func acquire(_ key: String) async {
+        if activeKeys.insert(key).inserted { return }
+        await withCheckedContinuation { continuation in
+            waiters[key, default: []].append(continuation)
+        }
+    }
+
+    private func release(_ key: String) {
+        if var queued = waiters[key], queued.isEmpty == false {
+            let next = queued.removeFirst()
+            waiters[key] = queued.isEmpty ? nil : queued
+            next.resume()
+        } else {
+            activeKeys.remove(key)
+        }
+    }
+}
+
 /// Snapshot of a "refresh all podcasts" run, as the UI needs to draw it.
 struct PodcastRefreshProgress: Sendable, Equatable {
     var isRefreshing: Bool = false

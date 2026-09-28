@@ -2,15 +2,6 @@
   "originHash" : "269b7103dc2e182b25621a2ba3639f928aef73b8ed11889cb8448d4a5d7a41d2",
   "pins" : [
     {
-      "identity" : "basiclogger",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/holgerkrupp/BasicLogger",
-      "state" : {
-        "branch" : "main",
-        "revision" : "2707ca1ba7f634cf01d8d22cce852e37be3afe6d"
-      }
-    },
-    {
       "identity" : "clouddatapresence",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/holgerkrupp/CloudDataPresence",

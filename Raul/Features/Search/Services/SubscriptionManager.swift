@@ -7,7 +7,6 @@
 
 import Foundation
 import SwiftData
-import BasicLogger
 
 
 @ModelActor
@@ -1158,7 +1157,7 @@ actor SubscriptionManager:NSObject{
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
 
-       //  await BasicLogger.shared.log("bgupdateFeeds")
+       //  AppDiagnostics.log("bgupdateFeeds")
         
         let startedAt = Date()
         let policy = BackgroundFeedRefreshPolicy.forReason(reason)

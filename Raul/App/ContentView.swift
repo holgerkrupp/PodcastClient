@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import BasicLogger
 import StoreKit
 
 
@@ -285,7 +284,7 @@ struct ContentView: View {
                 details: "inbox=\(counts.inbox),subscriptions=\(counts.subscribedPodcasts)"
             )
         } catch {
-            BasicLogger.shared.log("Failed to load launch counts: \(error.localizedDescription)")
+            AppDiagnostics.log("Failed to load launch counts: \(error.localizedDescription)")
             inboxCount = 0
             subscribedPodcastCount = 0
             evaluateOnboardingLaunchIfNeeded()
@@ -301,7 +300,7 @@ struct ContentView: View {
             inboxCount = try await counter.count()
             CrashBreadcrumbs.shared.record("load_inbox_count_success", details: "count=\(inboxCount)")
         } catch {
-            BasicLogger.shared.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
+            AppDiagnostics.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
             CrashBreadcrumbs.shared.record("load_inbox_count_failed", details: error.localizedDescription)
             inboxCount = 0
         }
@@ -330,10 +329,10 @@ struct ContentView: View {
                 modelContext: modelContext
             )
             CrashBreadcrumbs.shared.record("shared_episode_imported", details: importedURL.redactedPodcastURLString)
-            BasicLogger.shared.log("Imported shared episode: \(importedURL.redactedPodcastURLString)")
+            AppDiagnostics.log("Imported shared episode: \(importedURL.redactedPodcastURLString)")
             await loadInboxCount()
         } catch {
-            BasicLogger.shared.log("Failed to import shared episode \(sharedEpisodeURL.redactedPodcastURLString): \(error.localizedDescription)")
+            AppDiagnostics.log("Failed to import shared episode \(sharedEpisodeURL.redactedPodcastURLString): \(error.localizedDescription)")
             CrashBreadcrumbs.shared.record("shared_episode_import_failed", details: error.localizedDescription)
         }
     }
@@ -364,12 +363,12 @@ struct ContentView: View {
                 "shared_episode_imported",
                 details: importedURL.redactedPodcastURLString
             )
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Imported shared episode: \(importedURL.redactedPodcastURLString)"
             )
             await loadInboxCount()
         } catch {
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Failed to import shared episode \(request.url.redactedPodcastURLString): \(error.localizedDescription)"
             )
             CrashBreadcrumbs.shared.record(

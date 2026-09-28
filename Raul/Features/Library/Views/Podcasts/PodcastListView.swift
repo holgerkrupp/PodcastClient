@@ -24,7 +24,18 @@ struct PodcastListView: View {
 
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Podcast.title) private var podcasts: [Podcast]
+    // Keep subscription filtering in SwiftData. Evaluating Podcast.isSubscribed
+    // in the SwiftUI body faults the metadata relationship while background
+    // refresh/import work may be deleting or replacing that row.
+    @Query(
+        filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false },
+        sort: \Podcast.title
+    ) private var subscribedPodcasts: [Podcast]
+    @Query(
+        filter: #Predicate<Podcast> { $0.metaData?.isSubscribed == false },
+        sort: \Podcast.title
+    ) private var unsubscribedPodcasts: [Podcast]
+    @Query(sort: \Podcast.title) private var allPodcasts: [Podcast]
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
 
@@ -32,6 +43,7 @@ struct PodcastListView: View {
     @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
+    @State private var pendingDeletionIDs = Set<PersistentIdentifier>()
 
     init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
@@ -39,16 +51,16 @@ struct PodcastListView: View {
     }
 
     private var podcastsInScope: [Podcast] {
-        podcasts.filter { podcast in
-            switch selectedScope {
-            case .subscribed:
-                return podcast.isSubscribed
-            case .unsubscribed:
-                return podcast.isSubscribed == false
-            case .all:
-                return true
-            }
+        let source: [Podcast]
+        switch selectedScope {
+        case .subscribed:
+            source = subscribedPodcasts
+        case .unsubscribed:
+            source = unsubscribedPodcasts
+        case .all:
+            source = allPodcasts
         }
+        return source.filter { pendingDeletionIDs.contains($0.persistentModelID) == false }
     }
 
     var body: some View {
@@ -143,7 +155,10 @@ struct PodcastListView: View {
                     }
                     Task {
                         for podcastID in podcastIDs {
-                            await viewModel.deletePodcast(podcastID)
+                            pendingDeletionIDs.insert(podcastID)
+                            if await viewModel.deletePodcast(podcastID) == false {
+                                pendingDeletionIDs.remove(podcastID)
+                            }
                         }
                     }
                 }

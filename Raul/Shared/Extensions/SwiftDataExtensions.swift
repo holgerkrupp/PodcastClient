@@ -21,39 +21,67 @@ extension ModelContext{
             }
     }
 
-    /// Returns the model for `id` only while its row still exists in the store.
-    ///
-    /// `model(for:)` hands back an object for any well-formed identifier, even
-    /// when the row has since been removed by a cascade delete, a duplicate
-    /// cleanup or a CloudKit import. Reading or writing a property on such an
-    /// object traps inside SwiftData, so every re-acquisition that spans an
-    /// `await` goes through this instead.
-    func existingModel<T: PersistentModel>(for id: PersistentIdentifier) -> T? {
-        var descriptor = FetchDescriptor<T>(
-            predicate: #Predicate { $0.persistentModelID == id }
+    // These helpers intentionally remain concrete. SwiftData's query
+    // descriptor metadata is compiled from the model type; building the same
+    // predicate through `T: PersistentModel` can trigger a framework assertion
+    // in optimized builds (especially on iOS 27).
+    func existingModel(for id: PersistentIdentifier) -> Podcast? {
+        var descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.persistentModelID == id }
         )
         descriptor.fetchLimit = 1
         return try? fetch(descriptor).first
     }
 
-    /// The batch form of `existingModel(for:)`, keyed by identifier.
-    ///
-    /// Identifiers that no longer have a row are simply absent from the result.
-    /// Resolving a page of cached identifiers this way costs one query instead
-    /// of one per identifier.
-    func existingModels<T: PersistentModel>(
-        for ids: [PersistentIdentifier]
-    ) -> [PersistentIdentifier: T] {
+    func existingModel(for id: PersistentIdentifier) -> Episode? {
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.persistentModelID == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? fetch(descriptor).first
+    }
+
+    func existingModel(for id: PersistentIdentifier) -> PodcastMetaData? {
+        var descriptor = FetchDescriptor<PodcastMetaData>(
+            predicate: #Predicate<PodcastMetaData> { $0.persistentModelID == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? fetch(descriptor).first
+    }
+
+    func existingModel(for id: PersistentIdentifier) -> PodcastSettings? {
+        var descriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate<PodcastSettings> { $0.persistentModelID == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? fetch(descriptor).first
+    }
+
+    func existingModel(for id: PersistentIdentifier) -> PlaySession? {
+        var descriptor = FetchDescriptor<PlaySession>(
+            predicate: #Predicate<PlaySession> { $0.persistentModelID == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? fetch(descriptor).first
+    }
+
+    func existingModels(for ids: [PersistentIdentifier]) -> [PersistentIdentifier: Podcast] {
         let uniqueIDs = Array(Set(ids))
         guard uniqueIDs.isEmpty == false else { return [:] }
-
-        let descriptor = FetchDescriptor<T>(
-            predicate: #Predicate { uniqueIDs.contains($0.persistentModelID) }
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { uniqueIDs.contains($0.persistentModelID) }
         )
         let models = (try? fetch(descriptor)) ?? []
+        return models.reduce(into: [:]) { $0[$1.persistentModelID] = $1 }
+    }
 
-        return models.reduce(into: [:]) { result, model in
-            result[model.persistentModelID] = model
-        }
+    func existingModels(for ids: [PersistentIdentifier]) -> [PersistentIdentifier: Episode] {
+        let uniqueIDs = Array(Set(ids))
+        guard uniqueIDs.isEmpty == false else { return [:] }
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { uniqueIDs.contains($0.persistentModelID) }
+        )
+        let models = (try? fetch(descriptor)) ?? []
+        return models.reduce(into: [:]) { $0[$1.persistentModelID] = $1 }
     }
 }

@@ -17,6 +17,8 @@ final class ShareExtensionViewModel: ObservableObject {
 
     private var extensionContext: NSExtensionContext?
     private var sharedURL: URL?
+    private var completionTask: Task<Void, Never>?
+    private var didComplete = false
 
     var canAdd: Bool {
         state == .ready && sharedURL != nil
@@ -58,10 +60,11 @@ final class ShareExtensionViewModel: ObservableObject {
                 playlistID: selectedPlaylistID
             )
             state = .saved
-            Task {
+            completionTask?.cancel()
+            completionTask = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(350))
                 guard Task.isCancelled == false else { return }
-                extensionContext?.completeRequest(returningItems: nil)
+                self?.completeOnce()
             }
         } catch {
             state = .failed(error.localizedDescription)
@@ -69,6 +72,13 @@ final class ShareExtensionViewModel: ObservableObject {
     }
 
     func cancel() {
+        completionTask?.cancel()
+        completeOnce()
+    }
+
+    private func completeOnce() {
+        guard didComplete == false else { return }
+        didComplete = true
         extensionContext?.completeRequest(returningItems: nil)
     }
 }

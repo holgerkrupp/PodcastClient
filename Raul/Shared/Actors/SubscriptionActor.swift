@@ -7,7 +7,6 @@
 
 import Foundation
 import SwiftData
-import BasicLogger
 
 
 
@@ -287,7 +286,7 @@ actor SubscriptionActor:NSObject{
         // this updates the feeds. It takes more time
         // check only those that are not marked as old during the last run
       
-       //  await BasicLogger.shared.log("bgupdateFeeds")
+       //  AppDiagnostics.log("bgupdateFeeds")
         
         await cleanupDuplicates() 
             setLastRefreshDate()

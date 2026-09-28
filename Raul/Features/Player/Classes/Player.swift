@@ -3,7 +3,6 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 import SwiftData
-import BasicLogger
 import mp3ChapterReader
 #if canImport(UIKit)
 import UIKit
@@ -693,14 +692,14 @@ class Player {
                 activePlaybackPlaylistIn: ModelContainerManager.shared.container
             )
             guard try await actor.containsEpisodeURL(episodeURL) else {
-                BasicLogger.shared.log(
+                AppDiagnostics.log(
                     "Playback episode is outside the selected playlist: \(episodeURL.redactedPodcastURLString)"
                 )
                 return nil
             }
             return actor.playlistID
         } catch {
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Could not capture playback playlist for \(episodeURL.redactedPodcastURLString): \(error.localizedDescription)"
             )
             return nil
@@ -1000,7 +999,7 @@ class Player {
         playPosition = duration
         updateEpisodeProgress(to: duration)
         updateNowPlayingInfo()
-        BasicLogger.shared.log("Skipping podcast outro (\(source)): \(outroSkipSeconds) seconds")
+        AppDiagnostics.log("Skipping podcast outro (\(source)): \(outroSkipSeconds) seconds")
         handlePlaybackFinished()
         return true
     }
@@ -1343,7 +1342,7 @@ class Player {
         inMemoryPosition: Double?
     ) -> Double {
         if let explicitTime {
-            BasicLogger.shared.log("Time provided when calling the playEpisode function: \(explicitTime)")
+            AppDiagnostics.log("Time provided when calling the playEpisode function: \(explicitTime)")
             return sanitizedPosition(explicitTime)
         }
 
@@ -1359,7 +1358,7 @@ class Player {
             )
 
             if maxFallback > 0 {
-                BasicLogger.shared.log("using max position as resume fallback: \(maxFallback)")
+                AppDiagnostics.log("using max position as resume fallback: \(maxFallback)")
                 candidate = maxFallback
             }
         }
@@ -1367,14 +1366,14 @@ class Player {
         let duration = sanitizedPosition(episodeDuration)
         if duration > 0,
            candidate >= (duration * progressThreshold) {
-            BasicLogger.shared.log("episode considered finished - jump to beginning")
+            AppDiagnostics.log("episode considered finished - jump to beginning")
             return 0
         }
 
         if candidate > 0 {
-            BasicLogger.shared.log("jump to last position: \(candidate)")
+            AppDiagnostics.log("jump to last position: \(candidate)")
         } else {
-            BasicLogger.shared.log("no persisted position - jump to beginning")
+            AppDiagnostics.log("no persisted position - jump to beginning")
         }
         return candidate
     }
@@ -1574,24 +1573,24 @@ class Player {
 
     private func shouldRequeueEpisodeOnUnload(_ episode: Episode, episodeURL: URL) async -> Bool {
         if episode.metaData?.isArchived == true || episode.metaData?.status == .archived {
-            BasicLogger.shared.log("skip requeue on unload: archived episode \(episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on unload: archived episode \(episodeURL.redactedPodcastURLString)")
             return false
         }
 
         if episode.metaData?.isHistory == true || episode.metaData?.status == .history {
-            BasicLogger.shared.log("skip requeue on unload: history episode \(episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on unload: history episode \(episodeURL.redactedPodcastURLString)")
             return false
         }
 
         if episode.metaData?.completionDate != nil {
-            BasicLogger.shared.log("skip requeue on unload: completed episode \(episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on unload: completed episode \(episodeURL.redactedPodcastURLString)")
             return false
         }
 
         let activePlaylistActor = activePlaybackPlaylistActor()
         let isCurrentlyQueued = (try? await activePlaylistActor?.containsEpisodeURL(episodeURL)) ?? false
         if isCurrentlyQueued == false {
-            BasicLogger.shared.log("skip requeue on unload: episode no longer queued \(episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on unload: episode no longer queued \(episodeURL.redactedPodcastURLString)")
         }
         return isCurrentlyQueued
     }
@@ -1666,23 +1665,23 @@ class Player {
 
         let shouldRequeueUnfinishedEpisode: Bool
         if snapshot.isArchived {
-            BasicLogger.shared.log("skip requeue on fast switch unload: archived episode \(snapshot.episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on fast switch unload: archived episode \(snapshot.episodeURL.redactedPodcastURLString)")
             shouldRequeueUnfinishedEpisode = false
         } else if snapshot.isHistory {
-            BasicLogger.shared.log("skip requeue on fast switch unload: history episode \(snapshot.episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on fast switch unload: history episode \(snapshot.episodeURL.redactedPodcastURLString)")
             shouldRequeueUnfinishedEpisode = false
         } else if snapshot.isCompleted {
-            BasicLogger.shared.log("skip requeue on fast switch unload: completed episode \(snapshot.episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on fast switch unload: completed episode \(snapshot.episodeURL.redactedPodcastURLString)")
             shouldRequeueUnfinishedEpisode = false
         } else {
             let activePlaylistActor = activePlaybackPlaylistActor()
             shouldRequeueUnfinishedEpisode = (try? await activePlaylistActor?.containsEpisodeURL(snapshot.episodeURL)) ?? false
             if shouldRequeueUnfinishedEpisode == false {
-            BasicLogger.shared.log("skip requeue on fast switch unload: episode no longer queued \(snapshot.episodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("skip requeue on fast switch unload: episode no longer queued \(snapshot.episodeURL.redactedPodcastURLString)")
             }
         }
 
-        BasicLogger.shared.log(
+        AppDiagnostics.log(
             "fastSwitchUnload url=\(snapshot.episodeURL.absoluteString) playProgress=\(snapshot.playProgress)"
         )
 
@@ -1710,7 +1709,7 @@ class Player {
         let episode = (currentEpisode?.url == episodeURL) ? currentEpisode : await fetchEpisode(with: episodeURL)
         guard let episode else { return }
         let shouldRequeueUnfinishedEpisode = await shouldRequeueEpisodeOnUnload(episode, episodeURL: episodeURL)
-        BasicLogger.shared.log(
+        AppDiagnostics.log(
             "unloadEpisode url=\(episodeURL.absoluteString) finishedPlayback=\(finishedPlayback) playProgress=\(episode.playProgress)"
         )
 
@@ -1893,7 +1892,7 @@ class Player {
             generation: playbackGeneration
         )
 
-        BasicLogger.shared.log(
+        AppDiagnostics.log(
             "playing episode \(episode.title) - playPosition \(String(describing: currentEpisode?.metaData?.playPosition)) maxPosition \(String(describing: currentEpisode?.metaData?.maxPlayposition)) snapshotPosition \(String(describing: snapshot?.playPosition))"
         )
         let inMemoryResumePosition = (previousEpisodeURL == episodeURL) ? playPosition : nil
@@ -2246,7 +2245,7 @@ class Player {
             }
         }
         guard taskID != .invalid else {
-            BasicLogger.shared.log("Could not acquire background time for next episode")
+            AppDiagnostics.log("Could not acquire background time for next episode")
             return
         }
 
@@ -2353,7 +2352,7 @@ class Player {
                     self.pause()
                 case .ended:
                     self.wasPlayingBeforeInterruption = false
-                    BasicLogger.shared.log("Interruption Ended Without Resume")
+                    AppDiagnostics.log("Interruption Ended Without Resume")
                 case .resume:
                     let shouldResume = self.wasPlayingBeforeInterruption
                     self.wasPlayingBeforeInterruption = false
@@ -2361,7 +2360,7 @@ class Player {
                         self.resumeAfterInterruption()
                     }
                 case .activationFailed(let description):
-                    BasicLogger.shared.log("Audio Session Activation Failed: \(description)")
+                    AppDiagnostics.log("Audio Session Activation Failed: \(description)")
                     if self.isPlaying {
                         self.transitionToPaused(pauseEngine: true)
                     }
@@ -2373,12 +2372,12 @@ class Player {
     }
 
     private func handleInterruptionBegan(){
-        BasicLogger.shared.log("Interruption Began")
+        AppDiagnostics.log("Interruption Began")
         pause()
     }
     
     private func resumeAfterInterruption(){
-        BasicLogger.shared.log("Interruption Ended")
+        AppDiagnostics.log("Interruption Ended")
         play()
     }
     
@@ -2547,20 +2546,20 @@ class Player {
         )
 
         guard resolvedDuration > 0 else {
-            BasicLogger.shared.log("Ignoring ended event from \(source): episode duration unavailable")
+            AppDiagnostics.log("Ignoring ended event from \(source): episode duration unavailable")
             return
         }
 
         let finishThreshold = max(resolvedDuration * progressThreshold, resolvedDuration - 2.0)
         guard trustedEndEvent || resolvedPosition >= finishThreshold else {
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Ignoring premature ended event from \(source): position=\(resolvedPosition), duration=\(resolvedDuration)"
             )
             return
         }
 
         playPosition = resolvedPosition
-        BasicLogger.shared.log("Playback finished automatically (\(source))")
+        AppDiagnostics.log("Playback finished automatically (\(source))")
         handlePlaybackFinished()
     }
     
@@ -2708,13 +2707,13 @@ class Player {
             return
         }
         guard finishingEpisodeURL != finishedEpisodeURL else {
-            BasicLogger.shared.log("Ignoring duplicate playback finish for \(finishedEpisodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("Ignoring duplicate playback finish for \(finishedEpisodeURL.redactedPodcastURLString)")
             return
         }
         finishingEpisodeURL = finishedEpisodeURL
         let finalPlaybackPosition = max(playPosition, currentEpisode?.duration ?? 0.0)
         let playbackPlaylistID = currentPlaybackPlaylistID
-        BasicLogger.shared.log(
+        AppDiagnostics.log(
             "Playback finished; captured final position for \(finishedEpisodeURL.redactedPodcastURLString)"
         )
         PlaybackProgressDefaultsStore.savePendingCompletion(
@@ -2752,7 +2751,7 @@ class Player {
             await resetPlaybackStateForFinishedEpisode(refreshPresentation: nextEpisodeURL == nil)
 
             if let nextEpisodeURL {
-                BasicLogger.shared.log(
+                AppDiagnostics.log(
                     "Successor activated after completion commit: \(nextEpisodeURL.redactedPodcastURLString)"
                 )
                 await playEpisode(
@@ -2788,7 +2787,7 @@ class Player {
                 throw EpisodeCompletionError.episodeNotFound(episodeURL)
             }
 
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Committing completion state for \(episodeURL.redactedPodcastURLString)"
             )
             try await episodeActor.commitFinishedEpisode(
@@ -2817,14 +2816,14 @@ class Player {
 
             PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
             PlaybackProgressDefaultsStore.removePendingCompletion()
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Completion transaction finished for \(episodeURL.redactedPodcastURLString)"
             )
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
             WatchSyncCoordinator.refreshSoon(force: true)
             return successor
         } catch {
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "Completion transaction failed for \(episodeURL.redactedPodcastURLString): \(error.localizedDescription)"
             )
             return nil
@@ -2834,7 +2833,7 @@ class Player {
     private func retryPendingFinishedEpisode() async {
         guard let pending = PlaybackProgressDefaultsStore.pendingCompletion() else { return }
 
-        BasicLogger.shared.log(
+        AppDiagnostics.log(
             "Retrying pending completion for \(pending.episodeURL.redactedPodcastURLString)"
         )
         _ = await commitFinishedEpisode(

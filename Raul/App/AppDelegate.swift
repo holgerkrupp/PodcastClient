@@ -1,7 +1,6 @@
 #if canImport(UIKit)
 import UIKit
 import BackgroundTasks
-import BasicLogger
 import UserNotifications
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -163,7 +162,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     details: error.localizedDescription
                 )
 #endif
-                BasicLogger.shared.log(error.localizedDescription)
+                AppDiagnostics.log(error.localizedDescription)
             }
         }
     }
@@ -199,18 +198,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         task.expirationHandler = {
-            CrashBreadcrumbs.shared.record("store_split_migration_background_task_expired")
-#if DEBUG
-            StoreSplitMigrationDebugLog.record(
-                "background pass expired",
-                details: "iOS reclaimed the time budget"
-            )
-#endif
             processingTask.cancel()
-            // Unstructured migration work isn't a child task, so cancel it directly.
-            Task { @MainActor in
-                ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
-            }
         }
     }
 
@@ -294,7 +282,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_schedule_requested")
-        BasicLogger.shared.log("schedule automaticTranscriptionProcessing")
+        AppDiagnostics.log("schedule automaticTranscriptionProcessing")
         let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.automaticTranscriptionIdentifier)
         request.requiresExternalPower = requiresCharging
         // Feed-provided transcripts are downloaded when a connection happens to
@@ -313,7 +301,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 "automatic_transcription_background_task_schedule_failed",
                 details: error.localizedDescription
             )
-            BasicLogger.shared.log(error.localizedDescription)
+            AppDiagnostics.log(error.localizedDescription)
         }
     }
 
@@ -328,7 +316,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             CrashBreadcrumbs.shared.record("feed_processing_background_task_scheduled")
         } catch {
             CrashBreadcrumbs.shared.record("feed_processing_background_task_schedule_failed", details: error.localizedDescription)
-            BasicLogger.shared.log(error.localizedDescription)
+            AppDiagnostics.log(error.localizedDescription)
         }
     }
 
@@ -374,7 +362,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         task.expirationHandler = {
-            CrashBreadcrumbs.shared.record("feed_processing_background_task_expired")
             processingTask.cancel()
         }
     }
@@ -421,12 +408,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         task.expirationHandler = {
-            CrashBreadcrumbs.shared.record("automatic_transcription_background_task_expired")
-            BasicLogger.shared.log("automatic transcription background task expired")
             processingTask.cancel()
-            Task {
-                await TranscriptionManager.shared.cancelAutomaticTranscriptionsForBackground()
-            }
         }
     }
 }

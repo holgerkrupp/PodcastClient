@@ -9,7 +9,6 @@ import Foundation
 import mp3ChapterReader
 
 import AVFoundation
-import BasicLogger
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -25,6 +24,14 @@ struct EpisodePlaybackStateSnapshot: Sendable {
 struct LastPlayedEpisodeReference: Sendable {
     let url: URL
     let lastPlayed: Date
+}
+
+private struct EpisodeTranscriptionSnapshot {
+    let url: URL
+    let id: PersistentIdentifier
+    let hasLoadedTranscript: Bool
+    let hasExternalTranscript: Bool
+    let publishesTranscripts: Bool
 }
 
 enum EpisodeCompletionError: LocalizedError {
@@ -153,7 +160,7 @@ actor EpisodeActor {
 
     private func logAutoDownload(_ message: String) async {
         await MainActor.run {
-            BasicLogger.shared.log("[AutoDL] \(message)")
+            AppDiagnostics.log("[AutoDL] \(message)")
         }
     }
 
@@ -1322,19 +1329,20 @@ actor EpisodeActor {
         origin: TranscriptionStartOrigin = .manual
     ) async throws {
         print("transcribe")
-        guard let episode = await fetchEpisode(byURL: fileURL) else { return }
-        guard let episodeURL = episode.url else { return }
+        guard let snapshot = await transcriptionSnapshot(for: fileURL, origin: origin) else { return }
+        let episodeURL = snapshot.url
+        let episodeID = snapshot.id
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
         guard await settingsActor.getTranscriptionsEnabled() else { return }
 
-        if episode.hasLoadedTranscript {
+        if snapshot.hasLoadedTranscript {
             await finalizeTranscriptChapters(for: episodeURL)
             return
         }
         
-        if episode.externalFiles.contains(where: { $0.category == .transcript}) {
+        if snapshot.hasExternalTranscript {
             do {
-                try await downloadTranscript(episode.persistentModelID)
+                try await downloadTranscript(episodeID)
                 return
             } catch let error as TranscriptError {
                 switch error {
@@ -1359,7 +1367,7 @@ actor EpisodeActor {
         // analyzer automatically would spend minutes of CPU and battery on a
         // transcript the next feed refresh imports for free. A transcription the
         // user asked for still goes ahead.
-        if origin == .automatic, podcastPublishesTranscripts(for: episode) {
+        if origin == .automatic, snapshot.publishesTranscripts {
             return
         }
 
@@ -1370,10 +1378,34 @@ actor EpisodeActor {
         )
     }
 
+    private func transcriptionSnapshot(
+        for fileURL: URL,
+        origin: TranscriptionStartOrigin
+    ) async -> EpisodeTranscriptionSnapshot? {
+        guard let episode = await fetchEpisode(byURL: fileURL),
+              let episodeURL = episode.url else { return nil }
+        return EpisodeTranscriptionSnapshot(
+            url: episodeURL,
+            id: episode.persistentModelID,
+            hasLoadedTranscript: episode.hasLoadedTranscript,
+            hasExternalTranscript: episode.externalFiles.contains {
+                $0.category == .transcript
+            },
+            publishesTranscripts: origin == .automatic
+                && podcastPublishesTranscripts(for: episode)
+        )
+    }
+
     /// Whether the episode's podcast ships transcript files with its feed.
     func podcastPublishesTranscripts(for episode: Episode) -> Bool {
-        guard let podcast = episode.podcast else { return false }
-        return (podcast.episodes ?? []).contains { candidate in
+        guard let podcastID = episode.podcast?.persistentModelID else { return false }
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { candidate in
+                candidate.podcast?.persistentModelID == podcastID
+            }
+        )
+        guard let episodes = try? modelContext.fetch(descriptor) else { return false }
+        return episodes.contains { candidate in
             candidate.externalFiles.contains { $0.category == .transcript }
         }
     }

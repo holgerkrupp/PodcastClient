@@ -8,7 +8,6 @@
 import SwiftData
 import Foundation
 import OSLog
-import BasicLogger
 import mp3ChapterReader
 
 enum PodcastFeedSwitchError: LocalizedError {
@@ -54,7 +53,7 @@ actor PodcastModelActor {
     private static func logRefresh(_ message: String) {
         refreshLogger.info("\(message, privacy: .public)")
         Task { @MainActor in
-            BasicLogger.shared.log("[PodcastRefresh] \(message)")
+            AppDiagnostics.log("[PodcastRefresh] \(message)")
         }
     }
 
@@ -1325,13 +1324,19 @@ actor PodcastModelActor {
     }
     
     func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {
-        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
-        if let episodes = podcast.episodes{
-            for episode in episodes {
-                let episodeActor = EpisodeActor(modelContainer: modelContainer)
-                await episodeActor.archiveEpisode(episode.url)
-            }
-            modelContext.saveIfNeeded()
+        // Snapshot URLs in this context before the first suspension. The
+        // podcast relationship can be invalidated while the episode actor is
+        // archiving a previous item.
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
+              let feed = podcast.feed else { return }
+        let episodeURLs = (try? modelContext.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
+        )))?.compactMap(\.url) ?? []
+
+        let episodeActor = EpisodeActor(modelContainer: modelContainer)
+        for episodeURL in episodeURLs {
+            try Task.checkCancellation()
+            await episodeActor.archiveEpisode(episodeURL)
         }
     }
     
@@ -1351,41 +1356,52 @@ actor PodcastModelActor {
     }
     
     func deleteEpisode(_ episodeID: PersistentIdentifier) async throws {
+        // Read the values needed for file cleanup in one synchronous turn, then
+        // reacquire the row after the file operation. No model instance crosses
+        // the await boundary.
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return }
-        if episode.source != .sideLoaded {
-            await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeURL: episode.url)
+        let source = episode.source
+        let episodeURL = episode.url
+        if source != .sideLoaded {
+            await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeURL: episodeURL)
         }
-        modelContext.delete(episode)
-        modelContext.saveIfNeeded()
+        guard let currentEpisode: Episode = modelContext.existingModel(for: episodeID) else { return }
+        modelContext.delete(currentEpisode)
+        try modelContext.save()
     }
     
     func deletePodcast(_ podcastID: PersistentIdentifier) async throws {
-        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
-        let feedURL = podcast.feed
+        guard let feedURL = modelContext.existingModel(for: podcastID)?.feed else { return }
+
+        try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feedURL) {
+            try await self.performDeletePodcast(podcastID)
+        }
+    }
+
+    private func performDeletePodcast(_ podcastID: PersistentIdentifier) async throws {
+        guard let feedURL = try deletePodcastRow(podcastID) else { return }
+        await updateSplitSubscription(feedURL: feedURL, isSubscribed: false)
+        await SubscriptionManifestSync.publishCurrentSubscriptions(
+            modelContainer: modelContainer,
+            allowEmpty: true
+        )
+    }
+
+    private func deletePodcastRow(_ podcastID: PersistentIdentifier) throws -> URL? {
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
+              let feedURL = podcast.feed else { return nil }
 
         // Drop the feed from the manifest before the cascade delete starts.
         // Removing a podcast walks every episode, chapter and bookmark it owns,
         // and anything that interrupts that work would otherwise leave a
         // manifest that restores the podcast on the next launch.
-        if let feedURL {
-            SubscriptionManifestSync.forgetFeed(feedURL)
-        }
-
+        SubscriptionManifestSync.forgetFeed(feedURL)
         if let episodeFolder = podcast.directoryURL {
             try? FileManager.default.removeItem(at: episodeFolder)
         }
         modelContext.delete(podcast)
-        modelContext.saveIfNeeded()
-        if let feedURL {
-            await updateSplitSubscription(
-                feedURL: feedURL,
-                isSubscribed: false
-            )
-        }
-        await SubscriptionManifestSync.publishCurrentSubscriptions(
-            modelContainer: modelContainer,
-            allowEmpty: true
-        )
+        try modelContext.save()
+        return feedURL
     }
 
     private func updateSplitSubscription(
@@ -1448,10 +1464,12 @@ actor PodcastModelActor {
                 group.addTask {
                     let worker = PodcastModelActor(modelContainer: self.modelContainer)
                     do {
-                        let summary = try await worker.updatePodcastWithSummary(
-                            feed,
-                            resolveExistingMissingDurations: false
-                        )
+                        let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feed) {
+                            try await worker.updatePodcastWithSummary(
+                                feed,
+                                resolveExistingMissingDurations: false
+                            )
+                        }
                         let title = await worker.fetchPodcastTitle(byFeed: feed)
                         return (
                             true,

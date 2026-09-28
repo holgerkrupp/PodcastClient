@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 import BackgroundTasks
 import ESADesignKit
-import BasicLogger
 import TipKit
 import CloudKitSyncMonitor
 
@@ -54,7 +53,7 @@ enum FeedRefreshScheduler {
     static func schedule(using container: ModelContainer?) async -> Date? {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
-        await BasicLogger.shared.log("schedule checkFeedUpdates")
+        AppDiagnostics.log("schedule checkFeedUpdates")
 
         let earliestBeginDate = await predictedBeginDate(using: container)
         let request = BGAppRefreshTaskRequest(
@@ -73,7 +72,7 @@ enum FeedRefreshScheduler {
                 "schedule_feed_refresh_failed",
                 details: error.localizedDescription
             )
-            await BasicLogger.shared.log(error.localizedDescription)
+            AppDiagnostics.log(error.localizedDescription)
         }
         return earliestBeginDate
 #else
@@ -98,7 +97,7 @@ enum PredictedReleaseRefreshScheduler {
     static func schedule(using container: ModelContainer?) async {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_predicted_release_refresh_requested")
-        await BasicLogger.shared.log("schedule refreshPredictedRelease")
+        AppDiagnostics.log("schedule refreshPredictedRelease")
         BGTaskScheduler.shared.cancel(
             taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
         )
@@ -155,7 +154,7 @@ enum PredictedReleaseRefreshScheduler {
 #if DEBUG
             await PredictedReleaseRefreshScheduleStore.shared.clear()
 #endif
-            await BasicLogger.shared.log(error.localizedDescription)
+            AppDiagnostics.log(error.localizedDescription)
         }
 #endif
     }
@@ -689,7 +688,7 @@ struct RaulApp: App {
     func scheduleFeedProcessing() {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_feed_processing_requested")
-        BasicLogger.shared.log("schedule processFeedUpdates")
+        AppDiagnostics.log("schedule processFeedUpdates")
         let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
@@ -700,7 +699,7 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("schedule_feed_processing_submitted")
         } catch {
             CrashBreadcrumbs.shared.record("schedule_feed_processing_failed", details: error.localizedDescription)
-            BasicLogger.shared.log(error.localizedDescription)
+            AppDiagnostics.log(error.localizedDescription)
         }
 #endif
     }
@@ -708,7 +707,7 @@ struct RaulApp: App {
     func scheduleStorageCleanup() {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_storage_cleanup_requested")
-        BasicLogger.shared.log("schedule storageCleanup")
+        AppDiagnostics.log("schedule storageCleanup")
         let request = BGAppRefreshTaskRequest(identifier: BackgroundTaskConfiguration.storageCleanupIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.nightlyStorageCleanupInterval)
 
@@ -717,7 +716,7 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("schedule_storage_cleanup_submitted")
         } catch {
             CrashBreadcrumbs.shared.record("schedule_storage_cleanup_failed", details: error.localizedDescription)
-            BasicLogger.shared.log(error.localizedDescription)
+            AppDiagnostics.log(error.localizedDescription)
         }
 #endif
     }
@@ -738,7 +737,7 @@ struct RaulApp: App {
             .processNextAutomaticTranscriptionFromPlaylists()
         if let startedEpisodeURL {
             CrashBreadcrumbs.shared.record("automatic_transcription_sweep_started_episode", details: startedEpisodeURL.redactedPodcastURLString)
-            BasicLogger.shared.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.redactedPodcastURLString)")
+            AppDiagnostics.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.redactedPodcastURLString)")
         } else {
             CrashBreadcrumbs.shared.record("automatic_transcription_sweep_idle", details: reason)
         }
@@ -774,12 +773,12 @@ struct RaulApp: App {
                 "storage_cleanup_completed",
                 details: "\(reason):deleted=\(result.deletedFileCount),kept=\(result.keptUpNextFileCount),chapter_images_optimized=\(chapterImageResult.optimizedImageCount)"
             )
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "storage cleanup (\(reason)) deleted \(result.deletedFileCount) files, kept \(result.keptUpNextFileCount) Up Next files, optimized \(chapterImageResult.optimizedImageCount) chapter images saving \(chapterImageResult.optimizedBytesSaved) bytes, restored \(chapterImageResult.restoredImageCount) Up Next chapter images"
             )
         } catch {
             CrashBreadcrumbs.shared.record("storage_cleanup_failed", details: "\(reason):\(error.localizedDescription)")
-            BasicLogger.shared.log("storage cleanup failed (\(reason)): \(error.localizedDescription)")
+            AppDiagnostics.log("storage cleanup failed (\(reason)): \(error.localizedDescription)")
         }
     }
 
@@ -878,7 +877,7 @@ private struct RootWindowView: View {
                         do {
                             try await SideloadingCoordinator.shared.syncEnabledState(enabled)
                         } catch {
-                            BasicLogger.shared.log(
+                            AppDiagnostics.log(
                                 "Failed to restore sideloading state: \(error.localizedDescription)"
                             )
                         }

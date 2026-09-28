@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import BasicLogger
 
 // Development-only. Deduplication rewrites the library graph in place, so it
 // must never be reachable from a shipping build by accident; `#if DEBUG` makes
@@ -80,14 +79,14 @@ actor LibraryDeduplicationService {
                 } catch {
                     let message = error.localizedDescription
                     await MainActor.run {
-                        BasicLogger.shared.log("[Dedup] save failed: \(message)")
+                        AppDiagnostics.log("[Dedup] save failed: \(message)")
                     }
                 }
             }
         }
 
         let summary = report.summary
-        await MainActor.run { BasicLogger.shared.log("[Dedup] \(summary)") }
+        await MainActor.run { AppDiagnostics.log("[Dedup] \(summary)") }
         return report
     }
 

@@ -1,6 +1,5 @@
 import Foundation
 import SwiftData
-import BasicLogger
 
 // Development-only. Clearing tombstones re-publishes removals as revivals to
 // every device, so it must never be reachable from a shipping build by accident.
@@ -89,7 +88,7 @@ actor PlaylistTombstoneRecoveryService {
 
         context.saveIfNeeded()
         await MainActor.run {
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "[Playlist] tombstone recovery \(result.summary) "
                     + "window=\(cutoff)..<\(end)"
             )
@@ -227,7 +226,7 @@ actor PlaylistTombstoneRecoveryService {
 
         await MainActor.run {
             for line in lines {
-                BasicLogger.shared.log("[Playlist] diagnostics \(line)")
+                AppDiagnostics.log("[Playlist] diagnostics \(line)")
             }
         }
         return lines

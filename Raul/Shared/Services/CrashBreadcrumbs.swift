@@ -1,4 +1,19 @@
 import Foundation
+import OSLog
+
+/// Process-safe developer diagnostics. Unlike the previous package logger,
+/// this writes to the unified logging system and never performs file I/O or
+/// touches the main actor from background callbacks.
+enum AppDiagnostics {
+    private static let logger = Logger(
+        subsystem: "de.holgerkrupp.PodcastClient",
+        category: "Diagnostics"
+    )
+
+    static func log(_ message: String) {
+        logger.log("\(message, privacy: .public)")
+    }
+}
 
 final class CrashBreadcrumbs: @unchecked Sendable {
     static let shared = CrashBreadcrumbs()

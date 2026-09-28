@@ -1,5 +1,4 @@
 import Foundation
-import BasicLogger
 
 // Development-only. Staging copies of every store under `Library` is a support
 // affordance, not a user feature: the copies are unencrypted-at-rest duplicates
@@ -85,7 +84,7 @@ enum DatabaseBackupExporter {
         }
 
         let summary = result.summary
-        Task { @MainActor in BasicLogger.shared.log("[Backup] \(summary)") }
+        Task { @MainActor in AppDiagnostics.log("[Backup] \(summary)") }
         return result
     }
 }

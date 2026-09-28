@@ -5,7 +5,6 @@
 
 import Foundation
 import SwiftData
-import BasicLogger
 
 /// The single rule for deciding whether a playlist entry belongs to an episode
 /// that has already been listened to.
@@ -159,11 +158,11 @@ actor PlayedEpisodePlaylistPruner {
 
         if Self.isEnabled == false {
             await MainActor.run {
-                BasicLogger.shared.log(
+                AppDiagnostics.log(
                     "[Playlist] pruner disabled — would have removed \(reports.count) of \(entries.count) entries"
                 )
                 for report in reports {
-                    BasicLogger.shared.log("[Playlist] would-prune \(report)")
+                    AppDiagnostics.log("[Playlist] would-prune \(report)")
                 }
             }
             return result
@@ -193,7 +192,7 @@ actor PlayedEpisodePlaylistPruner {
 
         context.saveIfNeeded()
         await MainActor.run {
-            BasicLogger.shared.log(
+            AppDiagnostics.log(
                 "[Playlist] pruned \(result.removedEntryCount) played episode(s) from \(result.affectedPlaylistCount) playlist(s)"
             )
         }

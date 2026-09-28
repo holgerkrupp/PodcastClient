@@ -5,7 +5,6 @@
 
 import Foundation
 import SwiftData
-import BasicLogger
 
 /// Keeps a playlist's first episodes downloaded.
 ///
@@ -20,7 +19,7 @@ import BasicLogger
 actor PlaylistAutoDownloadService {
     private func log(_ message: String) async {
         await MainActor.run {
-            BasicLogger.shared.log("[AutoDL] \(message)")
+            AppDiagnostics.log("[AutoDL] \(message)")
         }
     }
 
