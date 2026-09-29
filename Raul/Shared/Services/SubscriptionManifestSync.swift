@@ -86,8 +86,9 @@ enum SubscriptionManifestSync {
                     ? .httpBasic
                     : .privateURL
                 let profile = PodcastAccessProfile.make(for: legacyURL, kind: kind)
+                let basicCredential = legacyURL.podcastBasicCredential
                 let credential: PodcastCredential = kind == .httpBasic
-                    ? .httpBasic(username: legacyURL.user ?? "", password: legacyURL.password ?? "")
+                    ? .httpBasic(username: basicCredential.username, password: basicCredential.password)
                     : .privateURL(legacyURL)
                 try? KeychainPodcastCredentialStore.shared.save(credential, for: profile)
                 entry.accessProfileID = profile.id
@@ -509,7 +510,11 @@ actor SubscriptionManifestModelActor {
         case .privateURL:
             credential = .privateURL(feed)
         case .httpBasic:
-            credential = .httpBasic(username: feed.user ?? "", password: feed.password ?? "")
+            let basicCredential = feed.podcastBasicCredential
+            credential = .httpBasic(
+                username: basicCredential.username,
+                password: basicCredential.password
+            )
         case .publicFeed, .bearerToken:
             return nil
         }

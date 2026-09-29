@@ -166,8 +166,9 @@ final class Podcast: Identifiable {
         metadata.accessProfileID = profile.id
         metadata.accessKindRawValue = profile.kind.rawValue
         metadata.credentialStateRawValue = PodcastCredentialState.available.rawValue
+        let basicCredential = sourceURL.podcastBasicCredential
         let credential: PodcastCredential = kind == .httpBasic
-            ? .httpBasic(username: sourceURL.user ?? "", password: sourceURL.password ?? "")
+            ? .httpBasic(username: basicCredential.username, password: basicCredential.password)
             : .privateURL(sourceURL)
         try? KeychainPodcastCredentialStore.shared.save(credential, for: profile)
     }

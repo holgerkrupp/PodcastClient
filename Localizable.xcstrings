@@ -1104,6 +1104,9 @@
         }
       }
     },
+    "Archive every episode in this podcast" : {
+
+    },
     "Archive file retention" : {
       "localizations" : {
         "de" : {
@@ -4761,6 +4764,7 @@
       }
     },
     "More podcast actions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5953,6 +5957,9 @@
         }
       }
     },
+    "Open this podcast's settings" : {
+
+    },
     "Open transcript" : {
       "localizations" : {
         "de" : {
@@ -6912,6 +6919,9 @@
           }
         }
       }
+    },
+    "Podcast recommendation: %@" : {
+
     },
     "Podcast refresh started." : {
       "localizations" : {
@@ -9097,6 +9107,7 @@
       }
     },
     "Sort episodes, change visibility, open settings, or archive episodes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9105,6 +9116,9 @@
           }
         }
       }
+    },
+    "Sort the episodes in this podcast" : {
+
     },
     "Source" : {
       "localizations" : {

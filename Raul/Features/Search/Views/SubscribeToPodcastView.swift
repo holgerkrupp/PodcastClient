@@ -27,7 +27,7 @@ struct SubscribeToPodcastView: View {
     }
 
     private var existingPodcast: Podcast? {
-        allPodcasts.first { $0.isSubscribed && newPodcastFeed.matchesExistingPodcast($0) }
+        allPodcasts.first { newPodcastFeed.matchesExistingPodcast($0) }
     }
 
     private var displayedPodcast: Podcast {

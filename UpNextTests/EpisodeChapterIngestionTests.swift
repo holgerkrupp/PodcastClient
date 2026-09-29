@@ -4,6 +4,22 @@ import XCTest
 @testable import UpNext
 
 final class EpisodeChapterIngestionTests: XCTestCase {
+    func testChapterDisplayProjectionRemovesDuplicateMarkers() {
+        let episode = Episode(
+            title: "Duplicate chapters",
+            url: URL(string: "https://example.com/duplicate-chapters.mp3")!
+        )
+        let lowerPrioritySource = Marker(start: 60, title: "Alte Scanner am Mac", type: .podlove)
+        let first = Marker(start: 60, title: "  Alte Scanner am Mac  ", type: .mp3)
+        let duplicate = Marker(start: 60.004, title: "Alte Scanner am Mac", type: .mp3)
+        let second = Marker(start: 120, title: "Next chapter", type: .mp3)
+        episode.chapters = [lowerPrioritySource, first, duplicate, second]
+
+        let displayed = episode.chaptersForDisplay()
+
+        XCTAssertEqual(displayed.map(\.title), [first.title, second.title])
+    }
+
     func testTranscriptionQueueCanPromoteAnEpisodeToNext() async {
         let queue = TranscriptionTurnQueue()
         let first = URL(string: "https://example.com/first.mp3")!

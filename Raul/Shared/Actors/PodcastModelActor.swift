@@ -91,8 +91,9 @@ actor PodcastModelActor {
         case .privateURL:
             try? KeychainPodcastCredentialStore.shared.save(.privateURL(feedURL), for: profile)
         case .httpBasic:
+            let credential = feedURL.podcastBasicCredential
             try? KeychainPodcastCredentialStore.shared.save(
-                .httpBasic(username: feedURL.user ?? "", password: feedURL.password ?? ""),
+                .httpBasic(username: credential.username, password: credential.password),
                 for: profile
             )
         case .publicFeed, .bearerToken:
@@ -241,7 +242,11 @@ actor PodcastModelActor {
             ? podcastFeed.podcastNonSecretURL
             : podcastFeed
         let predicate = #Predicate<Podcast> { podcast in
-            podcast.feed == storedFeedURL
+            // Older installs could persist the complete private URL, including
+            // HTTP Basic user info. Search for both representations so those
+            // records can be found and migrated before the safe identity is
+            // used for subsequent lookups.
+            podcast.feed == storedFeedURL || podcast.feed == podcastFeed
         }
 
         do {

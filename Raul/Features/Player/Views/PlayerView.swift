@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import WebKit
 import ESADesignKit
 #if os(iOS)
 import UIKit
@@ -147,7 +146,7 @@ struct PlayerView: View {
                         missingTranscriptView(episode: episode)
                     }
                 case .chapters:
-                    if hasDisplayableChapters(in: chapterMarkers) {
+                    if hasDisplayableChapters(in: chapterMarkers, for: episode) {
                         ChapterListView(
                             episode: episode,
                             showsTitle: false,
@@ -421,21 +420,12 @@ struct PlayerView: View {
         return episode.chapters ?? []
     }
 
-    private func hasDisplayableChapters(in markers: [Marker]) -> Bool {
+    private func hasDisplayableChapters(in markers: [Marker], for episode: Episode) -> Bool {
         if markers.contains(where: { $0.type == .soundbite }) {
             return true
         }
 
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-        let availableTypes = Set(markers.map(\.type))
-        if let selectedType = preferredOrder.first(where: { availableTypes.contains($0) }) {
-            return markers.lazy.filter { $0.type == selectedType }.prefix(2).count > 1
-        }
-
-        return markers.lazy
-            .filter { $0.type != .bookmark && $0.type != .soundbite }
-            .prefix(2)
-            .count > 1
+        return episode.chaptersForDisplay(from: markers).count > 1
     }
 
     @MainActor
@@ -606,143 +596,10 @@ private enum PlayerContentTab: String, CaseIterable, Identifiable {
 }
 
 private struct PlayerShownotesView: View {
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var page: WebPage
-    @State private var contentHeight: CGFloat = 1
-
     let html: String
 
-    init(html: String) {
-        self.html = html
-        _page = State(
-            initialValue: WebPage(navigationDecider: ShownotesNavigationDecider())
-        )
-    }
-
     var body: some View {
-        WebView(page)
-            .webViewContentBackground(.hidden)
-            .webViewOnScrollGeometryChange(for: CGFloat.self) { geometry in
-                ceil(geometry.contentSize.height)
-            } action: { _, newHeight in
-                guard newHeight.isFinite, newHeight > 0, newHeight != contentHeight else { return }
-                contentHeight = newHeight
-            }
-            .scrollDisabled(true)
-            .frame(height: contentHeight)
-            .task(id: html) {
-                loadShownotes()
-            }
-            .onChange(of: scenePhase) { oldPhase, newPhase in
-                guard oldPhase != .active, newPhase == .active else { return }
-                loadShownotes()
-            }
-    }
-
-    private func loadShownotes() {
-        // WebKit may discard the page while the app is suspended. Its last
-        // measured height remains, leaving a large blank area when the player
-        // is still presented after wake. Reload the HTML and discard that stale
-        // measurement whenever the scene becomes active again.
-        contentHeight = 1
-        page.load(html: Self.document(containing: html))
-    }
-
-    private static func document(containing html: String) -> String {
-        """
-        <!doctype html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, shrink-to-fit=yes, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-            <style>
-                :root { color-scheme: light dark; }
-                @media (prefers-color-scheme: light) {
-                    :root { --shownotes-text: #000000; --shownotes-link: \(lightLinkColor); }
-                }
-                @media (prefers-color-scheme: dark) {
-                    :root { --shownotes-text: #F2F2F2; --shownotes-link: \(darkLinkColor); }
-                }
-                html, body { background: transparent; }
-                body { margin: 0; padding: 0; }
-                img {
-                    max-height: 100%;
-                    min-height: 100%;
-                    height: auto;
-                    max-width: 100%;
-                    width: auto;
-                    margin-bottom: 5px;
-                    border-radius: 0;
-                }
-                h1, h2, h3, h4, h5, h6, p, div, dl, ol, ul, pre,
-                blockquote, figure, figcaption, details, summary, article,
-                section, aside, header, footer, nav, main {
-                    text-align: left;
-                    line-height: 170%;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                    color: var(--shownotes-text);
-                    background-color: transparent;
-                    overflow-wrap: break-word;
-                }
-                iframe { width: 100%; height: 250px; border: none; }
-                a:link {
-                    color: var(--shownotes-link) !important;
-                    text-decoration: none;
-                    transition: color 0.2s ease;
-                }
-                a:hover { text-decoration: underline; }
-                figure { margin: 1em 0; padding: 0; }
-                figcaption { font-size: 0.9em; font-style: italic; margin-top: 0.5em; text-align: center; }
-                details { margin: 1em 0; padding: 0; }
-                summary { cursor: pointer; font-weight: bold; margin-bottom: 0.5em; }
-                summary::-webkit-details-marker { display: none; }
-                summary::before { content: "▶ "; display: inline-block; transition: transform 0.2s; }
-                details[open] summary::before { transform: rotate(90deg); }
-                article, section, aside { margin: 1em 0; }
-                header, footer { margin: 1.5em 0; }
-                nav ul { list-style: none; padding: 0; }
-                nav li { display: inline-block; margin-right: 1em; }
-            </style>
-        </head>
-        <body>
-            \(html)
-        </body>
-        </html>
-        """
-    }
-
-    private static var lightLinkColor: String {
-#if os(iOS)
-        "-apple-system-secondary-label"
-#else
-        "#007AFF"
-#endif
-    }
-
-    private static var darkLinkColor: String {
-#if os(iOS)
-        "-apple-system-secondary-label"
-#else
-        "#0A84FF"
-#endif
-    }
-}
-
-private struct ShownotesNavigationDecider: WebPage.NavigationDeciding {
-    func decidePolicy(
-        for action: WebPage.NavigationAction,
-        preferences: inout WebPage.NavigationPreferences
-    ) async -> WKNavigationActionPolicy {
-        guard action.navigationType == .linkActivated,
-              let url = action.request.url else {
-            return .allow
-        }
-
-#if os(iOS)
-        await UIApplication.shared.open(url)
-#elseif os(macOS)
-        NSWorkspace.shared.open(url)
-#endif
-        return .cancel
+        ShownoteContentView(html: html)
     }
 }
 

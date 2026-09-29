@@ -152,6 +152,26 @@ final class PodcastPrivateFeedTests: XCTestCase {
         XCTAssertFalse(podcast.feed?.absoluteString.contains("fake-token") == true)
     }
 
+    func testLegacyHTTPBasicPodcastRecordMigratesToSafeHTTPIdentity() throws {
+        let legacyURL = URL(string: "http://alice%40example.com:p%40ss%3Aword@example.com/feed/plus")!
+        let safeURL = legacyURL.podcastNonSecretURL
+        let podcast = Podcast(feed: legacyURL)
+
+        XCTAssertEqual(podcast.feed, safeURL)
+        XCTAssertEqual(podcast.metaData?.accessKindRawValue, PodcastAccessKind.httpBasic.rawValue)
+        XCTAssertEqual(
+            podcast.metaData?.accessProfileID,
+            PodcastAccessProfileID.make(for: safeURL)
+        )
+
+        let profile = PodcastAccessProfile.make(for: legacyURL, kind: .httpBasic)
+        let credential = try KeychainPodcastCredentialStore.shared.credential(for: profile)
+        XCTAssertEqual(
+            credential,
+            .httpBasic(username: "alice@example.com", password: "p@ss:word")
+        )
+    }
+
     func testPrivateFeedTokenSurvivesCanonicalSelfURL() async throws {
         let requestedURL = URL(string: "https://example.com/private.xml?freebie=secret")!
         let xml = """

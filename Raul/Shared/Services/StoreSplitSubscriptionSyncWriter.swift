@@ -65,9 +65,10 @@ actor StoreSplitSubscriptionSyncWriter {
         case .privateURL:
             credential = .privateURL(feedURL)
         case .httpBasic:
+            let basicCredential = feedURL.podcastBasicCredential
             credential = .httpBasic(
-                username: feedURL.user ?? "",
-                password: feedURL.password ?? ""
+                username: basicCredential.username,
+                password: basicCredential.password
             )
         case .publicFeed, .bearerToken:
             return

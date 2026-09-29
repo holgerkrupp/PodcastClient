@@ -513,39 +513,37 @@ struct PodcastDetailView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .secondaryAction) {
-                    Menu {
-                        Picker("Sort by", selection: Binding(
-                            get: { sortOptionRawValue },
-                            set: { sortOptionRawValue = $0 }
-                        )) {
-                            ForEach(EpisodeSortOption.allCases) { option in
-                                Text(option.label).tag(option.rawValue)
-                            }
+                ToolbarItemGroup(placement: .secondaryAction) {
+                    Picker("Sort by", selection: Binding(
+                        get: { sortOptionRawValue },
+                        set: { sortOptionRawValue = $0 }
+                    )) {
+                        ForEach(EpisodeSortOption.allCases) { option in
+                            Text(option.label).tag(option.rawValue)
                         }
-                        Divider()
-                        Toggle(isOn: $hidePlayedAndArchived) {
-                            Label("Hide played Episodes", systemImage: "eye.slash")
-                        }
-                        Divider()
-                        Button(action: {
-                            openSettings(.podcast(podcast))
-                        }) {
-                            Label("Podcast Settings", systemImage: "gear")
-                        }
-                        Button(action: {
-                            Task {
-                                try? await PodcastModelActor(modelContainer: modelContext.container)
-                                    .archiveEpisodes(of: podcast.persistentModelID)
-                            }
-                        }) {
-                            Label("Archive all episodes", systemImage: "archivebox")
-                        }
-                    } label: {
-                        Label("More", systemImage: "ellipsis")
                     }
-                    .accessibilityLabel("More podcast actions")
-                    .accessibilityHint("Sort episodes, change visibility, open settings, or archive episodes")
+                    .accessibilityHint("Sort the episodes in this podcast")
+
+                    Toggle(isOn: $hidePlayedAndArchived) {
+                        Label("Hide played Episodes", systemImage: "eye.slash")
+                    }
+
+                    Button(action: {
+                        openSettings(.podcast(podcast))
+                    }) {
+                        Label("Podcast Settings", systemImage: "gear")
+                    }
+                    .accessibilityHint("Open this podcast's settings")
+
+                    Button(action: {
+                        Task {
+                            try? await PodcastModelActor(modelContainer: modelContext.container)
+                                .archiveEpisodes(of: podcast.persistentModelID)
+                        }
+                    }) {
+                        Label("Archive all episodes", systemImage: "archivebox")
+                    }
+                    .accessibilityHint("Archive every episode in this podcast")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {

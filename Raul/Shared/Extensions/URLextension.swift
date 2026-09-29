@@ -7,6 +7,19 @@
 
 import Foundation
 
+extension URL {
+    /// Returns URL user-info in the form required by HTTP Basic auth. URL
+    /// parsing may leave percent escapes in the password, so credentials must
+    /// be decoded before they are stored or encoded into an Authorization
+    /// header.
+    var podcastBasicCredential: (username: String, password: String) {
+        (
+            user?.removingPercentEncoding ?? user ?? "",
+            password?.removingPercentEncoding ?? password ?? ""
+        )
+    }
+}
+
 struct URLstatus: Sendable {
     var statusCode: Int?
     var newURL: URL?
@@ -64,13 +77,10 @@ extension URLRequest {
         )
         setValue("no-cache", forHTTPHeaderField: "Cache-Control")
 
-        // URL.user is decoded by Foundation, while URL.password can retain
-        // percent-escapes for reserved characters. Basic authentication must
-        // use the original credential bytes, not the URL-escaped form.
-        guard let user = url.user?.removingPercentEncoding,
-              let password = url.password?.removingPercentEncoding else { return }
-
-        let credentials = Data("\(user):\(password)".utf8).base64EncodedString()
+        guard url.user != nil || url.password != nil else { return }
+        let credential = url.podcastBasicCredential
+        let credentials = Data("\(credential.username):\(credential.password)".utf8)
+            .base64EncodedString()
         setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
     }
 }

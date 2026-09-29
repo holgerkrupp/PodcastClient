@@ -438,13 +438,23 @@ class EpisodeDownloadStatus{
     }
     
     func chaptersForDisplay(preferredType: MarkerType? = nil) -> [Marker] {
-        let chapters = chapters ?? []
-        guard chapters.isEmpty == false else { return [] }
+        chaptersForDisplay(from: chapters ?? [], preferredType: preferredType)
+    }
+
+    /// Returns the single chapter source that should be shown to listeners.
+    ///
+    /// Some older stores, and the refreshed-marker query used by the player,
+    /// can contain the same source chapter more than once. Keep this
+    /// projection read-only so it is safe to use during SwiftUI rendering,
+    /// while ensuring duplicate rows never reach the list.
+    func chaptersForDisplay(from markers: [Marker], preferredType: MarkerType? = nil) -> [Marker] {
+        guard markers.isEmpty == false else { return [] }
+        let chapters = markers
 
         if let preferredType {
-            return chapters
+            return deduplicatedChaptersForDisplay(markers
                 .filter { $0.type == preferredType }
-                .sortedByStartTime()
+            ).sortedByStartTime()
         }
 
         // Feed-authored shownote timestamps are deterministic and generally more
@@ -454,12 +464,23 @@ class EpisodeDownloadStatus{
         // Pick a single type for the whole list based on availability and preference order.
         let availableTypes = Set(chapters.map { $0.type })
         if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
-            return chapters
+            return deduplicatedChaptersForDisplay(chapters
                 .filter { $0.type == chosenType }
-                .sortedByStartTime()
+            ).sortedByStartTime()
         } else {
             // Fallback: no known preferred types found, return all chapters as-is.
-            return chapters.sortedByStartTime()
+            return deduplicatedChaptersForDisplay(chapters).sortedByStartTime()
+        }
+    }
+
+    private func deduplicatedChaptersForDisplay(_ chapters: [Marker]) -> [Marker] {
+        var seen = Set<String>()
+        return chapters.filter { chapter in
+            let normalizedTitle = chapter.title
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            let normalizedStart = Int(((chapter.start ?? 0) * 100).rounded())
+            return seen.insert("\(normalizedStart)|\(normalizedTitle)").inserted
         }
     }
 

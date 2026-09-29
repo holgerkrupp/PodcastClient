@@ -630,16 +630,8 @@ private struct EpisodeDetailMetadataSections: View {
             hidesRenderableValueBlocks: true
         )
 
-#if os(iOS)
-        RichText(html: episode.content ?? episode.desc ?? "")
-                .linkColor(light: Color.secondary, dark: Color.secondary)
-                .backgroundColor(.transparent)
-                .padding()
-#else
-        RichText(html: episode.content ?? episode.desc ?? "")
-                .backgroundColor(.transparent)
-                .padding()
-#endif
+        ShownoteContentView(html: episode.content ?? episode.desc ?? "")
+            .padding()
 
         if episode.hasDisplayableChaptersOrSoundbites {
             ChapterListView(episode: episode)
