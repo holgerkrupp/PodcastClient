@@ -1,4 +1,4 @@
-# PodcastClient
+# Up Next
 
 ## Open Source Podcast Client
 
