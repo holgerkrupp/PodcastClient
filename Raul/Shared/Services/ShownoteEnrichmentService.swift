@@ -143,6 +143,7 @@ struct ShownoteEnrichmentResult: Sendable {
     let mimeType: String?
     let classification: ShownoteLinkClassification
     let podcastFeed: PodcastFeed?
+    let preview: ShownotePreviewMetadata?
     let expiresAt: Date
 }
 
@@ -167,9 +168,44 @@ actor ShownoteEnrichmentService {
         self.maximumCandidatesPerEpisode = maximumCandidatesPerEpisode
     }
 
+    /// Starts low-priority enrichment for feed-owned HTML. This is deliberately
+    /// fire-and-forget: feed persistence should not wait for recommendation
+    /// pages, and the UI must never be the place that starts this work.
+    func enqueue(htmlSources: [String]) {
+        let sources = htmlSources.filter { $0.isEmpty == false }
+        guard sources.isEmpty == false else { return }
+
+        Task(priority: .utility) {
+            for html in sources {
+                guard Task.isCancelled == false else { return }
+                let document = await ShownoteParser.shared.parse(html)
+                _ = await enrich(document.candidates)
+            }
+        }
+    }
+
+    /// Returns only results already held by the in-memory cache. In particular,
+    /// this method never invokes the resource loader and is safe for view tasks.
+    func cachedResults(
+        for candidates: [ShownoteLinkCandidate],
+        now: Date = Date()
+    ) -> [ShownoteEnrichmentResult] {
+        var seen = Set<URL>()
+        return candidates.compactMap { candidate in
+            guard seen.insert(candidate.normalizedURL).inserted,
+                  let entry = cache[candidate.normalizedURL],
+                  entry.expiresAt > now else {
+                return nil
+            }
+            return entry.result
+        }
+    }
+
     func enrich(_ candidates: [ShownoteLinkCandidate]) async -> [ShownoteEnrichmentResult] {
         let unique = Array(
-            Dictionary(grouping: candidates, by: \.normalizedURL)
+            Dictionary(grouping: candidates.filter { candidate in
+                ["http", "https"].contains(candidate.normalizedURL.scheme?.lowercased())
+            }, by: \.normalizedURL)
                 .values
                 .compactMap(\.first)
                 .prefix(maximumCandidatesPerEpisode)
@@ -236,6 +272,28 @@ actor ShownoteEnrichmentService {
         let now = Date()
         do {
             let resource = try await loader.load(candidate.normalizedURL)
+
+            // Mastodon profile pages publish an Atom timeline link as part of
+            // their HTML. Identify the profile before looking for a podcast
+            // feed so that timeline XML can never acquire podcast semantics.
+            if let html = String(data: resource.data, encoding: .utf8),
+               let mastodonPreview = ShownotePreviewParser.mastodon(
+                   from: html,
+                   responseURL: resource.responseURL
+               ) {
+                return ShownoteEnrichmentResult(
+                    candidateID: candidate.id,
+                    normalizedURL: candidate.normalizedURL,
+                    finalURL: mastodonPreview.canonicalURL ?? resource.responseURL,
+                    statusCode: resource.statusCode,
+                    mimeType: resource.mimeType,
+                    classification: .mastodon,
+                    podcastFeed: nil,
+                    preview: mastodonPreview,
+                    expiresAt: now.addingTimeInterval(12 * 60 * 60)
+                )
+            }
+
             if let feed = try await podcastFeed(from: resource, requestedURL: candidate.normalizedURL, loader: loader) {
                 return ShownoteEnrichmentResult(
                     candidateID: candidate.id,
@@ -245,18 +303,24 @@ actor ShownoteEnrichmentService {
                     mimeType: resource.mimeType,
                     classification: .podcast,
                     podcastFeed: feed,
+                    preview: nil,
                     expiresAt: now.addingTimeInterval(24 * 60 * 60)
                 )
+            }
+
+            let preview = String(data: resource.data, encoding: .utf8).map {
+                ShownotePreviewParser.web(from: $0, responseURL: resource.responseURL)
             }
 
             return ShownoteEnrichmentResult(
                 candidateID: candidate.id,
                 normalizedURL: candidate.normalizedURL,
-                finalURL: resource.responseURL,
+                finalURL: preview?.canonicalURL ?? resource.responseURL,
                 statusCode: resource.statusCode,
                 mimeType: resource.mimeType,
                 classification: .web,
                 podcastFeed: nil,
+                preview: preview,
                 expiresAt: now.addingTimeInterval(6 * 60 * 60)
             )
         } catch is CancellationError {
@@ -272,7 +336,10 @@ actor ShownoteEnrichmentService {
         loader: any ShownoteResourceLoader
     ) async throws -> PodcastFeed? {
         if looksLikeFeed(resource.data) {
-            return try await parseFeed(resource.data, sourceURL: resource.responseURL, requestedURL: requestedURL)
+            // A feed-shaped response is not enough. Only a successful podcast
+            // parse is allowed to produce the podcast classification; invalid
+            // XML/RSS remains an ordinary web resource.
+            return try? await parseFeed(resource.data, sourceURL: resource.responseURL, requestedURL: requestedURL)
         }
 
         guard let html = String(data: resource.data, encoding: .utf8),
@@ -280,9 +347,9 @@ actor ShownoteEnrichmentService {
             return nil
         }
 
-        let discovered = try await loader.load(discoveredURL)
+        guard let discovered = try? await loader.load(discoveredURL) else { return nil }
         guard looksLikeFeed(discovered.data) else { return nil }
-        return try await parseFeed(discovered.data, sourceURL: discovered.responseURL, requestedURL: discoveredURL)
+        return try? await parseFeed(discovered.data, sourceURL: discovered.responseURL, requestedURL: discoveredURL)
     }
 
     private static func parseFeed(_ data: Data, sourceURL: URL, requestedURL: URL) async throws -> PodcastFeed {
@@ -290,6 +357,10 @@ actor ShownoteEnrichmentService {
             from: PodcastFeedDocument(data: data, sourceURL: sourceURL, requestedURL: requestedURL),
             maximumEpisodes: 1
         )
+        guard let title = page.parsedFeed["title"] as? String,
+              title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            throw ShownoteResolutionError.unsupportedResource
+        }
         return page.feed
     }
 
@@ -311,7 +382,188 @@ actor ShownoteEnrichmentService {
             mimeType: nil,
             classification: classification,
             podcastFeed: nil,
+            preview: nil,
             expiresAt: expiresAt
         )
+    }
+}
+
+private enum ShownotePreviewParser {
+    private static let mastodonProfilePath = try? NSRegularExpression(
+        pattern: #"(?i)(?:^|/)@([a-z0-9_\-\.]+)(?:/|$)"#
+    )
+    private static let handlePattern = try? NSRegularExpression(
+        pattern: #"(?i)@[a-z0-9_\-\.]+@[a-z0-9\.\-]+"#
+    )
+
+    static func web(from html: String, responseURL: URL) -> ShownotePreviewMetadata {
+        let metadata = Metadata(html: html, responseURL: responseURL)
+        return ShownotePreviewMetadata(
+            title: metadata.value(for: ["og:title", "twitter:title"]) ?? metadata.title,
+            description: metadata.value(for: ["og:description", "twitter:description", "description"]),
+            imageURL: metadata.urlValue(for: ["og:image", "twitter:image"]),
+            siteName: metadata.value(for: ["og:site_name", "application-name"]),
+            canonicalURL: metadata.canonicalURL
+        )
+    }
+
+    static func mastodon(from html: String, responseURL: URL) -> ShownotePreviewMetadata? {
+        guard let host = responseURL.host,
+              let pathMatch = mastodonProfilePath?.firstMatch(
+                  in: responseURL.path,
+                  options: [],
+                  range: NSRange(location: 0, length: responseURL.path.utf16.count)
+              ) else {
+            return nil
+        }
+
+        let metadata = Metadata(html: html, responseURL: responseURL)
+        let titleValue = metadata.value(for: ["og:title", "twitter:title"])
+        let lowercasedHTML = html.lowercased()
+        let hasActivityProfile = lowercasedHTML.contains("application/activity+json")
+            || lowercasedHTML.contains("name=\"application-name\"") && lowercasedHTML.contains("mastodon")
+            || lowercasedHTML.contains("name=\"generator\"") && lowercasedHTML.contains("mastodon")
+        let hasHandleTitle = titleValue.flatMap {
+            handlePattern?.firstMatch(in: $0, options: [], range: NSRange(location: 0, length: $0.utf16.count))
+        } != nil
+        guard hasActivityProfile || hasHandleTitle else { return nil }
+
+        let pathUsername = Range(pathMatch.range(at: 1), in: responseURL.path).map {
+            String(responseURL.path[$0])
+        }
+        let handle = titleValue
+            .flatMap { handlePattern?.firstMatch(in: $0, options: [], range: NSRange(location: 0, length: $0.utf16.count)) }
+            .flatMap { match -> String? in
+                guard let range = Range(match.range, in: titleValue ?? "") else {
+                    return nil
+                }
+                return String((titleValue ?? "")[range])
+            }
+            ?? pathUsername.map { "@\($0)@\(host)" }
+
+        let title = titleValue
+            ?? metadata.title
+            ?? pathUsername.map { "@\($0)" }
+        let canonical = metadata.canonicalURL ?? profileURL(username: pathUsername, host: host, responseURL: responseURL)
+
+        return ShownotePreviewMetadata(
+            title: title,
+            description: metadata.value(for: ["og:description", "twitter:description", "description"]),
+            imageURL: metadata.urlValue(for: ["og:image", "twitter:image"]),
+            siteName: metadata.value(for: ["og:site_name", "application-name"]) ?? host,
+            canonicalURL: canonical,
+            handle: handle
+        )
+    }
+
+    private static func profileURL(username: String?, host: String, responseURL: URL) -> URL? {
+        guard let username, var components = URLComponents(url: responseURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.path = "/@\(username)"
+        components.query = nil
+        components.fragment = nil
+        components.host = host
+        return components.url
+    }
+
+    private struct Metadata {
+        let values: [String: String]
+        let title: String?
+        let canonicalURL: URL?
+        let responseURL: URL
+
+        init(html: String, responseURL: URL) {
+            var values: [String: String] = [:]
+            let metaTags = Self.matches(of: #"(?is)<meta\b[^>]*>"#, in: html)
+            for tag in metaTags {
+                guard let key = Self.attribute(named: "property", in: tag)?.lowercased()
+                        ?? Self.attribute(named: "name", in: tag)?.lowercased(),
+                      let value = Self.attribute(named: "content", in: tag),
+                      value.isEmpty == false else { continue }
+                values[key] = Self.decodeEntities(value).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            let title = Self.matches(of: #"(?is)<title\b[^>]*>(.*?)</title\s*>"#, in: html)
+                .first
+                .map { Self.decodeEntities(Self.stripTags($0)).trimmingCharacters(in: .whitespacesAndNewlines) }
+            let linkedCanonical = Self.matches(of: #"(?is)<link\b[^>]*>"#, in: html)
+                .compactMap { tag -> URL? in
+                    guard Self.attribute(named: "rel", in: tag)?.lowercased().split(separator: " ").contains("canonical") == true,
+                          let href = Self.attribute(named: "href", in: tag),
+                          let url = URL(string: Self.decodeEntities(href), relativeTo: responseURL)?.absoluteURL,
+                          ["http", "https"].contains(url.scheme?.lowercased()) else { return nil }
+                    return url
+                }
+                .first
+            let canonical = linkedCanonical
+                ?? values["og:url"].flatMap {
+                    URL(string: Self.decodeEntities($0), relativeTo: responseURL)?.absoluteURL
+                }
+                .flatMap { url in
+                    ["http", "https"].contains(url.scheme?.lowercased()) ? url : nil
+                }
+
+            self.values = values
+            self.title = title
+            self.canonicalURL = canonical
+            self.responseURL = responseURL
+        }
+
+        func value(for keys: [String]) -> String? {
+            keys.lazy.compactMap { values[$0] }.first
+        }
+
+        func urlValue(for keys: [String]) -> URL? {
+            guard let value = value(for: keys) else { return nil }
+            return URL(string: value, relativeTo: responseURL)?.absoluteURL
+        }
+
+        private static func matches(of pattern: String, in string: String) -> [String] {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
+            let range = NSRange(location: 0, length: string.utf16.count)
+            return regex.matches(in: string, options: [], range: range).compactMap { match in
+                guard let swiftRange = Range(match.range, in: string) else { return nil }
+                return String(string[swiftRange])
+            }
+        }
+
+        private static func attribute(named name: String, in tag: String) -> String? {
+            let pattern = "(?i)\\b" + name + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+                  let match = regex.firstMatch(in: tag, options: [], range: NSRange(location: 0, length: tag.utf16.count)) else {
+                return nil
+            }
+            for index in 1...3 {
+                guard match.range(at: index).location != NSNotFound,
+                      let range = Range(match.range(at: index), in: tag) else { continue }
+                return String(tag[range])
+            }
+            return nil
+        }
+
+        private static func stripTags(_ value: String) -> String {
+            value.replacingOccurrences(of: #"(?is)<[^>]*>"#, with: "", options: .regularExpression)
+        }
+
+        private static func decodeEntities(_ value: String) -> String {
+            var result = value
+            [
+                "&amp;": "&", "&quot;": "\"", "&#39;": "'", "&apos;": "'",
+                "&lt;": "<", "&gt;": ">", "&nbsp;": " "
+            ].forEach { result = result.replacingOccurrences(of: $0.key, with: $0.value) }
+            let decimalPattern = #"&#(\d+);"#
+            if let regex = try? NSRegularExpression(pattern: decimalPattern) {
+                let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count)).reversed()
+                for match in matches {
+                    guard let range = Range(match.range, in: result),
+                          let numberRange = Range(match.range(at: 1), in: result),
+                          let scalarValue = Int(result[numberRange]),
+                          let scalar = UnicodeScalar(scalarValue) else { continue }
+                    result.replaceSubrange(range, with: String(Character(scalar)))
+                }
+            }
+            return result
+        }
     }
 }

@@ -279,6 +279,63 @@ actor NotificationManager {
         guard identifiers.isEmpty == false else { return }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
     }
+
+    /// Reconciles only reminders the listener previously opted into. A feed
+    /// refresh never creates a new reminder; it updates a scheduled one when
+    /// its publisher-provided start time changes and removes it when the item
+    /// is no longer pending/current.
+    func reconcileLiveNotifications(
+        podcastFeed: URL?,
+        podcastTitle: String,
+        liveItems: [PodcastLiveItem],
+        featureEnabled: Bool
+    ) async {
+        guard let podcastFeed else { return }
+        let center = UNUserNotificationCenter.current()
+        let requests = await center.pendingNotificationRequests()
+        let matching = requests.filter {
+            ($0.content.userInfo["podcastFeed"] as? String) == podcastFeed.absoluteString
+                && $0.content.userInfo["liveItem"] != nil
+        }
+
+        guard featureEnabled else {
+            center.removePendingNotificationRequests(withIdentifiers: matching.map(\.identifier))
+            return
+        }
+
+        let validItems = liveItems.reduce(into: [String: PodcastLiveItem]()) { result, item in
+            guard item.status == .pending,
+                  let start = item.start,
+                  start > Date() else { return }
+            result[item.id] = item
+        }
+
+        for request in matching {
+            guard let liveID = request.content.userInfo["liveItem"] as? String,
+                  let item = validItems[liveID],
+                  let start = item.start else {
+                center.removePendingNotificationRequests(withIdentifiers: [request.identifier])
+                continue
+            }
+
+            let scheduledStart = (request.content.userInfo["liveStart"] as? NSNumber)?.doubleValue
+            guard scheduledStart == nil || abs(scheduledStart! - start.timeIntervalSince1970) > 0.5 else {
+                continue
+            }
+
+            try? await scheduleNotification(
+                identifier: request.identifier,
+                title: podcastTitle,
+                body: "\(item.title) starts now.",
+                date: start,
+                userInfo: [
+                    "podcastFeed": podcastFeed.absoluteString,
+                    "liveItem": item.id,
+                    "liveStart": start.timeIntervalSince1970
+                ]
+            )
+        }
+    }
 }
 
 

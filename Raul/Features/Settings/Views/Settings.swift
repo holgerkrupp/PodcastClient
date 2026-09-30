@@ -15,6 +15,7 @@ import mp3ChapterReader
 
 extension Notification.Name {
     static let podcastSettingsDidChange = Notification.Name("podcastSettingsDidChange")
+    static let livePodcastNotificationTapped = Notification.Name("livePodcastNotificationTapped")
 }
 
 
@@ -64,6 +65,9 @@ class PodcastSettings {
     var enableTranscriptions: Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
+    /// Master gate for all live-podcast discovery, live-specific refresh work,
+    /// and companion actions. Notification opt-in remains separate.
+    var showLivePodcasts: Bool = true
     var enableLiveItemNotifications: Bool = true
     /// Upper limit for each generated transcript snippet to improve playback alignment.
     var transcriptionMaxSnippetDurationSeconds: Double = 1.2

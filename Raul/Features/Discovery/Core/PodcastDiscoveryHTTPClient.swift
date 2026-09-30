@@ -135,6 +135,54 @@ struct PodcastDiscoveryHTTPClient: Sendable {
         }
     }
 
+    func json<Value: Decodable & Sendable>(
+        _ type: Value.Type,
+        request: URLRequest,
+        decoder: JSONDecoder = JSONDecoder()
+    ) async throws -> Value {
+        do {
+            let data = try await data(for: request, expecting: .json)
+            return try decoder.decode(Value.self, from: data)
+        } catch let error as PodcastDiscoveryError {
+            throw error
+        } catch {
+            throw PodcastDiscoveryError.parsingFailed
+        }
+    }
+
+    private func data(
+        for request: URLRequest,
+        expecting expectedContent: ExpectedContent
+    ) async throws -> Data {
+        var request = request
+        request.timeoutInterval = timeout
+        request.setValue(expectedContent.headerValue, forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await transport(request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            throw PodcastDiscoveryError.unavailable
+        }
+
+        try Task.checkCancellation()
+        if let httpResponse = response as? HTTPURLResponse {
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                throw PodcastDiscoveryError.unavailable
+            }
+            guard expectedContent.accepts(httpResponse.value(forHTTPHeaderField: "Content-Type")) else {
+                throw PodcastDiscoveryError.invalidResponse
+            }
+        }
+        guard data.isEmpty == false else { throw PodcastDiscoveryError.invalidResponse }
+        return data
+    }
+
     func markup(from url: URL, refresh: Bool = false) async throws -> String {
         let data = try await data(from: url, expecting: .markup, refresh: refresh)
 

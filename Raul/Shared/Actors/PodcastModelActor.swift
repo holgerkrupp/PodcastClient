@@ -165,6 +165,22 @@ actor PodcastModelActor {
         return identifiers
     }
 
+    private func shownoteEnrichmentSources(for podcast: Podcast) -> [String] {
+        var sources: [String] = []
+        if let description = podcast.desc {
+            sources.append(description)
+        }
+        for episode in podcast.episodes ?? [] {
+            if let content = episode.content {
+                sources.append(content)
+            }
+            if let description = episode.desc {
+                sources.append(description)
+            }
+        }
+        return sources
+    }
+
     private func reportProgress(
         _ update: SubscriptionProgressUpdate,
         using progressHandler: SubscriptionProgressHandler?
@@ -602,6 +618,7 @@ actor PodcastModelActor {
             await updateLastRefresh(for: finalMeta.persistentModelID)
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
+            await reconcileLiveNotifications(for: finalPodcast)
             return true
         } catch {
             if let metaIDRef {
@@ -710,6 +727,7 @@ actor PodcastModelActor {
         let knownEpisodeIdentifiers = force == true
             ? KnownPodcastEpisodeIdentifiers()
             : knownEpisodeIdentifiers(for: podcast)
+        let storedEnrichmentSources = shownoteEnrichmentSources(for: podcast)
 
         // ⚠️ After this point: do not use `podcast` directly across awaits
         // ----------------------------------------------------------------
@@ -755,6 +773,7 @@ actor PodcastModelActor {
                     }
                     modelContext.saveIfNeeded()
                 }
+                await ShownoteEnrichmentService.shared.enqueue(htmlSources: storedEnrichmentSources)
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
                 logRefreshResult("not-modified")
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
@@ -816,6 +835,22 @@ actor PodcastModelActor {
                 progress: progress
             )
 
+            var enrichmentSources: [String] = []
+            if let description = fullPodcast["description"] as? String {
+                enrichmentSources.append(description)
+            }
+            if let episodes = fullPodcast["episodes"] as? [[String: Any]] {
+                for episode in episodes {
+                    if let content = episode["content"] as? String {
+                        enrichmentSources.append(content)
+                    }
+                    if let description = episode["description"] as? String {
+                        enrichmentSources.append(description)
+                    }
+                }
+            }
+            await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
+
             if silent != true {
                 finalPodcast.message = nil
                 finalMeta.message = nil
@@ -826,6 +861,7 @@ actor PodcastModelActor {
             await updateLastRefresh(for: finalMeta.persistentModelID)
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
+            await reconcileLiveNotifications(for: finalPodcast)
             databaseDuration = databaseStartedAt.duration(to: .now)
             await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription complete"), using: progress)
             logRefreshResult("updated")
@@ -873,6 +909,21 @@ actor PodcastModelActor {
             logRefreshResult("failed")
             throw error
         }
+    }
+
+    private func reconcileLiveNotifications(for podcast: Podcast) async {
+        guard let feed = podcast.feed else { return }
+        let descriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
+        )
+        let globalSettings = try? modelContext.fetch(descriptor).first
+        let featureEnabled = globalSettings?.showLivePodcasts != false
+        await NotificationManager.shared.reconcileLiveNotifications(
+            podcastFeed: feed,
+            podcastTitle: podcast.title,
+            liveItems: podcast.liveItems,
+            featureEnabled: featureEnabled
+        )
     }
     
     func updateDetails(

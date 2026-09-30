@@ -86,7 +86,9 @@ private struct CachedPlaybackProgress: Codable {
 
 @MainActor
 private enum PlaybackProgressDefaultsStore {
-    private static let defaultsKey = "Player.cachedPlaybackProgress.v1"
+    private static let legacyDefaultsKey = "Player.cachedPlaybackProgress.v1"
+    private static let indexKey = "Player.cachedPlaybackProgress.index.v2"
+    private static let entryKeyPrefix = "Player.cachedPlaybackProgress.entry.v2."
     private static let pendingCompletionKey = "Player.pendingFinishedEpisode.v1"
     private static let defaults = UserDefaults.standard
 
@@ -97,12 +99,19 @@ private enum PlaybackProgressDefaultsStore {
     }
 
     static func cachedProgress(for episodeURL: URL) -> CachedPlaybackProgress? {
-        allCachedProgress()[episodeURL.absoluteString]
+        migrateLegacyIfNeeded()
+        guard let data = defaults.data(forKey: entryKey(for: episodeURL)) else { return nil }
+        return try? JSONDecoder().decode(CachedPlaybackProgress.self, from: data)
     }
 
     static func allCachedProgress() -> [String: CachedPlaybackProgress] {
-        guard let data = defaults.data(forKey: defaultsKey) else { return [:] }
-        return (try? JSONDecoder().decode([String: CachedPlaybackProgress].self, from: data)) ?? [:]
+        migrateLegacyIfNeeded()
+        let keys = defaults.stringArray(forKey: indexKey) ?? []
+        return keys.reduce(into: [:]) { result, episodeURLString in
+            guard let url = URL(string: episodeURLString),
+                  let cached = cachedProgress(for: url) else { return }
+            result[episodeURLString] = cached
+        }
     }
 
     /// Most recently updated cached entry, if any.
@@ -127,9 +136,8 @@ private enum PlaybackProgressDefaultsStore {
         chapterID: UUID?,
         chapterProgress: Double?
     ) {
-        var allProgress = allCachedProgress()
         let key = episodeURL.absoluteString
-        var cached = allProgress[key] ?? CachedPlaybackProgress(
+        var cached = cachedProgress(for: episodeURL) ?? CachedPlaybackProgress(
             playPosition: 0,
             maxPlayPosition: 0,
             chapterProgresses: [:],
@@ -142,14 +150,23 @@ private enum PlaybackProgressDefaultsStore {
             cached.chapterProgresses[chapterID.uuidString] = chapterProgress
         }
         cached.updatedAt = Date()
-        allProgress[key] = cached
-        save(allProgress)
+        guard let data = try? JSONEncoder().encode(cached) else { return }
+        defaults.set(data, forKey: entryKey(for: episodeURL))
+        var index = defaults.stringArray(forKey: indexKey) ?? []
+        if index.contains(key) == false { index.append(key) }
+        defaults.set(index, forKey: indexKey)
     }
 
     static func removeProgress(for episodeURL: URL) {
-        var allProgress = allCachedProgress()
-        allProgress.removeValue(forKey: episodeURL.absoluteString)
-        save(allProgress)
+        migrateLegacyIfNeeded()
+        defaults.removeObject(forKey: entryKey(for: episodeURL))
+        var index = defaults.stringArray(forKey: indexKey) ?? []
+        index.removeAll { $0 == episodeURL.absoluteString }
+        if index.isEmpty {
+            defaults.removeObject(forKey: indexKey)
+        } else {
+            defaults.set(index, forKey: indexKey)
+        }
     }
 
     static func savePendingCompletion(
@@ -175,15 +192,28 @@ private enum PlaybackProgressDefaultsStore {
         defaults.removeObject(forKey: pendingCompletionKey)
     }
 
-    private static func save(_ allProgress: [String: CachedPlaybackProgress]) {
-        guard allProgress.isEmpty == false else {
-            defaults.removeObject(forKey: defaultsKey)
-            return
-        }
+    private static func entryKey(for episodeURL: URL) -> String {
+        entryKeyPrefix + episodeURL.absoluteString
+    }
 
-        if let data = try? JSONEncoder().encode(allProgress) {
-            defaults.set(data, forKey: defaultsKey)
+    private static func migrateLegacyIfNeeded() {
+        guard let data = defaults.data(forKey: legacyDefaultsKey),
+              let legacy = try? JSONDecoder().decode(
+                  [String: CachedPlaybackProgress].self,
+                  from: data
+              ) else { return }
+
+        var index = defaults.stringArray(forKey: indexKey) ?? []
+        for (episodeURLString, cached) in legacy {
+            guard let url = URL(string: episodeURLString),
+                  let encoded = try? JSONEncoder().encode(cached) else { continue }
+            defaults.set(encoded, forKey: entryKey(for: url))
+            if index.contains(episodeURLString) == false {
+                index.append(episodeURLString)
+            }
         }
+        defaults.set(index, forKey: indexKey)
+        defaults.removeObject(forKey: legacyDefaultsKey)
     }
 }
 
@@ -238,6 +268,35 @@ class Player {
         let voiceEnhancementEnabled: Bool
     }
 
+    enum LivePlaybackState: Equatable, Sendable {
+        case connecting
+        case live
+        case buffering
+        case paused
+        case ended
+        case failed(String)
+        case unsupported
+
+        var label: String {
+            switch self {
+            case .connecting: "Connecting"
+            case .live: "Live"
+            case .buffering: "Buffering"
+            case .paused: "Paused"
+            case .ended: "Ended"
+            case .failed: "Playback failed"
+            case .unsupported: "Unsupported stream"
+            }
+        }
+    }
+
+    private struct SuspendedPlaybackContext {
+        let episodeURL: URL
+        let wasPlaying: Bool
+        let position: Double
+        let mediaSelection: PlaybackMediaSelection
+    }
+
     private static let playSessionRecoveryLastRunKey = "PlaySessionRecoveryLastRun"
     private static let playSessionRecoveryMinimumInterval: TimeInterval = 60 * 60 * 12
     private static let playSessionRecoveryStartupDelayNanoseconds: UInt64 = 15_000_000_000
@@ -279,6 +338,10 @@ class Player {
     private var settingsChangeObserver: NSObjectProtocol?
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
+    private var liveStreamStatusObservation: NSKeyValueObservation?
+    private var liveStreamSources: [PodcastLiveItem.StreamSource] = []
+    private var liveStreamSourceIndex = 0
+    private var suspendedPlaybackContext: SuspendedPlaybackContext?
     private var currentPlaybackUsesAlternateMedia = false
     private var playbackLoadGeneration: UInt64 = 0
     private var hasStartedRecovery = false
@@ -412,6 +475,12 @@ class Player {
         }
     }
     var isPlayerSheetPresented: Bool = false
+    private(set) var livePlaybackState: LivePlaybackState = .ended
+    private(set) var currentLiveItem: PodcastLiveItem?
+
+    var isLivePlayback: Bool {
+        currentPlaybackSource == .liveRemote
+    }
     
     var chapterProgress: Double?
     var currentChapter: Marker? {
@@ -1817,6 +1886,12 @@ class Player {
         )
 
         currentEpisode = episode
+        currentLiveItem = nil
+        if currentPlaybackSource == .liveRemote {
+            suspendedPlaybackContext = nil
+            liveStreamStatusObservation?.invalidate()
+            liveStreamStatusObservation = nil
+        }
         currentEpisodeURL = episodeURL
         finishingEpisodeURL = nil
         currentPlaybackPlaylistID = playbackPlaylistID
@@ -2069,35 +2144,41 @@ class Player {
         }
     }
 
-    func playLiveStream(
-        url: URL,
-        title: String,
+    func playLiveItem(
+        _ liveItem: PodcastLiveItem,
         podcastTitle: String,
         artworkURL: URL?,
         link: URL?
     ) async {
-        if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
-            await unloadEpisode(episodeURL: currentEpisodeURL)
-        } else {
-            stopPlaybackUpdates()
+        guard liveItem.preferredStream != nil else {
+            livePlaybackState = .unsupported
+            return
         }
 
+        await suspendNormalPlaybackIfNeeded()
+        let preferredStream = liveItem.preferredStream!
+        liveStreamSources = [preferredStream]
+            + liveItem.streamSources.filter { $0 != preferredStream }
+        liveStreamSourceIndex = 0
+        let firstURL = preferredStream.url
+
         let liveEpisode = Episode(
-            guid: url.absoluteString,
-            title: title,
+            guid: liveItem.id,
+            title: liveItem.title,
             publishDate: nil,
-            url: url,
+            url: firstURL,
             podcast: nil,
             duration: nil,
             author: podcastTitle
         )
-        liveEpisode.imageURL = artworkURL
-        liveEpisode.link = link
-
+        liveEpisode.imageURL = liveItem.artworkURL ?? artworkURL
+        liveEpisode.link = link ?? liveItem.link
         currentEpisode = liveEpisode
-        currentEpisodeURL = url
+        currentLiveItem = liveItem
+        currentEpisodeURL = firstURL
         currentPlaybackPlaylistID = nil
         currentPlaybackSource = .liveRemote
+        livePlaybackState = .connecting
         currentChapter = nil
         chapterProgress = nil
         nextChapter = nil
@@ -2107,12 +2188,143 @@ class Player {
         playPosition = 0
         lastProgressSaveDate = .distantPast
 
-        let item = AVPlayerItem(url: url)
+        await installLiveStreamSource(at: liveStreamSourceIndex)
+        isPlayerSheetPresented = true
+    }
+
+    /// Compatibility entry point for callers that only have a single URL.
+    func playLiveStream(
+        url: URL,
+        title: String,
+        podcastTitle: String,
+        artworkURL: URL?,
+        link: URL?
+    ) async {
+        let item = PodcastLiveItem(
+            id: url.absoluteString,
+            guid: nil,
+            title: title,
+            status: .live,
+            start: nil,
+            end: nil,
+            summary: nil,
+            artworkURL: artworkURL,
+            link: link,
+            streamSources: [PodcastLiveItem.StreamSource(url: url, isDefault: true)],
+            chat: [],
+            contentLinks: []
+        )
+        await playLiveItem(item, podcastTitle: podcastTitle, artworkURL: artworkURL, link: link)
+    }
+
+    private func suspendNormalPlaybackIfNeeded() async {
+        if currentPlaybackSource == .liveRemote {
+            stopPlaybackUpdates()
+            engine.pause()
+            liveStreamStatusObservation?.invalidate()
+            liveStreamStatusObservation = nil
+            return
+        }
+
+        guard let episodeURL = currentEpisodeURL else { return }
+        playPosition = sanitizedPosition(engine.currentTime())
+        await saveCurrentPlaybackState(force: true)
+        suspendedPlaybackContext = SuspendedPlaybackContext(
+            episodeURL: episodeURL,
+            wasPlaying: isPlaying,
+            position: playPosition,
+            mediaSelection: mediaSelection
+        )
+        stopPlaybackUpdates()
+        engine.pause()
+        isPlaying = false
+    }
+
+    private func installLiveStreamSource(at index: Int) async {
+        guard liveStreamSources.indices.contains(index) else {
+            livePlaybackState = .failed("No playable live source is available")
+            return
+        }
+        liveStreamSourceIndex = index
+        let source = liveStreamSources[index]
+        guard source.url.scheme?.lowercased() == "http" || source.url.scheme?.lowercased() == "https" else {
+            await tryNextLiveStreamSource(after: index, error: "Unsupported live stream URL")
+            return
+        }
+
+        liveStreamStatusObservation?.invalidate()
+        liveStreamStatusObservation = nil
+        currentEpisodeURL = source.url
+        currentPlaybackSource = .liveRemote
+        livePlaybackState = .connecting
+        let item = AVPlayerItem(url: source.url)
+        liveStreamStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.currentPlaybackSource == .liveRemote else { return }
+                switch item.status {
+                case .readyToPlay:
+                    if self.livePlaybackState == .connecting {
+                        self.livePlaybackState = .live
+                    }
+                case .failed:
+                    await self.tryNextLiveStreamSource(
+                        after: index,
+                        error: item.error?.localizedDescription ?? "The live stream failed"
+                    )
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
         await resetPlaybackAudioProcessing(for: item)
         engine.replaceCurrentItem(with: item)
         setupStaticNowPlayingInfo()
         play()
-        isPlayerSheetPresented = true
+    }
+
+    private func tryNextLiveStreamSource(after index: Int, error: String) async {
+        guard currentPlaybackSource == .liveRemote else { return }
+        let nextIndex = liveStreamSources[(index + 1)...].firstIndex { source in
+            source.url.scheme?.lowercased() == "http" || source.url.scheme?.lowercased() == "https"
+        }
+        guard let nextIndex else {
+            livePlaybackState = .failed(error)
+            isPlaying = false
+            stopPlaybackUpdates()
+            return
+        }
+        await installLiveStreamSource(at: nextIndex)
+    }
+
+    func endLivePlayback() async {
+        guard currentPlaybackSource == .liveRemote else { return }
+        let context = suspendedPlaybackContext
+        suspendedPlaybackContext = nil
+        liveStreamStatusObservation?.invalidate()
+        liveStreamStatusObservation = nil
+        liveStreamSources = []
+        stopPlaybackUpdates()
+        engine.pause()
+        currentPlaybackSource = nil
+        currentEpisode = nil
+        currentEpisodeURL = nil
+        currentLiveItem = nil
+        livePlaybackState = .ended
+        isPlaying = false
+
+        if let context {
+            await playEpisode(
+                context.episodeURL,
+                playDirectly: context.wasPlaying,
+                startingAt: context.position,
+                mediaSelection: context.mediaSelection,
+                skipProtectionBehavior: .ignore
+            )
+        } else {
+            isPlayerSheetPresented = false
+        }
     }
     
     var progress: Double {
@@ -2162,6 +2374,28 @@ class Player {
     }
 
     private func syncPlaybackStateFromObservedPlayer(_ observedPlayer: AVPlayer) {
+        if currentPlaybackSource == .liveRemote {
+            switch observedPlayer.timeControlStatus {
+            case .waitingToPlayAtSpecifiedRate:
+                livePlaybackState = .buffering
+            case .playing:
+                livePlaybackState = .live
+            case .paused:
+                switch livePlaybackState {
+                case .ended, .failed(_), .unsupported:
+                    break
+                default:
+                    livePlaybackState = .paused
+                }
+            @unknown default:
+                break
+            }
+            if observedPlayer.rate > 0 {
+                isPlaying = true
+            }
+            return
+        }
+
         if observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing {
             finishEpisodeTransitionBackgroundTask()
             if isPlaying == false {
@@ -2361,6 +2595,9 @@ class Player {
                     }
                 case .activationFailed(let description):
                     AppDiagnostics.log("Audio Session Activation Failed: \(description)")
+                    if self.currentPlaybackSource == .liveRemote {
+                        self.livePlaybackState = .failed(description)
+                    }
                     if self.isPlaying {
                         self.transitionToPaused(pauseEngine: true)
                     }
@@ -2398,15 +2635,18 @@ class Player {
     }
     
     func skipback(){
+        guard currentPlaybackSource != .liveRemote else { return }
         jumpPlaypostion(by: -skipBackStep.seconds, protectLargeSeek: false)
         
     }
     
     func skipforward(){
+        guard currentPlaybackSource != .liveRemote else { return }
         jumpPlaypostion(by: skipForwardStep.seconds, protectLargeSeek: false)
     }
 
     func remoteSkipBack() {
+        guard currentPlaybackSource != .liveRemote else { return }
         if remoteSkipBackUsesChapter {
             Task {
                 await skipToPreviousChapter(protectLargeSeek: false)
@@ -2418,6 +2658,7 @@ class Player {
     }
 
     func remoteSkipForward() {
+        guard currentPlaybackSource != .liveRemote else { return }
         if remoteSkipForwardUsesChapter {
             Task {
                 await skipToNextChapter(protectLargeSeek: false)
@@ -2428,8 +2669,9 @@ class Player {
         jumpPlaypostion(by: skipForwardStep.seconds, protectLargeSeek: false)
     }
     
-     func jumpPlaypostion(by seconds: Double, protectLargeSeek: Bool = true) {
-         Task{
+    func jumpPlaypostion(by seconds: Double, protectLargeSeek: Bool = true) {
+        guard currentPlaybackSource != .liveRemote else { return }
+        Task{
              let secondsToAdd = CMTimeMakeWithSeconds(seconds,preferredTimescale: 1)
              
              let now = CMTimeMakeWithSeconds(playPosition,preferredTimescale: 1)
@@ -2439,6 +2681,7 @@ class Player {
     }
 
     func jumpTo(time: Double, protectLargeSeek: Bool = true) async {
+        guard currentPlaybackSource != .liveRemote else { return }
         let safeTime = max(0, time)
         if protectLargeSeek,
            pendingSkipProtectionOrigin == nil,
@@ -2526,6 +2769,14 @@ class Player {
         observedDuration: Double? = nil,
         trustedEndEvent: Bool = false
     ) {
+        if currentPlaybackSource == .liveRemote {
+            livePlaybackState = .ended
+            isPlaying = false
+            stopPlaybackUpdates()
+            updateNowPlayingInfo()
+            return
+        }
+
         let episodeDuration = sanitizedPosition(currentEpisode?.duration)
         let itemDuration = sanitizedPosition(observedDuration)
         let observedPlaybackPosition = sanitizedPosition(observedPosition)
@@ -2954,11 +3205,13 @@ class Player {
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
             MPMediaItemPropertyArtist:  episode.displayPodcastTitle ?? episode.podcast?.author ?? episode.author ?? "",
-            MPMediaItemPropertyPlaybackDuration: episode.duration ?? 0,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: playPosition,
             MPNowPlayingInfoPropertyPlaybackRate: effectivePlaybackRate,
             MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
         ]
+        if let duration = episode.duration, duration.isFinite, duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
         if let artwork {
             info[MPMediaItemPropertyArtwork] = artwork
         }

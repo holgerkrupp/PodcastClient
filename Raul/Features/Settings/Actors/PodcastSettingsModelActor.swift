@@ -343,6 +343,7 @@ actor PodcastSettingsModelActor {
             newSettings.autoDownloadIncludesArchivedEpisodes = standardSettings.autoDownloadIncludesArchivedEpisodes
             newSettings.defaultPlaylistID = standardSettings.defaultPlaylistID
             newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
+            newSettings.showLivePodcasts = standardSettings.showLivePodcasts
             newSettings.enableLiveItemNotifications = standardSettings.enableLiveItemNotifications
             modelContext.insert(newSettings)
             podcast.settings = newSettings
@@ -578,6 +579,10 @@ actor PodcastSettingsModelActor {
         }
 
         return customSettings.enableLiveItemNotifications
+    }
+
+    func getShowLivePodcastsEnabled() async -> Bool {
+        await standardSettings().showLivePodcasts
     }
 
     func getArchiveFileRetentionDays(for podcastFeed: URL?) async -> Int {

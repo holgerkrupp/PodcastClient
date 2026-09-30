@@ -22,6 +22,12 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var migrationError: String?
     @Published private(set) var isInitializing = false
     @Published private(set) var isPreparingSplitStores = false
+    enum RuntimeStoreReadiness: Equatable {
+        case unopened
+        case settling
+        case ready
+    }
+    @Published private(set) var runtimeStoreReadiness: RuntimeStoreReadiness = .unopened
     @Published private(set) var isMigratingSplitStores = false
     @Published private(set) var requiresInitialCloudImport = false
     @Published private(set) var currentSplitStoreJobDescription: String?
@@ -65,8 +71,6 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static let cacheRecoveryVersion = 1
     nonisolated private static let cacheRecoveryVersionKey =
         "storeSplit.cacheOnlyLibraryRecoveryVersion"
-    nonisolated private static let lastImportedUserStateStampKey =
-        "storeSplit.lastImportedUserStateStamp"
     nonisolated private static let usedInMemoryProjectionKey =
         "storeSplit.usedInMemoryLibraryProjection"
     /// Migration version whose phases have all completed on this device.
@@ -314,6 +318,7 @@ class ModelContainerManager: ObservableObject {
             requiresInitialCloudImport = preparation.requiresInitialCloudImport
             if self.preparedContainer == nil {
                 self.preparedContainer = preparedContainer
+                self.runtimeStoreReadiness = .settling
                 CrashBreadcrumbs.shared.record("model_container_initialization_completed")
             }
             if Self.runtimeUsesCacheProjection {
@@ -352,6 +357,7 @@ class ModelContainerManager: ObservableObject {
                 "store_split_container_initialization_skipped",
                 details: "development_mode=legacy_only"
             )
+            runtimeStoreReadiness = .ready
             return
         }
         guard preparedUserStateContainer == nil || preparedCacheContainer == nil else {
@@ -406,11 +412,22 @@ class ModelContainerManager: ObservableObject {
         isPreparingSplitStores = false
 
         await buildRuntimeGraphIfNeeded()
+        runtimeStoreReadiness = .ready
+        CrashBreadcrumbs.shared.record("runtime_store_ready")
 
         CrashBreadcrumbs.shared.record(
             "store_split_container_initialization_completed",
             details: "user_state=\(preparedUserStateContainer != nil),cache=\(preparedCacheContainer != nil)"
         )
+    }
+
+    /// Application queries wait here instead of racing CloudKit metadata setup
+    /// immediately after the runtime container object is returned.
+    func waitUntilApplicationQueriesReady() async {
+        while runtimeStoreReadiness != .ready {
+            guard Task.isCancelled == false else { return }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     /// Brings the runtime library graph up to date once the split stores are
@@ -1067,8 +1084,7 @@ class ModelContainerManager: ObservableObject {
     var heavyStoreWorkMayRunInCurrentAppState: Bool {
         if isRunningBackgroundProcessingTask { return true }
 #if canImport(UIKit)
-        guard UIApplication.shared.applicationState == .background else { return true }
-        return Player.shared.isPlaying
+        return UIApplication.shared.applicationState != .background
 #else
         return true
 #endif
@@ -1696,17 +1712,16 @@ class ModelContainerManager: ObservableObject {
             return emptyResult
         }
 
-        // A full projection pass walks every synchronized row and rebuilds the
-        // listening stats. That is hundreds of megabytes of SQLite writes on a
-        // large library, and reconciles are triggered by launch, foreground, and
-        // every CloudKit import event — so repeating it when nothing arrived
-        // dirtied ~17 GB overnight. Skip the pass unless UserState actually
-        // changed since the last complete import.
-        let watermark = latestUserStateChangeStamp(userStateContainer)
-        if authoritativePlaylists == false,
-           let watermark,
-           let lastImported = Self.lastImportedUserStateStamp,
-           watermark <= lastImported {
+        // Each synchronized stream has its own cursor. Playback progress must
+        // not unlock subscription, playlist, bookmark, preference, or history
+        // projections, and a no-op CloudKit notification must not walk the whole
+        // library again.
+        let changeStamps = latestUserStateChangeStamps(userStateContainer)
+        let changedStreams = StoreSplitImportCursorStore.changedStreams(
+            current: changeStamps,
+            force: authoritativePlaylists
+        )
+        if changedStreams.isEmpty {
             CrashBreadcrumbs.shared.record(
                 "store_split_user_state_import_skipped",
                 details: "no_user_state_changes"
@@ -1723,7 +1738,7 @@ class ModelContainerManager: ObservableObject {
         lastUserStateImportAt = .now
         CrashBreadcrumbs.shared.record(
             "store_split_user_state_import_started",
-            details: "authoritative_playlists=\(authoritativePlaylists),refresh_missing_feeds=\(refreshMissingFeeds)"
+            details: "streams=\(changedStreams.map(\.rawValue).sorted().joined(separator: ",")),authoritative_playlists=\(authoritativePlaylists),refresh_missing_feeds=\(refreshMissingFeeds)"
         )
         let task = Task {
             // The importer's SQLite write is the checkpoint-critical section, so
@@ -1742,7 +1757,8 @@ class ModelContainerManager: ObservableObject {
                         projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
                             .projectsListeningHistoryToLegacy,
                         episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
-                            .episodeStateProjectionRecencyCutoff
+                            .episodeStateProjectionRecencyCutoff,
+                        changedStreams: changedStreams
                     )
                 }
             }
@@ -1814,7 +1830,10 @@ class ModelContainerManager: ObservableObject {
             modelContainer: userStateContainer
         )
         if result.failed == 0, result.interruptedByPlayback == false {
-            Self.lastImportedUserStateStamp = watermark
+            StoreSplitImportCursorStore.commit(
+                latestUserStateChangeStamps(userStateContainer),
+                streams: changedStreams
+            )
         }
 #if DEBUG
         StoreSplitMigrationDebugLog.record(
@@ -1825,41 +1844,102 @@ class ModelContainerManager: ObservableObject {
         return result
     }
 
-    /// Newest `updatedAt` across the synchronized models — a cheap change token
-    /// for "has anything arrived since the last import?".
-    private func latestUserStateChangeStamp(_ container: ModelContainer) -> Date? {
+    /// Newest timestamp for each synchronized stream. Keeping these separate is
+    /// important: a two-second episode-position update must not invalidate the
+    /// cursor for every other stream.
+    private func latestUserStateChangeStamps(
+        _ container: ModelContainer
+    ) -> [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot] {
         let context = ModelContext(container)
-        func newest<Model: PersistentModel>(
-            _ keyPath: KeyPath<Model, Date> & Sendable
-        ) -> Date? {
-            var descriptor = FetchDescriptor<Model>(
-                sortBy: [SortDescriptor(keyPath, order: .reverse)]
+        func snapshot<Model>(
+            latest: () -> Model?,
+            date: (Model) -> Date,
+            idsAtDate: (Date) -> [String]
+        ) -> StoreSplitUserStateChangeSnapshot {
+            guard let latest = latest() else {
+                return StoreSplitUserStateChangeSnapshot(date: nil, recordIDsAtTimestamp: [])
+            }
+            let latestDate = date(latest)
+            return StoreSplitUserStateChangeSnapshot(
+                date: latestDate,
+                recordIDsAtTimestamp: idsAtDate(latestDate).sorted()
             )
-            descriptor.fetchLimit = 1
-            return (try? context.fetch(descriptor))?.first?[keyPath: keyPath]
         }
-        return [
-            newest(\SubscriptionSync.updatedAt),
-            newest(\EpisodeStateSync.updatedAt),
-            newest(\PlaylistSync.updatedAt),
-            newest(\PlaylistEntrySync.updatedAt),
-            newest(\QueueEntrySync.updatedAt),
-            newest(\BookmarkSync.updatedAt),
-            newest(\PodcastPreferenceSync.updatedAt),
-            newest(\ListeningHistorySync.updatedAt),
-            newest(\ListeningBaselineSync.capturedAt)
-        ].compactMap { $0 }.max()
-    }
 
-    nonisolated private static var lastImportedUserStateStamp: Date? {
-        get {
-            (UserDefaults(suiteName: appGroupID) ?? .standard)
-                .object(forKey: lastImportedUserStateStampKey) as? Date
+        func latest<Model: PersistentModel>(
+            _ type: Model.Type,
+            sort: SortDescriptor<Model>
+        ) -> Model? {
+            var descriptor = FetchDescriptor<Model>(sortBy: [sort])
+            descriptor.fetchLimit = 1
+            return try? context.fetch(descriptor).first
         }
-        set {
-            (UserDefaults(suiteName: appGroupID) ?? .standard)
-                .set(newValue, forKey: lastImportedUserStateStampKey)
-        }
+
+        return [
+            .subscriptions: snapshot(
+                latest: { latest(SubscriptionSync.self, sort: SortDescriptor(\SubscriptionSync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<SubscriptionSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .episodeState: snapshot(
+                latest: { latest(EpisodeStateSync.self, sort: SortDescriptor(\EpisodeStateSync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<EpisodeStateSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .playlists: snapshot(
+                latest: { latest(PlaylistSync.self, sort: SortDescriptor(\PlaylistSync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<PlaylistSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .playlistEntries: snapshot(
+                latest: { latest(PlaylistEntrySync.self, sort: SortDescriptor(\PlaylistEntrySync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<PlaylistEntrySync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .queueEntries: snapshot(
+                latest: { latest(QueueEntrySync.self, sort: SortDescriptor(\QueueEntrySync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<QueueEntrySync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .bookmarks: snapshot(
+                latest: { latest(BookmarkSync.self, sort: SortDescriptor(\BookmarkSync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<BookmarkSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .preferences: snapshot(
+                latest: { latest(PodcastPreferenceSync.self, sort: SortDescriptor(\PodcastPreferenceSync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<PodcastPreferenceSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .listeningHistory: snapshot(
+                latest: { latest(ListeningHistorySync.self, sort: SortDescriptor(\ListeningHistorySync.updatedAt, order: .reverse)) },
+                date: { $0.updatedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<ListeningHistorySync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                }
+            ),
+            .listeningBaseline: snapshot(
+                latest: { latest(ListeningBaselineSync.self, sort: SortDescriptor(\ListeningBaselineSync.capturedAt, order: .reverse)) },
+                date: { $0.capturedAt },
+                idsAtDate: { date in
+                    (try? context.fetch(FetchDescriptor<ListeningBaselineSync>(predicate: #Predicate { $0.capturedAt == date })))?.map(\.id) ?? []
+                }
+            )
+        ]
     }
 
     /// Runs `body` while holding a UIKit background-task assertion named

@@ -444,6 +444,16 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         defer { completionHandler() }
 
         let userInfo = response.notification.request.content.userInfo
+        if let podcastFeed = userInfo["podcastFeed"] as? String,
+           let liveItem = userInfo["liveItem"] as? String {
+            NotificationCenter.default.post(
+                name: .livePodcastNotificationTapped,
+                object: nil,
+                userInfo: ["podcastFeed": podcastFeed, "liveItem": liveItem]
+            )
+            return
+        }
+
         guard
             let urlString = userInfo["url"] as? String,
             let url = URL(string: urlString),

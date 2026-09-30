@@ -103,6 +103,16 @@
         }
       }
     },
+    "%@ %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@, %3$@"
+          }
+        }
+      }
+    },
     "%@ complete" : {
       "localizations" : {
         "de" : {
@@ -1832,6 +1842,9 @@
         }
       }
     },
+    "Companion Links" : {
+
+    },
     "Consecutive failures" : {
       "localizations" : {
         "de" : {
@@ -1881,6 +1894,9 @@
           }
         }
       }
+    },
+    "Couldn’t Add Episode" : {
+
     },
     "Couldn’t add podcast from URL" : {
 
@@ -2444,6 +2460,9 @@
           }
         }
       }
+    },
+    "Dismiss" : {
+
     },
     "Diwali" : {
       "localizations" : {
@@ -4214,6 +4233,9 @@
         }
       }
     },
+    "Listen Live" : {
+
+    },
     "Listen to this episode with others using SharePlay" : {
       "localizations" : {
         "de" : {
@@ -4314,6 +4336,9 @@
         }
       }
     },
+    "LIVE" : {
+
+    },
     "Live event information supported" : {
       "localizations" : {
         "de" : {
@@ -4373,6 +4398,12 @@
           }
         }
       }
+    },
+    "Live podcast discovery is disabled in the global settings." : {
+
+    },
+    "Live Podcasts" : {
+
     },
     "Load" : {
       "localizations" : {
@@ -5091,7 +5122,6 @@
       }
     },
     "Next predicted release: Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6060,6 +6090,9 @@
         }
       }
     },
+    "Opens publisher-provided chat and live companion pages" : {
+
+    },
     "Opens settings related to playback" : {
       "localizations" : {
         "de" : {
@@ -6109,6 +6142,9 @@
           }
         }
       }
+    },
+    "Opens the original web page" : {
+
     },
     "Opens the share sheet for this episode" : {
       "localizations" : {
@@ -8075,6 +8111,9 @@
         }
       }
     },
+    "Return to Previous Episode" : {
+
+    },
     "Return to Where You Were" : {
 
     },
@@ -8300,6 +8339,9 @@
           }
         }
       }
+    },
+    "Search Podcasts" : {
+
     },
     "Search podcasts, episodes, chapters, and transcripts" : {
       "localizations" : {
@@ -8541,6 +8583,9 @@
         }
       }
     },
+    "Shared page" : {
+
+    },
     "Sharing Unavailable" : {
       "localizations" : {
         "de" : {
@@ -8630,6 +8675,9 @@
           }
         }
       }
+    },
+    "Show Live Podcasts" : {
+
     },
     "Show menu bar player" : {
       "localizations" : {
@@ -9319,6 +9367,9 @@
         }
       }
     },
+    "Stops live playback and restores the previous episode and its position" : {
+
+    },
     "Storage" : {
       "localizations" : {
         "de" : {
@@ -9822,7 +9873,11 @@
         }
       }
     },
+    "This podcast currently does not advertise live event information." : {
+
+    },
     "This podcast currently does not support Live event information." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10430,6 +10485,9 @@
         }
       }
     },
+    "UPCOMING" : {
+
+    },
     "Update inbox" : {
       "localizations" : {
         "de" : {
@@ -10819,6 +10877,9 @@
           }
         }
       }
+    },
+    "When this is off, live and upcoming broadcasts, companion actions, reminders, and live-specific refresh work are disabled. Normal podcast refresh continues." : {
+
     },
     "When this is off, no podcast can schedule notifications for podcast:liveItem events." : {
       "localizations" : {

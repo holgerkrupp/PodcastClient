@@ -33,6 +33,10 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     var alternativeFeeds: [PodcastAlternativeFeed] = []
     var optionalTags: PodcastNamespaceOptionalTags?
 
+    var liveItems: [PodcastLiveItem] {
+        optionalTags?.podcastLiveItems(baseURL: url) ?? []
+    }
+
     // Optional metadata restored from OPML custom attributes.
     var importedLastRefresh: Date?
     var importedLastEpisodeDate: Date?

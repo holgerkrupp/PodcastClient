@@ -40,8 +40,19 @@ final class ShownotesEnrichmentTests: XCTestCase {
     }
 
     func testMalformedAndNonHTTPURLsAreIgnored() {
-        let html = "not a url https:// and mailto:test@example.com"
+        let html = "not a url https:// and ftp://example.com/file"
         XCTAssertTrue(ShownoteLinkExtractor.extract(from: html).isEmpty)
+    }
+
+    func testPlainEmailAddressesBecomeMailtoLinksWithoutEnrichment() {
+        let html = "Questions? team@example.com or support@example.org."
+        let document = ShownoteDocument(html: html)
+
+        XCTAssertEqual(document.candidates.count, 2)
+        XCTAssertTrue(document.candidates.allSatisfy { $0.occurrenceKind == .email })
+        XCTAssertTrue(document.candidates.allSatisfy { $0.originalURL.scheme == "mailto" })
+        XCTAssertTrue(document.linkifiedHTML.contains("mailto:team@example.com"))
+        XCTAssertTrue(document.linkifiedHTML.contains("mailto:support@example.org"))
     }
 
     func testDirectFeedIsRecognizedAndRepeatedResolutionUsesCache() async throws {
@@ -81,6 +92,61 @@ final class ShownotesEnrichmentTests: XCTestCase {
         XCTAssertEqual(feedRequestCount, 1)
     }
 
+    func testInvalidFeedShapedResponseStaysAWebPreview() async throws {
+        let url = URL(string: "https://example.com/techcrunch")!
+        let html = "<html><head><meta property=\"og:title\" content=\"TechCrunch\"><meta property=\"og:description\" content=\"News\"><meta property=\"og:url\" content=\"https://techcrunch.com/article\"></head></html>"
+        let loader = FixtureShownoteLoader(resources: [url: .html(html, url: url)])
+        let service = ShownoteEnrichmentService(loader: loader)
+        let candidate = try XCTUnwrap(ShownoteLinkExtractor.extract(from: url.absoluteString).first)
+
+        let result = await service.resolve(candidate)
+
+        XCTAssertEqual(result.classification, .web)
+        XCTAssertNil(result.podcastFeed)
+        XCTAssertEqual(result.preview?.title, "TechCrunch")
+        XCTAssertEqual(result.preview?.description, "News")
+        XCTAssertEqual(result.finalURL?.absoluteString, "https://techcrunch.com/article")
+    }
+
+    func testMastodonProfileGetsItsOwnClassificationAndHandle() async throws {
+        let profileURL = URL(string: "https://social.example/@alice")!
+        let html = """
+        <html><head>
+        <meta name="application-name" content="Mastodon">
+        <meta property="og:title" content="Alice Example">
+        <meta property="og:description" content="A profile">
+        <meta property="og:image" content="/avatars/alice.png">
+        <link rel="alternate" type="application/activity+json" href="/users/alice">
+        </head></html>
+        """
+        let loader = FixtureShownoteLoader(resources: [profileURL: .html(html, url: profileURL)])
+        let service = ShownoteEnrichmentService(loader: loader)
+        let candidate = try XCTUnwrap(ShownoteLinkExtractor.extract(from: profileURL.absoluteString).first)
+
+        let result = await service.resolve(candidate)
+
+        XCTAssertEqual(result.classification, .mastodon)
+        XCTAssertNil(result.podcastFeed)
+        XCTAssertEqual(result.preview?.handle, "@alice@social.example")
+        XCTAssertEqual(result.preview?.imageURL?.absoluteString, "https://social.example/avatars/alice.png")
+        XCTAssertEqual(result.finalURL?.absoluteString, profileURL.absoluteString)
+    }
+
+    func testContentBlocksDoNotLeaveEmptyListItemsAroundEnrichedLinks() throws {
+        let html = "<ul><li>Read this first</li><li><a href=\"https://example.com/nextcloud\">Nextcloud</a></li><li>Read this last</li></ul>"
+        let document = ShownoteDocument(html: html)
+
+        let fragments = document.blocks.compactMap { block -> String? in
+            guard case .html(_, let value) = block else { return nil }
+            return value
+        }
+
+        XCTAssertEqual(document.blocks.count, 3)
+        XCTAssertFalse(fragments.contains { $0.replacingOccurrences(of: #"<[^>]*>"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        XCTAssertFalse(fragments.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "<ul><li>" })
+        XCTAssertFalse(fragments.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "</li></ul>" })
+    }
+
     func testManyCandidatesAreBoundedAndNegativeResultsAreCached() async throws {
         let urls = (0..<8).map { URL(string: "https://example.com/page\($0)")! }
         let resources = Dictionary(uniqueKeysWithValues: urls.map { ($0, FixtureShownoteResource.html("<html>not a podcast</html>", url: $0)) })
@@ -96,6 +162,25 @@ final class ShownotesEnrichmentTests: XCTestCase {
 
         _ = await service.resolve(candidates[0])
         let requestCount = await loader.count(for: urls[0])
+        XCTAssertEqual(requestCount, 1)
+    }
+
+    func testCachedLookupNeverStartsNetworkWork() async throws {
+        let url = URL(string: "https://example.com/cached-feed.xml")!
+        let loader = FixtureShownoteLoader(resources: [url: .rss(title: "Cached Show", url: url)])
+        let service = ShownoteEnrichmentService(loader: loader)
+        let candidate = try XCTUnwrap(ShownoteLinkExtractor.extract(from: url.absoluteString).first)
+
+        let initiallyCached = await service.cachedResults(for: [candidate])
+        let initialRequestCount = await loader.count(for: url)
+        XCTAssertTrue(initiallyCached.isEmpty)
+        XCTAssertEqual(initialRequestCount, 0)
+
+        _ = await service.resolve(candidate)
+        let cached = await service.cachedResults(for: [candidate])
+        let requestCount = await loader.count(for: url)
+
+        XCTAssertEqual(cached.count, 1)
         XCTAssertEqual(requestCount, 1)
     }
 }

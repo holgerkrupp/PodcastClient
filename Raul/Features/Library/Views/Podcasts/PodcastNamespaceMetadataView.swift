@@ -306,12 +306,14 @@ struct PodcastNamespaceMetadataView: View {
     let optionalTags: PodcastNamespaceOptionalTags?
     var title: String = "Metadata"
     var hidesRenderableValueBlocks: Bool = false
+    var showsLiveMetadata: Bool = true
     @State private var showDetails = false
 
     private var section: NamespaceDisplaySection? {
         NamespaceMetadataMapper.makeSection(
             from: optionalTags,
-            hidesRenderableValueBlocks: hidesRenderableValueBlocks
+            hidesRenderableValueBlocks: hidesRenderableValueBlocks,
+            showsLiveMetadata: showsLiveMetadata
         )
     }
 
@@ -645,7 +647,8 @@ private enum NamespaceMetadataMapper {
 
     static func makeSection(
         from optionalTags: PodcastNamespaceOptionalTags?,
-        hidesRenderableValueBlocks: Bool = false
+        hidesRenderableValueBlocks: Bool = false,
+        showsLiveMetadata: Bool = true
     ) -> NamespaceDisplaySection? {
         guard let optionalTags, optionalTags.isEmpty == false else {
             return nil
@@ -656,6 +659,7 @@ private enum NamespaceMetadataMapper {
         var rawDetailItems: [NamespaceDisplayItem] = []
 
         for key in summaryTagOrder {
+            guard showsLiveMetadata || Self.isLiveMetadataKey(key) == false else { continue }
             guard let nodes = tagNodes[key], nodes.isEmpty == false else { continue }
             for (index, node) in nodes.enumerated() {
                 guard let item = summaryItem(for: node, key: key, index: index) else { continue }
@@ -664,6 +668,7 @@ private enum NamespaceMetadataMapper {
         }
 
         for key in orderedDetailKeys(from: tagNodes) {
+            guard showsLiveMetadata || Self.isLiveMetadataKey(key) == false else { continue }
             guard let nodes = tagNodes[key], nodes.isEmpty == false else { continue }
             let item = NamespaceDisplayItem(
                 id: "detail-\(key)",
@@ -682,6 +687,10 @@ private enum NamespaceMetadataMapper {
         let detailItems = mergedItems(rawDetailItems, idPrefix: "detail")
         let section = NamespaceDisplaySection(summaryItems: summaryItems, detailItems: detailItems)
         return section.hasContent ? section : nil
+    }
+
+    private static func isLiveMetadataKey(_ key: String) -> Bool {
+        ["liveItem", "chat", "contentLink", "podping"].contains(key)
     }
 
     private static func summaryItem(for node: NamespaceNode, key: String, index: Int) -> NamespaceDisplayItem? {

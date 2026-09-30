@@ -55,7 +55,7 @@ enum ShownoteContentBlock: Identifiable, Sendable {
             let start = String.Index(utf16Offset: cursor, in: html)
             let candidateStart = String.Index(utf16Offset: range.location, in: html)
 
-            let prefix = String(html[start..<candidateStart])
+            let prefix = HTMLFragmentBoundary.normalized(String(html[start..<candidateStart]), isPrefix: true)
             if prefix.isEmpty == false {
                 blocks.append(.html(id: "html-\(index)-\(cursor)", value: prefix))
             }
@@ -65,12 +65,40 @@ enum ShownoteContentBlock: Identifiable, Sendable {
 
         if cursor < html.utf16.count {
             let start = String.Index(utf16Offset: cursor, in: html)
-            let suffix = String(html[start...])
+            let suffix = HTMLFragmentBoundary.normalized(String(html[start...]), isPrefix: false)
             if suffix.isEmpty == false {
                 blocks.append(.html(id: "html-tail-\(cursor)", value: suffix))
             }
         }
         return blocks
+    }
+}
+
+/// Enriched cards are SwiftUI siblings of RichText fragments. Removing only
+/// empty structural wrappers at a fragment boundary keeps the surrounding
+/// HTML readable without producing an empty `<li>`/`<p>` for the card.
+private enum HTMLFragmentBoundary {
+    private static let blockNames = "address|article|aside|blockquote|dd|div|dl|dt|figcaption|figure|footer|h[1-6]|header|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul"
+
+    static func normalized(_ fragment: String, isPrefix: Bool) -> String {
+        var value = fragment
+        value = isPrefix ? removeTrailingOpeningBlocks(from: value) : removeLeadingClosingBlocks(from: value)
+
+        let visible = value
+            .replacingOccurrences(of: #"(?is)<[^>]*>"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"&(?:nbsp|#160);"#, with: " ", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return visible.isEmpty ? "" : value
+    }
+
+    private static func removeTrailingOpeningBlocks(from value: String) -> String {
+        let pattern = "(?is)(?:\\s*<(?!(?:/|!))(?:\(blockNames))\\b[^>]*>)+\\s*$"
+        return value.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+    }
+
+    private static func removeLeadingClosingBlocks(from value: String) -> String {
+        let pattern = "(?is)^\\s*(?:</(?:\(blockNames))\\s*>\\s*)+"
+        return value.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
     }
 }
 
@@ -126,19 +154,22 @@ enum ShownoteLinkExtractor {
             textRanges.append(ShownoteSourceRange(NSRange(location: cursor, length: html.utf16.count - cursor)))
         }
 
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
-            return candidates.sorted { $0.sourceRange.location < $1.sourceRange.location }
-        }
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let emailRegex = try? NSRegularExpression(
+            pattern: #"(?i)(?<![A-Z0-9._%+\-])[A-Z0-9._%+\-]+@[A-Z0-9\-]+(?:\.[A-Z0-9\-]+)+"#,
+            options: []
+        )
 
         for textRange in textRanges {
             let start = String.Index(utf16Offset: textRange.location, in: html)
             let end = String.Index(utf16Offset: textRange.end, in: html)
             let text = String(html[start..<end])
             let localRange = NSRange(location: 0, length: text.utf16.count)
-            for match in detector.matches(in: text, options: [], range: localRange) {
+            for match in detector?.matches(in: text, options: [], range: localRange) ?? [] {
                 guard match.resultType == .link, let detectedURL = match.url,
                       let rawRange = Range(match.range, in: text) else { continue }
-                guard detectedURL.scheme?.lowercased() == "http" || detectedURL.scheme?.lowercased() == "https" else { continue }
+                let scheme = detectedURL.scheme?.lowercased()
+                guard scheme == "http" || scheme == "https" || scheme == "mailto" else { continue }
 
                 let raw = String(text[rawRange])
                 let trimmed = trimSentencePunctuation(raw)
@@ -157,7 +188,33 @@ enum ShownoteLinkExtractor {
                         normalizedURL: normalized,
                         sourceRange: range,
                         publisherAnchorText: nil,
-                        occurrenceKind: .plainText,
+                        occurrenceKind: scheme == "mailto" ? .email : .plainText,
+                        displayText: trimmed,
+                        sourceMarkup: trimmed
+                    )
+                )
+            }
+
+            for match in emailRegex?.matches(in: text, options: [], range: localRange) ?? [] {
+                guard let rawRange = Range(match.range, in: text) else { continue }
+                let raw = String(text[rawRange])
+                let trimmed = trimSentencePunctuation(raw)
+                guard trimmed.isEmpty == false,
+                      let url = URL(string: "mailto:\(decodeHTMLEntities(trimmed))"),
+                      let normalized = ShownoteURLNormalization.normalized(url) else { continue }
+                let range = ShownoteSourceRange(
+                    NSRange(location: textRange.location + match.range.location, length: trimmed.utf16.count)
+                )
+                guard candidates.contains(where: { rangesOverlap($0.sourceRange, range) }) == false else { continue }
+
+                candidates.append(
+                    ShownoteLinkCandidate(
+                        id: occurrenceID(normalized: normalized, range: range),
+                        originalURL: url,
+                        normalizedURL: normalized,
+                        sourceRange: range,
+                        publisherAnchorText: nil,
+                        occurrenceKind: .email,
                         displayText: trimmed,
                         sourceMarkup: trimmed
                     )
@@ -236,7 +293,11 @@ enum ShownoteLinkExtractor {
 
 enum ShownoteURLNormalization {
     static func normalized(_ url: URL) -> URL? {
-        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+        guard let scheme = url.scheme?.lowercased() else { return nil }
+        if scheme == "mailto" {
+            return url
+        }
+        guard ["http", "https"].contains(scheme),
               let host = url.host?.lowercased(), host.isEmpty == false else { return nil }
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         components.scheme = scheme
@@ -251,7 +312,9 @@ enum ShownoteURLNormalization {
 
 enum ShownoteHTMLLinkifier {
     static func linkify(_ html: String, candidates: [ShownoteLinkCandidate]) -> String {
-        let plainCandidates = candidates.filter { $0.occurrenceKind == .plainText }
+        let plainCandidates = candidates.filter {
+            $0.occurrenceKind == .plainText || $0.occurrenceKind == .email
+        }
         guard plainCandidates.isEmpty == false else { return html }
         var result = html
         for candidate in plainCandidates.sorted(by: { $0.sourceRange.location > $1.sourceRange.location }) {

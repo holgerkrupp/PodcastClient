@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import RichText
 import ESADesignKit
 
 struct PodcastDetailView: View {
@@ -81,7 +80,7 @@ struct PodcastDetailView: View {
     }
 
     private var liveItems: [PodcastLiveItem] {
-        podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
+        podcast.liveItems
     }
 
     private var visibleFilteredEpisodes: [Episode] {
@@ -111,9 +110,7 @@ struct PodcastDetailView: View {
 
     private var nextLiveItem: PodcastLiveItem? {
         liveItems
-            .filter { liveItem in
-                liveItem.status != .ended && (liveItem.start ?? .distantPast) > Date()
-            }
+            .filter(\.isUpcoming)
             .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
             .first
     }
@@ -267,7 +264,7 @@ struct PodcastDetailView: View {
                                 .padding(.top, 4)
                         }
 
-                        if currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled) {
+                        if showLivePodcasts && (currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled)) {
                             PodcastLiveItemControlsView(
                                 currentLiveItem: currentLiveItem,
                                 nextLiveItem: nextLiveItem,
@@ -329,7 +326,10 @@ struct PodcastDetailView: View {
                             Text(copyright)
                                 .font(.caption)
                         }
-                        PodcastDetailMetadataSections(podcast: podcast)
+                        PodcastDetailMetadataSections(
+                            podcast: podcast,
+                            showsLiveMetadata: showLivePodcasts
+                        )
 
                         Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {
                             Task {
@@ -765,6 +765,7 @@ struct PodcastDetailView: View {
     }
 
     private func scheduleLiveNotification(for liveItem: PodcastLiveItem) async {
+        guard showLivePodcasts else { return }
         guard let start = liveItem.start else { return }
 
         do {
@@ -785,7 +786,8 @@ struct PodcastDetailView: View {
                 date: start,
                 userInfo: [
                     "podcastFeed": podcast.feed?.absoluteString ?? "",
-                    "liveItem": liveItem.id
+                    "liveItem": liveItem.id,
+                    "liveStart": start.timeIntervalSince1970
                 ]
             )
             await MainActor.run {
@@ -796,6 +798,10 @@ struct PodcastDetailView: View {
                 liveNotificationMessage = error.localizedDescription
             }
         }
+    }
+
+    private var showLivePodcasts: Bool {
+        defaultSettings.first?.showLivePodcasts != false
     }
 
 }
@@ -886,6 +892,7 @@ private struct PodcastAbandonedFeedCard: View {
 // PodcastDetailView body type, making re-renders far cheaper.
 private struct PodcastDetailMetadataSections: View {
     let podcast: Podcast
+    let showsLiveMetadata: Bool
 
     var body: some View {
         SocialView(socials: podcast.social)
@@ -895,20 +902,13 @@ private struct PodcastDetailMetadataSections: View {
         PodcastNamespaceMetadataView(
             optionalTags: podcast.optionalTags,
             title: "Podcast Metadata",
-            hidesRenderableValueBlocks: true
+            hidesRenderableValueBlocks: true,
+            showsLiveMetadata: showsLiveMetadata
         )
             .padding()
         if let desc = podcast.desc {
-#if os(iOS)
-            RichText(html: desc)
-                .linkColor(light: Color.secondary, dark: Color.secondary)
-                .backgroundColor(.transparent)
+            ShownoteContentView(html: desc)
                 .padding()
-#else
-            RichText(html: desc)
-                .backgroundColor(.transparent)
-                .padding()
-#endif
         }
     }
 }
@@ -959,6 +959,14 @@ private struct PodcastLiveItemControlsView: View {
             }
         }
 
+        ForEach(liveItem.chat) { chat in
+            Button {
+                openURL(chat.url)
+            } label: {
+                Label(chat.label, systemImage: "bubble.left.and.bubble.right")
+            }
+        }
+
         ForEach(liveItem.contentLinks) { contentLink in
             Button {
                 openURL(contentLink.url)
@@ -967,12 +975,11 @@ private struct PodcastLiveItemControlsView: View {
             }
         }
 
-        if let streamURL = liveItem.streamURL {
+        if liveItem.preferredStream != nil {
             Button {
                 Task {
-                    await Player.shared.playLiveStream(
-                        url: streamURL,
-                        title: liveItem.title,
+                    await Player.shared.playLiveItem(
+                        liveItem,
                         podcastTitle: podcastTitle,
                         artworkURL: artworkURL,
                         link: liveItem.link
@@ -982,121 +989,6 @@ private struct PodcastLiveItemControlsView: View {
                 Label("Play Live Stream", systemImage: "play.circle")
             }
         }
-    }
-}
-
-private struct PodcastLiveItem: Identifiable {
-    enum Status: String {
-        case pending
-        case live
-        case ended
-    }
-
-    let id: String
-    let title: String
-    let status: Status
-    let start: Date?
-    let end: Date?
-    let link: URL?
-    let contentLinks: [PodcastLiveContentLink]
-    let streamURL: URL?
-
-    init?(node: NamespaceNode) {
-        let guid = node.firstChild(localName: "guid")?.trimmedValue
-        let link = node.firstChild(localName: "link")?.trimmedValue.flatMap(URL.init(string:))
-        let streamURL = node.liveStreamURL
-        let title = node.firstChild(localName: "title")?.trimmedValue ?? "Live Event"
-        let start = node.attributes["start"].flatMap(Self.parseDate(_:))
-        let end = node.attributes["end"].flatMap(Self.parseDate(_:))
-        let status = Status(rawValue: node.attributes["status"] ?? "") ?? .pending
-
-        self.id = guid ?? streamURL?.absoluteString ?? link?.absoluteString ?? "\(title)-\(node.attributes["start"] ?? "")"
-        self.title = title
-        self.status = status
-        self.start = start
-        self.end = end
-        self.link = link
-        self.contentLinks = node.children(localName: "contentLink").compactMap(PodcastLiveContentLink.init(node:))
-        self.streamURL = streamURL
-    }
-
-    private static func parseDate(_ value: String) -> Date? {
-        let fractionalFormatter = ISO8601DateFormatter()
-        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractionalFormatter.date(from: value) {
-            return date
-        }
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: value) {
-            return date
-        }
-
-        let compactTimeZoneFormatter = DateFormatter()
-        compactTimeZoneFormatter.locale = Locale(identifier: "en_US_POSIX")
-        compactTimeZoneFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-        if let date = compactTimeZoneFormatter.date(from: value) {
-            return date
-        }
-
-        compactTimeZoneFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
-        return compactTimeZoneFormatter.date(from: value)
-    }
-}
-
-private struct PodcastLiveContentLink: Identifiable {
-    let id: URL
-    let label: String
-    let url: URL
-
-    init?(node: NamespaceNode) {
-        guard let href = node.attributes["href"], let url = URL(string: href) else {
-            return nil
-        }
-
-        self.id = url
-        self.label = node.trimmedValue ?? url.host() ?? "Open Link"
-        self.url = url
-    }
-}
-
-private extension NamespaceNode {
-    var localName: String {
-        if let separator = name.lastIndex(of: ":") {
-            return String(name[name.index(after: separator)...])
-        }
-        return name
-    }
-
-    var trimmedValue: String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed?.isEmpty == false ? trimmed : nil
-    }
-
-    func firstChild(localName: String) -> NamespaceNode? {
-        children.first { $0.localName == localName }
-    }
-
-    func children(localName: String) -> [NamespaceNode] {
-        children.filter { $0.localName == localName }
-    }
-
-    var liveStreamURL: URL? {
-        for alternateEnclosure in children(localName: "alternateEnclosure") {
-            let sources = alternateEnclosure.children(localName: "source")
-            if let defaultSource = sources.first(where: { $0.attributes["uri"] != nil })?.attributes["uri"],
-               let url = URL(string: defaultSource) {
-                return url
-            }
-        }
-
-        if let enclosureURL = firstChild(localName: "enclosure")?.attributes["url"],
-           let url = URL(string: enclosureURL) {
-            return url
-        }
-
-        return nil
     }
 }
 

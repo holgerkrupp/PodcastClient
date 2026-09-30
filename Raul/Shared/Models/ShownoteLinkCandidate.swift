@@ -15,15 +15,46 @@ struct ShownoteSourceRange: Codable, Hashable, Sendable {
 
 enum ShownoteLinkOccurrenceKind: String, Codable, Hashable, Sendable {
     case plainText
+    case email
     case publisherAnchor
 }
 
 enum ShownoteLinkClassification: String, Codable, Hashable, Sendable {
     case unknown
     case web
+    case mastodon
     case podcastCandidate
     case podcast
     case unsupported
+}
+
+/// Metadata used to render a link without changing the source shownotes.
+/// `canonicalURL` is kept separate from the requested URL so cards can open
+/// the page the publisher identifies as canonical while the occurrence still
+/// retains its original destination as a fallback.
+struct ShownotePreviewMetadata: Hashable, Sendable {
+    let title: String?
+    let description: String?
+    let imageURL: URL?
+    let siteName: String?
+    let canonicalURL: URL?
+    let handle: String?
+
+    init(
+        title: String? = nil,
+        description: String? = nil,
+        imageURL: URL? = nil,
+        siteName: String? = nil,
+        canonicalURL: URL? = nil,
+        handle: String? = nil
+    ) {
+        self.title = title
+        self.description = description
+        self.imageURL = imageURL
+        self.siteName = siteName
+        self.canonicalURL = canonicalURL
+        self.handle = handle
+    }
 }
 
 /// A link occurrence extracted from shownotes. The occurrence identity is

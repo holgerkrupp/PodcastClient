@@ -56,11 +56,26 @@ struct InboxListView: View {
     @State private var loadGeneration = 0
 
     @State private var errorMessage: String?
+    @State private var liveNotificationFeed: URL?
+    @State private var showLiveNotificationPodcast = false
     @Environment(\.modelContext) private var modelContext
     @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
+    @Query private var podcasts: [Podcast]
+
+    init() {
+        _podcasts = Query(sort: [SortDescriptor<Podcast>(\.title)])
+    }
+
+    private var liveNotificationPodcast: Podcast? {
+        guard let feed = liveNotificationFeed else { return nil }
+        return podcasts.first { $0.feed == feed }
+    }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            LivePodcastSectionView()
+
+            Group {
             if !hasLoaded {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -112,6 +127,7 @@ struct InboxListView: View {
                     await loadEpisodes()
                 }
             }
+            }
         }
         .navigationTitle("Inbox")
         .task {
@@ -121,6 +137,13 @@ struct InboxListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
             Task { await loadEpisodes() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .livePodcastNotificationTapped)) { notification in
+            guard let feedString = notification.userInfo?["podcastFeed"] as? String,
+                  let feed = URL(string: feedString),
+                  podcasts.contains(where: { $0.feed == feed }) else { return }
+            liveNotificationFeed = feed
+            showLiveNotificationPodcast = true
         }
         .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress in
             refreshProgress = progress
@@ -187,6 +210,17 @@ struct InboxListView: View {
                 Text(errorMessage)
             }
         }
+        .overlay {
+            if let liveNotificationPodcast {
+                NavigationLink(
+                    destination: PodcastDetailView(podcast: liveNotificationPodcast),
+                    isActive: $showLiveNotificationPodcast
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+            }
+        }
     }
 
     // MARK: - Data Loading
@@ -236,6 +270,111 @@ struct InboxListView: View {
             modelContainer: modelContext.container
         )
         errorMessage = PodcastRefreshCoordinator.shared.progress.errorMessage
+    }
+}
+
+private struct LivePodcastSectionView: View {
+    @Query private var subscribedPodcasts: [Podcast]
+    @Query(filter: PodcastSettingsView.defaultSettingsFilter)
+    private var defaultSettings: [PodcastSettings]
+
+    init() {
+        _subscribedPodcasts = Query(
+            filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false },
+            sort: [SortDescriptor<Podcast>(\.title)]
+        )
+    }
+
+    private var visibleItems: [(podcast: Podcast, item: PodcastLiveItem)] {
+        guard defaultSettings.first?.showLivePodcasts != false else { return [] }
+        return subscribedPodcasts.flatMap { podcast in
+            podcast.liveItems
+                .filter { $0.status == .live || $0.isUpcoming }
+                .map { (podcast: podcast, item: $0) }
+        }
+        .sorted { lhs, rhs in
+            if lhs.item.status != rhs.item.status {
+                return lhs.item.status == .live
+            }
+            return (lhs.item.start ?? .distantFuture) < (rhs.item.start ?? .distantFuture)
+        }
+    }
+
+    var body: some View {
+        if visibleItems.isEmpty == false {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Live Podcasts", systemImage: "dot.radiowaves.left.and.right")
+                    .font(.headline)
+                    .padding(.horizontal)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(Array(visibleItems.enumerated()), id: \.offset) { _, entry in
+                            LivePodcastCard(
+                                podcast: entry.podcast,
+                                liveItem: entry.item
+                            )
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+                }
+            }
+            .padding(.top, 8)
+            .background(.thinMaterial)
+        }
+    }
+}
+
+private struct LivePodcastCard: View {
+    let podcast: Podcast
+    let liveItem: PodcastLiveItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CoverImageView(imageURL: liveItem.artworkURL ?? podcast.imageURL)
+                .frame(width: 86, height: 86)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            Text(liveItem.status == .live ? "LIVE" : "UPCOMING")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(liveItem.status == .live ? .red : .secondary)
+
+            Text(liveItem.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+
+            Text(podcast.title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            if liveItem.status == .live, liveItem.preferredStream != nil {
+                Button {
+                    Task {
+                        await Player.shared.playLiveItem(
+                            liveItem,
+                            podcastTitle: podcast.title,
+                            artworkURL: liveItem.artworkURL ?? podcast.imageURL,
+                            link: liveItem.link
+                        )
+                    }
+                } label: {
+                    Label("Listen Live", systemImage: "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            } else if let start = liveItem.start {
+                Text(start, style: .date)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 150, alignment: .leading)
+        .padding(10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(liveItem.status == .live ? "Live" : "Upcoming") \(liveItem.title), \(podcast.title)")
     }
 }
 

@@ -118,6 +118,7 @@ struct SubscribeToPodcastView: View {
         previewPodcast.alternativeFeeds = newPodcastFeed.alternativeFeeds
         previewPodcast.optionalTags = newPodcastFeed.optionalTags
     }
+
 }
 
 struct PodcastTrailerButton: View {

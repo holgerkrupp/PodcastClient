@@ -51,4 +51,55 @@ struct ARDSoundsAPI: Sendable {
         let response = try await client.json(ARDSoundsSearchResponse.self, from: url, refresh: false)
         return response.programSets
     }
+
+    func item(id: String) async throws -> ARDSoundsItem {
+        guard let url = URL(string: "\(Self.base)/graphql") else {
+            throw PodcastDiscoveryError.invalidResponse
+        }
+
+        let query = """
+        query($id: ID!) {
+          item(id: $id) {
+            id title description duration startDate episodeNumber
+            audioList { href distributionType audioBitrate audioCodec }
+            audios { url downloadUrl }
+            image { url url1X1 }
+            show { title }
+            programSet { title publicationService { title organizationName } }
+          }
+        }
+        """
+        let body = try JSONSerialization.data(withJSONObject: [
+            "query": query,
+            "variables": ["id": id]
+        ])
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        guard let item = try await client.json(ARDSoundsItemResponse.self, request: request).itemValue else {
+            throw PodcastDiscoveryError.parsingFailed
+        }
+        return item
+    }
+
+    static func itemURN(in url: URL) -> String? {
+        guard let host = url.host()?.lowercased(),
+              host == "ardsounds.de" || host.hasSuffix(".ardsounds.de") ||
+              host == "ardaudiothek.de" || host.hasSuffix(".ardaudiothek.de") else {
+            return nil
+        }
+        let path = url.path.removingPercentEncoding ?? url.path
+        let pattern = #"(?i)urn:ard:(?:episode|section|extra):[a-z0-9]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(
+                in: path,
+                range: NSRange(path.startIndex..<path.endIndex, in: path)
+              ),
+              let range = Range(match.range, in: path) else {
+            return nil
+        }
+        return String(path[range])
+    }
 }

@@ -276,4 +276,66 @@ final class PodcastPrivateFeedTests: XCTestCase {
         )
         XCTAssertTrue(basicChallenge.advertisesHTTPBasicAuthentication)
     }
+
+    func testPodcastLiveItemRetainsSourcesAndCompanionLinks() async throws {
+        let feedURL = URL(string: "https://example.com/shows/live/feed.xml")!
+        let xml = """
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Live Show</title>
+            <podcast:liveItem status="pending" start="2030-10-28T20:00:00Z">
+              <podcast:guid>event-42</podcast:guid>
+              <podcast:title>Election night live</podcast:title>
+              <podcast:description>Publisher description</podcast:description>
+              <podcast:image href="art/live.png" />
+              <podcast:alternateEnclosure type="audio/mpeg" default="true">
+                <podcast:source uri="streams/audio.mp3" contentType="audio/mpeg" bitrate="128000" />
+                <podcast:source uri="https://cdn.example.com/live.m3u8" contentType="application/x-mpegURL" />
+              </podcast:alternateEnclosure>
+              <podcast:contentLink href="https://example.com/live" type="video/webm">Watch</podcast:contentLink>
+              <podcast:chat url="https://chat.example.com/room" protocol="irc">Join chat</podcast:chat>
+            </podcast:liveItem>
+          </channel>
+        </rss>
+        """
+
+        let page = try await PodcastParser.parsePage(
+            from: PodcastFeedDocument(
+                data: Data(xml.utf8),
+                sourceURL: feedURL,
+                requestedURL: feedURL
+            )
+        )
+
+        let item = try XCTUnwrap(page.feed.liveItems.first)
+        XCTAssertEqual(item.id, "event-42")
+        XCTAssertEqual(item.status, .pending)
+        XCTAssertEqual(item.title, "Election night live")
+        XCTAssertEqual(item.artworkURL?.absoluteString, "https://example.com/shows/live/art/live.png")
+        XCTAssertEqual(item.streamSources.count, 2)
+        XCTAssertEqual(item.streamSources[0].url.absoluteString, "https://example.com/shows/live/streams/audio.mp3")
+        XCTAssertTrue(item.preferredStream?.isHLS == true)
+        XCTAssertEqual(item.chat.first?.url.absoluteString, "https://chat.example.com/room")
+        XCTAssertEqual(item.contentLinks.first?.label, "Watch")
+    }
+
+    func testPodcastLiveItemUsesStableIdentityAndIgnoresUnsafeCompanionURLs() {
+        let node = NamespaceNode(
+            name: "podcast:liveItem",
+            attributes: ["status": "future-status", "start": "not-a-date"],
+            children: [
+                NamespaceNode(name: "podcast:title", value: "Preview"),
+                NamespaceNode(name: "podcast:contentLink", attributes: ["href": "javascript:alert(1)"]),
+                NamespaceNode(name: "podcast:chat", attributes: ["url": "file:///tmp/chat"])
+            ]
+        )
+
+        let first = PodcastLiveItem(node: node, baseURL: URL(string: "https://example.com/feed.xml"))
+        let second = PodcastLiveItem(node: node, baseURL: URL(string: "https://example.com/feed.xml"))
+        XCTAssertEqual(first?.id, second?.id)
+        XCTAssertEqual(first?.status, .unknown("future-status"))
+        XCTAssertTrue(first?.contentLinks.isEmpty == true)
+        XCTAssertTrue(first?.chat.isEmpty == true)
+        XCTAssertNil(first?.start)
+    }
 }

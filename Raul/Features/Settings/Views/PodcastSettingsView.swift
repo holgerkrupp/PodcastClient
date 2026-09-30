@@ -210,6 +210,10 @@ struct PodcastSettingsView: View {
         podcast?.optionalTags?.liveItem?.isEmpty == false
     }
 
+    private var showLivePodcastsEnabled: Bool {
+        globalSettings?.showLivePodcasts != false
+    }
+
     private var podcastsUsingCustomSettings: [Podcast] {
         podcasts.filter { $0.settings?.isEnabled == true }
     }
@@ -955,6 +959,26 @@ struct PodcastSettingsView: View {
 
     private func liveNotificationsSection(settings: PodcastSettings, isGlobal: Bool) -> some View {
         Section("Live Notifications") {
+            if isGlobal {
+                Toggle(
+                    "Show Live Podcasts",
+                    isOn: Binding(
+                        get: { settings.showLivePodcasts },
+                        set: { newValue in
+                            settings.showLivePodcasts = newValue
+                            saveAndNotify()
+                            if newValue == false {
+                                removePendingLiveNotifications()
+                            }
+                        }
+                    )
+                )
+
+                Text("When this is off, live and upcoming broadcasts, companion actions, reminders, and live-specific refresh work are disabled. Normal podcast refresh continues.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Toggle(
                 isGlobal ? "Allow live event notifications" : "Live event notifications",
                 isOn: Binding(
@@ -980,37 +1004,45 @@ struct PodcastSettingsView: View {
 
     private func podcastLiveNotificationsSection(settings: PodcastSettings) -> some View {
         Section("Live Notifications") {
-            if podcastSupportsLiveItems {
-                if isPodcastCustomSettingsActive {
-                    Toggle(
-                        "Live event notifications",
-                        isOn: Binding(
-                            get: { settings.enableLiveItemNotifications },
-                            set: { newValue in
-                                settings.enableLiveItemNotifications = newValue
-                                saveAndNotify()
+            if showLivePodcastsEnabled {
+                if podcastSupportsLiveItems {
+                    if isPodcastCustomSettingsActive {
+                        Toggle(
+                            "Live event notifications",
+                            isOn: Binding(
+                                get: { settings.enableLiveItemNotifications },
+                                set: { newValue in
+                                    settings.enableLiveItemNotifications = newValue
+                                    saveAndNotify()
 
-                                if newValue == false {
-                                    removePendingLiveNotifications()
+                                    if newValue == false {
+                                        removePendingLiveNotifications()
+                                    }
                                 }
-                            }
+                            )
                         )
-                    )
 
-                    Text("When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        Text("When this is off, this podcast will not show the live event notification scheduling button. The global setting can still disable live notifications for every podcast.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Label("Live event information supported", systemImage: "dot.radiowaves.left.and.right")
+
+                        Text("This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 } else {
-                    Label("Live event information supported", systemImage: "dot.radiowaves.left.and.right")
+                    Label("Live event information unavailable", systemImage: "info.circle")
 
-                    Text("This podcast supports live event information. Enable podcast-specific settings to override the global live notification setting.")
+                    Text("This podcast currently does not advertise live event information.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             } else {
                 Label("Live event information unavailable", systemImage: "info.circle")
 
-                Text("This podcast currently does not support Live event information.")
+                Text("Live podcast discovery is disabled in the global settings.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

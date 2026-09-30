@@ -1315,6 +1315,7 @@ actor StoreSplitMigrationService {
                 enableLockscreenSlider: setting.enableLockscreenSlider,
                 enableInAppSlider: setting.enableInAppSlider,
                 continuousPlayEnabled: setting.getContinuousPlay,
+                showLivePodcasts: setting.showLivePodcasts,
                 liveItemNotificationsEnabled: setting.enableLiveItemNotifications,
                 sleepTimerAddMinutes: setting.sleepTimerAddMinutes,
                 sleepTimerDurationToReactivate: setting.sleepTimerDurationToReactivate,
@@ -1375,6 +1376,7 @@ actor StoreSplitMigrationService {
         destination.enableLockscreenSlider = source.enableLockscreenSlider
         destination.enableInAppSlider = source.enableInAppSlider
         destination.continuousPlayEnabled = source.continuousPlayEnabled
+        destination.showLivePodcasts = source.showLivePodcasts
         destination.liveItemNotificationsEnabled = source.liveItemNotificationsEnabled
         destination.sleepTimerAddMinutes = source.sleepTimerAddMinutes
         destination.sleepTimerDurationToReactivate = source.sleepTimerDurationToReactivate

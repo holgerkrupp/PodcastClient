@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import RichText
 import ESADesignKit
 
 @MainActor
@@ -172,6 +171,7 @@ final class PodcastBrowseViewModel: ObservableObject {
 
 struct PodcastBrowseView: View {
     @StateObject private var viewModel: PodcastBrowseViewModel
+    @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
 
     init(feed: PodcastFeed, modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastBrowseViewModel(feed: feed, modelContainer: modelContainer))
@@ -192,6 +192,7 @@ struct PodcastBrowseView: View {
                     feed: viewModel.podcastFeed,
                     isSubscribed: viewModel.isSubscribed,
                     isSubscribing: viewModel.isSubscribing,
+                    showsLiveMetadata: defaultSettings.first?.showLivePodcasts != false,
                     subscribeAction: {
                         await viewModel.subscribe()
                     },
@@ -274,6 +275,7 @@ private struct PodcastBrowseHeaderView: View {
     let feed: PodcastFeed
     let isSubscribed: Bool
     let isSubscribing: Bool
+    let showsLiveMetadata: Bool
     let subscribeAction: () async -> Void
     let alternativeFeedAction: (PodcastAlternativeFeed) async -> Void
     @Environment(\.deviceUIStyle) var style
@@ -364,22 +366,15 @@ private struct PodcastBrowseHeaderView: View {
                 PodcastNamespaceMetadataView(
                     optionalTags: optionalTags,
                     title: "Podcast Metadata",
-                    hidesRenderableValueBlocks: true
+                    hidesRenderableValueBlocks: true,
+                    showsLiveMetadata: showsLiveMetadata
                 )
                     .padding()
             }
 
             if let description = feed.description, description.isEmpty == false {
-#if os(iOS)
-                RichText(html: description)
-                    .linkColor(light: Color.secondary, dark: Color.secondary)
-                    .backgroundColor(.transparent)
+                ShownoteContentView(html: description)
                     .padding()
-#else
-                RichText(html: description)
-                    .backgroundColor(.transparent)
-                    .padding()
-#endif
             }
 
             if let link = feed.link {

@@ -4,10 +4,9 @@
 //
 //  Response shapes of the ARD Sounds / ARD Audiothek web API.
 //
-//  These types are deliberately confined to the ARD provider. They are NOT a
-//  public developer API and may change without notice, so nothing outside
-//  `ARDSoundsDiscoveryProvider` is allowed to depend on them — responses are
-//  converted to `DiscoveredPodcast` immediately.
+//  These types are deliberately confined to the ARD integration. They are NOT a
+//  public developer API and may change without notice; callers should convert
+//  them immediately into app-owned discovery or share-resolution values.
 //
 
 import Foundation
@@ -29,6 +28,68 @@ struct ARDSoundsSearchResponse: Decodable, Sendable {
     let data: DataContainer?
 
     var programSets: [ARDProgramSet] { data?.search?.programSets?.nodes ?? [] }
+}
+
+struct ARDSoundsItemResponse: Decodable, Sendable {
+    struct DataContainer: Decodable, Sendable {
+        let item: ARDSoundsItem?
+    }
+
+    let data: DataContainer?
+    var itemValue: ARDSoundsItem? { data?.item }
+}
+
+struct ARDSoundsItem: Decodable, Sendable {
+    struct Audio: Decodable, Sendable {
+        let href: String?
+        let url: String?
+
+        var resolvedURL: URL? {
+            URL(string: href ?? url ?? "")
+        }
+    }
+
+    struct Image: Decodable, Sendable {
+        let url: String?
+        let url1X1: String?
+
+        var resolvedURL: URL? {
+            URL(string: (url1X1 ?? url ?? "").replacingOccurrences(of: "{width}", with: "448"))
+        }
+    }
+
+    struct Show: Decodable, Sendable {
+        let title: String?
+    }
+
+    struct ProgramSet: Decodable, Sendable {
+        let title: String?
+        let publicationService: ARDProgramSet.PublicationService?
+    }
+
+    let id: String?
+    let title: String?
+    let description: String?
+    let duration: TimeInterval?
+    let startDate: String?
+    let episodeNumber: Int?
+    let audioList: [Audio]?
+    let audios: [Audio]?
+    let image: Image?
+    let show: Show?
+    let programSet: ProgramSet?
+
+    var mediaURL: URL? {
+        (audioList ?? audios ?? []).compactMap(\.resolvedURL).first
+    }
+
+    var showTitle: String? {
+        show?.title ?? programSet?.title
+    }
+
+    var author: String? {
+        programSet?.publicationService?.title ?? programSet?.publicationService?.organizationName
+    }
 }
 
 struct ARDProgramSet: Decodable, Sendable {

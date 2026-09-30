@@ -287,6 +287,7 @@ final class PodcastPreferenceSync: Identifiable {
     var enableLockscreenSlider: Bool = true
     var enableInAppSlider: Bool = true
     var continuousPlayEnabled: Bool = true
+    var showLivePodcasts: Bool = true
     var liveItemNotificationsEnabled: Bool = true
     var sleepTimerAddMinutes: Double = 10
     var sleepTimerDurationToReactivate: Double = 300
@@ -316,6 +317,7 @@ final class PodcastPreferenceSync: Identifiable {
         enableLockscreenSlider: Bool = true,
         enableInAppSlider: Bool = true,
         continuousPlayEnabled: Bool = true,
+        showLivePodcasts: Bool = true,
         liveItemNotificationsEnabled: Bool = true,
         sleepTimerAddMinutes: Double = 10,
         sleepTimerDurationToReactivate: Double = 300,
@@ -346,6 +348,7 @@ final class PodcastPreferenceSync: Identifiable {
         self.enableLockscreenSlider = enableLockscreenSlider
         self.enableInAppSlider = enableInAppSlider
         self.continuousPlayEnabled = continuousPlayEnabled
+        self.showLivePodcasts = showLivePodcasts
         self.liveItemNotificationsEnabled = liveItemNotificationsEnabled
         self.sleepTimerAddMinutes = sleepTimerAddMinutes
         self.sleepTimerDurationToReactivate = sleepTimerDurationToReactivate

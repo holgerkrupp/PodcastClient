@@ -8,114 +8,77 @@ struct ShareExtensionView: View {
             Group {
                 switch viewModel.state {
                 case .loading:
-                    ProgressView("Reading shared episode…")
-                case .ready, .saving:
-                    destinationList
-                case .saved:
-                    ContentUnavailableView(
-                        "Added",
-                        systemImage: "checkmark.circle.fill",
-                        description: Text(destinationDescription)
-                    )
+                    ProgressView("Reading shared link…")
+                case .checking(_):
+                    ProgressView("Checking link…")
+                case .podcastEpisode(let podcast, let episode):
+                    resultView(title: "Podcast Found", subtitle: "\(podcast.title)\n\n\(episode.title)", symbol: "checkmark.circle.fill")
+                case .podcast(let podcast):
+                    resultView(title: "Podcast Found", subtitle: podcast.title, symbol: "dot.radiowaves.left.and.right")
+                case .standalone(let media):
+                    resultView(title: "Episode Found", subtitle: media.title, symbol: "waveform")
+                case .unresolved(_, let query):
+                    VStack(spacing: 12) {
+                        ContentUnavailableView("Couldn’t Find Podcast or Audio", systemImage: "questionmark.circle", description: Text("You can search Up Next using \(query ?? "the shared page") instead."))
+                        if viewModel.canSearch { Button("Search in Up Next") { viewModel.search() } .buttonStyle(.borderedProminent) }
+                    }
+                    .padding()
+                case .saving:
+                    ProgressView("Saving for Up Next…")
+                case .saved(let message):
+                    ContentUnavailableView("Saved for Up Next", systemImage: "checkmark.circle.fill", description: Text(message))
                 case .failed(let message):
-                    ContentUnavailableView(
-                        "Couldn’t Add Episode",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(message)
-                    )
+                    ContentUnavailableView("Couldn’t Save Link", systemImage: "exclamationmark.triangle", description: Text(message))
                 }
             }
-            .navigationTitle("Add Episode")
+            .navigationTitle("Add to Up Next")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        viewModel.cancel()
-                    }
+                    Button("Cancel") { viewModel.cancel() }
                 }
-
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        viewModel.add()
-                    }
-                    .disabled(viewModel.canAdd == false)
+                    Button("Done") { viewModel.done() }
+                        .disabled(viewModel.state == .loading || viewModel.isChecking || viewModel.state == .saving)
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func resultView(title: String, subtitle: String, symbol: String) -> some View {
+        VStack(spacing: 18) {
+            Image(systemName: symbol).font(.largeTitle).foregroundStyle(.tint)
+            Text(title).font(.headline)
+            Text(subtitle).multilineTextAlignment(.center).foregroundStyle(.secondary)
+
+            if case .podcastEpisode(_, _) = viewModel.state {
+                Button("Subscribe") { viewModel.subscribe() }.buttonStyle(.bordered)
+            }
+            if viewModel.canAdd {
+                destinationList
+                Button("Add Episode") { viewModel.addEpisode() }.buttonStyle(.borderedProminent)
+            }
+            if viewModel.canSearch {
+                Button("Search in Up Next") { viewModel.search() }.buttonStyle(.bordered)
+            }
+        }
+        .padding()
     }
 
     private var destinationList: some View {
-        List {
-            if let host = viewModel.sharedHost {
-                Section("Episode") {
-                    Label(host, systemImage: "link")
-                        .foregroundStyle(.secondary)
-                }
+        Menu {
+            Button("Inbox") { viewModel.selectedPlaylistID = nil }
+            ForEach(viewModel.playlists) { playlist in
+                Button(playlist.title) { viewModel.selectedPlaylistID = playlist.id }
             }
-
-            Section("Add to") {
-                destinationRow(
-                    title: "Inbox",
-                    symbolName: "tray.fill",
-                    playlistID: nil
-                )
-
-                ForEach(viewModel.playlists) { playlist in
-                    destinationRow(
-                        title: playlist.title,
-                        symbolName: playlist.symbolName,
-                        playlistID: playlist.id
-                    )
-                }
-            }
-
-            if viewModel.playlists.isEmpty {
-                Section {
-                    Text("Open Up Next once to make your playlists available here.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .disabled(viewModel.state == .saving)
-        .overlay {
-            if viewModel.state == .saving {
-                ProgressView()
-            }
-        }
-    }
-
-    private func destinationRow(
-        title: String,
-        symbolName: String,
-        playlistID: UUID?
-    ) -> some View {
-        Button {
-            viewModel.selectedPlaylistID = playlistID
         } label: {
-            HStack {
-                Label(title, systemImage: symbolName)
-                Spacer()
-                if viewModel.selectedPlaylistID == playlistID {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.tint)
-                }
-            }
-            .contentShape(Rectangle())
+            Label(destinationTitle, systemImage: "tray.fill")
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(
-            viewModel.selectedPlaylistID == playlistID ? .isSelected : []
-        )
     }
 
-    private var destinationDescription: String {
-        guard let selectedPlaylistID = viewModel.selectedPlaylistID,
-              let playlist = viewModel.playlists.first(where: {
-                $0.id == selectedPlaylistID
-              }) else {
-            return "The episode will appear in Inbox."
-        }
-
-        return "The episode will appear in \(playlist.title)."
+    private var destinationTitle: String {
+        guard let id = viewModel.selectedPlaylistID,
+              let playlist = viewModel.playlists.first(where: { $0.id == id }) else { return "Inbox" }
+        return playlist.title
     }
 }

@@ -141,4 +141,31 @@ extension String{
             return nil
         }
     }
+
+    /// Returns a compact, readable representation for HTML descriptions shown
+    /// in list rows. The original HTML should remain stored for rich views.
+    func plainTextFromHTML() -> String? {
+        let htmlTagPattern = #"<\s*/?\s*[a-z][^>]*>"#
+        let blockTagPattern = #"(?i)<\s*/?\s*(?:address|article|aside|blockquote|br|dd|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>"#
+        let entityPattern = #"&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);"#
+        let containsHTML = range(of: htmlTagPattern, options: [.regularExpression, .caseInsensitive]) != nil
+        let containsEntity = range(of: entityPattern, options: [.regularExpression, .caseInsensitive]) != nil
+
+        // Avoid changing ordinary descriptions, including their whitespace.
+        guard containsHTML || containsEntity else { return self }
+
+        let markupWithSpacing = replacingOccurrences(
+            of: blockTagPattern,
+            with: "\n",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
+        guard let decoded = markupWithSpacing.decodeHTML() else { return nil }
+
+        return decoded
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+    }
 }

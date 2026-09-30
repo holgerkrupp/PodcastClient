@@ -38,6 +38,8 @@ actor StoreSplitWorkCoordinator {
     private var pendingMigration = false
     private var pendingPlaybackIdleReconcile = false
     private var runnerTask: Task<Void, Never>?
+    private var nextHeavyWorkAllowedAt = Date.distantPast
+    private var backoffSeconds: TimeInterval = 0.25
 
     func scheduleLaunchWork() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
@@ -187,6 +189,17 @@ actor StoreSplitWorkCoordinator {
 
     private func runLoop() async {
         while let nextJob = await nextRunnableJob() {
+            if nextHeavyWorkAllowedAt > .now {
+                do {
+                    try await Task.sleep(for: .milliseconds(
+                        Int(max(1, nextHeavyWorkAllowedAt.timeIntervalSinceNow * 1_000)
+                    )))
+                } catch {
+                    return
+                }
+                guard Task.isCancelled == false else { return }
+            }
+            let startedAt = Date()
             await publishCurrentJob(nextJob)
 
             switch nextJob {
@@ -213,6 +226,18 @@ actor StoreSplitWorkCoordinator {
             }
 
             await clearCurrentJob()
+            let duration = Date().timeIntervalSince(startedAt)
+            if duration > 1 {
+                backoffSeconds = min(8, max(0.25, duration * 0.25))
+                nextHeavyWorkAllowedAt = Date().addingTimeInterval(backoffSeconds)
+            } else {
+                backoffSeconds = max(0.25, backoffSeconds * 0.5)
+                nextHeavyWorkAllowedAt = Date().addingTimeInterval(backoffSeconds)
+            }
+            CrashBreadcrumbs.shared.record(
+                "store_split_heavy_job_finished",
+                details: "operation=\(nextJob.rawValue),duration_ms=\(Int(duration * 1_000)),next_retry_ms=\(Int(backoffSeconds * 1_000))"
+            )
         }
 
         runnerTask = nil

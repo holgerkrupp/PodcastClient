@@ -22,6 +22,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
     var enableLockscreenSlider: Bool
     var enableInAppSlider: Bool
     var continuousPlayEnabled: Bool
+    var showLivePodcasts: Bool
     var liveItemNotificationsEnabled: Bool
     var sleepTimerAddMinutes: Double
     var sleepTimerDurationToReactivate: Double
@@ -59,6 +60,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             enableLockscreenSlider: settings.enableLockscreenSlider,
             enableInAppSlider: settings.enableInAppSlider,
             continuousPlayEnabled: settings.getContinuousPlay,
+            showLivePodcasts: settings.showLivePodcasts,
             liveItemNotificationsEnabled: settings.enableLiveItemNotifications,
             sleepTimerAddMinutes: settings.sleepTimerAddMinutes,
             sleepTimerDurationToReactivate: settings.sleepTimerDurationToReactivate,
@@ -93,6 +95,7 @@ actor StoreSplitPreferenceSyncWriter {
             enableLockscreenSlider: value.enableLockscreenSlider,
             enableInAppSlider: value.enableInAppSlider,
             continuousPlayEnabled: value.continuousPlayEnabled,
+            showLivePodcasts: value.showLivePodcasts,
             liveItemNotificationsEnabled: value.liveItemNotificationsEnabled,
             sleepTimerAddMinutes: value.sleepTimerAddMinutes,
             sleepTimerDurationToReactivate: value.sleepTimerDurationToReactivate,
@@ -128,6 +131,7 @@ actor StoreSplitPreferenceSyncWriter {
             current.enableLockscreenSlider = candidate.enableLockscreenSlider
             current.enableInAppSlider = candidate.enableInAppSlider
             current.continuousPlayEnabled = candidate.continuousPlayEnabled
+            current.showLivePodcasts = candidate.showLivePodcasts
             current.liveItemNotificationsEnabled = candidate.liveItemNotificationsEnabled
             current.sleepTimerAddMinutes = candidate.sleepTimerAddMinutes
             current.sleepTimerDurationToReactivate = candidate.sleepTimerDurationToReactivate

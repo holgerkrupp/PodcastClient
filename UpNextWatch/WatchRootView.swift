@@ -1,5 +1,5 @@
 import SwiftUI
-import DeviceInfo
+import ESADesignKit
 
 struct WatchRootView: View {
     private enum WatchPage: Hashable {

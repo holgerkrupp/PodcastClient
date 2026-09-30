@@ -66,7 +66,7 @@ struct PodcastRowView: View {
                     }
 
                     if let desc = podcast.desc, desc.isEmpty == false {
-                        Text(desc)
+                        Text(desc.plainTextFromHTML() ?? desc)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(3)

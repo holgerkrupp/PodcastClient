@@ -50,7 +50,7 @@ struct DiscoveredPodcastRowView: View {
                 }
 
                 if let summary = podcast.summary, summary.isEmpty == false {
-                    Text(summary)
+                    Text(summary.plainTextFromHTML() ?? summary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

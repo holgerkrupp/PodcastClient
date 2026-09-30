@@ -113,6 +113,10 @@ final class Podcast: Identifiable {
     var people: [PersonInfo] = []
     var alternativeFeeds: [PodcastAlternativeFeed] = []
     var optionalTags: PodcastNamespaceOptionalTags?
+
+    var liveItems: [PodcastLiveItem] {
+        optionalTags?.podcastLiveItems(baseURL: feed) ?? []
+    }
     
     @Transient var message: String?
     

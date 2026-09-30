@@ -49,7 +49,9 @@ struct PodcastTrailer: Hashable, Identifiable {
         self.id = [season, url.absoluteString].compactMap { $0 }.joined(separator: "-")
         self.title = title
         self.url = url
-        self.publishDate = Self.trimmed(node.attributes["pubdate"]).flatMap(Date.dateFromRFC1123)
+        self.publishDate = Self.trimmed(node.attributes["pubdate"]).flatMap {
+            Date.dateFromRFC1123(dateString: $0)
+        }
         self.season = season
         self.length = Self.trimmed(node.attributes["length"]).flatMap(Int.init)
         self.type = Self.trimmed(node.attributes["type"])
@@ -325,6 +327,16 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable {
         }
         return qualifiedName
     }
+
+    /// Typed live broadcasts retained by this feed.
+    ///
+    /// The parser intentionally keeps the original namespace tree as the
+    /// durable representation. This projection is derived on demand so a
+    /// newer Podcasting 2.0 field can be retained without making an older
+    /// app reject the complete feed.
+    func podcastLiveItems(baseURL: URL?) -> [PodcastLiveItem] {
+        (liveItem ?? []).compactMap { PodcastLiveItem(node: $0, baseURL: baseURL) }
+    }
 }
 
 private extension NamespaceNode {
@@ -332,5 +344,345 @@ private extension NamespaceNode {
         attributes.first { key, _ in
             key.caseInsensitiveCompare(requestedName) == .orderedSame
         }?.value
+    }
+}
+
+struct PodcastLiveItem: Hashable, Identifiable, Sendable {
+    enum Status: Hashable, Sendable {
+        case pending
+        case live
+        case ended
+        case unknown(String)
+
+        init(rawValue: String?) {
+            switch rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "pending": self = .pending
+            case "live": self = .live
+            case "ended": self = .ended
+            case let value?: self = .unknown(value)
+            default: self = .unknown("")
+            }
+        }
+
+        var rawValue: String {
+            switch self {
+            case .pending: "pending"
+            case .live: "live"
+            case .ended: "ended"
+            case .unknown(let value): value
+            }
+        }
+
+        var isVisible: Bool {
+            self == .pending || self == .live
+        }
+    }
+
+    struct StreamSource: Hashable, Identifiable, Sendable {
+        let id: URL
+        let url: URL
+        let mimeType: String?
+        let codec: String?
+        let bitrate: Double?
+        let language: String?
+        let isDefault: Bool
+        let title: String?
+
+        var isHLS: Bool {
+            let value = (mimeType ?? "").lowercased()
+            return value.contains("mpegurl") || value.contains("m3u8") || value.contains("hls")
+        }
+
+        init(
+            url: URL,
+            mimeType: String? = nil,
+            codec: String? = nil,
+            bitrate: Double? = nil,
+            language: String? = nil,
+            isDefault: Bool = false,
+            title: String? = nil
+        ) {
+            self.id = url
+            self.url = url
+            self.mimeType = mimeType
+            self.codec = codec
+            self.bitrate = bitrate
+            self.language = language
+            self.isDefault = isDefault
+            self.title = title
+        }
+    }
+
+    struct Chat: Hashable, Identifiable, Sendable {
+        let id: URL
+        let url: URL
+        let `protocol`: String?
+        let label: String
+    }
+
+    struct ContentLink: Hashable, Identifiable, Sendable {
+        let id: URL
+        let url: URL
+        let label: String
+        let type: String?
+    }
+
+    let id: String
+    let guid: String?
+    let title: String
+    let status: Status
+    let start: Date?
+    let end: Date?
+    let summary: String?
+    let artworkURL: URL?
+    let link: URL?
+    let streamSources: [StreamSource]
+    let chat: [Chat]
+    let contentLinks: [ContentLink]
+
+    /// The best candidate for AVPlayer, while preserving every publisher
+    /// supplied candidate in `streamSources` for fallback and diagnostics.
+    var preferredStream: StreamSource? {
+        let supported = streamSources.filter { $0.url.scheme?.lowercased() == "http" || $0.url.scheme?.lowercased() == "https" }
+        return supported.sorted { lhs, rhs in
+            if lhs.isDefault != rhs.isDefault { return lhs.isDefault }
+            if lhs.isHLS != rhs.isHLS { return lhs.isHLS }
+            return (lhs.bitrate ?? 0) > (rhs.bitrate ?? 0)
+        }.first
+    }
+
+    var isUpcoming: Bool {
+        status == .pending && (start == nil || start! > Date())
+    }
+
+    init(
+        id: String,
+        guid: String?,
+        title: String,
+        status: Status,
+        start: Date?,
+        end: Date?,
+        summary: String?,
+        artworkURL: URL?,
+        link: URL?,
+        streamSources: [StreamSource],
+        chat: [Chat],
+        contentLinks: [ContentLink]
+    ) {
+        self.id = id
+        self.guid = guid
+        self.title = title
+        self.status = status
+        self.start = start
+        self.end = end
+        self.summary = summary
+        self.artworkURL = artworkURL
+        self.link = link
+        self.streamSources = streamSources
+        self.chat = chat
+        self.contentLinks = contentLinks
+    }
+
+    init?(node: NamespaceNode, baseURL: URL?) {
+        guard Self.localName(node.name) == "liveItem" else { return nil }
+
+        let guid = Self.trimmed(node.firstChild(named: "guid")?.value)
+        let title = Self.trimmed(node.firstChild(named: "title")?.value) ?? "Live Event"
+        let link = Self.url(
+            Self.trimmed(node.firstChild(named: "link")?.value)
+                ?? node.attributes["link"],
+            relativeTo: baseURL,
+            requireHTTP: true
+        )
+        let start = Self.date(node.attributes["start"])
+        let end = Self.date(node.attributes["end"])
+        let summary = Self.trimmed(
+            node.firstChild(named: "description")?.value
+                ?? node.firstChild(named: "summary")?.value
+        )
+        let artworkURL = Self.url(
+            node.firstChild(named: "image")?.attributes["href"]
+                ?? node.firstChild(named: "image")?.attributes["url"],
+            relativeTo: baseURL,
+            requireHTTP: true
+        )
+
+        var sources = node.children(named: "alternateEnclosure").flatMap { enclosure in
+            let enclosureDefault = Self.bool(enclosure.attributes["default"])
+            let enclosureType = Self.trimmed(enclosure.attributes["type"])
+            let enclosureBitrate = Self.number(enclosure.attributes["bitrate"])
+            let enclosureLanguage = Self.trimmed(enclosure.attributes["lang"] ?? enclosure.attributes["language"])
+            let enclosureCodec = Self.trimmed(enclosure.attributes["codecs"] ?? enclosure.attributes["codec"])
+            let enclosureTitle = Self.trimmed(enclosure.attributes["title"])
+            return enclosure.children(named: "source").compactMap { source -> StreamSource? in
+                Self.makeSource(
+                    from: source,
+                    baseURL: baseURL,
+                    fallbackMimeType: enclosureType,
+                    fallbackBitrate: enclosureBitrate,
+                    fallbackLanguage: enclosureLanguage,
+                    fallbackCodec: enclosureCodec,
+                    fallbackTitle: enclosureTitle,
+                    fallbackDefault: enclosureDefault
+                )
+            }
+        }
+
+        if let enclosure = node.firstChild(named: "enclosure"),
+           let source = Self.makeSource(from: enclosure, baseURL: baseURL) {
+            sources.append(source)
+        }
+
+        // A few publishers put the stream URL directly on alternateEnclosure
+        // instead of using the nested source element. Preserve that form too.
+        for enclosure in node.children(named: "alternateEnclosure") {
+            if let source = Self.makeSource(from: enclosure, baseURL: baseURL),
+               sources.contains(where: { $0.url == source.url }) == false {
+                sources.append(source)
+            }
+        }
+
+        let chat = node.children(named: "chat").compactMap { child -> Chat? in
+            guard let url = Self.url(
+                child.attributes["url"] ?? child.attributes["href"],
+                relativeTo: baseURL,
+                requireHTTP: true
+            ) else { return nil }
+            return Chat(
+                id: url,
+                url: url,
+                protocol: Self.trimmed(child.attributes["protocol"]),
+                label: Self.trimmed(child.value) ?? "Chat"
+            )
+        }
+
+        let contentLinks = node.children(named: "contentLink").compactMap { child -> ContentLink? in
+            guard let url = Self.url(
+                child.attributes["href"] ?? child.attributes["url"],
+                relativeTo: baseURL,
+                requireHTTP: true
+            ) else { return nil }
+            return ContentLink(
+                id: url,
+                url: url,
+                label: Self.trimmed(child.value) ?? Self.trimmed(child.attributes["title"]) ?? "Open Live Page",
+                type: Self.trimmed(child.attributes["type"])
+            )
+        }
+
+        let stableID = guid
+            ?? link?.absoluteString
+            ?? sources.first?.url.absoluteString
+            ?? [title, node.attributes["start"] ?? ""].joined(separator: "|")
+
+        self.id = stableID
+        self.guid = guid
+        self.title = title
+        self.status = Status(rawValue: node.attributes["status"])
+        self.start = start
+        self.end = end
+        self.summary = summary
+        self.artworkURL = artworkURL
+        self.link = link
+        self.streamSources = Self.deduplicated(sources)
+        self.chat = chat
+        self.contentLinks = contentLinks
+    }
+
+    private static func makeSource(
+        from node: NamespaceNode,
+        baseURL: URL?,
+        fallbackMimeType: String? = nil,
+        fallbackBitrate: Double? = nil,
+        fallbackLanguage: String? = nil,
+        fallbackCodec: String? = nil,
+        fallbackTitle: String? = nil,
+        fallbackDefault: Bool = false
+    ) -> StreamSource? {
+        guard let url = url(
+            node.attributes["uri"] ?? node.attributes["url"] ?? node.attributes["href"],
+            relativeTo: baseURL,
+            requireHTTP: false
+        ) else { return nil }
+
+        return StreamSource(
+            url: url,
+            mimeType: trimmed(
+                node.attributes["contentType"]
+                    ?? node.attributes["type"]
+                    ?? fallbackMimeType
+            ),
+            codec: trimmed(node.attributes["codecs"] ?? node.attributes["codec"]) ?? fallbackCodec,
+            bitrate: number(node.attributes["bitrate"]) ?? fallbackBitrate,
+            language: trimmed(node.attributes["lang"] ?? node.attributes["language"]) ?? fallbackLanguage,
+            isDefault: bool(node.attributes["default"]) || fallbackDefault,
+            title: trimmed(node.attributes["title"]) ?? fallbackTitle
+        )
+    }
+
+    private static func deduplicated(_ sources: [StreamSource]) -> [StreamSource] {
+        var seen = Set<URL>()
+        return sources.filter { seen.insert($0.url).inserted }
+    }
+
+    private static func localName(_ name: String) -> String {
+        name.split(separator: ":").last.map(String.init) ?? name
+    }
+
+    private static func trimmed(_ value: String?) -> String? {
+        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value?.isEmpty == false ? value : nil
+    }
+
+    private static func bool(_ value: String?) -> Bool {
+        ["true", "yes", "1"].contains(value?.lowercased())
+    }
+
+    private static func number(_ value: String?) -> Double? {
+        guard let value = trimmed(value) else { return nil }
+        return Double(value)
+    }
+
+    private static func url(_ value: String?, relativeTo baseURL: URL?, requireHTTP: Bool) -> URL? {
+        guard let value = trimmed(value), let resolved = URL(string: value, relativeTo: baseURL)?.absoluteURL else {
+            return nil
+        }
+        if requireHTTP {
+            guard resolved.scheme?.lowercased() == "http" || resolved.scheme?.lowercased() == "https" else {
+                return nil
+            }
+        }
+        return resolved
+    }
+
+    private static func date(_ value: String?) -> Date? {
+        guard let value = trimmed(value) else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) { return date }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        if let date = standard.date(from: value) { return date }
+
+        let compactTimeZone = DateFormatter()
+        compactTimeZone.locale = Locale(identifier: "en_US_POSIX")
+        compactTimeZone.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        if let date = compactTimeZone.date(from: value) { return date }
+        compactTimeZone.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        return compactTimeZone.date(from: value)
+    }
+}
+
+private extension NamespaceNode {
+    func firstChild(named name: String) -> NamespaceNode? {
+        children.first { child in
+            child.name.split(separator: ":").last.map(String.init) == name
+        }
+    }
+
+    func children(named name: String) -> [NamespaceNode] {
+        children.filter { child in
+            child.name.split(separator: ":").last.map(String.init) == name
+        }
     }
 }

@@ -827,7 +827,8 @@ private struct RootWindowView: View {
 #endif
 
     var body: some View {
-        if let container = modelContainerManager.preparedContainer {
+        if let container = modelContainerManager.preparedContainer,
+           modelContainerManager.runtimeStoreReadiness == .ready {
             AppLaunchContainerView {
                 ContentView()
 #if DEBUG
@@ -858,15 +859,19 @@ private struct RootWindowView: View {
                     Player.shared.startRecoveryIfNeeded()
                     Task(priority: .userInitiated) {
                         try? await Task.sleep(for: .milliseconds(250))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard Task.isCancelled == false else { return }
                         await DeferredLaunchServiceBootstrap.shared.start()
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .milliseconds(500))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(1))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
                             modelContainer: container
@@ -884,6 +889,7 @@ private struct RootWindowView: View {
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(2))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         WatchSyncCoordinator.activate()
                         await CloudSyncProgressReferenceStore.publish(modelContainer: container)
@@ -893,6 +899,7 @@ private struct RootWindowView: View {
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(3))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                             modelContainer: container
@@ -900,12 +907,14 @@ private struct RootWindowView: View {
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(5))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         let actor = EpisodeActor(modelContainer: container)
                         await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
                     }
                     Task(priority: .background) {
                         try? await Task.sleep(for: .seconds(8))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         await RaulApp.runAutomaticTranscriptionSweep(reason: "launch")
 #if canImport(UIKit)
@@ -917,6 +926,7 @@ private struct RootWindowView: View {
                     }
                 }
                 .task {
+                    await modelContainerManager.waitUntilApplicationQueriesReady()
                     try? await Task.sleep(for: .seconds(15))
                     guard Task.isCancelled == false else { return }
                     await modelContainerManager.runLaunchStoreMaintenance()
@@ -931,6 +941,12 @@ private struct RootWindowView: View {
                 }
 #endif
             }
+        } else if modelContainerManager.preparedContainer != nil {
+            // Keep relationship-backed @Query views out of the CloudKit/SwiftData
+            // setup window. This is the minimal launch phase; the full graph is
+            // rendered only after ModelContainerManager publishes `.ready`.
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ModelContainerLaunchView(
                 errorMessage: modelContainerManager.initializationError,

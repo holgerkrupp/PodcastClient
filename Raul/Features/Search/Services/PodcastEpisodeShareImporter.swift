@@ -21,7 +21,49 @@ enum SharedEpisodeImportDestination: Sendable, Equatable {
     case playlist(UUID)
 }
 
+enum SharedURLResolution {
+    case podcastEpisode(feed: PodcastFeed, episode: PodcastEpisodeDraft, sharedURL: URL)
+    case podcast(feed: PodcastFeed, sharedURL: URL)
+    case standaloneMedia(StandaloneSharedEpisode)
+    case unresolved(sharedURL: URL, suggestedSearch: String?)
+}
+
 struct PodcastEpisodeShareImporter {
+    private let ardAPI: ARDSoundsAPI
+
+    init(ardAPI: ARDSoundsAPI = ARDSoundsAPI()) {
+        self.ardAPI = ardAPI
+    }
+
+    @MainActor
+    func resolve(sharedURL: URL) async -> SharedURLResolution {
+        guard isSupportedSharedURL(sharedURL) else {
+            return .unresolved(sharedURL: sharedURL, suggestedSearch: nil)
+        }
+
+        do {
+            switch try await resolveEpisode(from: sharedURL) {
+            case .feed(let draft, _, let feed):
+                return .podcastEpisode(feed: feed, episode: draft, sharedURL: sharedURL)
+            case .podcast(let feed):
+                return .podcast(feed: feed, sharedURL: sharedURL)
+            case .standalone(let standalone):
+                return .standaloneMedia(standalone)
+            case .unresolved(let search):
+                return .unresolved(sharedURL: sharedURL, suggestedSearch: search)
+            }
+        } catch {
+            return .unresolved(
+                sharedURL: sharedURL,
+                suggestedSearch: fallbackSearchQuery(for: sharedURL)
+            )
+        }
+    }
+
+    func fallbackSearchQueryForRecovery(_ url: URL) -> String? {
+        fallbackSearchQuery(for: url)
+    }
+
     @MainActor
     @discardableResult
     func importEpisode(
@@ -30,6 +72,12 @@ struct PodcastEpisodeShareImporter {
         modelContext: ModelContext
     ) async throws -> URL {
         let resolved = try await resolveEpisode(from: sharedURL)
+        switch resolved {
+        case .feed(_, _, _), .standalone(_):
+            break
+        case .podcast(_), .unresolved(_):
+            throw PodcastEpisodeShareImportError.noEpisodeFound
+        }
         return try await upsert(
             resolved,
             sharedURL: sharedURL,
@@ -58,8 +106,12 @@ struct PodcastEpisodeShareImporter {
     }
 
     private func resolveEpisode(from sharedURL: URL) async throws -> ResolvedSharedEpisode {
-        guard sharedURL.scheme?.isEmpty == false else {
+        guard isSupportedSharedURL(sharedURL) else {
             throw PodcastEpisodeShareImportError.unsupportedURL
+        }
+
+        if let ardResolution = await resolveARDSoundsEpisode(from: sharedURL) {
+            return ardResolution
         }
 
         if EpisodeMedia.isPlayable(url: sharedURL, mimeType: nil) {
@@ -84,6 +136,7 @@ struct PodcastEpisodeShareImporter {
         let feedURLs = discoverFeedURLs(in: page, baseURL: sharedURL)
         let canonicalPageURL = discoverCanonicalURL(in: page, baseURL: sharedURL)
 
+        var discoveredPodcastFeed: PodcastFeed?
         for feedURL in feedURLs {
             guard let page = try? await PodcastParser.fetchPage(from: feedURL) else { continue }
             if let draft = matchingEpisode(
@@ -96,6 +149,7 @@ struct PodcastEpisodeShareImporter {
                     feed: page.feed
                 )
             }
+            discoveredPodcastFeed = discoveredPodcastFeed ?? page.feed
         }
 
         if let mediaURL = discoverMediaURL(in: page, baseURL: sharedURL) {
@@ -120,7 +174,55 @@ struct PodcastEpisodeShareImporter {
             )
         }
 
-        throw PodcastEpisodeShareImportError.noEpisodeFound
+        if let discoveredPodcastFeed {
+            return .podcast(feed: discoveredPodcastFeed)
+        }
+
+        return .unresolved(
+            suggestedSearch: fallbackSearchQuery(
+                for: sharedURL,
+                title: htmlMetadata(named: "og:title", in: page) ?? titleTag(in: page)
+            )
+        )
+    }
+
+    private func resolveARDSoundsEpisode(from sharedURL: URL) async -> ResolvedSharedEpisode? {
+        guard let itemID = ARDSoundsAPI.itemURN(in: sharedURL),
+              let item = try? await ardAPI.item(id: itemID),
+              let mediaURL = item.mediaURL else {
+            return nil
+        }
+
+        let title = item.title ?? fallbackTitle(for: sharedURL)
+        let imageURL = item.image?.resolvedURL
+        let standalone = StandaloneSharedEpisode(
+            title: title,
+            desc: item.description,
+            pageURL: sharedURL,
+            mediaURL: mediaURL,
+            mediaType: mediaType(for: mediaURL),
+            imageURL: imageURL,
+            duration: item.duration
+        )
+
+        // ARD usually does not publish an RSS URL. Resolve the owning show by
+        // its exact Apple Podcasts title, then prefer the feed's richer draft
+        // when it contains the same enclosure or episode title.
+        guard let showTitle = item.showTitle,
+              let feedURL = await ApplePodcastsFeedResolver(storefront: "de")
+                .feedURL(matchingTitle: showTitle, author: item.author),
+              let feedPage = try? await PodcastParser.fetchPage(from: feedURL) else {
+            return .standalone(standalone)
+        }
+
+        if let draft = feedPage.episodes.first(where: {
+            urlsMatch($0.episodeURL, mediaURL)
+                || normalizedTitle($0.title) == normalizedTitle(title)
+        }) {
+            return .feed(draft: draft, episodes: feedPage.episodes, feed: feedPage.feed)
+        }
+
+        return .podcast(feed: feedPage.feed)
     }
 
     @MainActor
@@ -168,6 +270,9 @@ struct PodcastEpisodeShareImporter {
                 modelContext: modelContext
             )
             return episodeURL
+
+        case .podcast(_), .unresolved(_):
+            throw PodcastEpisodeShareImportError.noEpisodeFound
         }
     }
 
@@ -568,6 +673,38 @@ struct PodcastEpisodeShareImporter {
         }
         return url.host() ?? url.absoluteString
     }
+
+    private func isSupportedSharedURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return ["http", "https", "feed", "rss"].contains(scheme)
+    }
+
+    private func normalizedTitle(_ title: String) -> String {
+        title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+            .unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .reduce(into: "") { $0.unicodeScalars.append($1) }
+    }
+
+    private func fallbackSearchQuery(for url: URL, title: String? = nil) -> String? {
+        let cleanedTitle = title?
+            .replacingOccurrences(of: #"\s*[|–—-]\s*(?:episode|folge|podcast).*$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let cleanedTitle, cleanedTitle.isEmpty == false {
+            return cleanedTitle
+        }
+
+        if let host = url.host(), host.isEmpty == false {
+            let path = url.pathComponents
+                .dropFirst()
+                .filter { $0.isEmpty == false }
+                .prefix(2)
+                .joined(separator: " ")
+                .removingPercentEncoding ?? ""
+            return path.isEmpty ? host : "\(host) \(path)"
+        }
+        return nil
+    }
 }
 
 private enum ResolvedSharedEpisode {
@@ -577,9 +714,11 @@ private enum ResolvedSharedEpisode {
         feed: PodcastFeed
     )
     case standalone(StandaloneSharedEpisode)
+    case podcast(feed: PodcastFeed)
+    case unresolved(suggestedSearch: String?)
 }
 
-private struct StandaloneSharedEpisode {
+struct StandaloneSharedEpisode {
     let title: String
     let desc: String?
     let pageURL: URL

@@ -1095,6 +1095,7 @@ actor SubscriptionManager:NSObject{
     private func podcastsPrioritizedForBackgroundRefresh(
         now: Date
     ) -> [(podcast: Podcast, forceParse: Bool)] {
+        let liveFeatureEnabled = showLivePodcastsEnabled()
         let rankedPodcasts = podcasts
             .filter { $0.metaData?.isSubscribed != false }
             .map { podcast -> (podcast: Podcast, prediction: PodcastReleasePredictor.Prediction?, score: Int) in
@@ -1103,6 +1104,7 @@ actor SubscriptionManager:NSObject{
                     podcast: podcast,
                     prediction: prediction,
                     score: backgroundRefreshScore(for: podcast, prediction: prediction, now: now)
+                        + (liveFeatureEnabled ? liveRefreshPriority(for: podcast, now: now) : 0)
                 )
             }
 
@@ -1120,12 +1122,38 @@ actor SubscriptionManager:NSObject{
             .map { entry in
                 (
                     podcast: entry.podcast,
-                    forceParse: PodcastBackgroundRefreshPriority.shouldForceParse(
-                        prediction: entry.prediction,
-                        now: now
-                    )
+                    forceParse: (liveFeatureEnabled
+                        && liveRefreshPriority(for: entry.podcast, now: now) > 0)
+                        || PodcastBackgroundRefreshPriority.shouldForceParse(
+                            prediction: entry.prediction,
+                            now: now
+                        )
                 )
             }
+    }
+
+    private func showLivePodcastsEnabled() -> Bool {
+        let descriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" }
+        )
+        let globalSettings = try? modelContext.fetch(descriptor).first
+        return globalSettings?.showLivePodcasts != false
+    }
+
+    private func liveRefreshPriority(for podcast: Podcast, now: Date) -> Int {
+        let relevantItems = podcast.liveItems.filter { item in
+            switch item.status {
+            case .live:
+                return true
+            case .pending:
+                guard let start = item.start else { return true }
+                return start.timeIntervalSince(now) <= 2 * 60 * 60 && start.timeIntervalSince(now) > -30 * 60
+            case .ended, .unknown(_):
+                return false
+            }
+        }
+        guard relevantItems.isEmpty == false else { return 0 }
+        return relevantItems.contains(where: { $0.status == .live }) ? 10_000 : 5_000
     }
 
     private func backgroundRefreshScore(

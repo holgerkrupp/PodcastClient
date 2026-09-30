@@ -31,6 +31,7 @@ struct ContentView: View {
     @State private var didEvaluateOnboardingLaunch = false
     @State private var didCompleteInitialContentLoad = false
     @State private var isImportingSharedEpisodes = false
+    @State private var sharedEpisodeRecovery: SharedEpisodeRecovery?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
     
     @State private var search:String = ""
@@ -186,6 +187,11 @@ struct ContentView: View {
         .sheet(item: $podcastYearShareCoordinator.sheetRequest) { request in
             PodcastYearShareSheet(request: request)
         }
+        .sheet(item: $sharedEpisodeRecovery) { recovery in
+            SharedEpisodeRecoveryView(recovery: recovery) { action in
+                handleRecovery(action, for: recovery)
+            }
+        }
         .sheet(isPresented: $showOnboarding, onDismiss: {
             didCompleteOnboarding = true
         }) {
@@ -273,6 +279,11 @@ struct ContentView: View {
     // MARK: - Manual count loader
     @MainActor
     private func loadLaunchCounts() async {
+        // Keep relationship-heavy badge queries out of the first scene
+        // transition and behind the runtime-store readiness barrier.
+        await ModelContainerManager.shared.waitUntilApplicationQueriesReady()
+        try? await Task.sleep(for: .milliseconds(250))
+        guard Task.isCancelled == false else { return }
         let loader = AppLaunchCountLoader(modelContainer: modelContext.container)
         do {
             let counts = try await loader.counts()
@@ -293,11 +304,13 @@ struct ContentView: View {
 
     @MainActor
     private func loadInboxCount() async {
+        await ModelContainerManager.shared.waitUntilApplicationQueriesReady()
+        guard Task.isCancelled == false else { return }
         CrashBreadcrumbs.shared.record("load_inbox_count_started")
-        let counter = InboxCountLoader(container: modelContext.container)
+        let counter = InboxCountLoader.shared
 
         do {
-            inboxCount = try await counter.count()
+            inboxCount = try await counter.count(in: modelContext.container)
             CrashBreadcrumbs.shared.record("load_inbox_count_success", details: "count=\(inboxCount)")
         } catch {
             AppDiagnostics.log("Failed to load inbox count: \(error.localizedDescription) | breadcrumbs: \(CrashBreadcrumbs.shared.recentSummary())")
@@ -309,14 +322,38 @@ struct ContentView: View {
     @MainActor
     private func importPendingSharedEpisodeIfNeeded() async {
         guard isImportingSharedEpisodes == false else { return }
-        let requests = PendingSharedEpisodeImportStore.pendingRequests()
-        guard requests.isEmpty == false else { return }
+        let actions = PendingSharedEpisodeImportStore.pendingActions()
+        guard actions.isEmpty == false else { return }
 
         isImportingSharedEpisodes = true
         defer { isImportingSharedEpisodes = false }
 
-        for request in requests {
-            await importSharedEpisode(request)
+        for action in actions {
+            await handlePendingSharedEpisodeAction(action)
+        }
+    }
+
+    @MainActor
+    private func handlePendingSharedEpisodeAction(_ action: PendingSharedEpisodeAction) async {
+        switch action.kind {
+        case .search:
+            PendingSharedEpisodeImportStore.remove(id: action.id)
+            navigation.select(.search)
+            search = action.query ?? action.url.host() ?? action.url.absoluteString
+
+        case .subscribe:
+            PendingSharedEpisodeImportStore.remove(id: action.id)
+            guard let feedURL = action.feedURL else {
+                presentSharedEpisodeRecovery(for: action.url, message: "The podcast feed was not available.")
+                return
+            }
+            navigation.select(.search)
+            incomingPodcastSubscription.handleIncomingURL(feedURL)
+
+        case .importEpisode:
+            await importSharedEpisode(
+                PendingSharedEpisodeImportRequest(id: action.id, url: action.url, playlistID: action.playlistID)
+            )
         }
     }
 
@@ -334,6 +371,7 @@ struct ContentView: View {
         } catch {
             AppDiagnostics.log("Failed to import shared episode \(sharedEpisodeURL.redactedPodcastURLString): \(error.localizedDescription)")
             CrashBreadcrumbs.shared.record("shared_episode_import_failed", details: error.localizedDescription)
+            presentSharedEpisodeRecovery(for: sharedEpisodeURL, message: error.localizedDescription)
         }
     }
 
@@ -368,6 +406,9 @@ struct ContentView: View {
             )
             await loadInboxCount()
         } catch {
+            // Consume a failed action before presenting recovery. A broken URL
+            // must not run again on every scene activation.
+            PendingSharedEpisodeImportStore.remove(id: request.id)
             AppDiagnostics.log(
                 "Failed to import shared episode \(request.url.redactedPodcastURLString): \(error.localizedDescription)"
             )
@@ -375,6 +416,30 @@ struct ContentView: View {
                 "shared_episode_import_failed",
                 details: error.localizedDescription
             )
+            presentSharedEpisodeRecovery(for: request.url, message: error.localizedDescription)
+        }
+    }
+
+    private func presentSharedEpisodeRecovery(for url: URL, message: String) {
+        sharedEpisodeRecovery = SharedEpisodeRecovery(
+            url: url,
+            message: message,
+            suggestedSearch: PodcastEpisodeShareImporter().fallbackSearchQueryForRecovery(url)
+        )
+    }
+
+    @MainActor
+    private func handleRecovery(_ action: SharedEpisodeRecoveryAction, for recovery: SharedEpisodeRecovery) {
+        switch action {
+        case .search:
+            sharedEpisodeRecovery = nil
+            navigation.select(.search)
+            search = recovery.suggestedSearch ?? recovery.url.host() ?? recovery.url.absoluteString
+        case .retry:
+            sharedEpisodeRecovery = nil
+            Task { await importSharedEpisode(from: recovery.url) }
+        case .openBrowser, .dismiss:
+            sharedEpisodeRecovery = nil
         }
     }
 
@@ -431,31 +496,41 @@ private struct AppLaunchCounts: Sendable {
 private actor AppLaunchCountLoader {
     func counts() throws -> AppLaunchCounts {
         let inboxPredicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
-        let subscriptionPredicate = #Predicate<Podcast> {
-            $0.metaData?.isSubscribed != false
+        // Count the scalar metadata row instead of traversing Podcast.metaData
+        // for every object while SwiftData/CloudKit is settling.
+        let subscriptionPredicate = #Predicate<PodcastMetaData> {
+            $0.isSubscribed == true
         }
         return AppLaunchCounts(
             inbox: try modelContext.fetchCount(
                 FetchDescriptor<EpisodeMetaData>(predicate: inboxPredicate)
             ),
             subscribedPodcasts: try modelContext.fetchCount(
-                FetchDescriptor<Podcast>(predicate: subscriptionPredicate)
+                FetchDescriptor<PodcastMetaData>(predicate: subscriptionPredicate)
             )
         )
     }
 }
 
 private actor InboxCountLoader {
-    private let container: ModelContainer
+    static let shared = InboxCountLoader()
+    private var inFlight: Task<Int, Error>?
 
-    init(container: ModelContainer) {
-        self.container = container
-    }
+    func count(in container: ModelContainer) async throws -> Int {
+        if let inFlight {
+            return try await inFlight.value
+        }
 
-    func count() throws -> Int {
-        let context = ModelContext(container)
-        let predicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
-        return try context.fetchCount(FetchDescriptor<EpisodeMetaData>(predicate: predicate))
+        let task = Task.detached(priority: .utility) {
+            let context = ModelContext(container)
+            let predicate = #Predicate<EpisodeMetaData> { $0.isInbox == true }
+            return try context.fetchCount(
+                FetchDescriptor<EpisodeMetaData>(predicate: predicate)
+            )
+        }
+        inFlight = task
+        defer { inFlight = nil }
+        return try await task.value
     }
 }
 

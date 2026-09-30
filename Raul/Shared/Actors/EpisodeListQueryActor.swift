@@ -31,20 +31,18 @@ actor EpisodeListQueryActor {
                 }
             }
 
-            let totalCount = try modelContext.fetchCount(
-                FetchDescriptor<EpisodeMetaData>(predicate: predicate)
-            )
             var descriptor = FetchDescriptor<EpisodeMetaData>(
                 predicate: predicate,
                 sortBy: [SortDescriptor(\EpisodeMetaData.lastPlayed, order: .reverse)]
             )
-            descriptor.fetchLimit = limit
-            let episodeIDs = try modelContext.fetch(descriptor).compactMap {
+            descriptor.fetchLimit = limit + 1
+            let rows = try modelContext.fetch(descriptor)
+            let episodeIDs = rows.prefix(limit).compactMap {
                 $0.episode?.persistentModelID
             }
             return EpisodeListQueryResult(
                 episodeIDs: episodeIDs,
-                hasMore: totalCount > limit
+                hasMore: rows.count > limit
             )
         }
 
@@ -57,18 +55,16 @@ actor EpisodeListQueryActor {
             }
         }
 
-        let totalCount = try modelContext.fetchCount(
-            FetchDescriptor<Episode>(predicate: predicate)
-        )
         var descriptor = FetchDescriptor<Episode>(
             predicate: predicate,
             sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
         )
-        descriptor.fetchLimit = limit
-        let episodeIDs = try modelContext.fetch(descriptor).map(\.persistentModelID)
+        descriptor.fetchLimit = limit + 1
+        let rows = try modelContext.fetch(descriptor)
+        let episodeIDs = rows.prefix(limit).map(\.persistentModelID)
         return EpisodeListQueryResult(
             episodeIDs: episodeIDs,
-            hasMore: totalCount > limit
+            hasMore: rows.count > limit
         )
     }
 
