@@ -26,6 +26,22 @@ struct StoreSplitMigrationDiagnosticsSnapshot: Sendable {
     var failedItemCount: Int
 }
 
+struct StoreSplitMigrationHealthRecord: Codable, Sendable, Equatable {
+    let operation: String
+    let appState: String
+    let playbackActive: Bool
+    let rowsScanned: Int
+    let rowsMutated: Int
+    let modelContextSaveCount: Int
+    let modelContextSaveDurationMilliseconds: Int
+    let targetStores: String
+    let cloudKitExportInProgressBefore: Bool
+    let cloudKitExportInProgressAfter: Bool
+    let exporterWaitDurationMilliseconds: Int
+    let nextRetryAt: Date?
+    let recordedAt: Date
+}
+
 struct StoreSplitMigrationPhaseStatus: Identifiable, Sendable, Equatable {
     let id: String
     let title: String
@@ -70,6 +86,8 @@ struct StoreSplitMigrationStatus: Sendable, Equatable {
     let lastSliceStatus: StoreSplitSliceReport.Status?
     let lastSliceProcessed: Int
     let lastSliceError: String?
+    let currentJob: String?
+    let pendingReason: String?
     let phases: [StoreSplitMigrationPhaseStatus]
     /// AI content is checkpointed by the importer, but is intentionally kept
     /// out of the slice progress denominator because it is not part of the
@@ -88,9 +106,21 @@ struct StoreSplitMigrationStatus: Sendable, Equatable {
     }
 }
 
+/// The manual development action has an explicit outcome even when no database
+/// row was touched. Keeping this separate from `StoreSplitSliceReport` prevents
+/// the UI from turning a deferred/failed prerequisite into “Slice complete”.
+enum StoreSplitMigrationSliceResult: Sendable, Equatable {
+    case advanced(phase: String?, processed: Int)
+    case phaseCompleted(phase: String?, processed: Int)
+    case allComplete
+    case deferred(String)
+    case failed(String)
+}
+
 enum StoreSplitMigrationDiagnostics {
     private static let lastMigrationKey = "storeSplit.lastMigrationAt"
     private static let failedItemsKey = "storeSplit.failedItems"
+    private static let healthRecordKey = "storeSplit.lastHealthRecord.v1"
     private static var defaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     }
@@ -184,6 +214,16 @@ enum StoreSplitMigrationDiagnostics {
         defaults.stringArray(forKey: failedItemsKey) ?? []
     }
 
+    static func recordHealth(_ record: StoreSplitMigrationHealthRecord) {
+        guard let data = try? JSONEncoder().encode(record) else { return }
+        defaults.set(data, forKey: healthRecordKey)
+    }
+
+    static func lastHealthRecord() -> StoreSplitMigrationHealthRecord? {
+        guard let data = defaults.data(forKey: healthRecordKey) else { return nil }
+        return try? JSONDecoder().decode(StoreSplitMigrationHealthRecord.self, from: data)
+    }
+
     @MainActor
     static func migrationStatus(
         cacheContext: ModelContext,
@@ -193,7 +233,9 @@ enum StoreSplitMigrationDiagnostics {
         blocker: String? = nil,
         lastSliceStatus: StoreSplitSliceReport.Status? = nil,
         lastSliceProcessed: Int = 0,
-        lastSliceError: String? = nil
+        lastSliceError: String? = nil,
+        currentJob: String? = nil,
+        pendingReason: String? = nil
     ) -> StoreSplitMigrationStatus {
         let version = StoreSplitMigrationService.migrationVersion
         let checkpoints = ((try? cacheContext.fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>())) ?? [])
@@ -257,8 +299,53 @@ enum StoreSplitMigrationDiagnostics {
             lastSliceStatus: lastSliceStatus,
             lastSliceProcessed: lastSliceProcessed,
             lastSliceError: lastSliceError,
+            currentJob: currentJob,
+            pendingReason: pendingReason,
             phases: phaseStatuses,
             supplementalPhases: supplementalPhaseStatuses
+        )
+    }
+
+    @MainActor
+    static func unavailableStatus(
+        readiness: StoreSplitMigrationReadiness,
+        blocker: String?,
+        isRunning: Bool,
+        lastSliceStatus: StoreSplitSliceReport.Status?,
+        lastSliceProcessed: Int,
+        lastSliceError: String?,
+        currentJob: String?,
+        pendingReason: String?
+    ) -> StoreSplitMigrationStatus {
+        let emptyPhases = phases.map {
+            StoreSplitMigrationPhaseStatus(
+                id: $0.id,
+                title: $0.title,
+                isComplete: false,
+                scannedCount: 0,
+                activeDestinationCount: 0,
+                failedCount: 0,
+                cursor: nil,
+                updatedAt: nil
+            )
+        }
+        return StoreSplitMigrationStatus(
+            migrationVersion: StoreSplitMigrationService.migrationVersion,
+            readiness: readiness,
+            blocker: blocker,
+            isRunning: isRunning,
+            completedPhaseCount: 0,
+            totalPhaseCount: emptyPhases.count,
+            scannedItemCount: 0,
+            failedItemCount: 0,
+            lastMigrationAt: defaults.object(forKey: lastMigrationKey) as? Date,
+            lastSliceStatus: lastSliceStatus,
+            lastSliceProcessed: lastSliceProcessed,
+            lastSliceError: lastSliceError,
+            currentJob: currentJob,
+            pendingReason: pendingReason,
+            phases: emptyPhases,
+            supplementalPhases: []
         )
     }
 

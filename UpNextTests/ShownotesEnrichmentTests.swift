@@ -147,6 +147,65 @@ final class ShownotesEnrichmentTests: XCTestCase {
         XCTAssertFalse(fragments.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines) == "</li></ul>" })
     }
 
+    func testInlineLinksStayInsideTheirOriginalParagraph() {
+        let html = "<p>Read <a href=\"https://example.com/article\">the article</a> for context.</p>"
+        let document = ShownoteDocument(html: html)
+
+        XCTAssertEqual(document.candidates.count, 1)
+        XCTAssertEqual(document.candidates[0].presentation, .inline)
+        XCTAssertEqual(document.blocks.count, 1)
+        guard case .html(_, let value) = document.blocks[0] else {
+            return XCTFail("An inline link must remain in the HTML block")
+        }
+        XCTAssertTrue(value.contains("<p>Read <a href=\"https://example.com/article\">the article</a> for context.</p>"))
+    }
+
+    func testFS312FixturesKeepStandaloneCardsOutOfInlineAndNestedListMarkup() {
+        let html = """
+        <p>See <a href="https://example.com/context">the context</a> for source.</p>
+        <ul>
+          <li><a href="https://nextcloud.com">Nextcloud</a></li>
+          <li>Read the <a href="https://techcrunch.com/article">TechCrunch article</a> next.</li>
+          <li>Resources<ul><li><a href="https://example.com/nested">Nested resource</a></li></ul></li>
+        </ul>
+        <ol><li><a href="https://github.com/example/project">GitHub project</a></li><li>Keep this item</li></ol>
+        """
+        let document = ShownoteDocument(html: html)
+
+        XCTAssertEqual(document.candidates.count, 5)
+        XCTAssertEqual(document.candidates.filter { $0.presentation == .standalone }.count, 3)
+        XCTAssertEqual(document.candidates.filter { $0.presentation == .inline }.count, 2)
+        XCTAssertEqual(document.blocks.filter {
+            if case .link = $0 { return true }
+            return false
+        }.count, 3)
+
+        let fragments = document.blocks.compactMap { block -> String? in
+            guard case .html(_, let value) = block else { return nil }
+            return value
+        }
+        XCTAssertFalse(fragments.contains {
+            $0.replacingOccurrences(of: #"<[^>]*>"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        })
+        XCTAssertTrue(fragments.joined().contains("TechCrunch article"))
+        XCTAssertTrue(fragments.joined().contains("the context"))
+    }
+
+    func testMalformedHTMLFallsBackWithoutEmptyListMarkers() {
+        let html = "<ul><li><a href=\"https://example.com/broken\">Broken item</a><li>Following item"
+        let document = ShownoteDocument(html: html)
+
+        XCTAssertEqual(document.candidates.count, 1)
+        XCTAssertTrue(document.blocks.allSatisfy {
+            guard case .html(_, let value) = $0 else { return true }
+            return value.replacingOccurrences(of: #"<[^>]*>"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty == false
+        })
+    }
+
     func testManyCandidatesAreBoundedAndNegativeResultsAreCached() async throws {
         let urls = (0..<8).map { URL(string: "https://example.com/page\($0)")! }
         let resources = Dictionary(uniqueKeysWithValues: urls.map { ($0, FixtureShownoteResource.html("<html>not a podcast</html>", url: $0)) })

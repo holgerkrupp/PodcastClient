@@ -98,6 +98,8 @@ final class PodcastBrowseViewModel: ObservableObject {
             url: alternativeFeed.url,
             title: alternativeFeed.title,
             source: podcastFeed.source,
+            accessCredential: podcastFeed.accessCredential,
+            accessKind: podcastFeed.accessKind,
             fetchMetadataIfNeeded: false
         )
         podcastFeed = replacementFeed
@@ -123,7 +125,7 @@ final class PodcastBrowseViewModel: ObservableObject {
         }
 
         do {
-            let document = try await PodcastParser.downloadFeed(from: url)
+            let document = try await PodcastParser.downloadFeed(from: url, profile: accessProfile)
             await loadPage(document: document, maximumEpisodes: maximumEpisodes, isInitialLoad: isInitialLoad)
         } catch {
             errorMessage = error.localizedDescription
@@ -154,6 +156,8 @@ final class PodcastBrowseViewModel: ObservableObject {
                 mergedFeed.artist = mergedFeed.artist ?? podcastFeed.artist
                 mergedFeed.artworkURL = mergedFeed.artworkURL ?? podcastFeed.artworkURL
                 mergedFeed.lastRelease = mergedFeed.lastRelease ?? podcastFeed.lastRelease
+                mergedFeed.accessCredential = podcastFeed.accessCredential
+                mergedFeed.accessKind = podcastFeed.accessKind
                 podcastFeed = mergedFeed
             }
             currentPageDocument = document
@@ -166,6 +170,19 @@ final class PodcastBrowseViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private var accessProfile: PodcastAccessProfile? {
+        guard let credential = podcastFeed.accessCredential,
+              let feedURL = podcastFeed.url else { return nil }
+        let kind = podcastFeed.accessKind ?? {
+            switch credential {
+            case .privateURL: return PodcastAccessKind.privateURL
+            case .httpBasic: return PodcastAccessKind.httpBasic
+            case .bearerToken: return PodcastAccessKind.bearerToken
+            }
+        }()
+        return PodcastAccessProfile.make(for: feedURL, kind: kind)
     }
 }
 

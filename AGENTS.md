@@ -14,3 +14,27 @@ The following behavior is a strict product requirement for the full player on ev
 - Video playback may use its dedicated media presentation instead of the artwork hero. Increased Contrast may use the accessibility fallback.
 
 Before considering a player layout change complete, verify the resting and scrolled states on a standard portrait iPhone and an iPhone Duo configuration. Confirm the hero transition, transcript placement, top-pinned transport controls, and continuous background treatment.
+
+## Xcode build artifacts
+
+Never create DerivedData, build products, test results, or other generated
+Xcode artifacts inside the repository.
+
+Do not use paths such as:
+
+    .derivedData
+    .derivedData-*
+    build
+    build-*
+
+For temporary validation builds, use a directory outside the repository,
+preferably under:
+
+    $TMPDIR/PodcastClient/
+
+or:
+
+    ~/Library/Caches/PodcastClient/
+
+Temporary build directories created by an agent must be removed after the
+validation run unless they are deliberately being retained for debugging.

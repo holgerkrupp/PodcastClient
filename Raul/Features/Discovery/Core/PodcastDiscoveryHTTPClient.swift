@@ -71,7 +71,7 @@ struct PodcastDiscoveryHTTPClient: Sendable {
     }()
 
     private static let sharedSessionTransport: Transport = { request in
-        try await session.data(for: request)
+        try await podcastURLSessionData(for: request, using: session)
     }
 
     func data(

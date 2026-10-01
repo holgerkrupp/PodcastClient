@@ -103,6 +103,132 @@ final class SubscriptionManifestSyncTests: XCTestCase {
         XCTAssertEqual(refreshed.lastEpisodeURL, "https://example.com/newest.mp3")
     }
 
+    func testManifestOmitsEpisodeURLForPrivateAccessProfiles() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let podcast = Podcast(feed: feed)
+        podcast.title = "Private Example"
+        podcast.metaData?.accessProfileID = PodcastAccessProfile.make(
+            for: feed,
+            kind: .privateURL
+        ).id
+        podcast.metaData?.accessKindRawValue = PodcastAccessKind.privateURL.rawValue
+        context.insert(podcast)
+
+        let episode = Episode(
+            guid: "private-episode",
+            title: "Private episode",
+            publishDate: Date(timeIntervalSince1970: 3_000),
+            url: URL(string: "https://example.com/episode.mp3?token=fake-token")!
+        )
+        context.insert(episode)
+        episode.podcast = podcast
+        try context.save()
+
+        let manifest = await SubscriptionManifestModelActor(modelContainer: container)
+            .makeManifest()
+        let entry = try XCTUnwrap(manifest.entries.first)
+
+        XCTAssertEqual(entry.feedURL, feed.absoluteString)
+        XCTAssertNil(entry.lastEpisodeURL)
+    }
+
+    func testRestoreKeepsPrivateSubscriptionWhenCredentialIsMissing() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = URL(string: "https://fresh-device-(UUID().uuidString).example/private.xml")!
+        let profile = PodcastAccessProfile.make(for: feed, kind: .privateURL)
+        let manifest = SubscriptionManifest(
+            entries: [
+                SubscriptionManifestEntry(
+                    feedURL: feed.absoluteString,
+                    accessProfileID: profile.id,
+                    accessKindRawValue: PodcastAccessKind.privateURL.rawValue,
+                    accessProviderID: profile.providerID?.rawValue,
+                    title: "Private Example"
+                )
+            ]
+        )
+
+        let restoreResult = await SubscriptionManifestModelActor(modelContainer: container)
+            .restoreWithStatus(manifest)
+
+        XCTAssertTrue(restoreResult.feedsToBootstrap.isEmpty)
+        XCTAssertEqual(restoreResult.feedsAwaitingCredentials, [feed])
+        XCTAssertEqual(restoreResult.credentialRequiredProfileIDs, [profile.id])
+        let podcast = try XCTUnwrap(try context.fetch(FetchDescriptor<Podcast>()).first)
+        XCTAssertEqual(podcast.feed, feed)
+        XCTAssertEqual(podcast.metaData?.isSubscribed, true)
+        XCTAssertEqual(podcast.metaData?.accessProfileID, profile.id)
+        XCTAssertEqual(podcast.metaData?.credentialState, .missing)
+    }
+
+    func testRestoreUsesInjectedCredentialStoreWhenPrivateCredentialIsAvailable() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = URL(string: "https://scoped-device-(UUID().uuidString).example/private.xml")!
+        let privateURL = URL(string: feed.absoluteString + "?token=restored")!
+        let profile = PodcastAccessProfile.make(for: feed, kind: .privateURL)
+        let credentialStore = InMemoryPodcastCredentialStore()
+        try credentialStore.save(.privateURL(privateURL), for: profile)
+        let manifest = SubscriptionManifest(
+            entries: [
+                SubscriptionManifestEntry(
+                    feedURL: feed.absoluteString,
+                    accessProfileID: profile.id,
+                    accessKindRawValue: PodcastAccessKind.privateURL.rawValue,
+                    title: "Private Example"
+                )
+            ]
+        )
+
+        let restoreResult = await SubscriptionManifestModelActor(modelContainer: container)
+            .restoreWithStatus(manifest, credentialStore: credentialStore)
+
+        XCTAssertEqual(restoreResult.feedsToBootstrap, [privateURL])
+        XCTAssertTrue(restoreResult.feedsAwaitingCredentials.isEmpty)
+        let podcast = try XCTUnwrap(try context.fetch(FetchDescriptor<Podcast>()).first)
+        XCTAssertEqual(podcast.feed, feed)
+        XCTAssertEqual(podcast.metaData?.credentialState, .available)
+    }
+
+    func testRestoreScopesPremiumCredentialByCurrentUser() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = URL(string: "https://current-user-(UUID().uuidString.lowercased()).example/private.xml")!
+        let privateURL = URL(string: feed.absoluteString + "?token=user-a")!
+        let profile = PodcastAccessProfile.make(for: feed, kind: .privateURL)
+        let backing = InMemoryPodcastCredentialStore()
+        let userAStore = ScopedPodcastCredentialStore(scopeID: "apple-tv-user-a", backing: backing)
+        let userBStore = ScopedPodcastCredentialStore(scopeID: "apple-tv-user-b", backing: backing)
+        try userAStore.save(.privateURL(privateURL), for: profile)
+
+        let manifest = SubscriptionManifest(
+            entries: [
+                SubscriptionManifestEntry(
+                    feedURL: feed.absoluteString,
+                    accessProfileID: profile.id,
+                    accessKindRawValue: PodcastAccessKind.privateURL.rawValue,
+                    title: "Shared premium subscription"
+                )
+            ]
+        )
+
+        let userBResult = await SubscriptionManifestModelActor(modelContainer: container)
+            .restoreWithStatus(manifest, credentialStore: userBStore)
+        XCTAssertTrue(userBResult.feedsToBootstrap.isEmpty)
+        XCTAssertEqual(userBResult.feedsAwaitingCredentials, [feed])
+
+        let userAResult = await SubscriptionManifestModelActor(modelContainer: container)
+            .restoreWithStatus(manifest, credentialStore: userAStore)
+        XCTAssertEqual(userAResult.feedsToBootstrap, [privateURL])
+        XCTAssertTrue(userAResult.feedsAwaitingCredentials.isEmpty)
+
+        let podcast = try XCTUnwrap(try context.fetch(FetchDescriptor<Podcast>()).first)
+        XCTAssertEqual(podcast.feed, feed)
+        XCTAssertEqual(podcast.metaData?.isSubscribed, true)
+    }
+
     func testManifestOmitsAFeedDeletedAfterItWasSubscribed() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)

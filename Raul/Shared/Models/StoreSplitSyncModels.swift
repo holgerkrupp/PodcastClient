@@ -9,6 +9,7 @@ final class SubscriptionSync: Identifiable {
     /// Non-secret access-profile reference. Credentials remain in Keychain.
     var accessProfileID: String?
     var accessKindRawValue: String?
+    var accessProviderID: String?
     var isSubscribed: Bool = true
     var titleOverride: String?
     var displaySettingsRawValue: String?
@@ -21,6 +22,7 @@ final class SubscriptionSync: Identifiable {
         feedURL: String,
         accessProfileID: String? = nil,
         accessKindRawValue: String? = nil,
+        accessProviderID: String? = nil,
         isSubscribed: Bool = true,
         titleOverride: String? = nil,
         displaySettingsRawValue: String? = nil,
@@ -33,6 +35,7 @@ final class SubscriptionSync: Identifiable {
         self.feedURL = feedURL
         self.accessProfileID = accessProfileID
         self.accessKindRawValue = accessKindRawValue
+        self.accessProviderID = accessProviderID
         self.isSubscribed = isSubscribed
         self.titleOverride = titleOverride
         self.displaySettingsRawValue = displaySettingsRawValue

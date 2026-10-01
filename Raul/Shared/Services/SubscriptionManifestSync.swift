@@ -23,6 +23,7 @@ struct SubscriptionManifestEntry: Codable, Hashable, Sendable {
     var feedURL: String
     var accessProfileID: String?
     var accessKindRawValue: String?
+    var accessProviderID: String?
     var title: String?
     var author: String?
     var description: String?
@@ -35,6 +36,7 @@ struct SubscriptionManifestEntry: Codable, Hashable, Sendable {
         feedURL: String,
         accessProfileID: String? = nil,
         accessKindRawValue: String? = nil,
+        accessProviderID: String? = nil,
         title: String? = nil,
         author: String? = nil,
         description: String? = nil,
@@ -46,6 +48,7 @@ struct SubscriptionManifestEntry: Codable, Hashable, Sendable {
         self.feedURL = feedURL
         self.accessProfileID = accessProfileID
         self.accessKindRawValue = accessKindRawValue
+        self.accessProviderID = accessProviderID
         self.title = title
         self.author = author
         self.description = description
@@ -54,6 +57,12 @@ struct SubscriptionManifestEntry: Codable, Hashable, Sendable {
         self.lastEpisodeDate = lastEpisodeDate
         self.lastEpisodeURL = lastEpisodeURL
     }
+}
+
+struct SubscriptionManifestRestoreResult: Sendable, Equatable {
+    var feedsToBootstrap: [URL] = []
+    var feedsAwaitingCredentials: [URL] = []
+    var credentialRequiredProfileIDs: [String] = []
 }
 
 enum SubscriptionManifestSync {
@@ -67,7 +76,9 @@ enum SubscriptionManifestSync {
     private static let bootstrapEpisodeLimit = 25
     private static let bootstrapConcurrency = 3
 
-    static func loadManifest() -> SubscriptionManifest? {
+    static func loadManifest(
+        credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current
+    ) -> SubscriptionManifest? {
         let store = NSUbiquitousKeyValueStore.default
         store.synchronize()
 
@@ -90,9 +101,10 @@ enum SubscriptionManifestSync {
                 let credential: PodcastCredential = kind == .httpBasic
                     ? .httpBasic(username: basicCredential.username, password: basicCredential.password)
                     : .privateURL(legacyURL)
-                try? KeychainPodcastCredentialStore.shared.save(credential, for: profile)
+                try? credentialStore.save(credential, for: profile)
                 entry.accessProfileID = profile.id
                 entry.accessKindRawValue = profile.kind.rawValue
+                entry.accessProviderID = profile.providerID?.rawValue
                 entry.feedURL = normalizedFeedKey(legacyURL)
                 if let episodeURL = entry.lastEpisodeURL.flatMap(URL.init(string:)),
                    episodeURL.isLikelyPrivatePodcastURL {
@@ -152,14 +164,24 @@ enum SubscriptionManifestSync {
         save(manifest)
     }
 
-    static func restoreSubscriptionsAndBootstrap(modelContainer: ModelContainer) async {
-        guard let manifest = loadManifest(), manifest.entries.isEmpty == false else { return }
+    static func restoreSubscriptionsAndBootstrap(
+        modelContainer: ModelContainer,
+        credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current
+    ) async -> SubscriptionManifestRestoreResult? {
+        guard let manifest = loadManifest(credentialStore: credentialStore),
+              manifest.entries.isEmpty == false else { return nil }
 
-        let feedsToBootstrap = await SubscriptionManifestModelActor(modelContainer: modelContainer)
-            .restore(manifest, deletedFeeds: deletedFeeds())
+        let restoreResult = await SubscriptionManifestModelActor(modelContainer: modelContainer)
+            .restoreWithStatus(
+                manifest,
+                deletedFeeds: deletedFeeds(),
+                credentialStore: credentialStore
+            )
 
-        guard feedsToBootstrap.isEmpty == false else { return }
-        await bootstrap(feedsToBootstrap, modelContainer: modelContainer)
+        if restoreResult.feedsToBootstrap.isEmpty == false {
+            await bootstrap(restoreResult.feedsToBootstrap, modelContainer: modelContainer)
+        }
+        return restoreResult
     }
 
     static func normalizedFeedKey(_ url: URL) -> String {
@@ -289,19 +311,32 @@ actor SubscriptionManifestModelActor {
                 lastRefresh: lastRefresh,
                 cachedEntry: previousEntries[feedKey]
             )
-            let accessProfile = Self.accessProfile(for: feed)
+            let accessProfile = Self.accessProfile(for: podcast, feed: feed)
+            let safeLastEpisodeURL: String? = latest.url.flatMap { episodeURL in
+                guard let episodeURL = URL(string: episodeURL) else {
+                    return nil
+                }
+                guard accessProfile?.kind != .privateURL,
+                      accessProfile?.kind != .httpBasic,
+                      accessProfile?.kind != .bearerToken,
+                      episodeURL.isLikelyPrivatePodcastURL == false else {
+                    return nil
+                }
+                return episodeURL.absoluteString
+            }
 
             entriesByFeed[feedKey] = SubscriptionManifestEntry(
                 feedURL: feedKey,
                 accessProfileID: accessProfile?.id,
                 accessKindRawValue: accessProfile?.kind.rawValue,
+                accessProviderID: accessProfile?.providerID?.rawValue,
                 title: podcast.title,
                 author: podcast.author,
                 description: podcast.desc,
                 artworkURL: podcast.imageURL?.absoluteString,
                 lastRefresh: lastRefresh,
                 lastEpisodeDate: latest.date,
-                lastEpisodeURL: latest.url
+                lastEpisodeURL: safeLastEpisodeURL
             )
         }
 
@@ -349,17 +384,30 @@ actor SubscriptionManifestModelActor {
 
     func restore(
         _ manifest: SubscriptionManifest,
-        deletedFeeds: [String: Date] = [:]
+        deletedFeeds: [String: Date] = [:],
+        credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current
     ) -> [URL] {
+        restoreWithStatus(
+            manifest,
+            deletedFeeds: deletedFeeds,
+            credentialStore: credentialStore
+        ).feedsToBootstrap
+    }
+
+    func restoreWithStatus(
+        _ manifest: SubscriptionManifest,
+        deletedFeeds: [String: Date] = [:],
+        credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current
+    ) -> SubscriptionManifestRestoreResult {
         guard manifest.schemaVersion <= SubscriptionManifest.currentSchemaVersion else {
-            return []
+            return SubscriptionManifestRestoreResult()
         }
 
         let validEntries = deduplicatedEntries(from: manifest)
-        guard validEntries.isEmpty == false else { return [] }
+        guard validEntries.isEmpty == false else { return SubscriptionManifestRestoreResult() }
 
-        var feedsToBootstrap: [URL] = []
-        let accessResolver = PodcastAccessResolver()
+        var result = SubscriptionManifestRestoreResult()
+        let accessResolver = PodcastAccessResolver(credentialStore: credentialStore)
 
         for entry in validEntries {
             guard let manifestFeed = URL(string: entry.feedURL) else { continue }
@@ -373,18 +421,28 @@ actor SubscriptionManifestModelActor {
             }
 
             let profile = accessProfile(for: entry, resourceURL: manifestFeed)
-            let resolvedFeed = profile.flatMap {
-                try? accessResolver.resolvedURL(for: $0, fallbackURL: manifestFeed)
-            } ?? manifestFeed
-            let hasCredential = profile.map {
-                accessResolver.credentialState(for: $0) == .available
-            } ?? true
+            let bootstrapDecision = accessResolver.bootstrapDecision(
+                for: profile,
+                fallbackURL: manifestFeed
+            )
+            let resolvedFeed: URL
+            let hasCredential: Bool
+            switch bootstrapDecision {
+            case .publicFeed(let url), .ready(let url):
+                resolvedFeed = url
+                hasCredential = true
+            case .credentialsRequired(let profileID, let feedURL):
+                resolvedFeed = feedURL
+                hasCredential = false
+                result.feedsAwaitingCredentials.append(feedURL)
+                result.credentialRequiredProfileIDs.append(profileID)
+            }
 
             let podcast = fetchPodcast(feed: resolvedFeed) ?? {
                 let podcast = Podcast(feed: resolvedFeed)
                 modelContext.insert(podcast)
                 if hasCredential {
-                    feedsToBootstrap.append(resolvedFeed)
+                    result.feedsToBootstrap.append(resolvedFeed)
                 }
                 return podcast
             }()
@@ -398,12 +456,19 @@ actor SubscriptionManifestModelActor {
             )
 
             if podcast.episodes?.isEmpty != false && hasCredential {
-                feedsToBootstrap.append(resolvedFeed)
+                result.feedsToBootstrap.append(resolvedFeed)
             }
         }
 
         modelContext.saveIfNeeded()
-        return Array(Set(feedsToBootstrap)).sorted { $0.absoluteString < $1.absoluteString }
+        result.feedsToBootstrap = Array(Set(result.feedsToBootstrap)).sorted {
+            $0.absoluteString < $1.absoluteString
+        }
+        result.feedsAwaitingCredentials = Array(Set(result.feedsAwaitingCredentials)).sorted {
+            $0.absoluteString < $1.absoluteString
+        }
+        result.credentialRequiredProfileIDs = Array(Set(result.credentialRequiredProfileIDs)).sorted()
+        return result
     }
 
     private func deduplicatedEntries(from manifest: SubscriptionManifest) -> [SubscriptionManifestEntry] {
@@ -458,6 +523,7 @@ actor SubscriptionManifestModelActor {
         metaData.isSubscribed = true
         metaData.accessProfileID = profile?.id
         metaData.accessKindRawValue = profile?.kind.rawValue
+        metaData.accessProviderID = profile?.providerID?.rawValue
         metaData.credentialState = hasCredential ? .available : .missing
         metaData.subscriptionDate = metaData.subscriptionDate ?? manifestUpdatedAt
         metaData.lastRefresh = metaData.lastRefresh ?? entry.lastRefresh
@@ -495,11 +561,31 @@ actor SubscriptionManifestModelActor {
         return PodcastAccessProfile(
             id: id,
             kind: kind,
-            resourceURL: resourceURL
+            resourceURL: resourceURL,
+            providerID: entry.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
         )
     }
 
-    private static func accessProfile(for feed: URL) -> PodcastAccessProfile? {
+    private static func accessProfile(
+        for podcast: Podcast,
+        feed: URL
+    ) -> PodcastAccessProfile? {
+        if let metadata = podcast.metaData,
+           let profileID = metadata.accessProfileID,
+           let rawKind = metadata.accessKindRawValue,
+           let kind = PodcastAccessKind(rawValue: rawKind) {
+            return PodcastAccessProfile(
+                id: profileID,
+                kind: kind,
+                resourceURL: feed,
+                providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+            )
+        }
+
+        return legacyAccessProfile(for: feed)
+    }
+
+    private static func legacyAccessProfile(for feed: URL) -> PodcastAccessProfile? {
         guard feed.isLikelyPrivatePodcastURL else { return nil }
         let kind: PodcastAccessKind = feed.user != nil || feed.password != nil
             ? .httpBasic
@@ -518,7 +604,7 @@ actor SubscriptionManifestModelActor {
         case .publicFeed, .bearerToken:
             return nil
         }
-        try? KeychainPodcastCredentialStore.shared.save(credential, for: profile)
+        try? PodcastCredentialStoreProvider.current.save(credential, for: profile)
         return profile
     }
 }

@@ -17,7 +17,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationDidEnterBackground(_ application: UIApplication) {
         ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
-        flushPlaybackState(reason: "did_enter_background")
+        // The recovery snapshot is intentionally cheap and does not touch
+        // SwiftData. Starting another CloudKit-backed save after the process has
+        // crossed the suspension boundary can leave SharedDatabase.sqlite locked
+        // while RunningBoard is trying to suspend us (0xdead10cc).
+        CrashBreadcrumbs.shared.record(
+            "player_playback_state_cache_requested",
+            details: "did_enter_background"
+        )
+        Player.shared.cachePlaybackStateForRecovery()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -235,7 +243,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// scheduled at all. It is now armed whenever transcriptions are on, and the
     /// charging setting decides the request's power requirement instead.
     static func scheduleAutomaticTranscriptionProcessingIfNeeded() async {
-        let settingsActor = PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint() else {
+            CrashBreadcrumbs.shared.record(
+                "automatic_transcription_background_task_not_scheduled",
+                details: "reason=model_container_unavailable"
+            )
+            return
+        }
+        let settingsActor = PodcastSettingsModelActor(modelContainer: container)
         let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
 
         guard transcriptionsEnabled else {
@@ -435,6 +451,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             }
 
             Task { @MainActor in
+                guard await ModelContainerManager.shared
+                    .prepareContainerForExternalEntryPoint() != nil else {
+                    return
+                }
                 await Player.shared.undoSkipProtection(undoID: undoID)
             }
             completionHandler()

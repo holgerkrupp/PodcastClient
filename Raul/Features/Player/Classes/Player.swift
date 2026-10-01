@@ -305,27 +305,42 @@ class Player {
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
     static let shared = Player()
-  //  private let modelContext = ModelContainerManager.shared.container.mainContext
-     let episodeActor: EpisodeActor? = {
 
-         return EpisodeActor(modelContainer: ModelContainerManager.shared.container)
-     }()
-     let chapterActor: ChapterModelActor? = {
+    // These actors must not be created from stored-property initializers. App
+    // Intents, notification actions, and background entry points can construct
+    // Player before SwiftData has finished opening the runtime container.
+    // Resolve them lazily once the manager publishes a prepared container.
+    private var storedEpisodeActor: EpisodeActor?
+    private var storedChapterActor: ChapterModelActor?
+    private var storedPlaylistActor: PlaylistModelActor?
+    private var storedSettingsActor: PodcastSettingsModelActor?
+    private var storedPlaySessionTracker: PlaySessionTrackerActor?
 
-         return ChapterModelActor(modelContainer: ModelContainerManager.shared.container)
-     }()
-    let playlistActor: PlaylistModelActor? = {
+    var episodeActor: EpisodeActor? {
+        prepareModelActorsIfPossible()
+        return storedEpisodeActor
+    }
 
-        return try? PlaylistModelActor(modelContainer: ModelContainerManager.shared.container)
-    }()
-    
-    let settingsActor: PodcastSettingsModelActor? = {
+    var chapterActor: ChapterModelActor? {
+        prepareModelActorsIfPossible()
+        return storedChapterActor
+    }
 
-        return PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
-    }()
-    
-    // Added PlaySessionTrackerActor for session tracking integration
-    let playSessionTracker = PlaySessionTrackerActor(modelContainer: ModelContainerManager.shared.container)
+    var playlistActor: PlaylistModelActor? {
+        prepareModelActorsIfPossible()
+        return storedPlaylistActor
+    }
+
+    var settingsActor: PodcastSettingsModelActor? {
+        prepareModelActorsIfPossible()
+        return storedSettingsActor
+    }
+
+    // Added PlaySessionTrackerActor for session tracking integration.
+    var playSessionTracker: PlaySessionTrackerActor? {
+        prepareModelActorsIfPossible()
+        return storedPlaySessionTracker
+    }
 
     
 
@@ -499,9 +514,12 @@ class Player {
 
     
      init()  {
-      //  episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
-        
-      //  super.init()
+        storedEpisodeActor = nil
+        storedChapterActor = nil
+        storedPlaylistActor = nil
+        storedSettingsActor = nil
+        storedPlaySessionTracker = nil
+
         restorePersistedSkipProtectionUndo()
         Task {
             await retryPendingFinishedEpisode()
@@ -530,12 +548,38 @@ class Player {
         
     }
 
+    /// Creates the SwiftData-backed actors only after the runtime container is
+    /// available. Keeping this check synchronous lets all callers safely touch
+    /// `Player.shared` during cold extension launches; callers that need data
+    /// still await the container preparation barrier before doing work.
+    private func prepareModelActorsIfPossible() {
+        guard let container = ModelContainerManager.shared.preparedContainer else {
+            return
+        }
+
+        if storedEpisodeActor == nil {
+            storedEpisodeActor = EpisodeActor(modelContainer: container)
+        }
+        if storedChapterActor == nil {
+            storedChapterActor = ChapterModelActor(modelContainer: container)
+        }
+        if storedPlaylistActor == nil {
+            storedPlaylistActor = try? PlaylistModelActor(modelContainer: container)
+        }
+        if storedSettingsActor == nil {
+            storedSettingsActor = PodcastSettingsModelActor(modelContainer: container)
+        }
+        if storedPlaySessionTracker == nil {
+            storedPlaySessionTracker = PlaySessionTrackerActor(modelContainer: container)
+        }
+    }
+
     func startRecoveryIfNeeded() {
         guard !hasStartedRecovery else { return }
-        hasStartedRecovery = true
-
         guard StoreDevelopmentConfiguration.newStoreReadsEnabled == false else { return }
         guard shouldRunPlaySessionRecoveryNow() else { return }
+        guard let playSessionTracker else { return }
+        hasStartedRecovery = true
 
         Task.detached(priority: .background) { [playSessionTracker] in
             try? await Task.sleep(nanoseconds: Self.playSessionRecoveryStartupDelayNanoseconds)
@@ -749,7 +793,10 @@ class Player {
     }
 
     private func activePlaybackPlaylistActor() -> PlaylistModelActor? {
-        try? PlaylistModelActor(activePlaybackPlaylistIn: ModelContainerManager.shared.container)
+        guard let container = ModelContainerManager.shared.preparedContainer else {
+            return nil
+        }
+        return try? PlaylistModelActor(activePlaybackPlaylistIn: container)
     }
 
     /// Captures the selected playlist only when it actually supplied the
@@ -757,8 +804,11 @@ class Player {
     /// playlist; it is not permission to re-resolve the selection at finish.
     private func capturePlaybackPlaylistID(for episodeURL: URL) async -> UUID? {
         do {
+            guard let container = ModelContainerManager.shared.preparedContainer else {
+                return nil
+            }
             let actor = try PlaylistModelActor(
-                activePlaybackPlaylistIn: ModelContainerManager.shared.container
+                activePlaybackPlaylistIn: container
             )
             guard try await actor.containsEpisodeURL(episodeURL) else {
                 AppDiagnostics.log(
@@ -932,7 +982,7 @@ class Player {
         }
         
         if currentEpisode != nil, currentPlaybackSource != .liveRemote {
-            await playSessionTracker.handlePlaybackRateChange(
+            await playSessionTracker?.handlePlaybackRateChange(
                 to: playbackRate,
                 at: playPosition
             )
@@ -1134,7 +1184,7 @@ class Player {
         pendingSilenceGapTimeSavedSeconds = 0
 
         guard savedSeconds.isFinite, savedSeconds > 0 else { return }
-        await playSessionTracker.recordSilenceGapTimeSaved(savedSeconds)
+        await playSessionTracker?.recordSilenceGapTimeSaved(savedSeconds)
     }
 
     private func resetSilenceGapReduction(updateEngine: Bool = true) {
@@ -1501,6 +1551,13 @@ class Player {
         guard currentPlaybackSource != .liveRemote else { return }
 
         cacheCurrentPlaybackState()
+        guard ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite else {
+            CrashBreadcrumbs.shared.record(
+                "player_playback_state_store_write_skipped",
+                details: "reason=store_write_gate"
+            )
+            return
+        }
         let currentPlayPosition = sanitizedPosition(playPosition)
         let currentChapterProgress = chapterProgress
         let currentChapterID = currentChapter?.uuid
@@ -1594,7 +1651,12 @@ class Player {
               let feedURL = episode.podcast?.feed else {
             return nil
         }
-        return PodcastAccessProfile(id: id, kind: kind, resourceURL: feedURL)
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: feedURL,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
     }
 
     private func authorizedPlayerItem(for url: URL, profile: PodcastAccessProfile?) -> AVPlayerItem {
@@ -1751,7 +1813,7 @@ class Player {
         }
 
         AppDiagnostics.log(
-            "fastSwitchUnload url=\(snapshot.episodeURL.absoluteString) playProgress=\(snapshot.playProgress)"
+            "fastSwitchUnload url=\(snapshot.episodeURL.redactedPodcastURLString) playProgress=\(snapshot.playProgress)"
         )
 
         if snapshot.playProgress >= progressThreshold {
@@ -1779,7 +1841,7 @@ class Player {
         guard let episode else { return }
         let shouldRequeueUnfinishedEpisode = await shouldRequeueEpisodeOnUnload(episode, episodeURL: episodeURL)
         AppDiagnostics.log(
-            "unloadEpisode url=\(episodeURL.absoluteString) finishedPlayback=\(finishedPlayback) playProgress=\(episode.playProgress)"
+            "unloadEpisode url=\(episodeURL.redactedPodcastURLString) finishedPlayback=\(finishedPlayback) playProgress=\(episode.playProgress)"
         )
 
         stopPlaybackUpdates()
@@ -1804,7 +1866,9 @@ class Player {
         currentAudioPlaybackProcessor = nil
 #endif
         lastProgressSaveDate = .distantPast
-        await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
+        if let container = ModelContainerManager.shared.preparedContainer {
+            await PlayNextWidgetSync.refresh(using: container, currentEpisodeURL: nil)
+        }
         WatchSyncCoordinator.refreshSoon(force: true)
 
         if finishedPlayback || episode.playProgress >= progressThreshold {
@@ -2041,7 +2105,9 @@ class Player {
 
         Task {
             await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
-            await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: episodeURL)
+            if let container = ModelContainerManager.shared.preparedContainer {
+                await PlayNextWidgetSync.refresh(using: container, currentEpisodeURL: episodeURL)
+            }
             WatchSyncCoordinator.refreshSoon(force: true)
         }
 
@@ -2073,7 +2139,10 @@ class Player {
         generation: UInt64,
         item: AVPlayerItem
     ) async {
-        let remoteChapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(episodeURL)
+        let remoteChapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(
+            episodeURL,
+            currentEpisode.flatMap { accessProfile(for: $0) }
+        )
         guard remoteChapters.isEmpty == false else { return }
         let skipRules = await settingsActor?.getChapterSkipKeywords(for: podcastFeed) ?? []
         guard isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item),
@@ -2544,7 +2613,7 @@ class Player {
             }
 
             if let currentEpisodeURL, currentPlaybackSource != .liveRemote {
-                await playSessionTracker.startOrUpdateSession(
+                await playSessionTracker?.startOrUpdateSession(
                     episodeURL: currentEpisodeURL,
                     position: position,
                     rate: desiredRate,
@@ -2568,7 +2637,7 @@ class Player {
 
             if currentEpisode != nil, currentPlaybackSource != .liveRemote {
                 await flushSilenceGapTimeSaved()
-                await playSessionTracker.pauseSession(at: playPosition)
+                await playSessionTracker?.pauseSession(at: playPosition)
             }
             WatchSyncCoordinator.refreshSoon(force: true)
         }
@@ -3048,8 +3117,11 @@ class Player {
 
             let successor: URL?
             if let playlistID {
+                guard let container = ModelContainerManager.shared.preparedContainer else {
+                    return nil
+                }
                 let playlistActor = try PlaylistModelActor(
-                    modelContainer: ModelContainerManager.shared.container,
+                    modelContainer: container,
                     playlistID: playlistID
                 )
                 successor = try await playlistActor.dequeueFinishedEpisodeAndReturnNext(
@@ -3058,8 +3130,11 @@ class Player {
             } else {
                 // This episode was not supplied by the selected queue. Remove
                 // any stale copies without inventing a successor.
+                guard let container = ModelContainerManager.shared.preparedContainer else {
+                    return nil
+                }
                 let playlistActor = try PlaylistModelActor(
-                    modelContainer: ModelContainerManager.shared.container
+                    modelContainer: container
                 )
                 try await playlistActor.removeFromAllPlaylists(episodeURL: episodeURL)
                 successor = nil
@@ -3120,7 +3195,9 @@ class Player {
         // Only refresh the widget/watch for an "empty" state when there is no next episode.
         // When a next episode follows, `playEpisode` refreshes them with the correct URL.
         if refreshPresentation {
-            await PlayNextWidgetSync.refresh(using: ModelContainerManager.shared.container, currentEpisodeURL: nil)
+            if let container = ModelContainerManager.shared.preparedContainer {
+                await PlayNextWidgetSync.refresh(using: container, currentEpisodeURL: nil)
+            }
             WatchSyncCoordinator.refreshSoon(force: true)
         }
     }
@@ -3228,8 +3305,9 @@ class Player {
     
     func createBookmark() {
         Task {
-            if let currentEpisodeURL {
-                await EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+            if let currentEpisodeURL,
+               let container = ModelContainerManager.shared.preparedContainer {
+                await EpisodeActor(modelContainer: container)
                     .createBookmark(for: currentEpisodeURL, at: playPosition)
             }
         }
@@ -3262,10 +3340,14 @@ class Player {
             episode.imageURL,
             episode.podcast?.imageURL
         ].compactMap { $0 }
+        let profile = accessProfile(for: episode)
 
         if chapterData == nil,
            let primaryURL = imageURLs.first,
-           let cachedImage = SharedImageRepository.cachedImage(for: primaryURL) {
+           let cachedImage = SharedImageRepository.cachedImage(
+               for: primaryURL,
+               profileID: profile?.id
+           ) {
             applyCurrentArtwork(cachedImage)
             return
         }
@@ -3274,7 +3356,8 @@ class Player {
         artworkLoadTask = Task(priority: .userInitiated) { [weak self] in
             let image = await Self.loadCurrentArtwork(
                 chapterData: chapterData,
-                imageURLs: imageURLs
+                imageURLs: imageURLs,
+                profile: profile
             )
             guard Task.isCancelled == false,
                   let self,
@@ -3297,7 +3380,8 @@ class Player {
 
     nonisolated private static func loadCurrentArtwork(
         chapterData: Data?,
-        imageURLs: [URL]
+        imageURLs: [URL],
+        profile: PodcastAccessProfile?
     ) async -> UIImage? {
         if let chapterData,
            let chapterImage = await Task.detached(priority: .userInitiated, operation: {
@@ -3309,7 +3393,10 @@ class Player {
         var loadedURLs = Set<URL>()
         for imageURL in imageURLs where loadedURLs.insert(imageURL).inserted {
             if Task.isCancelled { return nil }
-            if let image = await ImageLoaderAndCache.loadUIImage(from: imageURL) {
+            if let image = await ImageLoaderAndCache.loadUIImage(
+                from: imageURL,
+                profile: profile
+            ) {
                 return image
             }
         }

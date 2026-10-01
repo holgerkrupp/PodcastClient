@@ -72,6 +72,9 @@ struct StoreSplitSliceReport: Sendable {
     var status: Status
     var phase: String?
     var processed: Int = 0
+    var mutations: Int = 0
+    var saveCount: Int = 0
+    var saveDuration: TimeInterval = 0
     var footprintBefore: UInt64 = 0
     var footprintAfter: UInt64 = 0
     var error: String?
@@ -79,6 +82,18 @@ struct StoreSplitSliceReport: Sendable {
     var footprintDeltaDescription: String {
         MemoryFootprint.formattedDelta(before: footprintBefore, after: footprintAfter)
     }
+}
+
+struct StoreWorkBudget: Sendable, Equatable {
+    let maximumMutations: Int
+    let maximumSaves: Int
+    let maximumWallTime: Duration
+
+    static let migrationSlice = StoreWorkBudget(
+        maximumMutations: 40,
+        maximumSaves: 2,
+        maximumWallTime: .seconds(5)
+    )
 }
 
 actor StoreSplitMigrationService {
@@ -120,8 +135,13 @@ actor StoreSplitMigrationService {
 
     /// Per-slice record budget for the light phases. Heavier phases override this
     /// with smaller pages because each record faults a larger object graph.
-    private static let defaultPageSize = 100
-    private static let episodePageSize = 50
+    // The page size is derived from the mutation budget rather than being an
+    // independent row-only throttle. A page can therefore never enqueue more
+    // than the configured mutation budget before it saves and yields to the
+    // exporter. Playlist entries may update both UserState streams, so their
+    // logical row count remains deliberately conservative.
+    private static let defaultPageSize = StoreWorkBudget.migrationSlice.maximumMutations
+    private static let episodePageSize = StoreWorkBudget.migrationSlice.maximumMutations / 2
     private static let listeningHistoryPageSize = 10
     private static let aiContentPageSize = 10
     private static let maximumFailedItemKeys = 100
@@ -260,6 +280,7 @@ actor StoreSplitMigrationService {
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
         cacheContainer: ModelContainer,
+        budget: StoreWorkBudget = .migrationSlice,
         shouldContinue: @escaping @Sendable () -> Bool = { Task.isCancelled == false }
     ) async -> StoreSplitSliceReport {
         let worker = StoreSplitMigrationService(
@@ -267,7 +288,10 @@ actor StoreSplitMigrationService {
             userStateContainer: userStateContainer,
             cacheContainer: cacheContainer
         )
-        return await worker.runOneSlice(shouldContinue: shouldContinue)
+        return await worker.runOneSlice(
+            budget: budget,
+            shouldContinue: shouldContinue
+        )
     }
 
     /// Convenience whole-run used by tests and the development "run now" path.
@@ -306,6 +330,7 @@ actor StoreSplitMigrationService {
 #endif
 
     private func runOneSlice(
+        budget: StoreWorkBudget,
         shouldContinue: @Sendable () -> Bool
     ) async -> StoreSplitSliceReport {
         let footprintBefore = MemoryFootprint.current()
@@ -343,13 +368,17 @@ actor StoreSplitMigrationService {
         )
         let offset = resolved.offset
 
+        let deadline = ContinuousClock.now + budget.maximumWallTime
+        let boundedShouldContinue: @Sendable () -> Bool = {
+            shouldContinue() && ContinuousClock.now < deadline
+        }
         let outcome = processPage(
             phase: phase,
             offset: offset,
             legacyContext: legacyContext,
             userStateContext: userStateContext,
             cacheContext: cacheContext,
-            shouldContinue: shouldContinue
+            shouldContinue: boundedShouldContinue
         )
 
         let combined = resume.result + outcome.delta
@@ -358,6 +387,7 @@ actor StoreSplitMigrationService {
             boundaryKey: outcome.boundaryKey ?? resume.cursor.boundaryKey,
             didRelocateFail: resolved.didRelocateFail
         )
+        let saveStartedAt = Date()
         Self.recordCheckpoint(
             phase: phase,
             result: combined,
@@ -367,6 +397,7 @@ actor StoreSplitMigrationService {
             context: cacheContext
         )
 
+        var checkpointSaveCount = 1
         if phase == Phase.playlistEntries {
             let queueResume = Self.resumeProgress(
                 phase: Phase.queueEntries,
@@ -379,7 +410,9 @@ actor StoreSplitMigrationService {
                 completed: outcome.reachedEnd,
                 context: cacheContext
             )
+            checkpointSaveCount += 1
         }
+        let saveDuration = Date().timeIntervalSince(saveStartedAt)
 
         let footprintAfter = MemoryFootprint.current()
         CrashBreadcrumbs.shared.record(
@@ -410,6 +443,9 @@ actor StoreSplitMigrationService {
             status: status,
             phase: phase,
             processed: outcome.processed,
+            mutations: outcome.delta.inserted + outcome.delta.updated,
+            saveCount: checkpointSaveCount,
+            saveDuration: saveDuration,
             footprintBefore: footprintBefore,
             footprintAfter: footprintAfter,
             error: outcome.error
@@ -2604,6 +2640,7 @@ actor StoreSplitAuthoritativeReconciliationService {
             await subscriptionWriter.setSubscribed(
                 feedURL: feed,
                 isSubscribed: podcast.metaData?.isSubscribed != false,
+                accessProfile: storedPodcastAccessProfile(for: podcast),
                 at: date
             )
             subscriptions += 1

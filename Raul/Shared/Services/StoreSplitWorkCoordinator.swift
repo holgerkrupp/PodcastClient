@@ -40,6 +40,14 @@ actor StoreSplitWorkCoordinator {
     private var runnerTask: Task<Void, Never>?
     private var nextHeavyWorkAllowedAt = Date.distantPast
     private var backoffSeconds: TimeInterval = 0.25
+    private var cloudKitCoolDownUntil = Date.distantPast
+
+    func resumeAfterCloudKitExport() async {
+        cloudKitCoolDownUntil = Date().addingTimeInterval(5)
+        nextHeavyWorkAllowedAt = max(nextHeavyWorkAllowedAt, cloudKitCoolDownUntil)
+        await publishPendingState()
+        startRunnerIfNeeded()
+    }
 
     func scheduleLaunchWork() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
@@ -69,10 +77,6 @@ actor StoreSplitWorkCoordinator {
     func pauseForBackground() async {
         runnerTask?.cancel()
         runnerTask = nil
-        pendingReconcile = nil
-        pendingAIImport = false
-        pendingMigration = false
-        pendingPlaybackIdleReconcile = false
         currentJob = nil
         await publishPendingState()
     }
@@ -276,8 +280,8 @@ actor StoreSplitWorkCoordinator {
         let appState = await MainActor.run {
             (
                 isPlaying: Player.shared.isPlaying,
-                mayRunHeavyWork: ModelContainerManager.shared
-                    .heavyStoreWorkMayRunInCurrentAppState
+                mayRunHeavyWork: ModelContainerManager.shared.heavyStoreWorkMayRunInCurrentAppState,
+                cloudKitExportInProgress: ModelContainerManager.shared.isCloudKitExportInProgress
             )
         }
         if appState.isPlaying {
@@ -290,6 +294,30 @@ actor StoreSplitWorkCoordinator {
         guard appState.mayRunHeavyWork else {
             await publishPendingState()
             return nil
+        }
+        guard appState.cloudKitExportInProgress == false else {
+            await MainActor.run {
+                ModelContainerManager.shared.updateSplitStoreCoordinatorState(
+                    currentJob: nil,
+                    pendingReason: "waiting for CloudKit export to drain"
+                )
+            }
+            return nil
+        }
+        if cloudKitCoolDownUntil > .now {
+            let cooldownDescription = cloudKitCoolDownUntil.formatted(
+                date: .omitted,
+                time: .shortened
+            )
+            await MainActor.run {
+                ModelContainerManager.shared.updateSplitStoreCoordinatorState(
+                    currentJob: nil,
+                    pendingReason: "CloudKit export cool-down until \(cooldownDescription)"
+                )
+            }
+            return pendingMigration || pendingReconcile != nil || pendingAIImport
+                ? nextPendingJobWithoutExportCheck()
+                : nil
         }
 
         // During the legacy-authoritative release, finish the backfill and its
@@ -309,6 +337,16 @@ actor StoreSplitWorkCoordinator {
         if pendingMigration {
             return .migration
         }
+        return nil
+    }
+
+    private func nextPendingJobWithoutExportCheck() -> Job? {
+        if pendingMigration, StoreSplitReleasePhase.current == .dualSyncBackfill {
+            return .migration
+        }
+        if pendingReconcile != nil { return .reconcile }
+        if pendingAIImport { return .aiImport }
+        if pendingMigration { return .migration }
         return nil
     }
 

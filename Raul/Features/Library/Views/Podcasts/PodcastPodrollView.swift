@@ -160,6 +160,8 @@ private enum PodcastPodrollFeedCache {
                 return feed
             case .requiresBasicAuth:
                 throw PodcastFeedResolverError.authenticationRequired(feedURL)
+            case .requiresBearerToken:
+                throw PodcastFeedResolverError.bearerAuthenticationRequired(feedURL)
             }
         }
 

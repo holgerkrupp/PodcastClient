@@ -556,6 +556,7 @@ actor StoreSplitDevelopmentRepublishService {
             await subscriptionWriter.setSubscribed(
                 feedURL: feed,
                 isSubscribed: podcast.metaData?.isSubscribed != false,
+                accessProfile: storedPodcastAccessProfile(for: podcast),
                 at: now
             )
             result.subscriptions += 1

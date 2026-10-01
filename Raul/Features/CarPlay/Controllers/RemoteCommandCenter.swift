@@ -17,10 +17,11 @@ class RemoteCommandCenter {
     private let supportedPlaybackRates: [NSNumber] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0].map(NSNumber.init(value:))
     
     private init() {
-        Task{
-           
-                settingLockScreenScrubbing = await PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container).getLockScreenSliderEnable()
-            
+        Task { @MainActor in
+            guard let container = await ModelContainerManager.shared
+                .prepareContainerForExternalEntryPoint() else { return }
+            settingLockScreenScrubbing = await PodcastSettingsModelActor(modelContainer: container)
+                .getLockScreenSliderEnable()
         }
         
         

@@ -37,6 +37,8 @@ final class IncomingPodcastSubscriptionController: ObservableObject {
                         self.state = .resolved(podcastFeed)
                     case .requiresBasicAuth:
                         self.state = .failed(url, PodcastFeedResolverError.authenticationRequired(url).localizedDescription)
+                    case .requiresBearerToken:
+                        self.state = .failed(url, PodcastFeedResolverError.bearerAuthenticationRequired(url).localizedDescription)
                     }
                 }
             } catch {
@@ -68,7 +70,7 @@ struct IncomingPodcastSubscriptionView: View {
                 case .loading(let url):
                     VStack(spacing: 16) {
                         ProgressView()
-                        Text(url.absoluteString)
+                        Text(url.redactedPodcastURLString)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)

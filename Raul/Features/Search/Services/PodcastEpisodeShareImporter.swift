@@ -481,7 +481,7 @@ struct PodcastEpisodeShareImporter {
     private func fetchText(from url: URL) async throws -> String {
         var request = URLRequest(url: url)
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await podcastURLSessionData(for: request, using: .shared)
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
     }
 

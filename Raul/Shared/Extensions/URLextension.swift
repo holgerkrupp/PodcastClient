@@ -181,6 +181,18 @@ extension URL{
             components.percentEncodedPath = String(path.dropLast())
         }
 
+        // HTTP Basic credentials are intentionally removed from the stored
+        // podcast identity. Include the credential-free form in comparison
+        // keys so legacy `user:password@host` records match their migrated
+        // safe URL instead of creating a duplicate subscription.
+        if components.user != nil || components.password != nil {
+            var credentialFree = components
+            credentialFree.user = nil
+            credentialFree.password = nil
+            addComparisonKeys(from: credentialFree, to: &keys)
+            addSchemeVariants(from: credentialFree, to: &keys)
+        }
+
         addComparisonKeys(from: components, to: &keys)
         addSchemeVariants(from: components, to: &keys)
 
@@ -189,6 +201,13 @@ extension URL{
             queryless.query = nil
             addComparisonKeys(from: queryless, to: &keys)
             addSchemeVariants(from: queryless, to: &keys)
+
+            if queryless.user != nil || queryless.password != nil {
+                queryless.user = nil
+                queryless.password = nil
+                addComparisonKeys(from: queryless, to: &keys)
+                addSchemeVariants(from: queryless, to: &keys)
+            }
         }
 
         if components.host?.hasPrefix("www.") == true {
@@ -286,7 +305,7 @@ extension URL{
                     request.httpMethod = "HEAD"
 
         do{
-                        let (_, response) = try await PodcastHTTPClient.shared.data(for: request)
+                        let (_, response) = try await PodcastHTTPClient.shared.data(for: request, profile: profile)
                         
                         status.statusCode = (response as? HTTPURLResponse)?.statusCode
                         status.doctype = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")

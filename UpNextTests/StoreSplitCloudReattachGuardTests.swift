@@ -9,6 +9,8 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
     private let lastStateKey = StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey
     private let approvedKey = StoreDevelopmentConfiguration.legacyCloudReattachApprovedKey
     private let cutoverKey = StoreDevelopmentConfiguration.legacyCloudCutoverCompletedKey
+    private let quarantineKey = StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey
+    private let quarantineEligibleKey = StoreDevelopmentConfiguration.legacyCloudMirrorQuarantineEligibleKey
 
     override func setUp() {
         super.setUp()
@@ -87,6 +89,21 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
     }
 
+    func testLegacyMirrorQuarantineIsOneWayAcrossLaunches() {
+        StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
+        let base = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base))
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(1)))
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(2)))
+        XCTAssertTrue(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(3)))
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+
+        // A later policy evaluation cannot silently re-attach the legacy store.
+        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+    }
+
     /// The release phase is the only thing allowed to decide what the legacy store
     /// is attached to.
     ///
@@ -127,10 +144,16 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         defaults.removeObject(forKey: lastStateKey)
         defaults.removeObject(forKey: approvedKey)
         defaults.removeObject(forKey: cutoverKey)
+        defaults.removeObject(forKey: quarantineKey)
+        defaults.removeObject(forKey: quarantineEligibleKey)
+        defaults.removeObject(forKey: StoreSplitLaunchHealth.stateKey)
         // Keep the fallback clean too when the app-group suite is unavailable
         // in a unit-test process.
         UserDefaults.standard.removeObject(forKey: lastStateKey)
         UserDefaults.standard.removeObject(forKey: approvedKey)
         UserDefaults.standard.removeObject(forKey: cutoverKey)
+        UserDefaults.standard.removeObject(forKey: quarantineKey)
+        UserDefaults.standard.removeObject(forKey: quarantineEligibleKey)
+        UserDefaults.standard.removeObject(forKey: StoreSplitLaunchHealth.stateKey)
     }
 }

@@ -108,7 +108,7 @@ actor AutoDownloadNetworkCoordinator {
 
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
         for podcastFeed in podcastFeeds {
-            await logAutoDownload("network-monitor/apply feed=\(podcastFeed.absoluteString)")
+            await logAutoDownload("network-monitor/apply feed=\(podcastFeed.redactedPodcastURLString)")
             await episodeActor.applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }

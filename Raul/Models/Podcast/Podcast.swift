@@ -140,7 +140,12 @@ final class Podcast: Identifiable {
 
     init(from feedData: PodcastFeed) {
             let sourceFeedURL = feedData.url
-            let storedFeedURL = sourceFeedURL.map { $0.isLikelyPrivatePodcastURL ? $0.podcastNonSecretURL : $0 }
+            let storesCredential = feedData.accessKind.map { $0 != .publicFeed } ?? false
+            let storedFeedURL = sourceFeedURL.map {
+                (storesCredential || $0.isLikelyPrivatePodcastURL)
+                    ? $0.podcastNonSecretURL
+                    : $0
+            }
             self.feed = storedFeedURL
             self.title = feedData.title ?? storedFeedURL?.absoluteString.removingPercentEncoding ?? "New Podcast"
             self.desc = feedData.description
@@ -156,7 +161,25 @@ final class Podcast: Identifiable {
             self.metaData = PodcastMetaData()
             self.settings = PodcastSettings()
             if let sourceFeedURL {
-                configurePrivateAccess(for: sourceFeedURL, metadata: metaData)
+                if let accessCredential = feedData.accessCredential {
+                    let kind = feedData.accessKind ?? .privateURL
+                    let profile = PodcastAccessProfile.make(for: sourceFeedURL, kind: kind)
+                    metaData?.accessProfileID = profile.id
+                    metaData?.accessKindRawValue = kind.rawValue
+                    metaData?.accessProviderID = profile.providerID?.rawValue
+                    do {
+                        try PodcastCredentialStoreProvider.current.save(accessCredential, for: profile)
+                        metaData?.credentialState = .available
+                    } catch {
+                        // Keep the subscription and profile metadata, but do
+                        // not claim that the credential is usable when secure
+                        // storage is unavailable (for example during a
+                        // locked/fresh-device bootstrap).
+                        metaData?.credentialState = .missing
+                    }
+                } else {
+                    configurePrivateAccess(for: sourceFeedURL, metadata: metaData)
+                }
             }
             // Episodes are populated later during the network update.
         }
@@ -169,12 +192,20 @@ final class Podcast: Identifiable {
         let profile = PodcastAccessProfile.make(for: sourceURL, kind: kind)
         metadata.accessProfileID = profile.id
         metadata.accessKindRawValue = profile.kind.rawValue
-        metadata.credentialStateRawValue = PodcastCredentialState.available.rawValue
+        metadata.accessProviderID = profile.providerID?.rawValue
         let basicCredential = sourceURL.podcastBasicCredential
         let credential: PodcastCredential = kind == .httpBasic
             ? .httpBasic(username: basicCredential.username, password: basicCredential.password)
             : .privateURL(sourceURL)
-        try? KeychainPodcastCredentialStore.shared.save(credential, for: profile)
+        do {
+            try PodcastCredentialStoreProvider.current.save(credential, for: profile)
+            metadata.credentialState = .available
+        } catch {
+            // Never turn a failed secure-store write into an apparently
+            // authenticated subscription. The feed remains subscribed and
+            // can be re-authorized later without losing its stable identity.
+            metadata.credentialState = .missing
+        }
     }
     
     var isSubscribed: Bool {
@@ -221,6 +252,7 @@ final class Podcast: Identifiable {
     /// Non-secret reference to credentials held in Keychain.
     var accessProfileID: String?
     var accessKindRawValue: String?
+    var accessProviderID: String?
     var credentialStateRawValue: String = PodcastCredentialState.available.rawValue
     var authenticationRetryAfter: Date?
     var subscriptionDate: Date? = Date()

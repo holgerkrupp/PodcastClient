@@ -22,7 +22,7 @@ struct SharedEpisodeRecoveryView: View {
         NavigationStack {
             List {
                 Section("Shared page") {
-                    Text(recovery.url.host() ?? recovery.url.absoluteString)
+                Text(recovery.url.host() ?? recovery.url.redactedPodcastURLString)
                         .font(.headline)
                     Text(recovery.message)
                         .font(.footnote)

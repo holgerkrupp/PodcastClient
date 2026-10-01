@@ -95,8 +95,9 @@ struct WarmupPodcastAudioIntent {
     @MainActor
     func perform() async throws -> some ReturnsValue<PodcastWarmupResult> {
         let episodeURL = try await audioEntity.episodeURL()
-        if Player.shared.currentEpisodeURL != episodeURL {
-            await Player.shared.playEpisode(episodeURL, playDirectly: false)
+        let player = try await preparedIntentPlayer()
+        if player.currentEpisodeURL != episodeURL {
+            await player.playEpisode(episodeURL, playDirectly: false)
         }
         return .result(value: PodcastWarmupResult(id: episodeURL.absoluteString))
     }
@@ -115,9 +116,10 @@ struct PlayPodcastAudioIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         let episodeURL = try await audioEntity.episodeURL()
+        let player = try await preparedIntentPlayer()
 
         if let queueLocation {
-            guard let playlistActor = Player.shared.playlistActor else {
+            guard let playlistActor = player.playlistActor else {
                 throw AppIntentError(description: "Up Next is unavailable.")
             }
             try await playlistActor.add(episodeURL: episodeURL, to: queueLocation.playlistPosition)
@@ -126,10 +128,10 @@ struct PlayPodcastAudioIntent: AudioPlaybackIntent {
 
         // A warmup already loaded this episode; just start it.
         if warmupAudioQueueResult?.id == episodeURL.absoluteString,
-           Player.shared.currentEpisodeURL == episodeURL {
-            Player.shared.play()
+           player.currentEpisodeURL == episodeURL {
+            player.play()
         } else {
-            await Player.shared.playEpisode(episodeURL, playDirectly: true)
+            await player.playEpisode(episodeURL, playDirectly: true)
         }
         return .result()
     }
@@ -138,7 +140,7 @@ struct PlayPodcastAudioIntent: AudioPlaybackIntent {
 // MARK: - Resolution
 
 @available(iOS 27.0, macOS 27.0, *)
-private extension PodcastAudioItem {
+extension PodcastAudioItem {
     /// The audio URL to play: the episode itself, or a show's newest episode.
     @MainActor
     func episodeURL() async throws -> URL {

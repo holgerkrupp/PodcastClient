@@ -25,14 +25,17 @@ class PodcastSearchViewModel: ObservableObject {
 
     // Basic auth prompt state
     @Published var shouldPromptForBasicAuth: Bool = false
+    @Published var shouldPromptForBearerToken: Bool = false
     @Published var pendingURLForAuth: URL? = nil
     @Published var authErrorMessage: String? = nil
 
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
     private let iTunesActor = ITunesSearchActor()
+    private let treatsDirectURLsAsPrivate: Bool
 
-    init() {
+    init(treatsDirectURLsAsPrivate: Bool = false) {
+        self.treatsDirectURLsAsPrivate = treatsDirectURLsAsPrivate
         $searchText
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .removeDuplicates()
@@ -52,6 +55,7 @@ class PodcastSearchViewModel: ObservableObject {
         searchResults.removeAll()
         results.removeAll()
         shouldPromptForBasicAuth = false
+        shouldPromptForBearerToken = false
         pendingURLForAuth = nil
         authErrorMessage = nil
         urlErrorMessage = nil
@@ -71,10 +75,15 @@ class PodcastSearchViewModel: ObservableObject {
             searchTask = Task { [weak self] in
                 guard let self else { return }
                 do {
-                    let resolution = try await PodcastFeedResolver.resolve(
-                        url: url,
-                        allowAuthenticationPrompt: true
-                    )
+                    let resolution: PodcastFeedResolution
+                    if self.treatsDirectURLsAsPrivate {
+                        resolution = try await PodcastFeedResolver.resolvePrivateURL(url)
+                    } else {
+                        resolution = try await PodcastFeedResolver.resolve(
+                            url: url,
+                            allowAuthenticationPrompt: true
+                        )
+                    }
 
                     try Task.checkCancellation()
                     guard self.searchText == searchedText else { return }
@@ -85,10 +94,25 @@ class PodcastSearchViewModel: ObservableObject {
                     case .requiresBasicAuth(let protectedURL):
                         self.pendingURLForAuth = protectedURL
                         self.shouldPromptForBasicAuth = true
+                    case .requiresBearerToken(let protectedURL):
+                        self.pendingURLForAuth = protectedURL
+                        self.shouldPromptForBearerToken = true
                     }
                 } catch is CancellationError {
                     return
                 } catch let error as URLError where error.code == .cancelled {
+                    return
+                } catch PodcastFeedResolverError.authenticationRequired(let protectedURL) {
+                    guard self.searchText == searchedText else { return }
+                    self.pendingURLForAuth = protectedURL
+                    self.shouldPromptForBasicAuth = true
+                    self.isLoading = false
+                    return
+                } catch PodcastFeedResolverError.bearerAuthenticationRequired(let protectedURL) {
+                    guard self.searchText == searchedText else { return }
+                    self.pendingURLForAuth = protectedURL
+                    self.shouldPromptForBearerToken = true
+                    self.isLoading = false
                     return
                 } catch {
                     guard self.searchText == searchedText else { return }
@@ -136,42 +160,16 @@ class PodcastSearchViewModel: ObservableObject {
         isLoading = true
         authErrorMessage = nil
         shouldPromptForBasicAuth = false
+        shouldPromptForBearerToken = false
 
         searchTask?.cancel()
         searchTask = Task { [weak self] in
             guard let self else { return }
-            guard let comps = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-                self.authErrorMessage = "Invalid URL"
-                self.isLoading = false
-                return
-            }
-            // Build credentialed URL manually (URLComponents lacks user/password properties in Swift)
-            let user = username.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? username
-            let pass = password.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? password
-            
-            var hostPart = ""
-            if let host = comps.host {
-                if let port = comps.port {
-                    hostPart = "\(host):\(port)"
-                } else {
-                    hostPart = host
-                }
-            }
-            let credentialAuthority = "\(user):\(pass)@\(hostPart)"
-            let path = comps.percentEncodedPath
-            let query = comps.percentEncodedQuery.map { "?\($0)" } ?? ""
-            let fragment = comps.percentEncodedFragment.map { "#\($0)" } ?? ""
-            let scheme = comps.scheme ?? "https"
-            let credentialedString = "\(scheme)://\(credentialAuthority)\(path)\(query)\(fragment)"
-            
-            guard let credentialedURL = URL(string: credentialedString) else {
-                self.authErrorMessage = "Could not build credentialed URL"
-                self.isLoading = false
-                return
-            }
-            
             do {
-                let resolution = try await PodcastFeedResolver.resolve(url: credentialedURL)
+                let resolution = try await PodcastFeedResolver.resolve(
+                    url: baseURL,
+                    credential: .httpBasic(username: username, password: password)
+                )
 
                 guard self.searchText == searchedText else { return }
 
@@ -184,6 +182,10 @@ class PodcastSearchViewModel: ObservableObject {
                     self.authErrorMessage = "Authentication failed. Please check your credentials."
                     self.isLoading = false
                     self.shouldPromptForBasicAuth = true
+                case .requiresBearerToken:
+                    self.authErrorMessage = "This server requires a bearer token."
+                    self.isLoading = false
+                    self.shouldPromptForBearerToken = true
                 }
             } catch PodcastFeedResolverError.authenticationRequired {
                 guard self.searchText == searchedText else { return }
@@ -198,12 +200,52 @@ class PodcastSearchViewModel: ObservableObject {
         }
     }
 
+    func submitBearerToken(_ token: String) {
+        guard let baseURL = pendingURLForAuth else { return }
+        let searchedText = searchText
+        isLoading = true
+        authErrorMessage = nil
+        shouldPromptForBearerToken = false
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let resolution = try await PodcastFeedResolver.resolve(
+                    url: baseURL,
+                    credential: .bearerToken(token)
+                )
+                guard self.searchText == searchedText else { return }
+                switch resolution {
+                case .podcast(let podcastFeed):
+                    self.singlePodcast = podcastFeed
+                    self.pendingURLForAuth = nil
+                    self.isLoading = false
+                case .requiresBasicAuth:
+                    self.authErrorMessage = "This feed requires HTTP Basic credentials."
+                    self.shouldPromptForBasicAuth = true
+                    self.isLoading = false
+                case .requiresBearerToken:
+                    self.authErrorMessage = "Authentication failed. Please check the token."
+                    self.shouldPromptForBearerToken = true
+                    self.isLoading = false
+                }
+            } catch {
+                guard self.searchText == searchedText else { return }
+                self.authErrorMessage = "Authentication failed. Please check the token."
+                self.shouldPromptForBearerToken = true
+                self.isLoading = false
+            }
+        }
+    }
+
     
     func parseURL(feedURL: URL) async throws -> [String:String]{
         let page = try await PodcastParser.fetchPage(from: feedURL)
         
         var podcastDetails: [String:String] = [:]
-        podcastDetails["xmlURL"] = feedURL.absoluteString
+        podcastDetails["xmlURL"] = feedURL.isLikelyPrivatePodcastURL
+            ? feedURL.podcastNonSecretURL.absoluteString
+            : feedURL.absoluteString
         podcastDetails["title"] = page.parsedFeed["title"] as? String ?? ""
         podcastDetails["author"]  = page.parsedFeed["itunes:author"] as? String
         podcastDetails["desc"]  = page.parsedFeed["description"] as? String

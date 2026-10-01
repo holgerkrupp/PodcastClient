@@ -103,16 +103,6 @@
         }
       }
     },
-    "%@ %@, %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ %2$@, %3$@"
-          }
-        }
-      }
-    },
     "%@ complete" : {
       "localizations" : {
         "de" : {
@@ -589,6 +579,9 @@
         }
       }
     },
+    "Add credentials" : {
+
+    },
     "Add episodes in the app to see them here." : {
       "localizations" : {
         "de" : {
@@ -630,6 +623,9 @@
       }
     },
     "Add Podcast from URL" : {
+
+    },
+    "Add Private Podcast" : {
 
     },
     "Add Rule" : {
@@ -1370,6 +1366,12 @@
         }
       }
     },
+    "Bearer token" : {
+
+    },
+    "Bearer Token Required" : {
+
+    },
     "Billboard Top 10" : {
       "localizations" : {
         "de" : {
@@ -1819,6 +1821,9 @@
         }
       }
     },
+    "Close live podcasts" : {
+
+    },
     "Close player" : {
 
     },
@@ -1843,6 +1848,9 @@
       }
     },
     "Companion Links" : {
+
+    },
+    "Connected accounts" : {
 
     },
     "Consecutive failures" : {
@@ -2021,6 +2029,15 @@
         }
       }
     },
+    "Credentials" : {
+
+    },
+    "Credentials are stored in the device Keychain and are not synchronized with podcast metadata." : {
+
+    },
+    "Credentials stay in the device Keychain. They are not written to SwiftData, iCloud sync, logs, or exports." : {
+
+    },
     "Current" : {
       "localizations" : {
         "de" : {
@@ -2090,6 +2107,9 @@
           }
         }
       }
+    },
+    "Currently live subscribed podcasts will appear here." : {
+
     },
     "Currently transcribing: %@" : {
       "localizations" : {
@@ -3661,6 +3681,9 @@
         }
       }
     },
+    "How to get your private feed" : {
+
+    },
     "iCloud Account" : {
       "localizations" : {
         "de" : {
@@ -4336,7 +4359,26 @@
         }
       }
     },
+    "Live" : {
+
+    },
     "LIVE" : {
+
+    },
+    "Live %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Live %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "Live details" : {
+
+    },
+    "Live details for %@" : {
 
     },
     "Live event information supported" : {
@@ -4400,6 +4442,9 @@
       }
     },
     "Live podcast discovery is disabled in the global settings." : {
+
+    },
+    "Live podcasts" : {
 
     },
     "Live Podcasts" : {
@@ -5264,6 +5309,9 @@
         }
       }
     },
+    "No Live Podcasts" : {
+
+    },
     "No matches found for \"%@\"." : {
       "localizations" : {
         "de" : {
@@ -5393,6 +5441,9 @@
           }
         }
       }
+    },
+    "No provider account adapters are connected" : {
+
     },
     "No record-count reference has been received from another device yet." : {
       "localizations" : {
@@ -5536,6 +5587,9 @@
           }
         }
       }
+    },
+    "Not connected" : {
+
     },
     "Not downloaded" : {
       "localizations" : {
@@ -6040,6 +6094,9 @@
         }
       }
     },
+    "Opens currently live subscribed podcasts" : {
+
+    },
     "Opens episode captions if available" : {
       "localizations" : {
         "de" : {
@@ -6143,6 +6200,9 @@
         }
       }
     },
+    "Opens the live page, chat, or companion links" : {
+
+    },
     "Opens the original web page" : {
 
     },
@@ -6243,6 +6303,9 @@
       }
     },
     "Paste into podcast search" : {
+
+    },
+    "Paste the private RSS URL supplied by your podcast provider. Up Next keeps the link or credentials in secure storage and never puts them in sync, exports, or logs." : {
 
     },
     "Pause" : {
@@ -6916,6 +6979,9 @@
         }
       }
     },
+    "Podcast Access" : {
+
+    },
     "Podcast and Episode" : {
       "localizations" : {
         "de" : {
@@ -7379,6 +7445,12 @@
         }
       }
     },
+    "Premium access" : {
+
+    },
+    "Premium Podcasts" : {
+
+    },
     "Preset" : {
       "localizations" : {
         "de" : {
@@ -7468,6 +7540,12 @@
           }
         }
       }
+    },
+    "Private RSS providers" : {
+
+    },
+    "Private RSS URL" : {
+
     },
     "Public Broadcasters" : {
       "localizations" : {
@@ -7922,6 +8000,12 @@
         }
       }
     },
+    "Remove credentials" : {
+
+    },
+    "Remove Credentials" : {
+
+    },
     "Remove Current" : {
       "localizations" : {
         "de" : {
@@ -7994,6 +8078,9 @@
           }
         }
       }
+    },
+    "Remove podcast credentials?" : {
+
     },
     "Remove rule %lld" : {
       "localizations" : {
@@ -8196,6 +8283,9 @@
           }
         }
       }
+    },
+    "Save" : {
+
     },
     "Save episode transcriptions" : {
       "localizations" : {
@@ -9643,6 +9733,9 @@
         }
       }
     },
+    "The currently supported providers use private RSS handoff. Add or update credentials from an individual podcast's settings." : {
+
+    },
     "The database total uses the real SQLite files on disk. The podcast and data-type breakdowns below estimate each record's share and scale that estimate to the actual database size." : {
       "localizations" : {
         "de" : {
@@ -9682,6 +9775,9 @@
           }
         }
       }
+    },
+    "The podcast and its listening history remain in your library. Only the secure credential is removed." : {
+
     },
     "The podcast library is unavailable." : {
       "localizations" : {
@@ -9803,6 +9899,9 @@
         }
       }
     },
+    "This feed link is personal and will be stored securely. It is not included in sync or export." : {
+
+    },
     "This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to." : {
       "localizations" : {
         "de" : {
@@ -9896,6 +9995,9 @@
           }
         }
       }
+    },
+    "This podcast does not require credentials." : {
+
     },
     "This podcast stays in the database, but it is skipped by bulk refresh." : {
       "localizations" : {
@@ -10475,6 +10577,9 @@
         }
       }
     },
+    "Up Next supports subscriber-specific RSS links and standards-based HTTP authentication. Provider websites are never scraped, and a provider password is never requested unless an official account adapter is added." : {
+
+    },
     "Up Next Watch" : {
       "localizations" : {
         "de" : {
@@ -10485,7 +10590,7 @@
         }
       }
     },
-    "UPCOMING" : {
+    "Update credentials" : {
 
     },
     "Update inbox" : {
@@ -10567,6 +10672,9 @@
           }
         }
       }
+    },
+    "Use a private RSS link or authenticated feed" : {
+
     },
     "Use at least %lld characters to search transcripts." : {
       "localizations" : {

@@ -19,6 +19,13 @@ enum ShownoteLinkOccurrenceKind: String, Codable, Hashable, Sendable {
     case publisherAnchor
 }
 
+/// Describes whether a link can be replaced by a rich card without changing
+/// the surrounding paragraph or list structure.
+enum ShownoteLinkPresentation: String, Codable, Hashable, Sendable {
+    case inline
+    case standalone
+}
+
 enum ShownoteLinkClassification: String, Codable, Hashable, Sendable {
     case unknown
     case web
@@ -69,6 +76,7 @@ struct ShownoteLinkCandidate: Codable, Hashable, Identifiable, Sendable {
     let occurrenceKind: ShownoteLinkOccurrenceKind
     let displayText: String
     let sourceMarkup: String
+    var presentation: ShownoteLinkPresentation
     var classification: ShownoteLinkClassification
 
     init(
@@ -80,6 +88,7 @@ struct ShownoteLinkCandidate: Codable, Hashable, Identifiable, Sendable {
         occurrenceKind: ShownoteLinkOccurrenceKind,
         displayText: String,
         sourceMarkup: String,
+        presentation: ShownoteLinkPresentation = .inline,
         classification: ShownoteLinkClassification = .unknown
     ) {
         self.id = id
@@ -90,6 +99,7 @@ struct ShownoteLinkCandidate: Codable, Hashable, Identifiable, Sendable {
         self.occurrenceKind = occurrenceKind
         self.displayText = displayText
         self.sourceMarkup = sourceMarkup
+        self.presentation = presentation
         self.classification = classification
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct DevelopmentSettingsView: View {
     @ObservedObject private var modelContainerManager = ModelContainerManager.shared
+    @ObservedObject private var cloudKitActivity = StoreCloudKitActivityMonitor.shared
     @AppStorage(StoreDevelopmentConfiguration.modeKey)
     private var storeMode = DevelopmentStoreMode.splitStores
     @AppStorage(StoreDevelopmentConfiguration.legacyCloudSyncEnabledKey)
@@ -220,6 +221,55 @@ struct DevelopmentSettingsView: View {
                         ? "Paused"
                         : "Enabled"
                 )
+            }
+
+            Section("CloudKit Export Activity") {
+                let legacyEventIDs = cloudKitActivity.activeExportIdentifiers(for: .legacy)
+                let userStateEventIDs = cloudKitActivity.activeExportIdentifiers(for: .userState)
+                LabeledContent(
+                    "Legacy SharedDatabase",
+                    value: cloudKitActivity.activeExportStatus(for: .legacy)
+                )
+                if legacyEventIDs.isEmpty == false {
+                    Text("Events: " + legacyEventIDs.joined(separator: ", "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                LabeledContent(
+                    "UserState",
+                    value: cloudKitActivity.activeExportStatus(for: .userState)
+                )
+                if userStateEventIDs.isEmpty == false {
+                    Text("Events: " + userStateEventIDs.joined(separator: ", "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                LabeledContent(
+                    "Scheduler blocker",
+                    value: cloudKitActivity.isAnyStoreExporting
+                        ? "CloudKit export in progress"
+                        : "None"
+                )
+                LabeledContent(
+                    "Legacy mirror",
+                    value: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined
+                        ? "Quarantined (local-only)"
+                        : "Attached by launch policy"
+                )
+                if StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false {
+                    Button(
+                        "Quarantine Legacy Mirror for Next Launch",
+                        role: .destructive
+                    ) {
+                        StoreDevelopmentConfiguration.quarantineLegacyCloudMirror(
+                            reason: "manual_debug_action"
+                        )
+                        resetMessage = "Legacy CloudKit mirroring will remain detached on the next launch. The SQLite library file is preserved."
+                    }
+                }
+                Text("A quarantined legacy store is never re-attached automatically. UserState remains CloudKit-backed; clear the quarantine only through an explicit development reset after deduplication and verification.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -1054,9 +1104,19 @@ struct DevelopmentSettingsView: View {
         isRunningSyncAction = true
         resetMessage = nil
         Task {
-            await modelContainerManager.runOneMigrationSliceForDevelopment()
-            resetMessage = modelContainerManager.migrationLastSliceError
-                ?? modelContainerManager.migrationLastSliceResult
+            let result = await modelContainerManager.runOneMigrationSliceForDevelopment()
+            switch result {
+            case let .advanced(phase, processed):
+                resetMessage = "Advanced \(phase ?? "migration") by \(processed) item(s)."
+            case let .phaseCompleted(phase, processed):
+                resetMessage = "Completed \(phase ?? "phase") (\(processed) item(s))."
+            case .allComplete:
+                resetMessage = "All migration phases are complete."
+            case let .deferred(reason):
+                resetMessage = "Migration deferred: \(reason)"
+            case let .failed(reason):
+                resetMessage = "Migration failed: \(reason)"
+            }
             isRunningSyncAction = false
         }
     }

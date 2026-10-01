@@ -85,6 +85,21 @@ struct CoverImageView: View {
         return imageURL
     }
 
+    private var accessProfile: PodcastAccessProfile? {
+        let sourcePodcast = episode?.podcast ?? podcast
+        guard let metadata = sourcePodcast?.metaData,
+              let id = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let feed = sourcePodcast?.feed else { return nil }
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: feed,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
+    }
+
     // Build a stable key that only changes when the selected chapter (or its image source)
     // changes, or when the episode/podcast fallback cover URL changes.
     private var imageKey: String {
@@ -154,12 +169,16 @@ struct CoverImageView: View {
     private func cachedUIImage(for url: URL) -> UIImage? {
         // Keep body evaluation cheap. Disk-cache access and image decoding are
         // handled by SharedImageRepository from the asynchronous task below.
-        SharedImageRepository.cachedImage(for: url, maxPixelSize: maxPixelSize)
+        SharedImageRepository.cachedImage(
+            for: url,
+            maxPixelSize: maxPixelSize,
+            profileID: accessProfile?.id
+        )
     }
 
     @MainActor
     private func loadPersistedImage(for key: String) async -> Bool {
-        guard key == imageKey else { return false }
+        guard key == imageKey, accessProfile == nil else { return false }
 
         let url: URL?
         if let chapter = activeChapter, chapter.imageData?.isEmpty != false {
@@ -210,7 +229,8 @@ struct CoverImageView: View {
             if let url = chapter.image {
                 if let uiImage = await ImageLoaderAndCache.loadUIImage(
                     from: url,
-                    maxPixelSize: maxPixelSize
+                    maxPixelSize: maxPixelSize,
+                    profile: accessProfile
                 ) {
                     if currentKey == imageKey {
                         loadedImage = Image(uiImage: uiImage)
@@ -225,7 +245,8 @@ struct CoverImageView: View {
         if let directURL = imageURL {
             if let uiImage = await ImageLoaderAndCache.loadUIImage(
                 from: directURL,
-                maxPixelSize: maxPixelSize
+                maxPixelSize: maxPixelSize,
+                profile: accessProfile
             ) {
                 if currentKey == imageKey {
                     loadedImage = Image(uiImage: uiImage)
@@ -239,7 +260,8 @@ struct CoverImageView: View {
         if let fallback = fallbackEpisodeOrPodcastURL {
             if let uiImage = await ImageLoaderAndCache.loadUIImage(
                 from: fallback,
-                maxPixelSize: maxPixelSize
+                maxPixelSize: maxPixelSize,
+                profile: accessProfile
             ) {
                 if currentKey == imageKey {
                     loadedImage = Image(uiImage: uiImage)
@@ -313,12 +335,28 @@ struct BlurredCoverImageView: View {
         return podcast?.imageURL
     }
 
+    private var accessProfile: PodcastAccessProfile? {
+        let sourcePodcast = episode?.podcast ?? podcast
+        guard let metadata = sourcePodcast?.metaData,
+              let id = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let feed = sourcePodcast?.feed else { return nil }
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: feed,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
+    }
+
     private var imageKey: String {
         guard let resolvedURL else { return "none" }
         return SharedImageRepository.blurredCacheKey(
             for: resolvedURL,
             radius: radius,
-            maxPixelSize: maxPixelSize
+            maxPixelSize: maxPixelSize,
+            profileID: accessProfile?.id
         )
     }
 
@@ -338,6 +376,7 @@ struct BlurredCoverImageView: View {
     @MainActor
     private func loadPersistedImage(for key: String) async -> Bool {
         guard key == imageKey,
+              accessProfile == nil,
               let resolvedURL,
               let uiImage = await ImageLoaderAndCache.loadPersistedBlurredUIImage(
                 from: resolvedURL,
@@ -365,7 +404,8 @@ struct BlurredCoverImageView: View {
         if let uiImage = await ImageLoaderAndCache.loadBlurredUIImage(
             from: resolvedURL,
             radius: radius,
-            maxPixelSize: maxPixelSize
+            maxPixelSize: maxPixelSize,
+            profile: accessProfile
         ),
            key == imageKey {
             loadedImage = Image(uiImage: uiImage)

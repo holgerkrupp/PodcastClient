@@ -6,6 +6,13 @@ import XCTest
 /// the app's library graph stays on disk, and only user-owned state travels
 /// through `UserState.sqlite`.
 final class StoreSplitDurableStoreTests: XCTestCase {
+    func testMigrationSliceBudgetBoundsMutationsAndWallTime() {
+        let budget = StoreWorkBudget.migrationSlice
+        XCTAssertLessThanOrEqual(budget.maximumMutations, 40)
+        XCTAssertLessThanOrEqual(budget.maximumSaves, 2)
+        XCTAssertEqual(budget.maximumWallTime, .seconds(5))
+    }
+
 #if DEBUG
     func testDebugInstallationDefaultsToPublicBackfillConfiguration() {
         let configuration = StoreDevelopmentConfiguration.current

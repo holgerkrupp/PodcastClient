@@ -181,18 +181,39 @@ actor SubscriptionManager:NSObject{
             throw SubscribeError.loadfeed
         }
 
+        let accessProfile: PodcastAccessProfile? = {
+            guard let credential = podcastFeed.accessCredential else {
+                return nil
+            }
+            let kind = podcastFeed.accessKind ?? {
+                switch credential {
+                case .privateURL: return PodcastAccessKind.privateURL
+                case .httpBasic: return PodcastAccessKind.httpBasic
+                case .bearerToken: return PodcastAccessKind.bearerToken
+                }
+            }()
+            return PodcastAccessProfile.make(for: url, kind: kind)
+        }()
+
         if subscribe {
             if let progress {
                 await progress(SubscriptionProgressUpdate(0.02, "Checking podcast feed"))
             }
-            _ = try await PodcastParser.fetchPage(from: url)
+            _ = try await PodcastParser.fetchPage(from: url, profile: accessProfile)
         }
 
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feed == url }
-        )
-
-        let existingPodcast = (try? modelContext.fetch(descriptor))?.first
+        // Keep ordinary public query parameters in the stored feed identity.
+        // Only a private/authenticated flow treats the URL query as sensitive
+        // credential material.
+        let safeURL = accessProfile == nil && url.isLikelyPrivatePodcastURL == false
+            ? url
+            : url.podcastNonSecretURL
+        let existingPodcast = ((try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? [])
+            .first { podcast in
+                guard let feed = podcast.feed else { return false }
+                return !feed.podcastFeedComparisonKeys
+                    .intersection(safeURL.podcastFeedComparisonKeys).isEmpty
+            }
         let previousIsSubscribed = existingPodcast?.metaData?.isSubscribed
         let previousSubscriptionDate = existingPodcast?.metaData?.subscriptionDate
         var podcastForRollback: Podcast?
@@ -203,6 +224,17 @@ actor SubscriptionManager:NSObject{
             if let existingPodcast {
                 podcast = existingPodcast
                 applyFeedPreview(podcastFeed, to: existingPodcast)
+
+                if let accessProfile, let credential = podcastFeed.accessCredential {
+                    try PodcastCredentialStoreProvider.current.save(credential, for: accessProfile)
+                    existingPodcast.feed = accessProfile.resourceURL
+                    let metadata = ensureMetadata(for: existingPodcast)
+                    metadata.accessProfileID = accessProfile.id
+                    metadata.accessKindRawValue = accessProfile.kind.rawValue
+                    metadata.accessProviderID = accessProfile.providerID?.rawValue
+                    metadata.credentialState = .available
+                    metadata.authenticationRetryAfter = nil
+                }
 
                 let metadata = ensureMetadata(for: existingPodcast)
                 if subscribe {
@@ -469,10 +501,10 @@ actor SubscriptionManager:NSObject{
 
             for feed in feeds {
                 do {
-                    print("background importing podcast: \(feed)")
+                    print("background importing podcast: \(feed.redactedPodcastURLString)")
                     _ = try await worker.updatePodcast(feed, force: true, silent: true)
                 } catch {
-                    print("could not import podcast feed \(feed): \(error)")
+                    print("could not import podcast feed \(feed.redactedPodcastURLString): \(error)")
                 }
             }
 

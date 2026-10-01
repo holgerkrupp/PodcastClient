@@ -11,6 +11,10 @@ struct StoreSplitUserStateImportResult: Sendable {
     var listeningHistoryApplied = 0
     var duplicatePodcastsHidden = 0
     var feedsToBootstrap: [URL] = []
+    /// Credential-free feed identities that were retained but intentionally
+    /// not fetched because this device has not supplied their credential yet.
+    var feedsAwaitingCredentials: [URL] = []
+    var credentialRequiredProfileIDs: [String] = []
     var playlistFeedsToBootstrap: [URL] = []
     var failed = 0
     var interruptedByPlayback = false
@@ -24,6 +28,7 @@ actor StoreSplitUserStateImporter {
     private let episodeScanPageSize = 200
     private let legacyContainer: ModelContainer
     private let userStateContainer: ModelContainer
+    private let credentialStore: any PodcastCredentialStore
     private let previousImportCursors: [StoreSplitUserStateStream: StoreSplitImportCursor]
     private var legacyContext: ModelContext
     private var userStateContext: ModelContext
@@ -54,10 +59,12 @@ actor StoreSplitUserStateImporter {
 
     private init(
         legacyContainer: ModelContainer,
-        userStateContainer: ModelContainer
+        userStateContainer: ModelContainer,
+        credentialStore: any PodcastCredentialStore
     ) {
         self.legacyContainer = legacyContainer
         self.userStateContainer = userStateContainer
+        self.credentialStore = credentialStore
         previousImportCursors = StoreSplitImportCursorStore.load()
         legacyContext = ModelContext(legacyContainer)
         userStateContext = ModelContext(userStateContainer)
@@ -68,6 +75,7 @@ actor StoreSplitUserStateImporter {
     nonisolated static func apply(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
+        credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current,
         authoritativePlaylists: Bool = false,
         projectListeningHistoryToLegacy: Bool = true,
         episodeStateProjectionRecencyCutoff: Date? = nil,
@@ -81,7 +89,8 @@ actor StoreSplitUserStateImporter {
         // SQLite lock across suspension and triggering an 0xdead10cc kill.
         let importer = StoreSplitUserStateImporter(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
+            userStateContainer: userStateContainer,
+            credentialStore: credentialStore
         )
         return await importer.run(
             authoritativePlaylists: authoritativePlaylists,
@@ -109,7 +118,8 @@ actor StoreSplitUserStateImporter {
     ) async -> StoreSplitUserStateImportResult {
         let importer = StoreSplitUserStateImporter(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
+            userStateContainer: userStateContainer,
+            credentialStore: PodcastCredentialStoreProvider.current
         )
         return await importer.runListeningHistoryOnly()
     }
@@ -164,7 +174,7 @@ actor StoreSplitUserStateImporter {
                 (try? userStateContext.fetch(FetchDescriptor<SubscriptionSync>())) ?? []
             )
             : [:]
-        let accessResolver = PodcastAccessResolver()
+        let accessResolver = PodcastAccessResolver(credentialStore: credentialStore)
         if changedStreams.contains(.subscriptions) {
         for subscription in subscriptions.values {
             if await shouldStop() {
@@ -176,32 +186,54 @@ actor StoreSplitUserStateImporter {
                 continue
             }
             let accessProfile = accessProfile(for: subscription, resourceURL: manifestFeedURL)
-            let resolvedFeedURL = accessProfile.flatMap {
-                try? accessResolver.resolvedURL(for: $0, fallbackURL: manifestFeedURL)
-            } ?? manifestFeedURL
-            let hasCredential = accessProfile.map {
-                accessResolver.credentialState(for: $0) == .available
-            } ?? true
+            let bootstrapDecision = accessResolver.bootstrapDecision(
+                for: accessProfile,
+                fallbackURL: manifestFeedURL
+            )
+            let resolvedFeedURL: URL
+            let hasCredential: Bool
+            switch bootstrapDecision {
+            case .publicFeed(let url), .ready(let url):
+                resolvedFeedURL = url
+                hasCredential = true
+            case .credentialsRequired(let profileID, let feedURL):
+                resolvedFeedURL = feedURL
+                hasCredential = false
+                result.feedsAwaitingCredentials.append(feedURL)
+                result.credentialRequiredProfileIDs.append(profileID)
+            }
+            var createdPodcast = false
             let podcast = resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
                 podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
                 let podcast = Podcast(feed: resolvedFeedURL)
                 legacyContext.insert(podcast)
+                createdPodcast = true
                 for key in resolvedFeedURL.podcastFeedComparisonKeys {
                     self.podcastsByComparisonKey[key] = podcast.persistentModelID
-                }
-                if hasCredential {
-                    result.feedsToBootstrap.append(resolvedFeedURL)
                 }
                 return podcast
             }()
             guard let podcast else { continue }
 
             let metadata = ensureMetadata(for: podcast)
+            let profileWasAlreadyApplied = metadata.accessProfileID == accessProfile?.id
+            let credentialWasMissing = metadata.credentialState == .missing
+            // A subscription can already exist locally in a credential-missing
+            // state when a Keychain entry is restored or re-entered later. In
+            // that case the row is not new, but it must still be bootstrapped
+            // once the access profile becomes usable. Do not enqueue it on
+            // every subsequent store projection.
+            if subscription.isSubscribed,
+               hasCredential,
+               createdPodcast || !profileWasAlreadyApplied || credentialWasMissing {
+                result.feedsToBootstrap.append(resolvedFeedURL)
+            }
             setIfChanged(metadata, \.isSubscribed, subscription.isSubscribed)
             setIfChanged(metadata, \.accessProfileID, accessProfile?.id)
             setIfChanged(metadata, \.accessKindRawValue, accessProfile?.kind.rawValue)
+            setIfChanged(metadata, \.accessProviderID, accessProfile?.providerID?.rawValue)
             setIfChanged(metadata, \.credentialState, hasCredential ? .available : .missing)
             if subscription.isSubscribed {
                 if metadata.subscriptionDate == nil {
@@ -280,12 +312,16 @@ actor StoreSplitUserStateImporter {
         result.feedsToBootstrap = Array(Set(result.feedsToBootstrap)).sorted {
             $0.absoluteString < $1.absoluteString
         }
+        result.feedsAwaitingCredentials = Array(Set(result.feedsAwaitingCredentials)).sorted {
+            $0.absoluteString < $1.absoluteString
+        }
+        result.credentialRequiredProfileIDs = Array(Set(result.credentialRequiredProfileIDs)).sorted()
         result.playlistFeedsToBootstrap = Array(Set(result.playlistFeedsToBootstrap)).sorted {
             $0.absoluteString < $1.absoluteString
         }
         CrashBreadcrumbs.shared.record(
             "store_split_user_state_import_completed",
-            details: "subscriptions=\(result.subscriptionsApplied),preferences=\(result.preferencesApplied),episodes=\(result.episodeStatesApplied),playlists=\(result.playlistsApplied),entries=\(result.playlistEntriesApplied),bookmarks=\(result.bookmarksApplied),history=\(result.listeningHistoryApplied),duplicates=\(result.duplicatePodcastsHidden),feeds=\(result.feedsToBootstrap.count),failed=\(result.failed)"
+            details: "subscriptions=\(result.subscriptionsApplied),preferences=\(result.preferencesApplied),episodes=\(result.episodeStatesApplied),playlists=\(result.playlistsApplied),entries=\(result.playlistEntriesApplied),bookmarks=\(result.bookmarksApplied),history=\(result.listeningHistoryApplied),duplicates=\(result.duplicatePodcastsHidden),feeds=\(result.feedsToBootstrap.count),credentials_required=\(result.feedsAwaitingCredentials.count),failed=\(result.failed)"
         )
 #if DEBUG
         logProjectionAudit(result: result)
@@ -302,7 +338,12 @@ actor StoreSplitUserStateImporter {
               let kind = PodcastAccessKind(rawValue: rawKind) else {
             return nil
         }
-        return PodcastAccessProfile(id: id, kind: kind, resourceURL: resourceURL)
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: resourceURL,
+            providerID: subscription.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
     }
 
     /// Indexes the library's podcasts by feed comparison key and returns them.
@@ -1383,7 +1424,13 @@ actor StoreSplitUserStateImporter {
 
     private func shouldPauseForPlayback() async -> Bool {
         await MainActor.run {
-            Player.shared.isPlaying
+            // Store projection can run during launch, before the app has
+            // prepared the runtime container that Player.shared needs. In
+            // that window there is no playback state to observe yet.
+            guard ModelContainerManager.shared.preparedContainer != nil else {
+                return false
+            }
+            return Player.shared.isPlaying
         }
     }
 

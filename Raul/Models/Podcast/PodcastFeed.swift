@@ -21,6 +21,10 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     var added: Bool = false
     var subscribing: Bool = false
     var status: URLstatus?
+    /// Transient credential supplied during private-feed onboarding. It is
+    /// never encoded into the feed model or synchronization payloads.
+    var accessCredential: PodcastCredential?
+    var accessKind: PodcastAccessKind?
     
     var artist: String?
     var artworkURL: URL?
@@ -95,10 +99,16 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         importedLastRefresh: Date? = nil,
         importedLastEpisodeDate: Date? = nil,
         importedLastEpisodeURL: URL? = nil,
+        accessCredential: PodcastCredential? = nil,
+        accessKind: PodcastAccessKind? = nil,
         fetchMetadataIfNeeded: Bool = false
     ) {
         self.url = url
-        self.title = title ?? url?.absoluteString
+        self.title = title ?? url.map {
+            $0.isLikelyPrivatePodcastURL
+                ? $0.redactedPodcastURLString
+                : $0.absoluteString
+        }
         self.subtitle = subtitle
         self.description = description
         self.source = source
@@ -108,6 +118,8 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         self.importedLastRefresh = importedLastRefresh
         self.importedLastEpisodeDate = importedLastEpisodeDate
         self.importedLastEpisodeURL = importedLastEpisodeURL
+        self.accessCredential = accessCredential
+        self.accessKind = accessKind
 
         if fetchMetadataIfNeeded {
             fetchAndPopulateFeedIfNeeded()

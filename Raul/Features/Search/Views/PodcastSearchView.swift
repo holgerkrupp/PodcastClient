@@ -9,18 +9,28 @@ import SwiftUI
 import SwiftData
 
 struct PodcastSearchView: View {
-    @StateObject private var viewModel = PodcastSearchViewModel()
+    @StateObject private var viewModel: PodcastSearchViewModel
     @Environment(\.modelContext) private var context
     @Binding var search: String
 
     // Local state for basic auth prompt
     @State private var authUsername: String = ""
     @State private var authPassword: String = ""
+    @State private var authBearerToken: String = ""
     @FocusState private var focusedField: AuthField?
 
     private enum AuthField {
         case username
         case password
+    }
+
+    init(search: Binding<String>, treatsDirectURLsAsPrivate: Bool = false) {
+        _search = search
+        _viewModel = StateObject(
+            wrappedValue: PodcastSearchViewModel(
+                treatsDirectURLsAsPrivate: treatsDirectURLsAsPrivate
+            )
+        )
     }
 
     var body: some View {
@@ -82,32 +92,40 @@ struct PodcastSearchView: View {
                 .navigationTitle("Subscribe")
             }
             // Inline authentication form
-            else if viewModel.shouldPromptForBasicAuth {
+            else if viewModel.shouldPromptForBasicAuth || viewModel.shouldPromptForBearerToken {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill")
-                        Text("Authentication Required")
+                        Text(viewModel.shouldPromptForBearerToken ? "Bearer Token Required" : "Authentication Required")
                             .font(.headline)
                     }
 
                     if let url = viewModel.pendingURLForAuth {
-                        Text(url.host ?? url.absoluteString)
+                        Text(url.host ?? url.redactedPodcastURLString)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
 
-                    TextField("Username", text: $authUsername)
-                        .disableAutocorrection(true)
-                        .focused($focusedField, equals: .username)
-                        .onSubmit {
-                            focusedField = .password
-                        }
+                    if viewModel.shouldPromptForBearerToken {
+                        SecureField("Bearer token", text: $authBearerToken)
+                            .textContentType(.password)
+                            .onSubmit { submitAuth() }
+                    } else {
+                        TextField("Username", text: $authUsername)
+                            .disableAutocorrection(true)
+                            .textContentType(.username)
+                            .focused($focusedField, equals: .username)
+                            .onSubmit {
+                                focusedField = .password
+                            }
 
-                    SecureField("Password", text: $authPassword)
-                        .focused($focusedField, equals: .password)
-                        .onSubmit {
-                            submitAuth()
-                        }
+                        SecureField("Password", text: $authPassword)
+                            .textContentType(.password)
+                            .focused($focusedField, equals: .password)
+                            .onSubmit {
+                                submitAuth()
+                            }
+                    }
 
                     if let error = viewModel.authErrorMessage, !error.isEmpty {
                         Text(error)
@@ -127,7 +145,9 @@ struct PodcastSearchView: View {
                             submitAuth()
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(authUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || authPassword.isEmpty)
+                        .disabled(viewModel.shouldPromptForBearerToken
+                                  ? authBearerToken.isEmpty
+                                  : authUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || authPassword.isEmpty)
                     }
                 }
                 .padding()
@@ -161,17 +181,24 @@ struct PodcastSearchView: View {
     private func submitAuth() {
         let user = authUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         let pass = authPassword
-        guard !user.isEmpty, !pass.isEmpty else { return }
-        viewModel.submitBasicAuth(username: user, password: pass)
+        if viewModel.shouldPromptForBearerToken {
+            guard authBearerToken.isEmpty == false else { return }
+            viewModel.submitBearerToken(authBearerToken)
+        } else {
+            guard !user.isEmpty, !pass.isEmpty else { return }
+            viewModel.submitBasicAuth(username: user, password: pass)
+        }
         // Clear for next time
         authUsername = ""
         authPassword = ""
+        authBearerToken = ""
     }
 
     private func cancelAuth() {
         viewModel.shouldPromptForBasicAuth = false
         authUsername = ""
         authPassword = ""
+        authBearerToken = ""
     }
 }
 

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		13AF772F46AAA805E910B526 /* UpNextTVApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1F8FBEAE3889B6B02C75D9 /* UpNextTVApp.swift */; };
+		1B75EAFD0D97B5A72671B1AD /* TVPremiumBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D577AE9AB21D83F25F693 /* TVPremiumBootstrap.swift */; };
 		4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */ = {isa = PBXBuildFile; productRef = 4803081E2E5B7D6C0059DFA2 /* RichText */; };
 		4812C1023020000100000001 /* CloudKitSyncMonitor in Frameworks */ = {isa = PBXBuildFile; productRef = 4812C1033020000100000001 /* CloudKitSyncMonitor */; };
 		4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */; };
@@ -20,11 +22,14 @@
 		48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */ = {isa = PBXBuildFile; productRef = 48C038EE2FF7806300343AF1 /* CloudDataPresence */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
 		48CCC2ED2FFCF61D00517567 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 48CCC2EC2FFCF61D00517567 /* ESADesignKit */; };
-		D4C017002FB9000100000001 /* ESADesignKit in Watch Frameworks */ = {isa = PBXBuildFile; productRef = 48CCC2EC2FFCF61D00517567 /* ESADesignKit */; };
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
+		7BD56FCE270E923E6668CC89 /* PodcastAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6074A10FAF20A62C04391E91 /* PodcastAccess.swift */; };
+		7CD337B61A4F2955F16FA2FC /* URLextension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A556E5871DD8D34CE85CAEC3 /* URLextension.swift */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B1C2D3002F10000100000001 /* UpNextWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B1C2D3022F10000100000001 /* UpNextWatch.app */; platformFilter = ios; };
 		D4C001002FB9000100000001 /* UpNextWatchComplications.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D4C004002FB9000100000001 /* UpNextWatchComplications.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D4C017002FB9000100000001 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 48CCC2EC2FFCF61D00517567 /* ESADesignKit */; };
+		DADA43329AF5C1EB5201A4C8 /* DateExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605A4946FADBAE47AE4D9CBE /* DateExtensions.swift */; };
 		E1A000012FC0000100000001 /* PodcastShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1A000022FC0000100000001 /* PodcastShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -114,6 +119,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		02CCCC171DE2A8FDBBC29914 /* UpNextTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4827FC7B2DA5A21A00FA6778 /* Entitlements.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Entitlements.plist; sourceTree = "<group>"; };
 		4827FCD32DA5AC0500FA6778 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		4845F15A2E7D32980096FCA6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = /System/Library/Frameworks/WidgetKit.framework; sourceTree = "<absolute>"; };
@@ -123,8 +129,13 @@
 		48B638D02F59999F00940B67 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		48BCBD5F2FC99A95008EC322 /* Apple Podcasts to OPML.shortcut */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Apple Podcasts to OPML.shortcut"; sourceTree = "<group>"; };
 		48E626F62FA0307A0045AC1C /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = /System/Library/Frameworks/AppIntents.framework; sourceTree = "<absolute>"; };
+		570D577AE9AB21D83F25F693 /* TVPremiumBootstrap.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TVPremiumBootstrap.swift; sourceTree = "<group>"; };
+		605A4946FADBAE47AE4D9CBE /* DateExtensions.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DateExtensions.swift; path = Raul/Shared/Extensions/DateExtensions.swift; sourceTree = "<group>"; };
+		6074A10FAF20A62C04391E91 /* PodcastAccess.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PodcastAccess.swift; path = Raul/Shared/Services/PodcastAccess.swift; sourceTree = "<group>"; };
 		A1B2C3022F00000100000001 /* PlayNextWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PlayNextWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A556E5871DD8D34CE85CAEC3 /* URLextension.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = URLextension.swift; path = Raul/Shared/Extensions/URLextension.swift; sourceTree = "<group>"; };
 		B1C2D3022F10000100000001 /* UpNextWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UpNextWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB1F8FBEAE3889B6B02C75D9 /* UpNextTVApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UpNextTVApp.swift; sourceTree = "<group>"; };
 		C0D3A0022FAD000100000001 /* UpNextTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UpNextTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D4C004002FB9000100000001 /* UpNextWatchComplications.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UpNextWatchComplications.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1A000022FC0000100000001 /* PodcastShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PodcastShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -306,8 +317,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D4C017002FB9000100000001 /* ESADesignKit in Watch Frameworks */,
+				D4C017002FB9000100000001 /* ESADesignKit in Frameworks */,
 				48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1D066342EA79C80ADA859CE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -352,6 +370,10 @@
 				487F5C712D9D4F0C00056D08 /* Raul */,
 				C0D3A0032FAD000100000001 /* UpNextTests */,
 				480234AC2E0560EE0013C50D /* PlayerIntentsExtension */,
+				6D0F7CE8AE09118C2DC183D7 /* UpNextTV */,
+				6074A10FAF20A62C04391E91 /* PodcastAccess.swift */,
+				A556E5871DD8D34CE85CAEC3 /* URLextension.swift */,
+				605A4946FADBAE47AE4D9CBE /* DateExtensions.swift */,
 				487F5C962D9D59D000056D08 /* Frameworks */,
 				487F5C702D9D4F0C00056D08 /* Products */,
 			);
@@ -366,6 +388,7 @@
 				E1A000022FC0000100000001 /* PodcastShareExtension.appex */,
 				C0D3A0022FAD000100000001 /* UpNextTests.xctest */,
 				487F5C6F2D9D4F0C00056D08 /* UpNext.app */,
+				02CCCC171DE2A8FDBBC29914 /* UpNextTV.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -378,6 +401,15 @@
 				4845F15C2E7D32980096FCA6 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		6D0F7CE8AE09118C2DC183D7 /* UpNextTV */ = {
+			isa = PBXGroup;
+			children = (
+				BB1F8FBEAE3889B6B02C75D9 /* UpNextTVApp.swift */,
+				570D577AE9AB21D83F25F693 /* TVPremiumBootstrap.swift */,
+			);
+			path = UpNextTV;
 			sourceTree = "<group>";
 		};
 		F10000022FCB000100000001 /* Config */ = {
@@ -425,6 +457,23 @@
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
+			productType = "com.apple.product-type.application";
+		};
+		49EC96029E4F0F017D22E1DD /* UpNextTV */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1B6AE8493A3A9EF001BD83CF /* Build configuration list for PBXNativeTarget "UpNextTV" */;
+			buildPhases = (
+				3633DF6EC4251C4AB546A4A0 /* Sources */,
+				B1D066342EA79C80ADA859CE /* Frameworks */,
+				91296729B7A826431475838B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = UpNextTV;
+			productName = UpNextTV;
+			productReference = 02CCCC171DE2A8FDBBC29914 /* UpNextTV.app */;
 			productType = "com.apple.product-type.application";
 		};
 		A1B2C3062F00000100000001 /* PlayNextWidget */ = {
@@ -599,6 +648,7 @@
 			projectRoot = "";
 			targets = (
 				487F5C6E2D9D4F0C00056D08 /* UpNext */,
+				49EC96029E4F0F017D22E1DD /* UpNextTV */,
 				C0D3A0042FAD000100000001 /* UpNextTests */,
 				B1C2D3062F10000100000001 /* UpNextWatch */,
 				D4C010002FB9000100000001 /* UpNextWatchComplications */,
@@ -618,6 +668,13 @@
 				4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */,
 				4827FC7C2DA5A21A00FA6778 /* Entitlements.plist in Resources */,
 				48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		91296729B7A826431475838B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -662,6 +719,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		A10000012F00000100000309 /* Generate App Icon Previews */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate App Icon Previews";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Regenerates the app icon previews in Raul/Assets.xcassets/iconPreviews from the\n# .icon bundles in Raul. See Scripts/generate-icon-previews.sh for details.\n\"${SRCROOT}/Scripts/generate-icon-previews.sh\"\n";
+		};
 		D4C015002FB9000100000001 /* Validate watch complication bundle */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -705,28 +781,21 @@
 			shellPath = /bin/sh;
 			shellScript = "CONTAINER_APP_PATH=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" /bin/sh \"${SRCROOT}/Scripts/validate-watch-complication-bundle.sh\"\n";
 		};
-		A10000012F00000100000309 /* Generate App Icon Previews */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Generate App Icon Previews";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Regenerates the app icon previews in Raul/Assets.xcassets/iconPreviews from the\n# .icon bundles in Raul. See Scripts/generate-icon-previews.sh for details.\n\"${SRCROOT}/Scripts/generate-icon-previews.sh\"\n";
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		3633DF6EC4251C4AB546A4A0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				13AF772F46AAA805E910B526 /* UpNextTVApp.swift in Sources */,
+				1B75EAFD0D97B5A72671B1AD /* TVPremiumBootstrap.swift in Sources */,
+				7BD56FCE270E923E6668CC89 /* PodcastAccess.swift in Sources */,
+				7CD337B61A4F2955F16FA2FC /* URLextension.swift in Sources */,
+				DADA43329AF5C1EB5201A4C8 /* DateExtensions.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		487F5C6B2D9D4F0C00056D08 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1115,6 +1184,26 @@
 			};
 			name = Release;
 		};
+		A40E64DA276861DA29C2A4D6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = UpNextTV/UpNextTV.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UpNextTV/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).tvOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
 		B1C2D30C2F10000100000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1170,6 +1259,26 @@
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
+		BA8FA0CF65355BC3FBDED51B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
+				CODE_SIGN_ENTITLEMENTS = UpNextTV/UpNextTV.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 46D3VYP253;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = UpNextTV/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).tvOS";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = appletvos;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
@@ -1348,6 +1457,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		1B6AE8493A3A9EF001BD83CF /* Build configuration list for PBXNativeTarget "UpNextTV" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A40E64DA276861DA29C2A4D6 /* Debug */,
+				BA8FA0CF65355BC3FBDED51B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		487F5C6A2D9D4F0C00056D08 /* Build configuration list for PBXProject "Up Next" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

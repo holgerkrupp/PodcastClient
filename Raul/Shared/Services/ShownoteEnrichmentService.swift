@@ -18,15 +18,96 @@ protocol ShownoteResourceLoader: Sendable {
 
 enum ShownoteResolutionError: Error, Sendable {
     case invalidResponse
+    case missingResponse
     case responseTooLarge
     case redirectLimitReached
     case unsupportedResource
 }
 
-struct URLSessionShownoteResourceLoader: ShownoteResourceLoader {
-    let maximumResponseBytes: Int
-    let maximumRedirects: Int
-    let timeout: TimeInterval
+private final class URLSessionTaskCancellationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionDataTask?
+    private var isCancelled = false
+
+    func install(_ task: URLSessionDataTask) {
+        lock.lock()
+        if isCancelled {
+            lock.unlock()
+            task.cancel()
+            return
+        }
+        self.task = task
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+}
+
+private enum ShownoteRequestBreadcrumbs {
+    fileprivate static func safeError(_ error: Error) -> String {
+        error.localizedDescription
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: ",", with: ";")
+    }
+
+    static func target(for request: URLRequest) -> String {
+        guard let url = request.url,
+              let scheme = url.scheme,
+              let host = url.host else {
+            return "invalid"
+        }
+        return "\(scheme)://\(host)"
+    }
+
+    static func record(_ name: String, request: URLRequest, details: String = "") {
+        let suffix = details.isEmpty ? "" : ",\(details)"
+        CrashBreadcrumbs.shared.record(
+            "shownote_request_\(name)",
+            details: "target=\(target(for: request)),os=\(ProcessInfo.processInfo.operatingSystemVersionString)\(suffix)"
+        )
+    }
+}
+
+private final class ShownoteRedirectDelegate: NSObject, @unchecked Sendable, URLSessionTaskDelegate {
+    private let maximumRedirects: Int
+    private var redirectCounts: [Int: Int] = [:]
+
+    init(maximumRedirects: Int) {
+        self.maximumRedirects = maximumRedirects
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        let count = redirectCounts[task.taskIdentifier, default: 0]
+        guard count < maximumRedirects else {
+            completionHandler(nil)
+            return
+        }
+        redirectCounts[task.taskIdentifier] = count + 1
+        completionHandler(request)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        redirectCounts.removeValue(forKey: task.taskIdentifier)
+    }
+}
+
+private final class URLSessionShownoteResourceLoader: ShownoteResourceLoader, @unchecked Sendable {
+    private let maximumResponseBytes: Int
+    private let maximumRedirects: Int
+    private let timeout: TimeInterval
+    private let session: URLSession
 
     init(
         maximumResponseBytes: Int = 512 * 1024,
@@ -36,6 +117,28 @@ struct URLSessionShownoteResourceLoader: ShownoteResourceLoader {
         self.maximumResponseBytes = maximumResponseBytes
         self.maximumRedirects = maximumRedirects
         self.timeout = timeout
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.allowsExpensiveNetworkAccess = false
+        configuration.allowsConstrainedNetworkAccess = false
+        configuration.httpMaximumConnectionsPerHost = 3
+
+        let delegate = ShownoteRedirectDelegate(maximumRedirects: maximumRedirects)
+        let delegateQueue = OperationQueue()
+        delegateQueue.maxConcurrentOperationCount = 1
+        self.session = URLSession(
+            configuration: configuration,
+            delegate: delegate,
+            delegateQueue: delegateQueue
+        )
+    }
+
+    deinit {
+        session.invalidateAndCancel()
     }
 
     func load(_ url: URL) async throws -> ShownoteHTTPResource {
@@ -45,19 +148,47 @@ struct URLSessionShownoteResourceLoader: ShownoteResourceLoader {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/xml;q=0.9,*/*;q=0.1", forHTTPHeaderField: "Accept")
 
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.allowsExpensiveNetworkAccess = false
-        configuration.allowsConstrainedNetworkAccess = false
-
-        let redirectDelegate = ShownoteRedirectDelegate(maximumRedirects: maximumRedirects)
-        let session = URLSession(configuration: configuration, delegate: redirectDelegate, delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
-
-        let (data, response) = try await session.data(for: request)
+        ShownoteRequestBreadcrumbs.record("started", request: request)
+        let cancellationBox = URLSessionTaskCancellationBox()
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    let task = session.dataTask(with: request) { data, response, error in
+                        if let error {
+                            ShownoteRequestBreadcrumbs.record(
+                                "failed",
+                                request: request,
+                                details: "error=\(ShownoteRequestBreadcrumbs.safeError(error))"
+                            )
+                            continuation.resume(throwing: error)
+                            return
+                        }
+                        guard let data, let response else {
+                            ShownoteRequestBreadcrumbs.record(
+                                "missing_response",
+                                request: request
+                            )
+                            continuation.resume(throwing: ShownoteResolutionError.missingResponse)
+                            return
+                        }
+                        continuation.resume(returning: (data, response))
+                    }
+                    cancellationBox.install(task)
+                    task.resume()
+                }
+            } onCancel: {
+                cancellationBox.cancel()
+                ShownoteRequestBreadcrumbs.record("cancelled", request: request)
+            }
+        } catch {
+            ShownoteRequestBreadcrumbs.record(
+                "failed",
+                request: request,
+                details: "error=\(ShownoteRequestBreadcrumbs.safeError(error))"
+            )
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ShownoteResolutionError.invalidResponse
         }
@@ -71,36 +202,18 @@ struct URLSessionShownoteResourceLoader: ShownoteResourceLoader {
             throw ShownoteResolutionError.responseTooLarge
         }
 
+        ShownoteRequestBreadcrumbs.record(
+            "completed",
+            request: request,
+            details: "status=\(httpResponse.statusCode),bytes=\(data.count),redirects=\(maximumRedirects)"
+        )
+
         return ShownoteHTTPResource(
             data: data,
             responseURL: httpResponse.url ?? url,
             statusCode: httpResponse.statusCode,
             mimeType: httpResponse.mimeType
         )
-    }
-}
-
-private final class ShownoteRedirectDelegate: NSObject, @unchecked Sendable, URLSessionTaskDelegate {
-    private let maximumRedirects: Int
-    private var redirectCount = 0
-
-    init(maximumRedirects: Int) {
-        self.maximumRedirects = maximumRedirects
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        guard redirectCount < maximumRedirects else {
-            completionHandler(nil)
-            return
-        }
-        redirectCount += 1
-        completionHandler(request)
     }
 }
 

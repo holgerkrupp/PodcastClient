@@ -406,7 +406,7 @@ actor PlaylistModelActor {
     ) -> Bool {
         guard origin == .automatic, episode.isPlayed else { return false }
         logAutoDownload(
-            "trigger/auto-add skipped playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) reason=played"
+            "trigger/auto-add skipped playlist=\(playlist.displayTitle) episode=\(episodeURL.redactedPodcastURLString) reason=played"
         )
         return true
     }
@@ -797,7 +797,7 @@ actor PlaylistModelActor {
             )
         }
         logAutoDownload(
-            "trigger/manual-remove playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) entries=\(matchingEntries.count) origin=\(String(describing: origin))"
+            "trigger/manual-remove playlist=\(playlist.displayTitle) episode=\(episodeURL.redactedPodcastURLString) entries=\(matchingEntries.count) origin=\(String(describing: origin))"
         )
 
         if matchingEntries.isEmpty == false {
@@ -823,7 +823,7 @@ actor PlaylistModelActor {
             // print("✅ PlaylistEntry deleted and context saved")
         }else{
             logAutoDownload(
-                "trigger/manual-remove no-op playlist=\(playlist.displayTitle) episode=\(episodeURL.absoluteString) reason=no-matching-entry"
+                "trigger/manual-remove no-op playlist=\(playlist.displayTitle) episode=\(episodeURL.redactedPodcastURLString) reason=no-matching-entry"
             )
             // print("No such episode")
         }

@@ -689,14 +689,14 @@ actor PodcastSettingsModelActor {
     }
 
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {
-        await logAutoDownload("policy-resolution/start feed=\(podcastFeed.absoluteString)")
+        await logAutoDownload("policy-resolution/start feed=\(podcastFeed.redactedPodcastURLString)")
         guard let podcast = fetchPodcast(podcastFeed) else {
-            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.absoluteString) source=podcast reason=podcast-not-found")
+            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.redactedPodcastURLString) source=podcast reason=podcast-not-found")
             return nil
         }
 
         guard podcast.isSubscribed else {
-            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.absoluteString) source=podcast reason=podcast-unsubscribed")
+            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.redactedPodcastURLString) source=podcast reason=podcast-unsubscribed")
             return nil
         }
 
@@ -707,7 +707,7 @@ actor PodcastSettingsModelActor {
 
         guard let settings,
               settings.autoDownload else {
-            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.absoluteString) source=\(source) reason=auto-download-disabled")
+            await logAutoDownload("policy-resolution/none feed=\(podcastFeed.redactedPodcastURLString) source=\(source) reason=auto-download-disabled")
             return nil
         }
 
@@ -717,12 +717,12 @@ actor PodcastSettingsModelActor {
         var resolvedGlobalPlaylistID = globalSettings.defaultPlaylistID ?? ensuredDefaultQueueID
         if manualPlaylistExists(id: resolvedGlobalPlaylistID) == false {
             resolvedGlobalPlaylistID = ensuredDefaultQueueID
-            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.absoluteString) action=fallback-default-queue")
+            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.redactedPodcastURLString) action=fallback-default-queue")
         }
         if globalSettings.defaultPlaylistID != resolvedGlobalPlaylistID {
             globalSettings.defaultPlaylistID = resolvedGlobalPlaylistID
             didMutateSettings = true
-            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.absoluteString) action=persist-default-playlist id=\(resolvedGlobalPlaylistID.uuidString)")
+            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.redactedPodcastURLString) action=persist-default-playlist id=\(resolvedGlobalPlaylistID.uuidString)")
         }
 
         var resolvedQueuePosition = settings.playnextPosition
@@ -730,7 +730,7 @@ actor PodcastSettingsModelActor {
             resolvedQueuePosition = .end
             settings.playnextPosition = .end
             didMutateSettings = true
-            await logAutoDownload("policy-resolution/repair-queue-position feed=\(podcastFeed.absoluteString) action=none-to-end")
+            await logAutoDownload("policy-resolution/repair-queue-position feed=\(podcastFeed.redactedPodcastURLString) action=none-to-end")
         }
 
         var resolvedPlaylistID = settings.defaultPlaylistID ?? resolvedGlobalPlaylistID
@@ -738,16 +738,16 @@ actor PodcastSettingsModelActor {
             resolvedPlaylistID = resolvedGlobalPlaylistID
             settings.defaultPlaylistID = resolvedPlaylistID
             didMutateSettings = true
-            await logAutoDownload("policy-resolution/repair-target-playlist feed=\(podcastFeed.absoluteString) action=fallback-to-global id=\(resolvedPlaylistID.uuidString)")
+            await logAutoDownload("policy-resolution/repair-target-playlist feed=\(podcastFeed.redactedPodcastURLString) action=fallback-to-global id=\(resolvedPlaylistID.uuidString)")
         }
 
         if didMutateSettings {
             modelContext.saveIfNeeded()
-            await logAutoDownload("policy-resolution/persisted-repairs feed=\(podcastFeed.absoluteString)")
+            await logAutoDownload("policy-resolution/persisted-repairs feed=\(podcastFeed.redactedPodcastURLString)")
         }
 
         await logAutoDownload(
-            "policy-resolution/result feed=\(podcastFeed.absoluteString) source=\(source) keep=\(max(settings.autoDownloadEpisodeCount, 1)) selection=\(settings.autoDownloadSelection.rawValue) queuePosition=\(resolvedQueuePosition) playlistID=\(resolvedPlaylistID.uuidString) network=\(settings.autoDownloadNetworkMode.rawValue) includeBackCatalog=\(settings.autoDownloadIncludesArchivedEpisodes)"
+            "policy-resolution/result feed=\(podcastFeed.redactedPodcastURLString) source=\(source) keep=\(max(settings.autoDownloadEpisodeCount, 1)) selection=\(settings.autoDownloadSelection.rawValue) queuePosition=\(resolvedQueuePosition) playlistID=\(resolvedPlaylistID.uuidString) network=\(settings.autoDownloadNetworkMode.rawValue) includeBackCatalog=\(settings.autoDownloadIncludesArchivedEpisodes)"
         )
 
         return AutoDownloadPolicySnapshot(

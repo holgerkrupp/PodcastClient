@@ -2,9 +2,363 @@ import SwiftData
 import SwiftUI
 import Synchronization
 import CloudKitSyncMonitor
+import CoreData
 #if canImport(UIKit)
 import UIKit
 #endif
+
+@MainActor
+final class StoreCloudKitActivityMonitor: ObservableObject {
+    enum StoreKind: String, Codable, CaseIterable, Sendable {
+        case legacy
+        case userState
+        case other
+
+        var title: String {
+            switch self {
+            case .legacy: return "Legacy Library"
+            case .userState: return "User State"
+            case .other: return "Other Store"
+            }
+        }
+    }
+
+    enum EventKind: String, Codable, Sendable {
+        case setup
+        case importEvent = "import"
+        case export
+    }
+
+    enum ImportStatus: String, Codable, Sendable {
+        case notObserved
+        case syncing
+        case complete
+        case failed
+    }
+
+    struct StoreCounts: Codable, Hashable, Sendable {
+        let legacyPlaylistEntryCount: Int?
+        let userStateQueueEntryCount: Int?
+    }
+
+    struct ActiveEvent: Identifiable, Hashable, Sendable {
+        let id: UUID
+        let storeIdentifier: String
+        let storeKind: StoreKind
+        let type: EventKind
+        let startedAt: Date
+    }
+
+    struct CompletedEvent: Identifiable, Hashable, Codable, Sendable {
+        let id: UUID
+        let storeIdentifier: String
+        let storeKind: StoreKind
+        let type: EventKind
+        let startedAt: Date
+        let endedAt: Date
+        let succeeded: Bool
+        let errorCode: Int?
+        let countsBefore: StoreCounts?
+        let countsAfter: StoreCounts?
+    }
+
+    struct Reconciliation: Codable, Hashable, Sendable {
+        let at: Date
+        let succeeded: Bool
+        let summary: String
+    }
+
+    struct StoreDiagnostics: Identifiable, Hashable, Codable, Sendable {
+        let storeKind: StoreKind
+        let storeIdentifier: String?
+        let isAttached: Bool
+        let activeSetupCount: Int
+        let activeImportCount: Int
+        let activeExportCount: Int
+        let lastImportStartedAt: Date?
+        let lastImportEndedAt: Date?
+        let lastSuccessfulImportAt: Date?
+        let lastImportErrorCode: Int?
+        let lastImportCountsBefore: StoreCounts?
+        let lastImportCountsAfter: StoreCounts?
+        let lastExportEndedAt: Date?
+        let lastSuccessfulExportAt: Date?
+        let lastExportErrorCode: Int?
+        let lastReconciliation: Reconciliation?
+
+        var id: String { storeKind.rawValue }
+
+        var importStatus: ImportStatus {
+            if activeImportCount > 0 { return .syncing }
+            guard let lastImportEndedAt else { return .notObserved }
+            if lastSuccessfulImportAt == lastImportEndedAt { return .complete }
+            return .failed
+        }
+    }
+
+    private struct EventPayload: Sendable {
+        let id: UUID
+        let storeIdentifier: String
+        let type: EventKind
+        let startDate: Date
+        let endDate: Date?
+        let succeeded: Bool
+        let errorCode: Int?
+    }
+
+    static let shared = StoreCloudKitActivityMonitor()
+
+    private static let historyKey = "storeSplit.cloudKitEventHistory.v1"
+    private static let reconciliationKey = "storeSplit.cloudKitReconciliations.v1"
+
+    @Published private(set) var activeEvents: [ActiveEvent] = []
+    @Published private(set) var lastCompletedEvents: [CompletedEvent] = []
+    @Published private(set) var storeDiagnostics: [StoreDiagnostics] = []
+    @Published private(set) var latestCompletedImport: CompletedEvent?
+
+    private var activeByID: [UUID: ActiveEvent] = [:]
+    private var importCountsByID: [UUID: StoreCounts?] = [:]
+    private var reconciliations: [StoreKind: Reconciliation] = [:]
+    private var observer: NSObjectProtocol?
+
+    private init() {
+        let defaults = UserDefaults(
+            suiteName: ModelContainerManager.appGroupID
+        ) ?? .standard
+        lastCompletedEvents = defaults.data(forKey: Self.historyKey)
+            .flatMap { try? JSONDecoder().decode([CompletedEvent].self, from: $0) }
+            ?? []
+        reconciliations = defaults.data(forKey: Self.reconciliationKey)
+            .flatMap { try? JSONDecoder().decode([StoreKind: Reconciliation].self, from: $0) }
+            ?? [:]
+        latestCompletedImport = lastCompletedEvents.first { event in
+            event.type == .importEvent
+        }
+        rebuildDiagnostics()
+        observer = NotificationCenter.default.addObserver(
+            forName: NSPersistentCloudKitContainer.eventChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let payload = Self.payload(from: notification) else { return }
+            Task { @MainActor [weak self] in
+                self?.handle(payload)
+            }
+        }
+    }
+
+    var isAnyStoreExporting: Bool {
+        activeEvents.contains { $0.type == .export }
+    }
+
+    var activeExportEvents: [ActiveEvent] {
+        activeEvents.filter { $0.type == .export }
+    }
+
+    func activeExportStatus(for storeKind: StoreKind) -> String {
+        let events = activeExportEvents.filter { $0.storeKind == storeKind }
+        guard events.isEmpty == false else { return "Idle" }
+        let oldest = events.map(\.startedAt).min() ?? .now
+        return "Active since "
+            + oldest.formatted(date: .omitted, time: .shortened)
+            + " (" + String(events.count) + ")"
+    }
+
+    func activeExportIdentifiers(for storeKind: StoreKind) -> [String] {
+        activeExportEvents
+            .filter { $0.storeKind == storeKind }
+            .map { String($0.id.uuidString.prefix(8)) }
+    }
+
+    func diagnostics(for storeKind: StoreKind) -> StoreDiagnostics? {
+        storeDiagnostics.first { $0.storeKind == storeKind }
+    }
+
+    func recordReconciliation(
+        for storeKind: StoreKind,
+        succeeded: Bool,
+        summary: String
+    ) {
+        reconciliations[storeKind] = Reconciliation(
+            at: .now,
+            succeeded: succeeded,
+            summary: summary
+        )
+        persistReconciliations()
+        rebuildDiagnostics()
+    }
+
+    nonisolated private static func payload(from notification: Notification) -> EventPayload? {
+        guard let event = notification.userInfo?[
+            NSPersistentCloudKitContainer.eventNotificationUserInfoKey
+        ] as? NSPersistentCloudKitContainer.Event else {
+            return nil
+        }
+        return EventPayload(
+            id: event.identifier,
+            storeIdentifier: event.storeIdentifier,
+            type: EventKind(event.type),
+            startDate: event.startDate,
+            endDate: event.endDate,
+            succeeded: event.succeeded,
+            errorCode: event.error.map { ($0 as NSError).code }
+        )
+    }
+
+    private func handle(_ event: EventPayload) {
+
+        let eventKind = event.type
+        let storeKind = StoreKind(storeIdentifier: event.storeIdentifier)
+        let id = event.id
+        if let endedAt = event.endDate {
+            activeByID.removeValue(forKey: id)
+            let countsBefore = importCountsByID.removeValue(forKey: id) ?? nil
+            let countsAfter = eventKind == .importEvent
+                ? ModelContainerManager.shared.cloudKitStoreCounts(for: storeKind)
+                : nil
+            let completed = CompletedEvent(
+                id: id,
+                storeIdentifier: event.storeIdentifier,
+                storeKind: storeKind,
+                type: eventKind,
+                startedAt: event.startDate,
+                endedAt: endedAt,
+                succeeded: event.succeeded,
+                errorCode: event.errorCode,
+                countsBefore: countsBefore,
+                countsAfter: countsAfter
+            )
+            lastCompletedEvents = ([completed] + lastCompletedEvents).prefix(20).map { $0 }
+            if eventKind == .importEvent {
+                latestCompletedImport = completed
+            }
+            if let data = try? JSONEncoder().encode(lastCompletedEvents) {
+                (UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard)
+                    .set(data, forKey: Self.historyKey)
+            }
+            let errorCode = event.errorCode.map(String.init) ?? "none"
+            let details = "store=" + storeKind.rawValue
+                + ",type=" + eventKind.rawValue
+                + ",duration_ms=" + String(
+                    Int(endedAt.timeIntervalSince(event.startDate) * 1_000)
+                )
+                + ",succeeded=" + String(event.succeeded)
+                + ",error_code=" + errorCode
+            CrashBreadcrumbs.shared.record(
+                "cloudkit_store_event_finished",
+                details: details
+            )
+            if eventKind == .export {
+                Task {
+                    await StoreSplitWorkCoordinator.shared.resumeAfterCloudKitExport()
+                }
+            }
+        } else {
+            let active = ActiveEvent(
+                id: id,
+                storeIdentifier: event.storeIdentifier,
+                storeKind: storeKind,
+                type: eventKind,
+                startedAt: event.startDate
+            )
+            activeByID[id] = active
+            if eventKind == .importEvent {
+                importCountsByID[id] = ModelContainerManager.shared
+                    .cloudKitStoreCounts(for: storeKind)
+            }
+            CrashBreadcrumbs.shared.record(
+                "cloudkit_store_event_started",
+                details: "store=" + storeKind.rawValue + ",type=" + eventKind.rawValue
+            )
+        }
+        activeEvents = activeByID.values.sorted { $0.startedAt < $1.startedAt }
+        rebuildDiagnostics()
+    }
+
+    private func persistReconciliations() {
+        guard let data = try? JSONEncoder().encode(reconciliations) else { return }
+        (UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard)
+            .set(data, forKey: Self.reconciliationKey)
+    }
+
+    private func rebuildDiagnostics() {
+        storeDiagnostics = [StoreKind.legacy, StoreKind.userState].map { kind in
+            let active = activeEvents.filter { $0.storeKind == kind }
+            let lastImport = lastCompletedEvents.first {
+                $0.storeKind == kind && $0.type == .importEvent
+            }
+            let activeImport = active.first { $0.type == .importEvent }
+            let successfulImport = lastCompletedEvents.first {
+                $0.storeKind == kind
+                    && $0.type == .importEvent
+                    && $0.succeeded
+            }
+            let lastExport = lastCompletedEvents.first {
+                $0.storeKind == kind && $0.type == .export
+            }
+            let successfulExport = lastCompletedEvents.first {
+                $0.storeKind == kind
+                    && $0.type == .export
+                    && $0.succeeded
+            }
+            return StoreDiagnostics(
+                storeKind: kind,
+                storeIdentifier: lastImport?.storeIdentifier
+                    ?? active.first?.storeIdentifier,
+                isAttached: isAttached(kind),
+                activeSetupCount: active.filter { $0.type == .setup }.count,
+                activeImportCount: active.filter { $0.type == .importEvent }.count,
+                activeExportCount: active.filter { $0.type == .export }.count,
+                lastImportStartedAt: activeImport?.startedAt ?? lastImport?.startedAt,
+                lastImportEndedAt: lastImport?.endedAt,
+                lastSuccessfulImportAt: successfulImport?.endedAt,
+                lastImportErrorCode: lastImport?.succeeded == false
+                    ? lastImport?.errorCode
+                    : nil,
+                lastImportCountsBefore: lastImport?.countsBefore,
+                lastImportCountsAfter: lastImport?.countsAfter,
+                lastExportEndedAt: lastExport?.endedAt,
+                lastSuccessfulExportAt: successfulExport?.endedAt,
+                lastExportErrorCode: lastExport?.succeeded == false
+                    ? lastExport?.errorCode
+                    : nil,
+                lastReconciliation: reconciliations[kind]
+            )
+        }
+    }
+
+    private func isAttached(_ storeKind: StoreKind) -> Bool {
+        switch storeKind {
+        case .legacy: return StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+        case .userState: return StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+        case .other: return false
+        }
+    }
+}
+
+private extension StoreCloudKitActivityMonitor.EventKind {
+    init(_ type: NSPersistentCloudKitContainer.EventType) {
+        switch type {
+        case .setup: self = .setup
+        case .import: self = .importEvent
+        case .export: self = .export
+        @unknown default: self = .setup
+        }
+    }
+}
+
+private extension StoreCloudKitActivityMonitor.StoreKind {
+    init(storeIdentifier: String) {
+        let value = storeIdentifier.lowercased()
+        if value.contains("shared") || value.contains("legacy") {
+            self = .legacy
+        } else if value.contains("userstate") || value.contains("user-state") {
+            self = .userState
+        } else {
+            self = .other
+        }
+    }
+}
 
 @MainActor
 class ModelContainerManager: ObservableObject {
@@ -63,6 +417,10 @@ class ModelContainerManager: ObservableObject {
     private var lastMigrationCompletedAt: Date?
     private var lastAIContentImportAt: Date?
     private var lastUserStateImportAt: Date?
+    private var exportWasInProgress = false
+    private var exporterPressureEvents = 0
+    private var optionalSplitStoreWritesSuspended = false
+    private var legacyCloudImportReconcilePending = false
     private let minimumAIContentImportInterval: TimeInterval = 60 * 15
     private let minimumForegroundUserStateImportInterval: TimeInterval = 60 * 10
     private let splitStoreCoordinator = StoreSplitWorkCoordinator.shared
@@ -302,6 +660,11 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static func makeRuntimeContainerPreparationTask()
     -> Task<RuntimeContainerPreparation, Error> {
         Task.detached(priority: .userInitiated) {
+            // This runs before makeRuntimeContainer(), which is the earliest
+            // point at which Core Data can resume a persisted CloudKit export.
+            // A repeated unhealthy-launch sequence can therefore quarantine the
+            // legacy mirror before the exporter is reopened.
+            _ = StoreSplitLaunchHealth.beginLaunch()
             CrashBreadcrumbs.shared.record("model_container_initialization_started")
 #if !DEBUG
             _ = Self.promoteRolloutForCompletedSplitStoreMigrationIfNeeded()
@@ -462,6 +825,22 @@ class ModelContainerManager: ObservableObject {
             guard Task.isCancelled == false else { return }
             try? await Task.sleep(for: .milliseconds(100))
         }
+    }
+
+    /// Opens the runtime graph for callers that can arrive without the normal
+    /// SwiftUI launch sequence, such as App Intents and notification actions.
+    /// Those callers must not assume that `RaulApp` has already prepared the
+    /// container or that the split stores have finished settling.
+    func prepareContainerForExternalEntryPoint() async -> ModelContainer? {
+        await prepareContainer()
+        guard let container = preparedContainer else { return nil }
+
+        if runtimeStoreReadiness != .ready {
+            await prepareSplitStores()
+        }
+
+        guard runtimeStoreReadiness == .ready else { return nil }
+        return container
     }
 
     /// Brings the runtime library graph up to date once the split stores are
@@ -739,6 +1118,29 @@ class ModelContainerManager: ObservableObject {
             pendingSplitStoreWorkReason = "split-store work disabled"
             migrationReadiness = .blocked
             migrationBlocker = "Split-store work is disabled by the active configuration"
+            return
+        }
+        // Foreground re-entry and BGProcessing can reach this method before the
+        // launch task has finished opening the stores. Preparation is coalesced,
+        // so awaiting it here turns “not prepared yet” into a real retryable
+        // state instead of the old silent no-op.
+        if preparedContainer == nil {
+            await prepareContainer()
+        }
+        await prepareSplitStores()
+        guard preparedContainer != nil else {
+            let reason = initializationError ?? "Runtime library store is not ready"
+            recordMigrationBlocker(reason)
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return
+        }
+        guard preparedUserStateContainer != nil,
+              preparedCacheContainer != nil else {
+            let reason = userStateInitializationError
+                ?? cacheInitializationError
+                ?? "Split-store preparation is pending"
+            recordMigrationBlocker(reason)
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
             return
         }
         guard Self.hasPendingMigrationWork
@@ -1227,6 +1629,64 @@ class ModelContainerManager: ObservableObject {
 #endif
     }
 
+    /// Ordinary model writes are not allowed to begin after the app has entered
+    /// the background. A granted BGProcessingTask is the only background escape
+    /// hatch; recovery snapshots remain available through Player's defaults
+    /// cache and do not use this gate.
+    var mayStartOrdinaryStoreWrite: Bool {
+        heavyStoreWorkMayRunInCurrentAppState
+    }
+
+    /// Admission control for writes that create CloudKit persistent-history
+    /// work. Recovery snapshots deliberately do not use this gate.
+    var mayStartCloudKitBackedStoreWrite: Bool {
+        guard mayStartOrdinaryStoreWrite,
+              optionalSplitStoreWritesSuspended == false else { return false }
+        return cloudKitExportInProgress() == false
+    }
+
+    var isCloudKitExportInProgress: Bool {
+        cloudKitExportInProgress()
+    }
+
+    /// Small, store-specific counters captured around Core Data CloudKit import
+    /// events. They intentionally describe the rows that matter for diagnosing
+    /// a stale queue rather than pretending to be exact CloudKit transfer
+    /// progress.
+    func cloudKitStoreCounts(
+        for storeKind: StoreCloudKitActivityMonitor.StoreKind
+    ) -> StoreCloudKitActivityMonitor.StoreCounts? {
+        switch storeKind {
+        case .legacy:
+            guard let preparedContainer else { return nil }
+            return StoreCloudKitActivityMonitor.StoreCounts(
+                legacyPlaylistEntryCount: try? preparedContainer.mainContext
+                    .fetchCount(FetchDescriptor<PlaylistEntry>()),
+                userStateQueueEntryCount: nil
+            )
+        case .userState:
+            guard let preparedUserStateContainer else { return nil }
+            return StoreCloudKitActivityMonitor.StoreCounts(
+                legacyPlaylistEntryCount: nil,
+                userStateQueueEntryCount: try? preparedUserStateContainer.mainContext
+                    .fetchCount(FetchDescriptor<QueueEntrySync>())
+            )
+        case .other:
+            return nil
+        }
+    }
+
+    func resumeSplitStoreWorkForForeground() {
+        optionalSplitStoreWritesSuspended = false
+        exporterPressureEvents = 0
+        exportWasInProgress = false
+        if legacyCloudImportReconcilePending {
+            Task { [weak self] in
+                await self?.reconcileLegacyStoreAfterCloudKitImport()
+            }
+        }
+    }
+
     /// Whether the slice loop may keep going. Same rule as every other heavy
     /// split-store pass.
     private func migrationMayContinueInCurrentAppState() -> Bool {
@@ -1244,7 +1704,16 @@ class ModelContainerManager: ObservableObject {
     func storeSplitMigrationStatus() -> StoreSplitMigrationStatus? {
         guard let cacheContainer = preparedCacheContainer,
               let userStateContainer = preparedUserStateContainer else {
-            return nil
+            return StoreSplitMigrationDiagnostics.unavailableStatus(
+                readiness: migrationReadiness,
+                blocker: migrationBlocker ?? pendingSplitStoreWorkReason,
+                isRunning: isMigratingSplitStores,
+                lastSliceStatus: migrationLastSliceStatus,
+                lastSliceProcessed: migrationLastSliceProcessed,
+                lastSliceError: migrationLastSliceError,
+                currentJob: currentSplitStoreJobDescription,
+                pendingReason: pendingSplitStoreWorkReason
+            )
         }
         return StoreSplitMigrationDiagnostics.migrationStatus(
             cacheContext: cacheContainer.mainContext,
@@ -1254,7 +1723,9 @@ class ModelContainerManager: ObservableObject {
             blocker: migrationBlocker,
             lastSliceStatus: migrationLastSliceStatus,
             lastSliceProcessed: migrationLastSliceProcessed,
-            lastSliceError: migrationLastSliceError
+            lastSliceError: migrationLastSliceError,
+            currentJob: currentSplitStoreJobDescription,
+            pendingReason: pendingSplitStoreWorkReason
         )
     }
 
@@ -1321,39 +1792,76 @@ class ModelContainerManager: ObservableObject {
 
     /// Runs exactly one bounded slice on demand. Explicit developer action, so it
     /// bypasses the auto-run gate but still respects the heavy-work pause.
-    func runOneMigrationSliceForDevelopment() async {
+    @discardableResult
+    func runOneMigrationSliceForDevelopment() async -> StoreSplitMigrationSliceResult {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             recordMigrationBlocker("Paused by the migration safety switch")
-            return
+            return .deferred("Paused by the migration safety switch")
+        }
+        guard StoreDevelopmentConfiguration.legacyMigrationEnabled else {
+            let reason = "Automatic migration is disabled by the active configuration"
+            recordMigrationBlocker(reason)
+            return .deferred(reason)
+        }
+        if preparedContainer == nil {
+            await prepareContainer()
         }
         await prepareSplitStores()
         guard let legacyContainer = legacyMigrationSourceContainer,
               let userStateContainer = preparedUserStateContainer,
               let cacheContainer = preparedCacheContainer else {
-            recordMigrationBlocker("Migration stores are not ready")
+            let reason = migrationBlocker
+                ?? userStateInitializationError
+                ?? cacheInitializationError
+                ?? initializationError
+                ?? "Migration stores are not ready"
+            recordMigrationBlocker(reason)
             scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
-            return
+            return .deferred(reason)
         }
         guard isMigratingSplitStores == false else {
             migrationLastSliceResult = "Blocked: a migration run is already in progress"
             migrationBlocker = "A migration run is already in progress"
-            return
+            return .deferred("A migration run is already in progress")
+        }
+        guard cloudKitExportInProgress() == false else {
+            let reason = "Waiting for CloudKit export to drain"
+            recordMigrationBlocker(reason)
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return .deferred(reason)
         }
 
         isMigratingSplitStores = true
         migrationError = nil
+        let exportBefore = cloudKitExportInProgress()
         let report = await StoreSplitMigrationService.runSlice(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
             cacheContainer: cacheContainer,
             shouldContinue: { true }
         )
-        applyMigrationSliceTelemetry(report)
+        applyMigrationSliceTelemetry(
+            report,
+            cloudKitExportInProgressBefore: exportBefore,
+            exporterWaitDuration: 0
+        )
         if report.status == .completed {
             markMigrationCompleted(hadFailures: report.error != nil)
         }
         isMigratingSplitStores = false
         updateMigrationReadiness()
+        switch report.status {
+        case .advanced:
+            return .advanced(phase: report.phase, processed: report.processed)
+        case .phaseCompleted:
+            return .phaseCompleted(phase: report.phase, processed: report.processed)
+        case .completed:
+            return .allComplete
+        case .failed:
+            return .failed(report.error ?? "Migration slice failed")
+        case .cancelled:
+            return .deferred("Migration slice cancelled")
+        }
     }
 #endif
 
@@ -1386,6 +1894,10 @@ class ModelContainerManager: ObservableObject {
             lastSplitStoreReconcileSummary = "Paused for stability"
             pendingSplitStoreWorkReason = "paused for stability"
             currentSplitStoreJobDescription = nil
+            return .skipped
+        }
+        guard cloudKitExportInProgress() == false else {
+            pendingSplitStoreWorkReason = "waiting for CloudKit export to drain"
             return .skipped
         }
         // The importer walks the whole library. Running it while the app is
@@ -1429,10 +1941,66 @@ class ModelContainerManager: ObservableObject {
         // including records that predate the tombstone rules — land in the local
         // queue. Re-assert "a played episode is not a queue member" right after.
         await prunePlayedPlaylistEntries()
+        if reason.contains("cloud_import") || authoritativePlaylists {
+            let summary = lastSplitStoreReconcileSummary
+                ?? "User State import completed"
+            StoreCloudKitActivityMonitor.shared.recordReconciliation(
+                for: .userState,
+                succeeded: result.failed == 0 && result.interruptedByPlayback == false,
+                summary: summary
+            )
+        }
         _ = legacyContainer
         _ = userStateContainer
         _ = cacheContainer
         return result.interruptedByPlayback ? .deferredForPlayback : .completed
+    }
+
+    /// Legacy is the visible queue authority during `dualSyncBackfill`. A
+    /// successful import there does not need the UserState projector, but it
+    /// does need the projections outside SwiftData refreshed so a dormant Mac
+    /// converges without a relaunch.
+    func reconcileLegacyStoreAfterCloudKitImport() async {
+        guard StoreSplitReleasePhase.current == .dualSyncBackfill,
+              StoreDevelopmentConfiguration.legacyCloudSyncEnabled else {
+            return
+        }
+        guard heavyStoreWorkMayRunInCurrentAppState else {
+            legacyCloudImportReconcilePending = true
+            StoreCloudKitActivityMonitor.shared.recordReconciliation(
+                for: .legacy,
+                succeeded: false,
+                summary: "Deferred until the app returns to the foreground"
+            )
+            return
+        }
+        guard let container = preparedContainer else {
+            StoreCloudKitActivityMonitor.shared.recordReconciliation(
+                for: .legacy,
+                succeeded: false,
+                summary: "Legacy store is not ready for playlist reconciliation"
+            )
+            return
+        }
+
+        let count = cloudKitStoreCounts(for: .legacy)?.legacyPlaylistEntryCount ?? 0
+        legacyCloudImportReconcilePending = false
+        CrashBreadcrumbs.shared.record(
+            "legacy_cloudkit_import_reconcile_started",
+            details: "playlist_entries=\(count)"
+        )
+        await PlayNextWidgetSync.refresh(using: container)
+        WatchSyncCoordinator.refreshSoon(force: true)
+        await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
+        StoreCloudKitActivityMonitor.shared.recordReconciliation(
+            for: .legacy,
+            succeeded: true,
+            summary: "Legacy playlist projection refreshed (\(count) entries)"
+        )
+        CrashBreadcrumbs.shared.record(
+            "legacy_cloudkit_import_reconcile_finished",
+            details: "playlist_entries=\(count)"
+        )
     }
 
     /// Removes finished episodes that are still queued, and tombstones them so the
@@ -1838,13 +2406,18 @@ class ModelContainerManager: ObservableObject {
                 }
                 exportWaitCount = 0
 
+                let exportBefore = cloudKitExportInProgress()
                 let report = await StoreSplitMigrationService.runSlice(
                     legacyContainer: legacyContainer,
                     userStateContainer: userStateContainer,
                     cacheContainer: cacheContainer,
                     shouldContinue: { Task.isCancelled == false }
                 )
-                applyMigrationSliceTelemetry(report)
+                applyMigrationSliceTelemetry(
+                    report,
+                    cloudKitExportInProgressBefore: exportBefore,
+                    exporterWaitDuration: 0
+                )
 
                 switch report.status {
                 case .completed:
@@ -1946,13 +2519,29 @@ class ModelContainerManager: ObservableObject {
             || StoreDevelopmentConfiguration.legacyCloudSyncEnabled else {
             return false
         }
-        if case .inProgress = SyncMonitor.default.exportState {
-            return true
+        // SyncMonitor.default.exportState is an aggregate UI summary and can
+        // report UserState's completion while SharedDatabase is still exporting.
+        // Scheduling decisions must use the store-aware Core Data event monitor.
+        let inProgress = StoreCloudKitActivityMonitor.shared.isAnyStoreExporting
+        if inProgress, exportWasInProgress == false {
+            exporterPressureEvents += 1
+            if exporterPressureEvents >= 3 {
+                optionalSplitStoreWritesSuspended = true
+                CrashBreadcrumbs.shared.record(
+                    "cloudkit_export_pressure_safety_valve_closed",
+                    details: "observations=\(exporterPressureEvents)"
+                )
+            }
         }
-        return false
+        exportWasInProgress = inProgress
+        return inProgress
     }
 
-    private func applyMigrationSliceTelemetry(_ report: StoreSplitSliceReport) {
+    private func applyMigrationSliceTelemetry(
+        _ report: StoreSplitSliceReport,
+        cloudKitExportInProgressBefore: Bool = false,
+        exporterWaitDuration: TimeInterval = 0
+    ) {
         migrationCurrentPhase = report.phase
         migrationLastSliceStatus = report.status
         migrationLastSliceProcessed = report.processed
@@ -1961,6 +2550,28 @@ class ModelContainerManager: ObservableObject {
         } ?? report.status.rawValue
         migrationFootprintSummary =
             "\(MemoryFootprint.formatted(report.footprintAfter)) (\(report.footprintDeltaDescription))"
+        let cloudKitExportInProgressAfter = cloudKitExportInProgress()
+        StoreSplitMigrationDiagnostics.recordHealth(
+            StoreSplitMigrationHealthRecord(
+                operation: "migration_slice",
+                appState: heavyStoreWorkMayRunInCurrentAppState
+                    ? "foreground_or_granted_background_processing"
+                    : "background",
+                playbackActive: Player.shared.isPlaying,
+                rowsScanned: report.processed,
+                rowsMutated: report.mutations,
+                modelContextSaveCount: report.saveCount,
+                modelContextSaveDurationMilliseconds: Int(report.saveDuration * 1_000),
+                targetStores: "UserState.sqlite,PodcastCache.sqlite",
+                cloudKitExportInProgressBefore: cloudKitExportInProgressBefore,
+                cloudKitExportInProgressAfter: cloudKitExportInProgressAfter,
+                exporterWaitDurationMilliseconds: Int(exporterWaitDuration * 1_000),
+                nextRetryAt: pendingSplitStoreWorkReason == nil
+                    ? nil
+                    : Date().addingTimeInterval(Self.exportBackpressureRetryDelay),
+                recordedAt: .now
+            )
+        )
         if let error = report.error {
             migrationLastSliceError = error
         } else {
@@ -2038,6 +2649,7 @@ class ModelContainerManager: ObservableObject {
            StoreSplitMigrationService.isMigrationVerified(
                cacheContainer: cacheContainer
            ) {
+            StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
             // Close the disk source as soon as lossless verification succeeds.
             // The SQLite files stay untouched until the independent cleanup gate.
             preparedLegacyMigrationContainer = nil
@@ -2053,6 +2665,10 @@ class ModelContainerManager: ObservableObject {
             return emptyResult
         }
         guard StoreDevelopmentConfiguration.userStateImportEnabled else { return emptyResult }
+        guard cloudKitExportInProgress() == false else {
+            pendingSplitStoreWorkReason = "waiting for CloudKit export to drain"
+            return emptyResult
+        }
         if let userStateImportTask {
             _ = await userStateImportTask.value
         }
@@ -2349,6 +2965,11 @@ class ModelContainerManager: ObservableObject {
     func performSplitStoreAIImportIfPossible() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             pendingSplitStoreWorkReason = "paused for stability"
+            currentSplitStoreJobDescription = nil
+            return
+        }
+        guard cloudKitExportInProgress() == false else {
+            pendingSplitStoreWorkReason = "waiting for CloudKit export to drain"
             currentSplitStoreJobDescription = nil
             return
         }

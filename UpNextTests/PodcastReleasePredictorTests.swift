@@ -418,6 +418,21 @@ final class PodcastReleasePredictorTests: XCTestCase {
         XCTAssertTrue(metadata.isLikelyAbandoned(at: now))
     }
 
+    func testAuthenticationFailuresNeverMarkPodcastFeedUnavailable() {
+        let metadata = PodcastMetaData()
+        let now = date(2026, 6, 22, 12)
+        metadata.consecutiveFeedFailureCount = 12
+        metadata.firstConsecutiveFeedFailureDate = date(2026, 6, 1, 12)
+        metadata.lastFeedFailureDate = date(2026, 6, 22, 11)
+
+        for statusCode in [401, 403] {
+            metadata.lastFeedFailureStatusCode = statusCode
+
+            XCTAssertNil(metadata.abandonmentAssessment(at: now))
+            XCTAssertFalse(metadata.isLikelyAbandoned(at: now))
+        }
+    }
+
     func testMissedPredictedReleasesMarkLikelyCancelledPodcast() throws {
         let podcast = Podcast(feed: URL(string: "https://example.com/cancelled-weekly.xml")!)
         podcast.title = "Cancelled Weekly"

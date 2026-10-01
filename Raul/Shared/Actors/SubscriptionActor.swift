@@ -181,7 +181,7 @@ actor SubscriptionActor:NSObject{
             }
         }
         
-        dump(newPodcastFeeds)
+        print("prepared (newPodcastFeeds.count) podcast feed(s) for refresh")
         
         // Commit all changes from the serial inserts at once.
         // This is one large, safe save operation.
@@ -192,7 +192,7 @@ actor SubscriptionActor:NSObject{
             let worker = PodcastModelActor(modelContainer: self.modelContainer)
             for feed in newPodcastFeeds{
                 if let feed{
-                    print("updating podcast: \(feed)")
+                    print("updating podcast: \(feed.redactedPodcastURLString)")
                     _ = try await worker.updatePodcast(feed, force: true, silent: true)
                 }
             }
@@ -239,7 +239,7 @@ actor SubscriptionActor:NSObject{
                 // 4. Delete the duplicates
                 for duplicate in duplicates {
                     let title = duplicate.title
-                    let feedString = duplicate.feed?.absoluteString ?? "N/A"
+                    let feedString = duplicate.feed?.redactedPodcastURLString ?? "N/A"
                     print("Deleting duplicate podcast: \(title.xmlEscaped) with feed: \(feedString)")
                     modelContext.delete(duplicate)
                 }

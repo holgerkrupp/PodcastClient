@@ -75,7 +75,12 @@ actor PodcastModelActor {
               let kind = PodcastAccessKind(rawValue: rawKind) else {
             return nil
         }
-        return PodcastAccessProfile(id: id, kind: kind, resourceURL: feedURL)
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: feedURL,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
     }
 
     private func configureAccessMetadata(for feedURL: URL, metadata: PodcastMetaData?) {
@@ -86,13 +91,14 @@ actor PodcastModelActor {
         let profile = PodcastAccessProfile.make(for: feedURL, kind: kind)
         metadata.accessProfileID = profile.id
         metadata.accessKindRawValue = profile.kind.rawValue
+        metadata.accessProviderID = profile.providerID?.rawValue
         metadata.credentialState = .available
         switch kind {
         case .privateURL:
-            try? KeychainPodcastCredentialStore.shared.save(.privateURL(feedURL), for: profile)
+            try? PodcastCredentialStoreProvider.current.save(.privateURL(feedURL), for: profile)
         case .httpBasic:
             let credential = feedURL.podcastBasicCredential
-            try? KeychainPodcastCredentialStore.shared.save(
+            try? PodcastCredentialStoreProvider.current.save(
                 .httpBasic(username: credential.username, password: credential.password),
                 for: profile
             )
@@ -576,6 +582,32 @@ actor PodcastModelActor {
             metaIDRef = meta.persistentModelID
         }
 
+        if let accessProfile,
+           PodcastAccessResolver().credentialState(for: accessProfile) != .available {
+            if let metaIDRef,
+               let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                metadata.credentialState = .missing
+                metadata.authenticationRetryAfter = nil
+                metadata.lastFeedFailureStatusCode = nil
+                metadata.lastFeedFailureMessage = PodcastAccessError.credentialMissing(accessProfile.id).localizedDescription
+            }
+            modelContext.saveIfNeeded()
+            return false
+        }
+
+        // Manifest/store-split restore can call bootstrap again after a
+        // relaunch when a protected feed has no episodes yet. Respect the
+        // authentication backoff here as well as in updatePodcast, otherwise
+        // a rejected credential would be retried on every launch until the
+        // user repairs it.
+        if let metaIDRef,
+           let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
+           metadata.credentialState == .needsLogin,
+           let retryAfter = metadata.authenticationRetryAfter,
+           retryAfter > Date() {
+            return false
+        }
+
         if let metaIDRef,
            let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
             freshMeta.message = "Restoring subscription ..."
@@ -713,6 +745,19 @@ actor PodcastModelActor {
             for: podcast.metaData,
             feedURL: feedURL
         )
+
+        if let accessProfile,
+           PodcastAccessResolver().credentialState(for: accessProfile) != .available {
+            if let metaIDRef,
+               let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                metadata.credentialState = .missing
+                metadata.authenticationRetryAfter = nil
+                metadata.lastFeedFailureStatusCode = nil
+                metadata.lastFeedFailureMessage = PodcastAccessError.credentialMissing(accessProfile.id).localizedDescription
+            }
+            modelContext.saveIfNeeded()
+            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+        }
 
         if force != true,
            let metaIDRef,
@@ -1342,7 +1387,11 @@ actor PodcastModelActor {
             metaData.isSubscribed = true
             metaData.subscriptionDate = Date()
             modelContext.saveIfNeeded()
-            await updateSplitSubscription(feedURL: feed, isSubscribed: true)
+            await updateSplitSubscription(
+                feedURL: feed,
+                isSubscribed: true,
+                accessProfile: storedPodcastAccessProfile(for: existingPodcast)
+            )
             await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
 
             await reportProgress(SubscriptionProgressUpdate(0.18, "Refreshing existing podcast"), using: progress)
@@ -1359,7 +1408,11 @@ actor PodcastModelActor {
         configureAccessMetadata(for: sourceFeedURL, metadata: podcast.metaData)
         modelContext.insert(podcast)
         modelContext.saveIfNeeded()
-        await updateSplitSubscription(feedURL: feedURL, isSubscribed: true)
+        await updateSplitSubscription(
+            feedURL: feedURL,
+            isSubscribed: true,
+            accessProfile: storedPodcastAccessProfile(for: podcast)
+        )
         await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
         await reportProgress(SubscriptionProgressUpdate(0.16, "Creating podcast record"), using: progress)
         if let feed = podcast.feed {
@@ -1435,8 +1488,15 @@ actor PodcastModelActor {
     }
 
     private func performDeletePodcast(_ podcastID: PersistentIdentifier) async throws {
-        guard let feedURL = try deletePodcastRow(podcastID) else { return }
-        await updateSplitSubscription(feedURL: feedURL, isSubscribed: false)
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
+              let feedURL = podcast.feed else { return }
+        let profile = storedPodcastAccessProfile(for: podcast)
+        guard try deletePodcastRow(podcastID) != nil else { return }
+        await updateSplitSubscription(
+            feedURL: feedURL,
+            isSubscribed: false,
+            accessProfile: profile
+        )
         await SubscriptionManifestSync.publishCurrentSubscriptions(
             modelContainer: modelContainer,
             allowEmpty: true
@@ -1462,7 +1522,8 @@ actor PodcastModelActor {
 
     private func updateSplitSubscription(
         feedURL: URL,
-        isSubscribed: Bool
+        isSubscribed: Bool,
+        accessProfile: PodcastAccessProfile? = nil
     ) async {
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
@@ -1480,7 +1541,8 @@ actor PodcastModelActor {
         )
         await writer.setSubscribed(
             feedURL: feedURL,
-            isSubscribed: isSubscribed
+            isSubscribed: isSubscribed,
+            accessProfile: accessProfile
         )
     }
     

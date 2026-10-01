@@ -113,7 +113,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
 
         let originalLoader = ChapterExtractionHooks.loadM4AChapters
         defer { ChapterExtractionHooks.loadM4AChapters = originalLoader }
-        ChapterExtractionHooks.loadM4AChapters = { _ in
+        ChapterExtractionHooks.loadM4AChapters = { _, _ in
             [Marker(start: 10, title: "Audio Intro", type: .mp4, duration: 90)]
         }
 
@@ -140,7 +140,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
 
         let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
         defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
-        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _, _ in
             [Marker(start: 5, title: "Remote Chapter", type: .mp3, duration: 60)]
         }
 
@@ -207,7 +207,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
 
         let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
         defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
-        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _, _ in
             [Marker(start: 45, title: "Remote Chapter", type: .mp3, duration: 120)]
         }
 
@@ -255,7 +255,7 @@ final class EpisodeChapterIngestionTests: XCTestCase {
 
         let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
         defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
-        ChapterExtractionHooks.loadRemoteMP3Chapters = { _ in [] }
+        ChapterExtractionHooks.loadRemoteMP3Chapters = { _, _ in [] }
 
         await EpisodeActor(modelContainer: fixture.container).getRemoteChapters(episodeURL: episodeURL)
 

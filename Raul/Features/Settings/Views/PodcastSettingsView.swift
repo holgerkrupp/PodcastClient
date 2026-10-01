@@ -494,6 +494,13 @@ struct PodcastSettingsView: View {
             contextSection
             scopeSection
 
+            if let podcast,
+               let rawKind = podcast.metaData?.accessKindRawValue,
+               let kind = PodcastAccessKind(rawValue: rawKind),
+               kind != .publicFeed {
+                PodcastAccessSettingsSection(podcast: podcast)
+            }
+
             if isPodcastCustomSettingsActive {
                 podcastCustomizationSection(settings: settings)
             }
@@ -1545,13 +1552,24 @@ struct PodcastSettingsView: View {
             .buttonStyle(.plain)
 
             NavigationLink {
-                SettingsShortcutsIntegrationView()
+                SiriShortcutsGuideView()
             } label: {
                 SettingsNavigationRow(
-                    title: "Shortcuts & Automations",
-                    summary: "Refresh podcasts and generate share images",
-                    detail: "See practical automation recipes for Apple Shortcuts, including alarm-based refreshes and monthly share images.",
-                    systemImage: "square.stack.3d.up.badge.automatic"
+                    title: "Siri & Shortcuts",
+                    summary: "Voice commands and automation actions",
+                    detail: "See the podcast controls and automation actions currently available in Up Next.",
+                    systemImage: "waveform.and.mic"
+                )
+            }
+
+            NavigationLink {
+                PremiumPodcastAccountsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Premium Podcasts",
+                    summary: "Private RSS and connected accounts",
+                    detail: "Manage private-feed access and see which providers support account linking.",
+                    systemImage: "lock.shield"
                 )
             }
         }
@@ -1995,6 +2013,366 @@ struct PodcastSettingsView: View {
     }
 }
 
+private struct PodcastAccessSettingsSection: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var podcast: Podcast
+    @State private var showingEditor = false
+    @State private var showingRemovalConfirmation = false
+    @State private var refreshID = UUID()
+
+    private var profile: PodcastAccessProfile? {
+        guard let metadata = podcast.metaData,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let profileID = metadata.accessProfileID,
+              let feed = podcast.feed else { return nil }
+        return PodcastAccessProfile(
+            id: profileID,
+            kind: kind,
+            resourceURL: feed,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
+    }
+
+    private var credentialState: PodcastCredentialState {
+        guard let profile else { return .missing }
+        return PodcastAccessResolver().credentialState(for: profile)
+    }
+
+    private var descriptor: PremiumPodcastProviderDescriptor? {
+        if let providerID = profile?.providerID {
+            return PremiumPodcastProviderRegistry.descriptor(for: providerID)
+        }
+        return podcast.feed.map(PremiumPodcastProviderRegistry.descriptor(for:))
+    }
+
+    var body: some View {
+        Section("Premium access") {
+            HStack {
+                Label(descriptor?.displayName ?? "Private podcast", systemImage: "lock.shield.fill")
+                Spacer()
+                Text(stateLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(stateColor)
+            }
+
+            if let descriptor {
+                Text(descriptor.onboardingText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button(credentialState == .missing || credentialState == .needsLogin ? "Add credentials" : "Update credentials") {
+                showingEditor = true
+            }
+            .accessibilityHint("Credentials are stored in the device Keychain and are not synchronized with podcast metadata.")
+
+            if credentialState == .available {
+                Button("Remove credentials", role: .destructive) {
+                    showingRemovalConfirmation = true
+                }
+            }
+        }
+        .id(refreshID)
+        .sheet(isPresented: $showingEditor) {
+            PodcastAccessEditorView(podcast: podcast) {
+                refreshID = UUID()
+            }
+        }
+        .confirmationDialog(
+            "Remove podcast credentials?",
+            isPresented: $showingRemovalConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Credentials", role: .destructive) {
+                removeCredentials()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The podcast and its listening history remain in your library. Only the secure credential is removed.")
+        }
+    }
+
+    private var stateLabel: String {
+        switch credentialState {
+        case .available: "Ready"
+        case .missing: "Login required"
+        case .expired: "Expired"
+        case .revoked: "Access revoked"
+        case .needsLogin: "Login required"
+        case .unsupported: "Unsupported"
+        }
+    }
+
+    private var stateColor: Color {
+        credentialState == .available ? .green : .orange
+    }
+
+    private func removeCredentials() {
+        guard let profile else { return }
+        try? PodcastAccessResolver().removeCredential(for: profile)
+        podcast.metaData?.credentialState = .missing
+        podcast.metaData?.authenticationRetryAfter = nil
+        modelContext.saveIfNeeded()
+        refreshID = UUID()
+        Task {
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContext.container)
+        }
+    }
+}
+
+private struct PodcastAccessEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var podcast: Podcast
+    let onSave: () -> Void
+
+    @State private var privateURL = ""
+    @State private var username = ""
+    @State private var password = ""
+    @State private var bearerToken = ""
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    private var kind: PodcastAccessKind {
+        podcast.metaData?.accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)) ?? .privateURL
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    switch kind {
+                    case .privateURL:
+                        TextField("Private RSS URL", text: $privateURL)
+                    case .httpBasic:
+                        TextField("Username", text: $username)
+                            .textContentType(.username)
+                        SecureField("Password", text: $password)
+                            .textContentType(.password)
+                    case .bearerToken:
+                        SecureField("Bearer token", text: $bearerToken)
+                            .textContentType(.password)
+                    case .publicFeed:
+                        Text("This podcast does not require credentials.")
+                    }
+                } header: {
+                    Text("Credentials")
+                } footer: {
+                    Text("Credentials stay in the device Keychain. They are not written to SwiftData, iCloud sync, logs, or exports.")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Podcast Access")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(isSaving || !canSave)
+                }
+            }
+            .task { loadExistingCredential() }
+        }
+    }
+
+    private var canSave: Bool {
+        switch kind {
+        case .privateURL: return URL(string: privateURL.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+        case .httpBasic: return username.isEmpty == false && password.isEmpty == false
+        case .bearerToken: return bearerToken.isEmpty == false
+        case .publicFeed: return false
+        }
+    }
+
+    private func loadExistingCredential() {
+        guard let metadata = podcast.metaData,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let profileID = metadata.accessProfileID,
+              let feed = podcast.feed else { return }
+        let profile = PodcastAccessProfile(
+            id: profileID,
+            kind: kind,
+            resourceURL: feed,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
+        guard let credential = PodcastAccessResolver().credential(for: profile) else {
+            if kind == .privateURL { privateURL = feed.absoluteString }
+            return
+        }
+        switch credential {
+        case .privateURL(let url): privateURL = url.absoluteString
+        case .httpBasic(let username, let password):
+            self.username = username
+            self.password = password
+        case .bearerToken(let token): bearerToken = token
+        }
+    }
+
+    private func save() {
+        isSaving = true
+        errorMessage = nil
+        let sourceURL: URL
+        let credential: PodcastCredential
+        switch kind {
+        case .privateURL:
+            guard let url = URL(string: privateURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  url.isLikelyPrivatePodcastURL else {
+                errorMessage = "Enter a valid private RSS URL."
+                isSaving = false
+                return
+            }
+            sourceURL = url
+            credential = .privateURL(url)
+        case .httpBasic:
+            guard let feed = podcast.feed else { isSaving = false; return }
+            sourceURL = feed
+            credential = .httpBasic(username: username, password: password)
+        case .bearerToken:
+            guard let feed = podcast.feed else { isSaving = false; return }
+            sourceURL = feed
+            credential = .bearerToken(bearerToken)
+        case .publicFeed:
+            isSaving = false
+            return
+        }
+
+        let profile = PodcastAccessProfile.make(for: sourceURL, kind: kind)
+        do {
+            try PodcastAccessResolver().save(credential, for: profile)
+            podcast.feed = profile.resourceURL
+            podcast.metaData?.accessProfileID = profile.id
+            podcast.metaData?.accessKindRawValue = kind.rawValue
+            podcast.metaData?.accessProviderID = profile.providerID?.rawValue
+            podcast.metaData?.credentialState = .available
+            podcast.metaData?.authenticationRetryAfter = nil
+            podcast.metaData?.lastFeedFailureStatusCode = nil
+            modelContext.saveIfNeeded()
+            onSave()
+            Task {
+                await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContext.container)
+            }
+            dismiss()
+        } catch {
+            errorMessage = "Could not save the credential securely."
+            isSaving = false
+        }
+    }
+}
+
+private struct PremiumPodcastAccountsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Podcast.title) private var podcasts: [Podcast]
+
+    private var privatePodcasts: [Podcast] {
+        podcasts.filter { podcast in
+            guard let rawKind = podcast.metaData?.accessKindRawValue,
+                  let kind = PodcastAccessKind(rawValue: rawKind) else {
+                return false
+            }
+            return kind != .publicFeed
+        }
+    }
+
+    private func podcasts(for provider: PremiumPodcastProviderDescriptor) -> [Podcast] {
+        podcasts.filter { podcast in
+            guard let feed = podcast.feed else { return false }
+            return PremiumPodcastProviderRegistry.descriptor(for: feed).id == provider.id
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Text("Up Next supports subscriber-specific RSS links and standards-based HTTP authentication. Provider websites are never scraped, and a provider password is never requested unless an official account adapter is added.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Connected accounts") {
+                let accountProviders = PremiumPodcastProviderRegistry.descriptors.filter(\.supportsAccountAuthentication)
+                if accountProviders.isEmpty {
+                    Label("No provider account adapters are connected", systemImage: "person.crop.circle.badge.questionmark")
+                        .foregroundStyle(.secondary)
+                    Text("The currently supported providers use private RSS handoff. Add or update credentials from an individual podcast's settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(accountProviders) { provider in
+                        HStack {
+                            Label(provider.displayName, systemImage: "person.crop.circle")
+                            Spacer()
+                            Text("Not connected")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Section("Re-authenticate on this device") {
+                if privatePodcasts.isEmpty {
+                    Text("Private podcasts will appear here after you add one.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(privatePodcasts) { podcast in
+                        NavigationLink {
+                            PodcastSettingsView(
+                                podcastID: podcast.persistentModelID,
+                                modelContainer: modelContext.container
+                            )
+                        } label: {
+                            HStack {
+                                Image(systemName: "lock.shield")
+                                    .foregroundStyle(.orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(podcast.title)
+                                    Text("Open access settings")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Private RSS providers") {
+                ForEach(PremiumPodcastProviderRegistry.descriptors.filter { $0.id != .genericPrivateFeed }) { provider in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Label(provider.displayName, systemImage: "lock.fill")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(podcasts(for: provider).count)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(provider.onboardingText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if let helpURL = provider.helpURL {
+                            Link("How to get your private feed", destination: helpURL)
+                                .font(.caption.weight(.semibold))
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .navigationTitle("Premium Podcasts")
+        .platformInlineNavigationTitle()
+    }
+}
+
  struct AlternateAppIcon: Identifiable, Hashable {
     let id: String
     let iconName: String?
@@ -2376,10 +2754,8 @@ struct SettingsHelpView: View {
                 Text("Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior.")
             }
 
-            Section("Siri & Shortcuts Intents") {
-                Text("Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image.")
-                Text("In Apple Shortcuts, search for Up Next to add these actions to personal automations.")
-                Text("For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"")
+            Section("Siri & Shortcuts") {
+                Text("Open Settings > Integrations > Siri & Shortcuts for the current list of voice commands and automation actions.")
             }
 
             Section("Accessibility") {

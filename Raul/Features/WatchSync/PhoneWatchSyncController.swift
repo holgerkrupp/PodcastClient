@@ -52,6 +52,10 @@ final class PhoneWatchSyncController: NSObject {
     private func performRefreshSnapshotAndTransfers(forcePush: Bool) async {
         guard let session else { return }
         guard session.isPaired, session.isWatchAppInstalled else { return }
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint() else {
+            return
+        }
 
         // Building the snapshot now hands the main actor back, so a second
         // refresh can start while this one waits. Coalesce them: two runs
@@ -68,19 +72,23 @@ final class PhoneWatchSyncController: NSObject {
         var force = forcePush
         repeat {
             needsAnotherRefresh = false
-            await pushRefreshedSnapshot(forcePush: force, via: session)
+            await pushRefreshedSnapshot(forcePush: force, via: session, container: container)
             force = pendingForcePush
             pendingForcePush = false
         } while needsAnotherRefresh
     }
 
-    private func pushRefreshedSnapshot(forcePush: Bool, via session: WCSession) async {
+    private func pushRefreshedSnapshot(
+        forcePush: Bool,
+        via session: WCSession,
+        container: ModelContainer
+    ) async {
         reconcileOutstandingFileTransfers(via: session)
-        let bundle = await makeSnapshotBundle()
+        let bundle = await makeSnapshotBundle(container: container)
         pushSnapshot(bundle.snapshot, via: session, force: forcePush)
         let didQueueTransfers = syncPlaylistFilesIfPossible(bundle, via: session)
         if didQueueTransfers {
-            await pushSnapshot(makeSnapshotBundle().snapshot, via: session, force: true)
+            await pushSnapshot(makeSnapshotBundle(container: container).snapshot, via: session, force: true)
         }
     }
 
@@ -100,13 +108,13 @@ final class PhoneWatchSyncController: NSObject {
     /// every chapter of every queued episode. Running it here on the main actor
     /// blocked the main thread until the store was free, which the scene-update
     /// watchdog answers by killing the app.
-    private func playlistSelectionSummary() async -> WatchPlaylistSelectionSummary {
+    private func playlistSelectionSummary(container: ModelContainer) async -> WatchPlaylistSelectionSummary {
         await PhoneWatchSnapshotBuilder(
-            modelContainer: ModelContainerManager.shared.container
+            modelContainer: container
         ).playlistSelectionSummary()
     }
 
-    private func makeSnapshotBundle() async -> WatchSnapshotBundle {
+    private func makeSnapshotBundle(container: ModelContainer) async -> WatchSnapshotBundle {
         let input = WatchSnapshotInput(
             phoneTransferEpisodeIDs: Array(pendingTransferEpisodeIDs).sorted(),
             phoneTransferProgressByEpisodeID: filteredTransferProgress(),
@@ -114,7 +122,7 @@ final class PhoneWatchSyncController: NSObject {
         )
 
         return await PhoneWatchSnapshotBuilder(
-            modelContainer: ModelContainerManager.shared.container
+            modelContainer: container
         ).makeBundle(input: input)
     }
 
@@ -455,13 +463,17 @@ final class PhoneWatchSyncController: NSObject {
 
     private func handle(command: WatchCommand) async {
         guard register(commandID: command.id) else { return }
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint() else {
+            return
+        }
 
         switch command.kind {
         case .requestSnapshot:
             await refreshSnapshotAndTransfers()
 
         case .refreshInbox:
-            let subscriptionManager = SubscriptionManager(modelContainer: ModelContainerManager.shared.container)
+            let subscriptionManager = SubscriptionManager(modelContainer: container)
             await subscriptionManager.bgupdateFeeds()
             await refreshSnapshotAndTransfers()
 
@@ -472,13 +484,13 @@ final class PhoneWatchSyncController: NSObject {
                 return
             }
 
-            let selection = await playlistSelectionSummary()
+            let selection = await playlistSelectionSummary(container: container)
             let resolvedPlaylistID = selection.resolvedPlaylistID(
                 preferring: Playlist.resolvePlaylistID(from: command.playlistID)
             )
 
             guard let playlistActor = try? PlaylistModelActor(
-                modelContainer: ModelContainerManager.shared.container,
+                modelContainer: container,
                 playlistID: resolvedPlaylistID
             ) else {
                 return
@@ -498,7 +510,7 @@ final class PhoneWatchSyncController: NSObject {
                 return
             }
 
-            let selection = await playlistSelectionSummary()
+            let selection = await playlistSelectionSummary(container: container)
             guard selection.manualPlaylistIDs.contains(playlistID) else {
                 await refreshSnapshotAndTransfers()
                 return
@@ -506,7 +518,7 @@ final class PhoneWatchSyncController: NSObject {
 
             defaults.set(playlistID.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
             await PlayNextWidgetSync.refresh(
-                using: ModelContainerManager.shared.container,
+                using: container,
                 playlistIDs: Set([playlistID])
             )
             await refreshSnapshotAndTransfers()
@@ -519,7 +531,7 @@ final class PhoneWatchSyncController: NSObject {
                 return
             }
 
-            let episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
+            let episodeActor = EpisodeActor(modelContainer: container)
             await episodeActor.setLastPlayed(episodeURL: episodeURL)
             await episodeActor.setPlayPosition(episodeURL: episodeURL, position: playPosition, force: true)
 
@@ -531,7 +543,7 @@ final class PhoneWatchSyncController: NSObject {
             }
 
             if let chapterID = UUID(uuidString: chapterIDString) {
-                let chapterActor = ChapterModelActor(modelContainer: ModelContainerManager.shared.container)
+                let chapterActor = ChapterModelActor(modelContainer: container)
                 await chapterActor.setShouldPlay(shouldPlay, for: chapterID)
             } else if let episodeURLString = command.episodeURL,
                       let episodeURL = URL(string: episodeURLString) {
@@ -546,7 +558,7 @@ final class PhoneWatchSyncController: NSObject {
         case .setPlaybackSettings:
             guard let playbackSettings = command.playbackSettings else { return }
 
-            let settingsActor = PodcastSettingsModelActor(modelContainer: ModelContainerManager.shared.container)
+            let settingsActor = PodcastSettingsModelActor(modelContainer: container)
             let podcastFeed = command.podcastFeedURL.flatMap(URL.init(string:))
             await settingsActor.setPlaybackSpeed(for: podcastFeed, to: playbackSettings.playbackSpeed)
             await refreshSnapshotAndTransfers()
@@ -613,13 +625,13 @@ final class PhoneWatchSyncController: NSObject {
             else {
                 return
             }
-            let selection = await playlistSelectionSummary()
+            let selection = await playlistSelectionSummary(container: container)
             let resolvedPlaylistID = selection.resolvedPlaylistID(
                 preferring: Playlist.resolvePlaylistID(from: command.playlistID)
             )
 
             if let playlistActor = try? PlaylistModelActor(
-                modelContainer: ModelContainerManager.shared.container,
+                modelContainer: container,
                 playlistID: resolvedPlaylistID
             ) {
                 try? await playlistActor.remove(episodeURL: episodeURL)
@@ -632,13 +644,13 @@ final class PhoneWatchSyncController: NSObject {
             else {
                 return
             }
-            let selection = await playlistSelectionSummary()
+            let selection = await playlistSelectionSummary(container: container)
             let resolvedPlaylistID = selection.resolvedPlaylistID(
                 preferring: Playlist.resolvePlaylistID(from: command.playlistID)
             )
 
             if let playlistActor = try? PlaylistModelActor(
-                modelContainer: ModelContainerManager.shared.container,
+                modelContainer: container,
                 playlistID: resolvedPlaylistID
             ) {
                 let actorDestinationIndex = sourceIndex < destinationIndex ? destinationIndex + 1 : destinationIndex
@@ -660,7 +672,8 @@ final class PhoneWatchSyncController: NSObject {
     }
 
     private func setChapterShouldPlay(_ shouldPlay: Bool, chapterSyncID: String, episodeURL: URL) {
-        let context = ModelContext(ModelContainerManager.shared.container)
+        guard let container = ModelContainerManager.shared.preparedContainer else { return }
+        let context = ModelContext(container)
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { episode in
                 episode.url == episodeURL

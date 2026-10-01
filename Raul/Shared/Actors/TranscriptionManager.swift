@@ -75,12 +75,9 @@ actor TranscriptionTurnQueue {
 }
 
 actor TranscriptionManager {
-    // Immutable singleton initialized once, using the main-actor container.
-    static let shared: TranscriptionManager = {
-        MainActor.assumeIsolated {
-            TranscriptionManager(container: ModelContainerManager.shared.container)
-        }
-    }()
+    // The singleton can be requested while the app is still opening its stores.
+    // Resolve the container when work starts instead of during static init.
+    static let shared = TranscriptionManager()
 
     // Track jobs by episode URL
     private var items: [URL: TranscriptionItem] = [:]
@@ -100,11 +97,22 @@ actor TranscriptionManager {
     // tripping the background CPU monitor.
     private let transcriptionQueue = TranscriptionTurnQueue()
 
-    // Dependency
-    private let container: ModelContainer
+    // Dependency, resolved only after the model container has been prepared.
+    private var container: ModelContainer?
 
-    init(container: ModelContainer) {
+    private init() {}
+
+    private func preparedModelContainer() async -> ModelContainer? {
+        if let container {
+            return container
+        }
+
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint() else {
+            return nil
+        }
         self.container = container
+        return container
     }
 
     func item(for episodeURL: URL) -> TranscriptionItem? {
@@ -115,6 +123,9 @@ actor TranscriptionManager {
         episodeURL: URL,
         origin: TranscriptionStartOrigin = .manual
     ) async -> TranscriptionItem? {
+        guard let container = await preparedModelContainer() else {
+            return nil
+        }
         print("enqueueTranscription")
         if let existingItem = items[episodeURL] {
             return existingItem
@@ -368,6 +379,9 @@ actor TranscriptionManager {
         respectSweepCooldown: Bool = true,
         deadline: Date? = nil
     ) async -> URL? {
+        guard let container = await preparedModelContainer() else {
+            return nil
+        }
         guard tasks.isEmpty else { return nil }
         let now = Date()
         if respectSweepCooldown,

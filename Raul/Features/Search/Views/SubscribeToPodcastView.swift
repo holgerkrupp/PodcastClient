@@ -47,6 +47,11 @@ struct SubscribeToPodcastView: View {
         return status
     }
 
+    private var privateProvider: PremiumPodcastProviderDescriptor? {
+        guard let url = newPodcastFeed.url, url.isLikelyPrivatePodcastURL else { return nil }
+        return PremiumPodcastProviderRegistry.descriptor(for: url)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
@@ -58,6 +63,23 @@ struct SubscribeToPodcastView: View {
                     }
                     .opacity(0)
                 }
+            }
+
+            if let privateProvider {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(privateProvider.displayName, systemImage: "lock.shield.fill")
+                        .font(.subheadline.weight(.semibold))
+                    Text(privateProvider.onboardingText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("This feed link is personal and will be stored securely. It is not included in sync or export.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityElement(children: .combine)
             }
 
             if let deadFeedStatus {
@@ -106,7 +128,13 @@ struct SubscribeToPodcastView: View {
 
     private func updatePreviewPodcast() {
         previewPodcast.feed = newPodcastFeed.url
-        previewPodcast.title = newPodcastFeed.title ?? newPodcastFeed.url?.absoluteString.removingPercentEncoding ?? "New Podcast"
+        previewPodcast.title = newPodcastFeed.title
+            ?? newPodcastFeed.url.map {
+                $0.isLikelyPrivatePodcastURL
+                    ? $0.redactedPodcastURLString
+                    : ($0.absoluteString.removingPercentEncoding ?? $0.absoluteString)
+            }
+            ?? "New Podcast"
         previewPodcast.desc = newPodcastFeed.description
         previewPodcast.author = newPodcastFeed.artist
         previewPodcast.imageURL = newPodcastFeed.artworkURL

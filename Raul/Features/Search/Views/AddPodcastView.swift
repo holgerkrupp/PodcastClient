@@ -28,6 +28,17 @@ struct AddPodcastView: View {
             if isSearching == false {
                 Section("Discover") {
                     NavigationLink {
+                        PrivatePodcastEntryView()
+                            .modelContext(context)
+                    } label: {
+                        AddPodcastDestinationRow(
+                            symbol: "lock.shield.fill",
+                            title: "Add Private Podcast",
+                            subtitle: "Use a private RSS link or authenticated feed"
+                        )
+                    }
+
+                    NavigationLink {
                         PodcastCategoryView()
                             .modelContext(context)
                     } label: {
@@ -85,6 +96,30 @@ struct AddPodcastView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Add Podcast")
+    }
+}
+
+private struct PrivatePodcastEntryView: View {
+    @Environment(\.modelContext) private var context
+    @State private var search = ""
+
+    var body: some View {
+        List {
+            Section {
+                Text("Paste the private RSS URL supplied by your podcast provider. Up Next keeps the link or credentials in secure storage and never puts them in sync, exports, or logs.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            PodcastSearchView(search: $search, treatsDirectURLsAsPrivate: true)
+                .modelContext(context)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+        }
+        .listStyle(.plain)
+        .navigationTitle("Add Private Podcast")
+        .searchable(text: $search, prompt: "Private RSS URL")
     }
 }
 

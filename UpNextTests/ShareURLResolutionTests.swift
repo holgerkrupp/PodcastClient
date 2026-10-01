@@ -1,4 +1,5 @@
 import XCTest
+@testable import UpNext
 
 final class ShareURLResolutionTests: XCTestCase {
     func testARDItemURNSupportsEpisodeSectionAndExtraURLs() {

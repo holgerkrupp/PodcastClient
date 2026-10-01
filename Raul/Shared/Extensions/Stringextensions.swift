@@ -79,7 +79,7 @@ extension String {
         request.httpMethod = "HEAD"
         request.timeoutInterval = timeout
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await podcastURLSessionData(for: request, using: .shared)
             if let httpResponse = response as? HTTPURLResponse {
                 return (200..<400).contains(httpResponse.statusCode)
             }

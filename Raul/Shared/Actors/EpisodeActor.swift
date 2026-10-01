@@ -703,6 +703,16 @@ actor EpisodeActor {
             firstPlayedAt: metadata.firstListenDate,
             lastPlayedAt: metadata.lastPlayed
         )
+        let mayPublish = await MainActor.run {
+            ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite
+        }
+        guard mayPublish else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_episode_state_write_deferred",
+                details: "reason=cloudkit_export_or_lifecycle_gate"
+            )
+            return
+        }
         guard let writer = await episodeStateWriter() else { return }
         let didChange = await writer.upsert(snapshot, at: publishedAt)
         if didChange {
@@ -1170,7 +1180,12 @@ actor EpisodeActor {
                       let kind = PodcastAccessKind(rawValue: rawKind) else {
                     return nil
                 }
-                return PodcastAccessProfile(id: profileID, kind: kind, resourceURL: feedURL)
+                return PodcastAccessProfile(
+                    id: profileID,
+                    kind: kind,
+                    resourceURL: feedURL,
+                    providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+                )
             }
             if let url = episode.url,
                await DownloadManager.shared.download(from: url, saveTo: localFile, profile: accessProfile) != nil {
@@ -1515,9 +1530,15 @@ actor EpisodeActor {
             let isJSON = (url.pathExtension.lowercased() == "json")
                 || (chapterFile.fileType?.lowercased().contains("json") == true)
             if isJSON,
-               let jsonString = await downloadAndParseStringFile(url: url),
+               let jsonString = await downloadAndParseStringFile(
+                   url: url,
+                   profile: accessProfile(for: episode)
+               ),
                let jsonData = jsonString.data(using: .utf8),
-               let chapters = await parseJSONChapters(jsonData: jsonData) {
+               let chapters = await parseJSONChapters(
+                   jsonData: jsonData,
+                   profile: accessProfile(for: episode)
+               ) {
                 replaceChapters(on: episode, replacingTypes: [.extracted], with: chapters)
                 modelContext.saveIfNeeded()
                 didChange = true
@@ -1637,7 +1658,13 @@ actor EpisodeActor {
             localFile: episode.localFile,
             chapterFiles: episode.externalFiles
                 .filter { $0.category == .chapter }
-                .map { ChapterExternalFileSnapshot(urlString: $0.url, fileType: $0.fileType) },
+                .map {
+                    ChapterExternalFileSnapshot(
+                        urlString: $0.url,
+                        fileType: $0.fileType,
+                        profile: accessProfile(for: episode)
+                    )
+                },
             chapterImages: (episode.chapters ?? []).map {
                 StoredChapterImageSnapshot(
                     title: $0.title,
@@ -1665,8 +1692,14 @@ actor EpisodeActor {
     private func chapterSourceData(for snapshot: EpisodeChapterSourceSnapshot) async -> [SendableChapterSourceData] {
         var sources: [SendableChapterSourceData] = []
 
-        sources.append(contentsOf: await existingChapterImageSourceData(for: snapshot.chapterImages))
-        sources.append(contentsOf: await jsonChapterSourceData(for: snapshot.chapterFiles))
+        sources.append(contentsOf: await existingChapterImageSourceData(
+            for: snapshot.chapterImages,
+            profile: snapshot.profile
+        ))
+        sources.append(contentsOf: await jsonChapterSourceData(
+            for: snapshot.chapterFiles,
+            profile: snapshot.profile
+        ))
 
         if let localFile = snapshot.localFile {
             let lowercasedExtension = localFile.pathExtension.lowercased()
@@ -1689,19 +1722,25 @@ actor EpisodeActor {
             if lowercasedExtension == "mp3" {
                 sources.append(contentsOf: await remoteMP3ChapterSourceData(from: remoteURL))
             } else if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
-                sources.append(contentsOf: await m4aChapterSourceData(from: remoteURL))
+                sources.append(contentsOf: await m4aChapterSourceData(
+                    from: remoteURL,
+                    profile: snapshot.profile
+                ))
             }
         }
 
         return sources
     }
 
-    private func existingChapterImageSourceData(for chapters: [StoredChapterImageSnapshot]) async -> [SendableChapterSourceData] {
+    private func existingChapterImageSourceData(
+        for chapters: [StoredChapterImageSnapshot],
+        profile: PodcastAccessProfile?
+    ) async -> [SendableChapterSourceData] {
         var sources: [SendableChapterSourceData] = []
 
         for chapter in chapters {
             guard let imageURL = chapter.imageURL else { continue }
-            let imageData = await downloadBinaryFile(url: imageURL)
+            let imageData = await downloadBinaryFile(url: imageURL, profile: profile)
             sources.append(
                 SendableChapterSourceData(
                     title: chapter.title,
@@ -1750,8 +1789,11 @@ actor EpisodeActor {
         }
     }
 
-    private func m4aChapterSourceData(from url: URL) async -> [SendableChapterSourceData] {
-        guard let chapterData = try? await MetadataLoader.loadChapters(from: url) else {
+    private func m4aChapterSourceData(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil
+    ) async -> [SendableChapterSourceData] {
+        guard let chapterData = try? await MetadataLoader.loadChapters(from: url, profile: profile) else {
             return []
         }
 
@@ -1766,7 +1808,10 @@ actor EpisodeActor {
         }
     }
 
-    private func jsonChapterSourceData(for chapterFiles: [ChapterExternalFileSnapshot]) async -> [SendableChapterSourceData] {
+    private func jsonChapterSourceData(
+        for chapterFiles: [ChapterExternalFileSnapshot],
+        profile: PodcastAccessProfile?
+    ) async -> [SendableChapterSourceData] {
         var sources: [SendableChapterSourceData] = []
 
         for chapterFile in chapterFiles {
@@ -1775,9 +1820,12 @@ actor EpisodeActor {
             let isJSON = url.pathExtension.lowercased() == "json"
                 || (chapterFile.fileType?.lowercased().contains("json") == true)
             guard isJSON,
-                  let jsonString = await downloadAndParseStringFile(url: url),
+                  let jsonString = await downloadAndParseStringFile(url: url, profile: profile ?? chapterFile.profile),
                   let jsonData = jsonString.data(using: .utf8),
-                  let chapterSources = await parseJSONChapterData(jsonData: jsonData) else {
+                  let chapterSources = await parseJSONChapterData(
+                      jsonData: jsonData,
+                      profile: profile ?? chapterFile.profile
+                  ) else {
                 continue
             }
 
@@ -1787,7 +1835,10 @@ actor EpisodeActor {
         return sources
     }
 
-    private func parseJSONChapterData(jsonData: Data) async -> [SendableChapterSourceData]? {
+    private func parseJSONChapterData(
+        jsonData: Data,
+        profile: PodcastAccessProfile?
+    ) async -> [SendableChapterSourceData]? {
         do {
             let decoder = JSONDecoder()
             let chapterList = try decoder.decode(JSONChapterList.self, from: jsonData)
@@ -1797,7 +1848,7 @@ actor EpisodeActor {
                 let imageURL = chapter.img.flatMap(URL.init(string:))
                 let imageData: Data?
                 if let imageURL {
-                    imageData = await downloadBinaryFile(url: imageURL)
+                    imageData = await downloadBinaryFile(url: imageURL, profile: profile)
                 } else {
                     imageData = nil
                 }
@@ -1943,8 +1994,8 @@ actor EpisodeActor {
         return CGFloat(max(width, height))
     }
 
-    private func downloadBinaryFile(url: URL) async -> Data? {
-        await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil)
+    private func downloadBinaryFile(url: URL, profile: PodcastAccessProfile? = nil) async -> Data? {
+        await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil, profile: profile)
     }
     
     @discardableResult
@@ -1971,7 +2022,10 @@ actor EpisodeActor {
         guard let remoteURL = episode.url else { return false }
         let episodeID = episode.persistentModelID
 
-        let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(remoteURL)
+        let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(
+            remoteURL,
+            accessProfile(for: episode)
+        )
         guard chapters.isEmpty == false else { return false }
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
 
@@ -2031,7 +2085,10 @@ actor EpisodeActor {
         UpNext.firstNonEmptyString(in: value)
     }
     
-    func parseJSONChapters(jsonData: Data) async -> [Marker]? {
+    func parseJSONChapters(
+        jsonData: Data,
+        profile: PodcastAccessProfile? = nil
+    ) async -> [Marker]? {
         do {
             let decoder = JSONDecoder()
             let chapterList = try decoder.decode(JSONChapterList.self, from: jsonData)
@@ -2043,7 +2100,7 @@ actor EpisodeActor {
                 chapter.type = .extracted
                 if let imgUrlStr = ch.img, let imgUrl = URL(string: imgUrlStr) {
                     chapter.image = imgUrl
-                    chapter.imageData = await downloadBinaryFile(url: imgUrl)
+                    chapter.imageData = await downloadBinaryFile(url: imgUrl, profile: profile)
                 }
                 chapters.append(chapter)
             }
@@ -2076,7 +2133,7 @@ actor EpisodeActor {
         guard let url = episode.localFile else {
             return false
         }
-        let chapters = await ChapterExtractionHooks.loadM4AChapters(url)
+        let chapters = await ChapterExtractionHooks.loadM4AChapters(url, nil)
         guard chapters.isEmpty == false else { return false }
 
         // Re-acquired rather than carried across the await: reading the file
@@ -2135,9 +2192,15 @@ actor EpisodeActor {
             let isJSON = (url.pathExtension.lowercased() == "json")
                 || (chapterFile.fileType?.lowercased().contains("json") == true)
             guard isJSON,
-                  let jsonString = await downloadAndParseStringFile(url: url),
+                  let jsonString = await downloadAndParseStringFile(
+                      url: url,
+                      profile: accessProfile(for: episode)
+                  ),
                   let jsonData = jsonString.data(using: .utf8),
-                  let chapters = await parseJSONChapters(jsonData: jsonData),
+                  let chapters = await parseJSONChapters(
+                      jsonData: jsonData,
+                      profile: accessProfile(for: episode)
+                  ),
                   chapters.isEmpty == false else {
                 continue
             }
@@ -2363,7 +2426,10 @@ actor EpisodeActor {
             ]
         ) {
             if let url = URL(string: transcriptfile.url) {
-                let transcription = await downloadAndParseStringFile(url: url)
+                let transcription = await downloadAndParseStringFile(
+                    url: url,
+                    profile: accessProfile(for: episode)
+                )
                 if let transcription {
                     let snapshots = decodeTranscriptSnapshots(transcription)
                     // The episode is taken from the store again: the download
@@ -2691,11 +2757,28 @@ actor EpisodeActor {
     
     
     
-    private func downloadAndParseStringFile(url: URL) async -> String?{
+    private func accessProfile(for episode: Episode) -> PodcastAccessProfile? {
+        guard let metadata = episode.podcast?.metaData,
+              let id = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let feedURL = episode.podcast?.feed else { return nil }
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: feedURL,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
+    }
+
+    private func downloadAndParseStringFile(
+        url: URL,
+        profile: PodcastAccessProfile? = nil
+    ) async -> String?{
         print("downloadAndParseStringFile called with: \(url.redactedPodcastURLString)")
         var stringURL = url
         do{
-            let status = try await stringURL.status()
+            let status = try await stringURL.status(profile: profile)
             switch status?.statusCode {
             case 200:
                 break
@@ -2711,8 +2794,8 @@ actor EpisodeActor {
                break
             }
             do{
-                 let stringData = try await URLSession(configuration: .default).data(from: stringURL)
-                return String(decoding: stringData.0, as: UTF8.self)
+                let (data, _) = try await PodcastHTTPClient.shared.data(for: stringURL, profile: profile)
+                return String(decoding: data, as: UTF8.self)
             }catch{
                 return nil
             }
@@ -2763,6 +2846,7 @@ private struct SendableChapterSourceData: Sendable {
 private struct ChapterExternalFileSnapshot: Sendable {
     let urlString: String
     let fileType: String?
+    let profile: PodcastAccessProfile?
 }
 
 private struct StoredChapterImageSnapshot: Sendable {
@@ -2777,6 +2861,9 @@ private struct EpisodeChapterSourceSnapshot: Sendable {
     let localFile: URL?
     let chapterFiles: [ChapterExternalFileSnapshot]
     let chapterImages: [StoredChapterImageSnapshot]
+    var profile: PodcastAccessProfile? {
+        chapterFiles.first?.profile
+    }
 }
 
 private enum ChapterImageStorageConfiguration {
@@ -2918,13 +3005,31 @@ enum ChapterExtractionHooks {
         }
     }
 
-    nonisolated(unsafe) static var loadRemoteMP3Chapters: (URL) async -> [Marker] = { url in
+    nonisolated(unsafe) static var loadRemoteMP3Chapters: (URL, PodcastAccessProfile?) async -> [Marker] = { url, profile in
+        if let profile {
+            guard let (data, _) = try? await PodcastHTTPClient.shared.data(for: url, profile: profile) else {
+                return []
+            }
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("mp3")
+            do {
+                try data.write(to: temporaryURL, options: .atomic)
+                defer { try? FileManager.default.removeItem(at: temporaryURL) }
+                guard let mp3Reader = mp3ChapterReader(with: temporaryURL) else { return [] }
+                return parseMP3Chapters(from: mp3Reader.getID3Dict()) ?? []
+            } catch {
+                try? FileManager.default.removeItem(at: temporaryURL)
+                return []
+            }
+        }
+
         guard let mp3Reader = await mp3ChapterReader.fromRemoteURL(url) else { return [] }
         return parseMP3Chapters(from: mp3Reader.getID3Dict()) ?? []
     }
 
-    nonisolated(unsafe) static var loadM4AChapters: (URL) async -> [Marker] = { url in
-        guard let chapterData = try? await MetadataLoader.loadChapters(from: url) else {
+    nonisolated(unsafe) static var loadM4AChapters: (URL, PodcastAccessProfile?) async -> [Marker] = { url, profile in
+        guard let chapterData = try? await MetadataLoader.loadChapters(from: url, profile: profile) else {
             return []
         }
 
@@ -2941,8 +3046,11 @@ enum ChapterExtractionHooks {
 }
 
 private struct MetadataLoader {
-    static func loadChapters(from url: URL) async throws -> [SendableChapterData] {
-        let asset = AVURLAsset(url: url)
+    static func loadChapters(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil
+    ) async throws -> [SendableChapterData] {
+        let asset = try authorizedAsset(for: url, profile: profile)
         let metadata = try await asset.load(.metadata)
         guard !metadata.isEmpty else { return [] }
         
@@ -2978,8 +3086,11 @@ private struct MetadataLoader {
         return chapters
     }
 
-    static func getAudioFormat(from url: URL) async throws -> AudioFormatInfo? {
-        let asset = AVURLAsset(url: url)
+    static func getAudioFormat(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil
+    ) async throws -> AudioFormatInfo? {
+        let asset = try authorizedAsset(for: url, profile: profile)
         
         if let audioTracks = try? await asset.loadTracks(withMediaType: .audio),
            let audioTrack = audioTracks.first,
@@ -2995,6 +3106,19 @@ private struct MetadataLoader {
             }
         }
         return nil
+    }
+
+    private static func authorizedAsset(
+        for url: URL,
+        profile: PodcastAccessProfile?
+    ) throws -> AVURLAsset {
+        guard let profile else { return AVURLAsset(url: url) }
+        let request = try PodcastAccessResolver().request(for: url, profile: profile)
+        var options: [String: Any] = [:]
+        if let authorization = request.value(forHTTPHeaderField: "Authorization") {
+            options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authorization]
+        }
+        return AVURLAsset(url: request.url ?? url, options: options)
     }
 }
 

@@ -957,7 +957,6 @@ final class StableIdentityTests: XCTestCase {
             )
         )
         try userStateContainer.mainContext.save()
-
         _ = await StoreSplitMigrationService.migrate(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
@@ -1524,6 +1523,70 @@ final class StableIdentityTests: XCTestCase {
         // device's Inbox; inbox membership itself stays local.
         XCTAssertEqual(refreshedEpisode.metaData?.isInbox, false)
         XCTAssertEqual(refreshedEpisode.metaData?.status, .archived)
+    }
+
+    @MainActor
+    func testPremiumSubscriptionWaitsForCredentialThenRebootstraps() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let store = InMemoryPodcastCredentialStore()
+        let feedURL = URL(string: "https://example.com/private.xml")!
+        let privateURL = URL(string: "https://example.com/private.xml?token=fake-token")!
+        let profile = PodcastAccessProfile.make(for: feedURL, kind: .privateURL)
+
+        userStateContainer.mainContext.insert(
+            SubscriptionSync(
+                feedURL: feedURL.absoluteString,
+                accessProfileID: profile.id,
+                accessKindRawValue: PodcastAccessKind.privateURL.rawValue,
+                isSubscribed: true
+            )
+        )
+        try userStateContainer.mainContext.save()
+
+        let withoutCredential = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: store,
+            changedStreams: [.subscriptions]
+        )
+
+        XCTAssertTrue(withoutCredential.feedsToBootstrap.isEmpty)
+        XCTAssertEqual(withoutCredential.feedsAwaitingCredentials, [feedURL])
+        XCTAssertEqual(withoutCredential.credentialRequiredProfileIDs, [profile.id])
+        let missingPodcast = try XCTUnwrap(
+            try ModelContext(legacyContainer).fetch(FetchDescriptor<Podcast>()).first
+        )
+        XCTAssertEqual(missingPodcast.feed, feedURL)
+        XCTAssertEqual(missingPodcast.metaData?.credentialState, .missing)
+
+        try store.save(.privateURL(privateURL), for: profile)
+
+        let withCredential = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: store,
+            changedStreams: [.subscriptions]
+        )
+
+        XCTAssertEqual(withCredential.feedsToBootstrap, [privateURL])
+        XCTAssertTrue(withCredential.feedsAwaitingCredentials.isEmpty)
+        let refreshedPodcast = try XCTUnwrap(
+            try ModelContext(legacyContainer).fetch(FetchDescriptor<Podcast>()).first
+        )
+        XCTAssertEqual(refreshedPodcast.metaData?.credentialState, .available)
+
+        let alreadyBootstrapped = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: store,
+            changedStreams: [.subscriptions]
+        )
+        XCTAssertTrue(alreadyBootstrapped.feedsToBootstrap.isEmpty)
     }
 
     @MainActor

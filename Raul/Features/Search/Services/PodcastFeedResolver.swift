@@ -3,6 +3,7 @@ import Foundation
 enum PodcastFeedResolution {
     case podcast(PodcastFeed)
     case requiresBasicAuth(URL)
+    case requiresBearerToken(URL)
 }
 
 enum PodcastFeedResolverError: LocalizedError {
@@ -12,6 +13,7 @@ enum PodcastFeedResolverError: LocalizedError {
     case unreadableFile
     case multipleFeedsInOPML
     case authenticationRequired(URL)
+    case bearerAuthenticationRequired(URL)
 
     var errorDescription: String? {
         switch self {
@@ -27,6 +29,8 @@ enum PodcastFeedResolverError: LocalizedError {
             return "This OPML file contains multiple podcasts. Use Import / Export to review them."
         case .authenticationRequired:
             return "This feed requires authentication."
+        case .bearerAuthenticationRequired:
+            return "This feed requires a bearer token."
         }
     }
 }
@@ -36,15 +40,85 @@ enum PodcastFeedResolver {
         (try? unwrapIncomingURL(url)) != nil
     }
 
-    static func resolve(url: URL, allowAuthenticationPrompt: Bool = false) async throws -> PodcastFeedResolution {
+    static func resolve(
+        url: URL,
+        allowAuthenticationPrompt: Bool = false,
+        client: PodcastHTTPClient = .shared
+    ) async throws -> PodcastFeedResolution {
         let input = try unwrapIncomingURL(url)
 
         switch input {
         case .remote(let candidates):
-            return try await resolveRemote(candidates: candidates, allowAuthenticationPrompt: allowAuthenticationPrompt)
+            return try await resolveRemote(
+                candidates: candidates,
+                allowAuthenticationPrompt: allowAuthenticationPrompt,
+                client: client
+            )
         case .file(let fileURL):
             return .podcast(try await resolveFile(fileURL))
         }
+    }
+
+    /// Resolves a feed with a credential that has not yet been persisted. This
+    /// keeps Bearer tokens out of URLs while still allowing the same parser and
+    /// redirect policy to be used during onboarding.
+    static func resolve(
+        url: URL,
+        credential: PodcastCredential
+    ) async throws -> PodcastFeedResolution {
+        let input = try unwrapIncomingURL(url)
+        guard case .remote(let candidates) = input else {
+            throw PodcastFeedResolverError.unsupportedURL
+        }
+
+        let kind: PodcastAccessKind
+        switch credential {
+        case .privateURL: kind = .privateURL
+        case .httpBasic: kind = .httpBasic
+        case .bearerToken: kind = .bearerToken
+        }
+        let requestURL = requestBaseURL(for: candidates[0], kind: kind)
+        let profile = PodcastAccessProfile.make(for: requestURL, kind: kind)
+        let store = InMemoryPodcastCredentialStore()
+        try store.save(credential, for: profile)
+        let client = PodcastHTTPClient(
+            resolver: PodcastAccessResolver(credentialStore: store)
+        )
+        let feed = try await resolveRemote(
+            requestURL,
+            visited: [],
+            client: client,
+            profile: profile
+        )
+        feed.accessCredential = credential
+        feed.accessKind = kind
+        feed.url = requestURL
+        return .podcast(feed)
+    }
+
+    /// The explicit private-feed entry point treats the pasted URL as a
+    /// credential even when its provider uses an unknown query parameter name.
+    /// This keeps arbitrary private-RSS formats safe without classifying every
+    /// ordinary public feed query as a secret.
+    static func resolvePrivateURL(_ url: URL) async throws -> PodcastFeedResolution {
+        try await resolve(url: url, credential: .privateURL(url))
+    }
+
+    /// Header credentials must not change ordinary feed query parameters (for
+    /// example `?format=rss`). A tokenized private URL is different: its query
+    /// is the credential and is supplied by the private-URL credential itself.
+    static func requestBaseURL(for url: URL, kind: PodcastAccessKind) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return kind == .privateURL ? url.podcastNonSecretURL : url
+        }
+
+        components.user = nil
+        components.password = nil
+        components.fragment = nil
+        if kind == .privateURL {
+            components.query = nil
+        }
+        return components.url ?? url
     }
 }
 
@@ -82,19 +156,25 @@ private extension PodcastFeedResolver {
 
     static func resolveRemote(
         candidates: [URL],
-        allowAuthenticationPrompt: Bool
+        allowAuthenticationPrompt: Bool,
+        client: PodcastHTTPClient
     ) async throws -> PodcastFeedResolution {
         var lastError: Error?
 
         for candidate in candidates {
             do {
-                let podcastFeed = try await resolveRemote(candidate, visited: [])
+                let podcastFeed = try await resolveRemote(candidate, visited: [], client: client)
                 return .podcast(podcastFeed)
             } catch PodcastFeedResolverError.authenticationRequired(let protectedURL) {
                 if allowAuthenticationPrompt {
                     return .requiresBasicAuth(protectedURL)
                 }
                 throw PodcastFeedResolverError.authenticationRequired(protectedURL)
+            } catch PodcastFeedResolverError.bearerAuthenticationRequired(let protectedURL) {
+                if allowAuthenticationPrompt {
+                    return .requiresBearerToken(protectedURL)
+                }
+                throw PodcastFeedResolverError.bearerAuthenticationRequired(protectedURL)
             } catch {
                 lastError = error
             }
@@ -103,7 +183,12 @@ private extension PodcastFeedResolver {
         throw lastError ?? PodcastFeedResolverError.notAPodcastFeed
     }
 
-    static func resolveRemote(_ url: URL, visited: Set<String>) async throws -> PodcastFeed {
+    static func resolveRemote(
+        _ url: URL,
+        visited: Set<String>,
+        client: PodcastHTTPClient = .shared,
+        profile: PodcastAccessProfile? = nil
+    ) async throws -> PodcastFeed {
         let visitKey = url.absoluteString.lowercased()
         guard visited.contains(visitKey) == false else {
             throw PodcastFeedResolverError.notAPodcastFeed
@@ -112,10 +197,13 @@ private extension PodcastFeedResolver {
         let data: Data
         let response: HTTPURLResponse
         do {
-            (data, response) = try await PodcastHTTPClient.shared.data(for: url)
+            (data, response) = try await client.data(for: url, profile: profile)
         } catch let error as PodcastHTTPError {
             if error.advertisesHTTPBasicAuthentication {
                 throw PodcastFeedResolverError.authenticationRequired(url)
+            }
+            if error.advertisedAuthenticationSchemes.contains("bearer") {
+                throw PodcastFeedResolverError.bearerAuthenticationRequired(url)
             }
             throw PodcastFeedResolverError.couldNotLoad(error.url)
         }
@@ -145,7 +233,12 @@ private extension PodcastFeedResolver {
             var updatedVisited = visited
             updatedVisited.insert(visitKey)
             let feedURL = discoveredFeedURL.preservingFeedAccessComponents(from: finalURL)
-            return try await resolveRemote(feedURL, visited: updatedVisited)
+            return try await resolveRemote(
+                feedURL,
+                visited: updatedVisited,
+                client: client,
+                profile: profile
+            )
         }
 
         throw PodcastFeedResolverError.notAPodcastFeed

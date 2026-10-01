@@ -45,17 +45,34 @@ enum ShownoteContentBlock: Identifiable, Sendable {
             return html.isEmpty ? [] : [.html(id: "html-0", value: html)]
         }
 
-        let sorted = candidates.sorted { $0.sourceRange.location < $1.sourceRange.location }
+        let inlineCandidates = candidates.filter { $0.presentation == .inline }
+        let standaloneCandidates = candidates
+            .filter { $0.presentation == .standalone }
+            .sorted { $0.sourceRange.location < $1.sourceRange.location }
+
+        guard standaloneCandidates.isEmpty == false else {
+            let value = ShownoteHTMLLinkifier.linkify(html, candidates: inlineCandidates)
+            return value.isEmpty ? [] : [.html(id: "html-0", value: value)]
+        }
+
         var blocks: [ShownoteContentBlock] = []
         var cursor = 0
 
-        for (index, candidate) in sorted.enumerated() {
+        for (index, candidate) in standaloneCandidates.enumerated() {
             let range = candidate.sourceRange
             guard range.location >= cursor, range.end <= html.utf16.count else { continue }
             let start = String.Index(utf16Offset: cursor, in: html)
             let candidateStart = String.Index(utf16Offset: range.location, in: html)
 
-            let prefix = HTMLFragmentBoundary.normalized(String(html[start..<candidateStart]), isPrefix: true)
+            let rawPrefix = String(html[start..<candidateStart])
+            let prefix = HTMLFragmentBoundary.normalized(
+                ShownoteHTMLLinkifier.linkifyFragment(
+                    rawPrefix,
+                    originalStart: cursor,
+                    candidates: inlineCandidates
+                ),
+                isPrefix: true
+            )
             if prefix.isEmpty == false {
                 blocks.append(.html(id: "html-\(index)-\(cursor)", value: prefix))
             }
@@ -65,7 +82,15 @@ enum ShownoteContentBlock: Identifiable, Sendable {
 
         if cursor < html.utf16.count {
             let start = String.Index(utf16Offset: cursor, in: html)
-            let suffix = HTMLFragmentBoundary.normalized(String(html[start...]), isPrefix: false)
+            let rawSuffix = String(html[start...])
+            let suffix = HTMLFragmentBoundary.normalized(
+                ShownoteHTMLLinkifier.linkifyFragment(
+                    rawSuffix,
+                    originalStart: cursor,
+                    candidates: inlineCandidates
+                ),
+                isPrefix: false
+            )
             if suffix.isEmpty == false {
                 blocks.append(.html(id: "html-tail-\(cursor)", value: suffix))
             }
@@ -222,7 +247,101 @@ enum ShownoteLinkExtractor {
             }
         }
 
-        return candidates.sorted { $0.sourceRange.location < $1.sourceRange.location }
+        return candidates
+            .map { candidate in
+                var candidate = candidate
+                candidate.presentation = presentation(for: candidate, in: html)
+                return candidate
+            }
+            .sorted { $0.sourceRange.location < $1.sourceRange.location }
+    }
+
+    private struct BlockRange {
+        let start: Int
+        let contentStart: Int
+        let contentEnd: Int
+        let end: Int
+    }
+
+    /// Finds the nearest block element around an occurrence. This forgiving
+    /// scanner is intentional: malformed feed HTML should still degrade to a
+    /// normal link instead of breaking extraction or list structure.
+    private static func presentation(
+        for candidate: ShownoteLinkCandidate,
+        in html: String
+    ) -> ShownoteLinkPresentation {
+        guard candidate.occurrenceKind != .email else { return .inline }
+
+        let containingBlock = blockRanges(in: html)
+            .filter {
+                $0.start <= candidate.sourceRange.location
+                    && candidate.sourceRange.end <= $0.end
+            }
+            .min { lhs, rhs in
+                (lhs.end - lhs.start) < (rhs.end - rhs.start)
+            }
+
+        let contentStart = containingBlock?.contentStart ?? 0
+        let contentEnd = containingBlock?.contentEnd ?? html.utf16.count
+        guard contentStart <= contentEnd,
+              candidate.sourceRange.location >= contentStart,
+              candidate.sourceRange.end <= contentEnd
+        else { return .inline }
+
+        let start = String.Index(utf16Offset: contentStart, in: html)
+        let end = String.Index(utf16Offset: contentEnd, in: html)
+        var content = String(html[start..<end])
+        let localStart = candidate.sourceRange.location - contentStart
+        let localEnd = candidate.sourceRange.end - contentStart
+        let candidateStart = String.Index(utf16Offset: localStart, in: content)
+        let candidateEnd = String.Index(utf16Offset: localEnd, in: content)
+        content.removeSubrange(candidateStart..<candidateEnd)
+
+        return visibleText(from: content).isEmpty ? .standalone : .inline
+    }
+
+    private static func blockRanges(in html: String) -> [BlockRange] {
+        let blockNames = Set([
+            "address", "article", "aside", "blockquote", "dd", "div", "dl", "dt",
+            "figcaption", "figure", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
+            "header", "li", "main", "nav", "ol", "p", "pre", "section", "table",
+            "tbody", "td", "tfoot", "th", "thead", "tr", "ul"
+        ])
+        let voidNames = Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"])
+        let tags = matches(of: #"(?is)<!--[\s\S]*?-->|</?[A-Za-z][^>]*>"#, in: html)
+        var stack: [(name: String, start: Int, contentStart: Int)] = []
+        var ranges: [BlockRange] = []
+
+        for tag in tags {
+            guard let parsed = tagName(in: tag.value), blockNames.contains(parsed.name) else { continue }
+            if parsed.isClosing {
+                guard let index = stack.lastIndex(where: { $0.name == parsed.name }) else { continue }
+                let opening = stack[index]
+                stack.removeSubrange(index...)
+                ranges.append(
+                    BlockRange(
+                        start: opening.start,
+                        contentStart: opening.contentStart,
+                        contentEnd: tag.range.location,
+                        end: tag.range.location + tag.range.length
+                    )
+                )
+            } else if tag.value.hasSuffix("/>") == false, voidNames.contains(parsed.name) == false {
+                stack.append((parsed.name, tag.range.location, tag.range.location + tag.range.length))
+            }
+        }
+
+        for opening in stack {
+            ranges.append(
+                BlockRange(
+                    start: opening.start,
+                    contentStart: opening.contentStart,
+                    contentEnd: html.utf16.count,
+                    end: html.utf16.count
+                )
+            )
+        }
+        return ranges
     }
 
     private struct Match {
@@ -255,8 +374,24 @@ enum ShownoteLinkExtractor {
     }
 
     private static func visibleText(from html: String) -> String {
-        let withoutTags = html.replacingOccurrences(of: #"(?is)<[^>]*>"#, with: "", options: .regularExpression)
-        return decodeHTMLEntities(withoutTags).trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutNonContent = html
+            .replacingOccurrences(of: #"(?is)<(script|style)\b[^>]*>[\s\S]*?</\1\s*>"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?is)<!--[\s\S]*?-->"#, with: "", options: .regularExpression)
+        let withoutTags = withoutNonContent.replacingOccurrences(of: #"(?is)<[^>]*>"#, with: "", options: .regularExpression)
+        return decodeHTMLEntities(withoutTags)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func tagName(in tag: String) -> (name: String, isClosing: Bool)? {
+        let pattern = try? NSRegularExpression(pattern: #"(?is)^<\s*(/?)\s*([A-Za-z][A-Za-z0-9]*)\b"#)
+        let range = NSRange(location: 0, length: tag.utf16.count)
+        guard let match = pattern?.firstMatch(in: tag, options: [], range: range),
+              let nameRange = Range(match.range(at: 2), in: tag) else { return nil }
+        return (
+            String(tag[nameRange]).lowercased(),
+            match.range(at: 1).length > 0
+        )
     }
 
     private static func decodeHTMLEntities(_ value: String) -> String {
@@ -328,5 +463,35 @@ enum ShownoteHTMLLinkifier {
             result.replaceSubrange(start..<end, with: replacement)
         }
         return result
+    }
+
+    static func linkifyFragment(
+        _ fragment: String,
+        originalStart: Int,
+        candidates: [ShownoteLinkCandidate]
+    ) -> String {
+        let fragmentLength = fragment.utf16.count
+        let localCandidates = candidates.compactMap { candidate -> ShownoteLinkCandidate? in
+            guard candidate.sourceRange.location >= originalStart,
+                  candidate.sourceRange.end <= originalStart + fragmentLength else { return nil }
+            return ShownoteLinkCandidate(
+                id: candidate.id,
+                originalURL: candidate.originalURL,
+                normalizedURL: candidate.normalizedURL,
+                sourceRange: ShownoteSourceRange(
+                    NSRange(
+                        location: candidate.sourceRange.location - originalStart,
+                        length: candidate.sourceRange.length
+                    )
+                ),
+                publisherAnchorText: candidate.publisherAnchorText,
+                occurrenceKind: candidate.occurrenceKind,
+                displayText: candidate.displayText,
+                sourceMarkup: candidate.sourceMarkup,
+                presentation: candidate.presentation,
+                classification: candidate.classification
+            )
+        }
+        return linkify(fragment, candidates: localCandidates)
     }
 }

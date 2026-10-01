@@ -7,6 +7,7 @@ struct CloudSyncStatusView: View {
     let modelContainer: ModelContainer
 
     @StateObject private var syncMonitor = SyncMonitor.default
+    @StateObject private var storeMonitor = StoreCloudKitActivityMonitor.shared
     @State private var localRecordCount = 0
     @State private var reference: CloudSyncProgressReference?
     @State private var isRefreshing = false
@@ -18,6 +19,19 @@ struct CloudSyncStatusView: View {
     }
 
     private var statusTitle: LocalizedStringKey {
+        let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
+        if stores.contains(where: { $0.importStatus == .syncing }) {
+            return "Syncing user data"
+        }
+        if stores.contains(where: { $0.importStatus == .failed }) {
+            return "Sync Error"
+        }
+        if stores.contains(where: { $0.importStatus == .notObserved }) {
+            return "Waiting for Store Import"
+        }
+        if stores.isEmpty == false {
+            return "Stores Synced"
+        }
         switch syncMonitor.syncStateSummary {
         case .noNetwork:
             return "Offline"
@@ -39,6 +53,19 @@ struct CloudSyncStatusView: View {
     }
 
     private var statusColor: Color {
+        let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
+        if stores.contains(where: { $0.importStatus == .syncing }) {
+            return .secondary
+        }
+        if stores.contains(where: { $0.importStatus == .failed }) {
+            return .red
+        }
+        if stores.contains(where: { $0.importStatus == .notObserved }) {
+            return .orange
+        }
+        if stores.isEmpty == false {
+            return .green
+        }
         switch syncMonitor.syncStateSummary {
         case .error, .notSyncing, .unknown:
             return .red
@@ -117,6 +144,10 @@ struct CloudSyncStatusView: View {
                 phaseLabel("Upload", state: syncMonitor.exportState)
             }
 
+            ForEach(storeMonitor.storeDiagnostics.filter(\.isAttached)) { diagnostic in
+                StoreCloudKitDiagnosticRow(diagnostic: diagnostic)
+            }
+
             if let reference {
                 Text("Reference updated \(reference.updatedAt, format: .relative(presentation: .named))")
                     .font(.caption2)
@@ -170,6 +201,7 @@ struct CloudSyncStatusDetailView: View {
     let modelContainer: ModelContainer
 
     @StateObject private var syncMonitor = SyncMonitor.default
+    @StateObject private var storeMonitor = StoreCloudKitActivityMonitor.shared
 
     private var reportedErrors: [(title: String, error: Error)] {
         var errors: [(String, Error)] = []
@@ -278,6 +310,12 @@ struct CloudSyncStatusDetailView: View {
             }
 
             Section("Environment") {
+                LabeledContent("Store Split Release") {
+                    Text(StoreSplitReleasePhase.current == .dualSyncBackfill
+                        ? "Dual sync backfill"
+                        : "User State authority")
+                }
+
                 LabeledContent("Network") {
                     Label(
                         networkDescription,
@@ -325,7 +363,17 @@ struct CloudSyncStatusDetailView: View {
                 }
             }
 
-            Section("CloudKit Events") {
+            Section("Mirrored Stores") {
+                ForEach(storeMonitor.storeDiagnostics) { diagnostic in
+                    StoreCloudKitDiagnosticRow(diagnostic: diagnostic, expanded: true)
+                }
+            }
+
+            Section("Aggregate Monitor") {
+                Text("These package-level phases describe the latest CloudKit event from any store. Store convergence is reported above.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 SyncPhaseDetailRow(
                     title: "Setup",
                     systemImage: "tray",
@@ -409,7 +457,7 @@ struct CloudSyncStatusDetailView: View {
             Section("About Sync Progress") {
                 Text("The progress bar compares this device's local SwiftData record count with a lightweight reference shared through iCloud.")
 
-                Text("CloudKit does not expose exact transfer progress, so the displayed percentage is an estimate. CloudKit's import status determines when synchronization is complete.")
+                Text("CloudKit does not expose exact transfer progress, so the displayed percentage is an estimate. A store is only marked complete after that store's own import event succeeds; an unrelated store's completed import does not mark the queue current.")
             }
         }
         .navigationTitle("iCloud Sync")
@@ -446,6 +494,103 @@ struct CloudSyncStatusDetailView: View {
         @unknown default:
             return "Unknown"
         }
+    }
+}
+
+private struct StoreCloudKitDiagnosticRow: View {
+    let diagnostic: StoreCloudKitActivityMonitor.StoreDiagnostics
+    var expanded = false
+
+    private var statusText: String {
+        guard diagnostic.isAttached else { return "Not attached" }
+        switch diagnostic.importStatus {
+        case .notObserved: return "Waiting for first import event"
+        case .syncing: return "Syncing…"
+        case .complete: return "Complete"
+        case .failed:
+            if let code = diagnostic.lastImportErrorCode {
+                return "Failed (error \(code))"
+            }
+            return "Failed"
+        }
+    }
+
+    private var statusColor: Color {
+        guard diagnostic.isAttached else { return .secondary }
+        switch diagnostic.importStatus {
+        case .notObserved: return .orange
+        case .syncing: return .secondary
+        case .complete: return .green
+        case .failed: return .red
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: diagnostic.importStatus == .syncing
+                    ? "arrow.triangle.2.circlepath"
+                    : "externaldrive.connected.to.line.below")
+                    .foregroundStyle(statusColor)
+                Text(diagnostic.storeKind.title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(statusColor)
+            }
+
+            if let lastSuccessfulImportAt = diagnostic.lastSuccessfulImportAt {
+                Text("Last successful import \(lastSuccessfulImportAt, format: .relative(presentation: .named))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if diagnostic.activeExportCount > 0 {
+                Text("Upload: (diagnostic.activeExportCount) active")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if let lastSuccessfulExportAt = diagnostic.lastSuccessfulExportAt {
+                Text("Last successful upload \(lastSuccessfulExportAt, format: .relative(presentation: .named))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if expanded {
+                if let before = diagnostic.lastImportCountsBefore,
+                   let after = diagnostic.lastImportCountsAfter {
+                    if diagnostic.storeKind == .legacy,
+                       let beforeCount = before.legacyPlaylistEntryCount,
+                       let afterCount = after.legacyPlaylistEntryCount {
+                        Text("Playlist entries: \(beforeCount) → \(afterCount)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    } else if diagnostic.storeKind == .userState,
+                              let beforeCount = before.userStateQueueEntryCount,
+                              let afterCount = after.userStateQueueEntryCount {
+                        Text("User State queue entries: \(beforeCount) → \(afterCount)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let reconciliation = diagnostic.lastReconciliation {
+                    Label {
+                        Text(reconciliation.summary)
+                            .lineLimit(3)
+                    } icon: {
+                        Image(systemName: reconciliation.succeeded
+                            ? "checkmark.circle"
+                            : "exclamationmark.triangle")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(
+                        reconciliation.succeeded ? Color.secondary : Color.red
+                    )
+                }
+            }
+        }
+        .padding(.vertical, expanded ? 4 : 2)
     }
 }
 

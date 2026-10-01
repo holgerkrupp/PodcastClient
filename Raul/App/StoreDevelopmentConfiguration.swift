@@ -1,5 +1,76 @@
 import Foundation
 
+struct StoreSplitLaunchHealthState: Codable, Sendable, Equatable {
+    var consecutiveUnhealthyLaunches = 0
+    var lastLaunchStartedAt: Date?
+    var lastHealthyAt: Date?
+}
+
+enum StoreSplitLaunchHealth {
+    static let stateKey = "storeSplit.launchHealth.v1"
+    static let quarantineThreshold = 3
+
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
+
+    @discardableResult
+    static func beginLaunch(now: Date = .now) -> Bool {
+        var state = read()
+        let previousLaunchWasUnhealthy: Bool
+        if let lastLaunchStartedAt = state.lastLaunchStartedAt {
+            previousLaunchWasUnhealthy = state.lastHealthyAt.map {
+                lastLaunchStartedAt > $0
+            } ?? true
+        } else {
+            previousLaunchWasUnhealthy = false
+        }
+        if previousLaunchWasUnhealthy {
+            state.consecutiveUnhealthyLaunches += 1
+        } else {
+            state.consecutiveUnhealthyLaunches = 0
+        }
+        state.lastLaunchStartedAt = now
+        write(state)
+
+        let shouldQuarantine = previousLaunchWasUnhealthy
+            && state.consecutiveUnhealthyLaunches >= quarantineThreshold
+            && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantineEligible
+            && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false
+        if shouldQuarantine {
+            StoreDevelopmentConfiguration.quarantineLegacyCloudMirror(
+                reason: "repeated_unhealthy_launches"
+            )
+        }
+        return shouldQuarantine
+    }
+
+    static func markHealthy(now: Date = .now) {
+        var state = read()
+        state.consecutiveUnhealthyLaunches = 0
+        state.lastHealthyAt = now
+        write(state)
+    }
+
+    static var current: StoreSplitLaunchHealthState { read() }
+
+    private static func read() -> StoreSplitLaunchHealthState {
+        guard let data = defaults.data(forKey: stateKey),
+              let state = try? JSONDecoder().decode(
+                  StoreSplitLaunchHealthState.self,
+                  from: data
+              ) else {
+            return StoreSplitLaunchHealthState()
+        }
+        return state
+    }
+
+    private static func write(_ state: StoreSplitLaunchHealthState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        defaults.set(data, forKey: stateKey)
+    }
+}
+
 enum DevelopmentStoreMode: String, CaseIterable, Identifiable {
     /// The on-disk library store only. No UserState store, no dual writes.
     case legacyOnly
@@ -199,6 +270,13 @@ struct StoreDevelopmentConfiguration: Equatable {
     /// policy back to the legacy projection.
     static let legacyCloudCutoverCompletedKey =
         "storeSplit.legacyCloudCutoverCompleted.v1"
+    /// One-way safety boundary used when the legacy CloudKit exporter enters a
+    /// launch-time crash loop. The SQLite file remains intact and local-only;
+    /// this flag prevents a later launch from silently re-attaching it.
+    static let legacyCloudMirrorQuarantinedKey =
+        "storeSplit.legacyCloudMirrorQuarantined.v1"
+    static let legacyCloudMirrorQuarantineEligibleKey =
+        "storeSplit.legacyCloudMirrorQuarantineEligible.v1"
 
     private static var legacyAttachmentDefaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
@@ -206,6 +284,7 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     static var legacyCloudSyncEnabled: Bool {
         guard launch.effectiveLegacyCloudSyncEnabled else { return false }
+        guard legacyCloudMirrorQuarantined == false else { return false }
         // Read authority and CloudKit attachment are deliberately independent.
         // Once production has crossed the boundary, a rollback may change which
         // local projection is read but can never reopen SharedDatabase with
@@ -216,6 +295,32 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     static var legacyCloudCutoverCompleted: Bool {
         legacyAttachmentDefaults.bool(forKey: legacyCloudCutoverCompletedKey)
+    }
+
+    static var legacyCloudMirrorQuarantined: Bool {
+        legacyAttachmentDefaults.bool(forKey: legacyCloudMirrorQuarantinedKey)
+    }
+
+    static var legacyCloudMirrorQuarantineEligible: Bool {
+        legacyAttachmentDefaults.bool(forKey: legacyCloudMirrorQuarantineEligibleKey)
+    }
+
+    static func markLegacyCloudMirrorQuarantineEligible() {
+        legacyAttachmentDefaults.set(true, forKey: legacyCloudMirrorQuarantineEligibleKey)
+    }
+
+    static func quarantineLegacyCloudMirror(reason: String) {
+        let defaults = legacyAttachmentDefaults
+        guard defaults.bool(forKey: legacyCloudMirrorQuarantinedKey) == false else {
+            return
+        }
+        defaults.set(true, forKey: legacyCloudMirrorQuarantinedKey)
+        defaults.set(false, forKey: legacyCloudSyncLastStateKey)
+        defaults.removeObject(forKey: legacyCloudReattachApprovedKey)
+        CrashBreadcrumbs.shared.record(
+            "legacy_cloud_mirror_quarantined",
+            details: "reason=(reason)"
+        )
     }
 
     /// Whether the legacy store is being re-attached to CloudKit after a spell

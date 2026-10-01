@@ -467,9 +467,10 @@ struct EpisodeDetailView: View {
 
     private func downloadStringFile(url: URL) async -> String? {
         var resolvedURL = url
+        let accessProfile = podcastAccessProfile
 
         do {
-            let status = try await resolvedURL.status()
+            let status = try await resolvedURL.status(profile: accessProfile)
             switch status?.statusCode {
             case 200:
                 break
@@ -483,11 +484,27 @@ struct EpisodeDetailView: View {
                 break
             }
 
-            let (data, _) = try await URLSession(configuration: .default).data(from: resolvedURL)
+            let (data, _) = try await PodcastHTTPClient.shared.data(for: resolvedURL, profile: accessProfile)
             return String(decoding: data, as: UTF8.self)
         } catch {
             return nil
         }
+    }
+
+    private var podcastAccessProfile: PodcastAccessProfile? {
+        guard let metadata = episode.podcast?.metaData,
+              let profileID = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let feedURL = episode.podcast?.feed else {
+            return nil
+        }
+        return PodcastAccessProfile(
+            id: profileID,
+            kind: kind,
+            resourceURL: feedURL,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
     }
 
     private func decodeTranscriptLines(_ transcriptText: String) -> [TranscriptLineAndTime] {

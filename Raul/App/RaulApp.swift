@@ -190,6 +190,7 @@ enum PredictedReleaseRefreshScheduler {
 struct RaulApp: App {
     @StateObject private var modelContainerManager = ModelContainerManager.shared
     @StateObject private var syncMonitor = SyncMonitor.default
+    @StateObject private var storeCloudKitMonitor = StoreCloudKitActivityMonitor.shared
     @State private var downloadedFilesManager = DownloadedFilesManager.shared
     @State private var settingsRequest = SettingsWindowRequest.global
     @State private var deferredStoreSplitTask: Task<Void, Never>?
@@ -220,6 +221,11 @@ struct RaulApp: App {
 #endif
 
     init() {
+        // Install the store-aware event observer before SwiftData opens either
+        // mirrored container. The aggregate CloudKitSyncMonitor is UI-only and
+        // can lose the legacy export when two stores overlap.
+        _ = StoreCloudKitActivityMonitor.shared
+        SiriShortcutVocabularyCoordinator.start()
         CrashBreadcrumbs.shared.record("raul_app_init_start")
         CrashBreadcrumbs.shared.record("raul_app_init_completed")
     }
@@ -312,6 +318,18 @@ struct RaulApp: App {
                 
             case .active:
                 guard modelContainerManager.preparedContainer != nil else { return }
+                SiriShortcutVocabularyCoordinator.scheduleRefresh()
+                modelContainerManager.resumeSplitStoreWorkForForeground()
+                Task(priority: .utility) {
+                    // Do not clear the launch-health marker during the exporter
+                    // crash window. A healthy checkpoint requires the app to
+                    // remain usable long enough for the launch-time exporter to
+                    // prove it is not immediately exhausting the CPU budget.
+                    try? await Task.sleep(for: .seconds(75))
+                    guard Task.isCancelled == false, phase == .active else { return }
+                    StoreSplitLaunchHealth.markHealthy()
+                    CrashBreadcrumbs.shared.record("store_split_launch_marked_healthy")
+                }
                 refreshOnActive()
                 scheduleStoreSplitMigration()
                 Task(priority: .userInitiated) {
@@ -342,9 +360,9 @@ struct RaulApp: App {
             default: break
             }
         })
-        .onChange(of: syncMonitor.importState) { _, state in
-            guard case .succeeded = state else { return }
-            scheduleCloudImportReconciliation()
+        .onChange(of: storeCloudKitMonitor.latestCompletedImport) { _, event in
+            guard let event, event.succeeded else { return }
+            scheduleStoreAwareCloudImportReconciliation(for: event.storeKind)
         }
         .onChange(of: syncMonitor.exportState) { _, state in
             switch state {
@@ -354,11 +372,17 @@ struct RaulApp: App {
                 CrashBreadcrumbs.shared.record("cloudkit_export_started")
             case .succeeded:
                 CrashBreadcrumbs.shared.record("cloudkit_export_succeeded")
+                Task {
+                    await StoreSplitWorkCoordinator.shared.resumeAfterCloudKitExport()
+                }
             case .failed(_, _, let error):
                 CrashBreadcrumbs.shared.record(
                     "cloudkit_export_failed",
                     details: error?.localizedDescription ?? "unknown error"
                 )
+                Task {
+                    await StoreSplitWorkCoordinator.shared.resumeAfterCloudKitExport()
+                }
             }
         }
 
@@ -624,18 +648,31 @@ struct RaulApp: App {
         }
     }
 
-    func scheduleCloudImportReconciliation() {
+    func scheduleStoreAwareCloudImportReconciliation(
+        for storeKind: StoreCloudKitActivityMonitor.StoreKind
+    ) {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              StoreDevelopmentConfiguration.userStateImportEnabled else { return }
+              storeKind != .other else { return }
         cloudImportReconciliationTask?.cancel()
         cloudImportReconciliationTask = Task {
             do {
-                try await Task.sleep(for: .seconds(30))
+                // Coalesce the setup/import bursts emitted while two mirrored
+                // stores are opening, without delaying queue convergence by a
+                // full foreground debounce interval.
+                try await Task.sleep(for: .seconds(2))
             } catch {
                 return
             }
             guard Task.isCancelled == false else { return }
-            await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
+            if StoreSplitReleasePhase.current == .dualSyncBackfill,
+               StoreDevelopmentConfiguration.legacyCloudSyncEnabled,
+               storeKind == .legacy {
+                await modelContainerManager.reconcileLegacyStoreAfterCloudKitImport()
+            }
+            if StoreDevelopmentConfiguration.userStateImportEnabled,
+               storeKind == .userState {
+                await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
+            }
             await MainActor.run {
                 cloudImportReconciliationTask = nil
             }
@@ -901,7 +938,7 @@ private struct RootWindowView: View {
                         try? await Task.sleep(for: .seconds(3))
                         await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
-                        await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
+                        _ = await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                             modelContainer: container
                         )
                     }

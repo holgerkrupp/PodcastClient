@@ -6,14 +6,17 @@ import SwiftData
 class CarPlayInbox {
     let interfaceController: CPInterfaceController
     let playlistActor: PlaylistModelActor
-    private let episodeActor = EpisodeActor(modelContainer: ModelContainerManager.shared.container)
-    private let modelContext = ModelContext(ModelContainerManager.shared.container)
+    private let episodeActor: EpisodeActor
+    private let modelContext: ModelContext
     var template: CPListTemplate
     private var notificationToken: NSObjectProtocol?
 
     init(playlistActor: PlaylistModelActor, interfaceController: CPInterfaceController) {
         self.playlistActor = playlistActor
         self.interfaceController = interfaceController
+        let container = playlistActor.modelContainer
+        self.episodeActor = EpisodeActor(modelContainer: container)
+        self.modelContext = ModelContext(container)
         self.template = CPListTemplate(title: "Inbox", sections: [])
         self.template.emptyViewTitleVariants = ["Your Inbox is empty"]
         self.template.emptyViewSubtitleVariants = ["New episodes will appear here."]

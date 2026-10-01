@@ -141,7 +141,8 @@ enum LibraryEntityLookup {
 
     /// The Up Next queue, which is what people act on most.
     static func upNextEpisodes() async throws -> [Episode] {
-        guard let playlistActor = Player.shared.playlistActor else { return [] }
+        let player = try await preparedIntentPlayer()
+        guard let playlistActor = player.playlistActor else { return [] }
         let urls = (try? await playlistActor.orderedEpisodeURLs()) ?? []
         return try await episodes(withURLStrings: urls.prefix(resultLimit).map(\.absoluteString))
     }
@@ -198,7 +199,8 @@ struct PlayEpisodeIntent: AudioPlaybackIntent {
         guard let url = URL(string: episode.id) else {
             throw PlayPodcastEpisodeError.episodeNotFound
         }
-        await Player.shared.playEpisode(url, playDirectly: true)
+        let player = try await preparedIntentPlayer()
+        await player.playEpisode(url, playDirectly: true)
         return .result()
     }
 }
@@ -217,6 +219,7 @@ struct PlayLatestEpisodeIntent: AudioPlaybackIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        let player = try await preparedIntentPlayer()
         guard let episode = try await LibraryEntityLookup.latestEpisode(ofFeedString: podcast.id) else {
             throw PlayPodcastEpisodeError.episodeNotFound
         }
@@ -224,7 +227,7 @@ struct PlayLatestEpisodeIntent: AudioPlaybackIntent {
             throw PlayPodcastEpisodeError.episodeHasNoAudio
         }
 
-        await Player.shared.playEpisode(episodeURL, playDirectly: true)
+        await player.playEpisode(episodeURL, playDirectly: true)
         return .result(dialog: "Playing \(episode.title).")
     }
 }
@@ -271,7 +274,8 @@ struct AddEpisodesToUpNextIntent: UndoableIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let playlistActor = Player.shared.playlistActor else {
+        let player = try await preparedIntentPlayer()
+        guard let playlistActor = player.playlistActor else {
             throw AppIntentError(description: "Up Next is unavailable.")
         }
 
@@ -287,7 +291,7 @@ struct AddEpisodesToUpNextIntent: UndoableIntent {
         // Undo only removes what this run added; episodes that were already
         // queued stay where they now are.
         let newlyQueued = urls.filter { alreadyQueued.contains($0) == false }
-        undoManager?.registerUndo(withTarget: Player.shared) { _ in
+        undoManager?.registerUndo(withTarget: player) { _ in
             Task {
                 for url in newlyQueued {
                     try? await playlistActor.remove(episodeURL: url)

@@ -66,7 +66,20 @@ enum PlayNextWidgetSync {
         currentEpisodeURL: URL? = nil,
         playlistIDs: Set<UUID>? = nil
     ) async {
-        let resolvedContainer = await MainActor.run { container ?? ModelContainerManager.shared.container }
+        let resolvedContainer: ModelContainer?
+        if let container {
+            resolvedContainer = container
+        } else {
+            // Widget refreshes can be requested from a cold notification or
+            // background launch. Do not force the manager's precondition-only
+            // accessor before the runtime graph is ready.
+            resolvedContainer = await ModelContainerManager.shared
+                .prepareContainerForExternalEntryPoint()
+        }
+        guard let resolvedContainer else {
+            reloadWidgets()
+            return
+        }
         let modelContext = ModelContext(resolvedContainer)
 
         _ = Playlist.ensureDefaultQueue(in: modelContext)

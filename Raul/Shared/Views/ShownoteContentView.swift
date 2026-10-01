@@ -81,6 +81,7 @@ struct ShownoteContentView: View {
                 ShownotePreviewCard(
                     metadata: result.preview,
                     destination: result.finalURL ?? candidate.originalURL,
+                    fallbackTitle: candidate.publisherAnchorText ?? candidate.displayText,
                     isMastodon: result.classification == .mastodon
                 )
             }
@@ -117,11 +118,16 @@ struct ShownoteContentView: View {
 private struct ShownotePreviewCard: View {
     let metadata: ShownotePreviewMetadata?
     let destination: URL
+    let fallbackTitle: String
     let isMastodon: Bool
 
     private var title: String {
         if let metadataTitle = metadata?.title, metadataTitle.isEmpty == false {
             return metadataTitle
+        }
+        if fallbackTitle.isEmpty == false,
+           fallbackTitle != destination.absoluteString {
+            return fallbackTitle
         }
         return destination.host ?? destination.absoluteString
     }

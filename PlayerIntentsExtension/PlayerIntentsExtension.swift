@@ -50,14 +50,15 @@ struct FastExportClipIntent: ProgressReportingIntent {
 
     @MainActor
     func perform() async throws -> some ReturnsValue<IntentFile> & ProvidesDialog {
+        let player = try await preparedIntentPlayer()
         // 1. Gather live playback data from your Player coordinator
-        guard let currentEpisode = Player.shared.currentEpisode,
-              let audioURL = Player.shared.currentEpisode?.localFile else {
+        guard let currentEpisode = player.currentEpisode,
+              let audioURL = player.currentEpisode?.localFile else {
             throw intentError("No active episode found to clip.")
         }
         
-        let playPosition = Player.shared.playPosition
-        let totalDuration = Player.shared.currentEpisode?.duration ?? 0
+        let playPosition = player.playPosition
+        let totalDuration = player.currentEpisode?.duration ?? 0
 
         // 2. Math Calculations for Trim Range
         // Start time is current position minus the backward offset
@@ -79,7 +80,7 @@ struct FastExportClipIntent: ProgressReportingIntent {
             coverImage = UIImage() // Fallback empty layout canvas
         }
         let title = currentEpisode.title
-        let playbackRate = Player.shared.playbackRate
+        let playbackRate = player.playbackRate
         let progress = self.progress
         progress.totalUnitCount = 100
         let renderClip: @Sendable () async throws -> URL = {
@@ -131,7 +132,8 @@ struct ResumePlaybackIntent: AppIntent {
     static let title: LocalizedStringResource = "Resume Playback"
    
     func perform() async throws -> some IntentResult {
-        await Player.shared.play()
+        let player = try await preparedIntentPlayer()
+        await player.play()
         return .result()
     }
 }
@@ -141,7 +143,8 @@ struct BookmarkCurrentPlaybackIntent: AppIntent {
     static let description = IntentDescription("Create a bookmark at the current playback position.")
     
     func perform() async throws -> some IntentResult {
-        await Player.shared.createBookmark()
+        let player = try await preparedIntentPlayer()
+        await player.createBookmark()
         return .result()
     }
 }
@@ -151,7 +154,8 @@ struct PausePlaybackIntent: AppIntent {
     static let description = IntentDescription("Pause the current episode.")
 
     func perform() async throws -> some IntentResult {
-        await Player.shared.pause()
+        let player = try await preparedIntentPlayer()
+        await player.pause()
         return .result()
     }
 }
@@ -161,7 +165,8 @@ struct SkipForwardIntent: AppIntent {
     static let description = IntentDescription("Skip forward by your configured duration.")
 
     func perform() async throws -> some IntentResult {
-        await Player.shared.skipforward()
+        let player = try await preparedIntentPlayer()
+        await player.skipforward()
         return .result()
     }
 }
@@ -171,7 +176,8 @@ struct SkipBackwardIntent: AppIntent {
     static let description = IntentDescription("Skip backward by your configured duration.")
 
     func perform() async throws -> some IntentResult {
-        await Player.shared.skipback()
+        let player = try await preparedIntentPlayer()
+        await player.skipback()
         return .result()
     }
 }
@@ -180,8 +186,10 @@ struct PlayFirstUpNextIntent: AppIntent {
     static let title: LocalizedStringResource = "Play Up Next"
     static let description = IntentDescription("Start playback with the first episode in your Up Next queue.")
 
+    @MainActor
     func perform() async throws -> some IntentResult {
-        guard let playlistActor = await Player.shared.playlistActor else {
+        let player = try await preparedIntentPlayer()
+        guard let playlistActor = player.playlistActor else {
             return .result()
         }
 
@@ -190,7 +198,7 @@ struct PlayFirstUpNextIntent: AppIntent {
             return .result()
         }
 
-        await Player.shared.playEpisode(firstURL, playDirectly: true)
+        await player.playEpisode(firstURL, playDirectly: true)
         return .result()
     }
 }
@@ -199,8 +207,10 @@ struct PlayNextUpNextIntent: AppIntent {
     static let title: LocalizedStringResource = "Play Next Up Next Episode"
     static let description = IntentDescription("Play the next episode from your Up Next queue.")
 
+    @MainActor
     func perform() async throws -> some IntentResult {
-        guard let playlistActor = await Player.shared.playlistActor else {
+        let player = try await preparedIntentPlayer()
+        guard let playlistActor = player.playlistActor else {
             return .result()
         }
 
@@ -208,7 +218,7 @@ struct PlayNextUpNextIntent: AppIntent {
             return .result()
         }
 
-        await Player.shared.playEpisode(nextURL, playDirectly: true)
+        await player.playEpisode(nextURL, playDirectly: true)
         return .result()
     }
 }
@@ -337,6 +347,7 @@ struct PlayPodcastEpisodeIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let container = try await preparedIntentModelContainer()
+        let player = try await preparedIntentPlayer()
 
         let podcastDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate { $0.metaData?.isSubscribed != false }
@@ -364,7 +375,7 @@ struct PlayPodcastEpisodeIntent: AudioPlaybackIntent {
             throw PlayPodcastEpisodeError.episodeHasNoAudio
         }
 
-        await Player.shared.playEpisode(episodeURL, playDirectly: true)
+        await player.playEpisode(episodeURL, playDirectly: true)
         return .result(dialog: "Playing episode \(request.episodeNumber) of \(storedPodcast.title).")
     }
 
@@ -408,16 +419,23 @@ struct MoveCurrentEpisodeToEndIntent: UndoableIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        guard let playlistActor = Player.shared.playlistActor else {
+        let player = try await preparedIntentPlayer()
+        guard let playlistActor = player.playlistActor else {
             return .result()
         }
-        guard let currentEpisodeURL = Player.shared.currentEpisodeURL else {
+        guard let currentEpisodeURL = player.currentEpisodeURL else {
             return .result()
         }
 
         let originalIndex = try? await playlistActor.orderedEpisodeURLs().firstIndex(of: currentEpisodeURL)
         try? await playlistActor.add(episodeURL: currentEpisodeURL, to: .end)
-        registerQueueRestore(of: currentEpisodeURL, at: originalIndex, in: playlistActor, undoManager: undoManager)
+        registerQueueRestore(
+            of: currentEpisodeURL,
+            at: originalIndex,
+            in: playlistActor,
+            player: player,
+            undoManager: undoManager
+        )
         return .result()
     }
 }
@@ -428,16 +446,23 @@ struct RemoveCurrentFromUpNextIntent: UndoableIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        guard let playlistActor = Player.shared.playlistActor else {
+        let player = try await preparedIntentPlayer()
+        guard let playlistActor = player.playlistActor else {
             return .result()
         }
-        guard let currentEpisodeURL = Player.shared.currentEpisodeURL else {
+        guard let currentEpisodeURL = player.currentEpisodeURL else {
             return .result()
         }
 
         let originalIndex = try? await playlistActor.orderedEpisodeURLs().firstIndex(of: currentEpisodeURL)
         try? await playlistActor.remove(episodeURL: currentEpisodeURL)
-        registerQueueRestore(of: currentEpisodeURL, at: originalIndex, in: playlistActor, undoManager: undoManager)
+        registerQueueRestore(
+            of: currentEpisodeURL,
+            at: originalIndex,
+            in: playlistActor,
+            player: player,
+            undoManager: undoManager
+        )
         return .result()
     }
 }
@@ -449,10 +474,11 @@ private func registerQueueRestore(
     of episodeURL: URL,
     at originalIndex: Int?,
     in playlistActor: PlaylistModelActor,
+    player: Player,
     undoManager: UndoManager?
 ) {
     guard let originalIndex else { return }
-    undoManager?.registerUndo(withTarget: Player.shared) { _ in
+    undoManager?.registerUndo(withTarget: player) { _ in
         Task {
             try? await playlistActor.add(episodeURL: episodeURL, to: .end, index: originalIndex)
         }
@@ -462,89 +488,74 @@ private func registerQueueRestore(
 
 struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
-        /*
-        AppShortcut(
-                    intent: FastExportClipIntent(),
-                    phrases: [
-                        "Export a clip from \(.applicationName)",
-                        "Grab a clip starting \(\.$offset) seconds ago on \(.applicationName)",
-                        "Make a \(\.$clipLength) second clip on \(.applicationName)"
-                    ],
-                    shortTitle: "Direct Clip Export",
-                    systemImageName: "scissors"
-                )
-        */
         AppShortcut(
             intent: BookmarkCurrentPlaybackIntent(),
-            phrases: ["Bookmark this in ${applicationName}", "Save a bookmark in ${applicationName}", "Bookmark the current position in ${applicationName}"],
+            phrases: ["Bookmark this in \(.applicationName)", "Save a bookmark in \(.applicationName)", "Bookmark the current position in \(.applicationName)"],
             shortTitle: "Bookmark",
             systemImageName: "bookmark"
         )
 
         AppShortcut(
             intent: ResumePlaybackIntent(),
-            phrases: ["Resume playback in ${applicationName}", "Play last episode in ${applicationName}"],
+            phrases: ["Resume playback in \(.applicationName)", "Play last episode in \(.applicationName)"],
             shortTitle: "Resume",
             systemImageName: "play.circle"
         )
 
         AppShortcut(
-            intent: PausePlaybackIntent(),
-            phrases: ["Pause playback in ${applicationName}", "Pause ${applicationName}"],
-            shortTitle: "Pause",
-            systemImageName: "pause.circle"
-        )
-
-        AppShortcut(
             intent: SkipForwardIntent(),
-            phrases: ["Skip forward in ${applicationName}", "Jump ahead in ${applicationName}"],
+            phrases: ["Skip forward in \(.applicationName)", "Jump ahead in \(.applicationName)"],
             shortTitle: "Forward",
             systemImageName: "arrow.forward.circle"
         )
 
         AppShortcut(
             intent: SkipBackwardIntent(),
-            phrases: ["Skip back in ${applicationName}", "Jump back in ${applicationName}"],
+            phrases: ["Skip back in \(.applicationName)", "Jump back in \(.applicationName)"],
             shortTitle: "Back",
             systemImageName: "arrow.backward.circle"
         )
 
         AppShortcut(
             intent: PlayFirstUpNextIntent(),
-            phrases: ["Play Up Next in ${applicationName}", "Start Up Next in ${applicationName}"],
+            phrases: ["Play Up Next in \(.applicationName)", "Start Up Next in \(.applicationName)"],
             shortTitle: "Play Up Next",
             systemImageName: "text.line.first.and.arrowtriangle.forward"
         )
 
         AppShortcut(
-            intent: PlayNextUpNextIntent(),
-            phrases: ["Play next episode in ${applicationName}", "Play what's next in ${applicationName}"],
-            shortTitle: "Play Next",
-            systemImageName: "forward.end"
-        )
-
-        AppShortcut(
-            intent: PlayPodcastEpisodeIntent(),
-            phrases: [
-                "Play \(\.$request) in \(.applicationName)",
-                "Play \(\.$request) with \(.applicationName)"
-            ],
-            shortTitle: "Play Podcast Episode",
+            intent: PlayEpisodeIntent(),
+            phrases: ["Play \(\.$episode) in \(.applicationName)"],
+            shortTitle: "Play Episode",
             systemImageName: "play.circle"
         )
 
         AppShortcut(
-            intent: MoveCurrentEpisodeToEndIntent(),
-            phrases: ["Move this episode to the end in ${applicationName}", "Send current episode to the end in ${applicationName}"],
-            shortTitle: "Move To End",
-            systemImageName: "text.line.last.and.arrowtriangle.forward"
+            intent: PlayLatestEpisodeIntent(),
+            phrases: ["Play the latest episode of \(\.$podcast) in \(.applicationName)"],
+            shortTitle: "Play Latest",
+            systemImageName: "sparkles"
         )
 
         AppShortcut(
-            intent: RemoveCurrentFromUpNextIntent(),
-            phrases: ["Remove this from Up Next in ${applicationName}", "Remove current episode in ${applicationName}"],
-            shortTitle: "Remove Current",
-            systemImageName: "minus.circle"
+            intent: SetSleepTimerIntent(),
+            phrases: ["Set a sleep timer in \(.applicationName)"],
+            shortTitle: "Sleep Timer",
+            systemImageName: "zzz"
+        )
+
+        AppShortcut(
+            intent: RefreshPodcastFeedsIntent(),
+            phrases: ["Refresh \(.applicationName)", "Refresh podcasts in \(.applicationName)"],
+            shortTitle: "Refresh Podcasts",
+            systemImageName: "arrow.clockwise"
+        )
+
+        AppShortcut(
+            intent: GeneratePodcastShareImageIntent(),
+            phrases: ["Generate a podcast share image in \(.applicationName)"],
+            shortTitle: "Share Image",
+            systemImageName: "photo"
         )
 
     }
@@ -1406,23 +1417,21 @@ private struct PodcastShareShortcutRenderer {
 @MainActor
 func preparedIntentModelContainer() async throws -> ModelContainer {
     let manager = ModelContainerManager.shared
-    if let container = manager.preparedContainer {
-        return container
-    }
-#if canImport(UIKit)
-    guard UIApplication.shared.applicationState == .active else {
-        throw IntentModelContainerError.unavailable(
-            "Open Up Next before running this action so the podcast library can finish loading."
-        )
-    }
-#endif
-    await manager.prepareContainer()
-    guard let container = manager.preparedContainer else {
+    guard let container = await manager.prepareContainerForExternalEntryPoint() else {
         throw IntentModelContainerError.unavailable(
             manager.initializationError ?? "The podcast library could not be opened."
         )
     }
     return container
+}
+
+/// All App Intent paths that touch `Player` go through this barrier first.
+/// `Player` is deliberately safe to construct during a cold launch, but its
+/// model-backed operations still require a fully prepared container.
+@MainActor
+func preparedIntentPlayer() async throws -> Player {
+    _ = try await preparedIntentModelContainer()
+    return Player.shared
 }
 
 /// Uses `AppIntentError(description:)` where available so Siri and Shortcuts
